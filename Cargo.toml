@@ -1,0 +1,26 @@
+[package]
+name = "symbolicator"
+version = "0.1.0"
+authors = ["Markus Unterwaditzer <markus@unterwaditzer.net>"]
+edition = "2018"
+
+[dependencies]
+actix-web = { version = "0.7.18", features = ["tls"] }
+actix = "0.7.9"
+failure = "0.1.5"
+serde = "1.0.87"
+serde_derive = "1.0.87"
+futures = "0.1.25"
+bytes = "0.4.11"
+url = { version = "1.7.2", features = ["serde"] }
+derive_more = "0.14.0"
+url_serde = "0.2.0"
+log = "0.4.6"
+tokio = "0.1.15"
+tempfile = "3.0.7"
+env_logger = "0.6.0"
+
+[dependencies.symbolic]
+git = "https://github.com/getsentry/symbolic"
+branch = "ref/everything"
+features = ["symcache"]
