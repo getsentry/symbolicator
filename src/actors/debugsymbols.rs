@@ -4,7 +4,6 @@ use crate::actors::cache::ComputeMemoized;
 use crate::actors::cache::GetCacheKey;
 use crate::actors::cache::LoadCache;
 use crate::http::follow_redirects;
-use actix::fut::ok;
 use actix::fut::wrap_future;
 use actix::MailboxError;
 use actix_web::error::PayloadError;
@@ -37,7 +36,7 @@ use symbolic::debuginfo::Object;
 use tokio::fs::File;
 use tokio::io::write_all;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
     Http {
@@ -93,6 +92,7 @@ pub enum FileType {
 }
 
 /// Information to find a DebugInfo in external buckets and also internal cache.
+#[derive(Debug, Clone)]
 pub struct DebugInfoId {
     pub filetype: FileType,
     pub debug_id: Option<DebugId>,
@@ -104,7 +104,6 @@ pub struct DebugInfoId {
 impl DebugInfoId {
     pub fn get_cache_key(&self) -> String {
         let mut rv = String::new();
-        // TODO: Add bucket config here
         if let Some(ref debug_id) = self.debug_id {
             rv.push_str(&debug_id.to_string());
         }
@@ -112,6 +111,8 @@ impl DebugInfoId {
         if let Some(ref code_id) = self.code_id {
             rv.push_str(code_id);
         }
+
+        // TODO: replace with new caching key discussed with jauer
         rv.push_str("-");
         if let Some(ref debug_name) = self.debug_name {
             rv.push_str(debug_name);
@@ -134,7 +135,9 @@ pub struct DebugInfo {
 
 impl DebugInfo {
     fn get_object<'a>(&'a self) -> Result<Object<'a>, DebugInfoError> {
-        Ok(Object::parse(&self.object.as_ref().ok_or(DebugInfoError::NotFound)?)?)
+        Ok(Object::parse(
+            &self.object.as_ref().ok_or(DebugInfoError::NotFound)?,
+        )?)
     }
 }
 
@@ -160,7 +163,7 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
 
     fn handle(&mut self, item: Compute<DebugInfo>, _ctx: &mut Self::Context) -> Self::Result {
         let mut urls = vec![];
-        for bucket in &self.request.configs {
+        for bucket in &self.request.sources {
             let url = bucket.get_base_url();
 
             // PDB
@@ -237,6 +240,10 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
                 .filter_map(|(i, payload)| Some((i, payload?.map_err(DebugInfoError::from))))
                 .min_by_key(|(ref i, _)| *i);
 
+            // TODO: Destructure FatObject, validate file download before LoadCache is called
+            // We also need to parse object here for new caching key, which depends on the object
+            // type
+
             if let Some((_, payload)) = payload {
                 Either::A(
                     File::open(item.path.clone())
@@ -262,18 +269,16 @@ impl Handler<LoadCache<DebugInfo>> for DebugInfo {
 
     fn handle(&mut self, item: LoadCache<DebugInfo>, _ctx: &mut Self::Context) -> Self::Result {
         self.object = Some(item.value);
-
+        let object = tryfa!(self.get_object());
 
         if let Some(ref debug_id) = self.request.identifier.debug_id {
-            let object = tryfa!(self.get_object());
-
             // TODO: Also check code_id when exposed in symbolic
             if object.id() != *debug_id {
                 tryfa!(Err(DebugInfoError::IdMismatch));
             }
         }
 
-        Box::new(ok(()))
+        Box::new(wrap_future(Ok(()).into_future()))
     }
 }
 
@@ -292,9 +297,10 @@ impl Actor for DebugSymbolsActor {
 }
 
 /// Fetch a DebugInfo from external buckets or internal cache.
+#[derive(Debug, Clone)]
 pub struct FetchDebugInfo {
     pub identifier: DebugInfoId,
-    pub configs: Vec<SourceConfig>,
+    pub sources: Vec<SourceConfig>,
 }
 
 impl Message for FetchDebugInfo {

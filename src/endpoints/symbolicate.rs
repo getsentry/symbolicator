@@ -125,7 +125,7 @@ fn symbolicate_frames(
                         .map(|x| split_path(x).1.to_owned()), // TODO
                     filetype: FileType::Debug,
                 },
-                configs: sources.clone(),
+                sources: sources.clone(),
             })
             .map_err(From::from)
     }));
