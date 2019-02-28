@@ -1,5 +1,5 @@
-use crate::actors::debugsymbols::DebugInfoId;
-use crate::actors::debugsymbols::FetchDebugInfo;
+use crate::actors::objects::FetchObject;
+use crate::actors::objects::ObjectId;
 use crate::app::ServiceState;
 use actix::ResponseFuture;
 use futures::future::join_all;
@@ -14,8 +14,8 @@ use failure::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 
-use crate::actors::debugsymbols::FileType;
-use crate::actors::debugsymbols::SourceConfig;
+use crate::actors::objects::FileType;
+use crate::actors::objects::SourceConfig;
 use crate::app::ServiceApp;
 
 use symbolic::common::split_path;
@@ -24,7 +24,7 @@ use symbolic::common::split_path;
 struct Request {
     sources: Vec<SourceConfig>,
     frames: Vec<Frame>,
-    modules: Vec<DebugInfo>,
+    modules: Vec<Object>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -34,7 +34,7 @@ struct Frame {}
 struct ErrorResponse {}
 
 #[derive(Deserialize)]
-struct DebugInfo {
+struct Object {
     debug_id: String,
     code_id: String,
 
@@ -105,14 +105,15 @@ fn symbolicate_frames(
     state: State<ServiceState>,
     request: Json<Request>,
 ) -> ResponseFuture<Json<Response>, Error> {
-    let debug_symbols = state.debug_symbols.clone();
+    let objects = state.objects.clone();
     let request = request.into_inner();
     let sources = request.sources.clone();
 
     let results = join_all(request.modules.into_iter().map(move |debug_info| {
-        debug_symbols
-            .send(FetchDebugInfo {
-                identifier: DebugInfoId {
+        objects
+            .send(FetchObject {
+                filetype: FileType::Debug,
+                identifier: ObjectId {
                     debug_id: debug_info.debug_id.parse().ok(),
                     code_id: Some(debug_info.code_id),
                     debug_name: debug_info
@@ -123,7 +124,6 @@ fn symbolicate_frames(
                         .code_name
                         .as_ref()
                         .map(|x| split_path(x).1.to_owned()), // TODO
-                    filetype: FileType::Debug,
                 },
                 sources: sources.clone(),
             })

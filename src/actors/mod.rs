@@ -1,3 +1,3 @@
 pub mod cache;
-pub mod debugsymbols;
+pub mod objects;
 pub mod symbolication;

@@ -8,11 +8,11 @@ use actix_web::App;
 use crate::endpoints;
 
 use crate::actors::cache::CacheActor;
-use crate::actors::debugsymbols::DebugSymbolsActor;
+use crate::actors::objects::ObjectsActor;
 
 #[derive(Clone)]
 pub struct ServiceState {
-    pub debug_symbols: Addr<DebugSymbolsActor>,
+    pub objects: Addr<ObjectsActor>,
 }
 
 pub type ServiceApp = App<ServiceState>;
@@ -28,9 +28,9 @@ pub fn main() {
     let sys = actix::System::new("symbolicator");
 
     let download_cache = CacheActor::new("/tmp/symbolicator-symbols").start();
-    let debug_symbols = DebugSymbolsActor::new(download_cache).start();
+    let objects = ObjectsActor::new(download_cache).start();
 
-    let state = ServiceState { debug_symbols };
+    let state = ServiceState { objects };
 
     server::new(move || get_app(state.clone()))
         .bind("127.0.0.1:8080")

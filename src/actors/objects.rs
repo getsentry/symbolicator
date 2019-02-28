@@ -4,6 +4,8 @@ use crate::actors::cache::ComputeMemoized;
 use crate::actors::cache::GetCacheKey;
 use crate::actors::cache::LoadCache;
 use crate::http::follow_redirects;
+use actix::dev::MessageResponse;
+use actix::dev::ResponseChannel;
 use actix::fut::wrap_future;
 use actix::MailboxError;
 use actix_web::error::PayloadError;
@@ -30,8 +32,7 @@ use actix_web::HttpMessage;
 
 use symbolic::common::ByteView;
 use symbolic::common::DebugId;
-use symbolic::common::SelfCell;
-use symbolic::debuginfo::Object;
+use symbolic::debuginfo;
 
 use tokio::fs::File;
 use tokio::io::write_all;
@@ -55,7 +56,7 @@ impl SourceConfig {
 }
 
 #[derive(Debug, Fail, From)]
-pub enum DebugInfoError {
+pub enum ObjectError {
     #[fail(display = "Failed to download: {}", _0)]
     Io(io::Error),
 
@@ -79,29 +80,25 @@ pub enum DebugInfoError {
 
     #[fail(display = "No symbols found")]
     NotFound,
-
-    #[fail(display = "???")]
-    Other,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileType {
     Debug,
     Code,
     Breakpad,
 }
 
-/// Information to find a DebugInfo in external buckets and also internal cache.
+/// Information to find a Object in external buckets and also internal cache.
 #[derive(Debug, Clone)]
-pub struct DebugInfoId {
-    pub filetype: FileType,
+pub struct ObjectId {
     pub debug_id: Option<DebugId>,
     pub code_id: Option<String>,
     pub debug_name: Option<String>,
     pub code_name: Option<String>,
 }
 
-impl DebugInfoId {
+impl ObjectId {
     pub fn get_cache_key(&self) -> String {
         let mut rv = String::new();
         if let Some(ref debug_id) = self.debug_id {
@@ -128,28 +125,29 @@ impl DebugInfoId {
 }
 
 /// Handle to local cache file.
-pub struct DebugInfo {
-    request: FetchDebugInfo,
+#[derive(Clone)]
+pub struct Object {
+    request: FetchObject,
     object: Option<ByteView<'static>>,
 }
 
-impl DebugInfo {
-    fn get_object<'a>(&'a self) -> Result<Object<'a>, DebugInfoError> {
-        Ok(Object::parse(
-            &self.object.as_ref().ok_or(DebugInfoError::NotFound)?,
+impl Object {
+    pub fn get_object<'a>(&'a self) -> Result<debuginfo::Object<'a>, ObjectError> {
+        Ok(debuginfo::Object::parse(
+            &self.object.as_ref().ok_or(ObjectError::NotFound)?,
         )?)
     }
 }
 
-impl Actor for DebugInfo {
+impl Actor for Object {
     type Context = Context<Self>;
 }
 
-impl CacheItem for DebugInfo {
-    type Error = DebugInfoError;
+impl CacheItem for Object {
+    type Error = ObjectError;
 }
 
-impl Handler<GetCacheKey> for DebugInfo {
+impl Handler<GetCacheKey> for Object {
     type Result = String;
 
     fn handle(&mut self, _item: GetCacheKey, _ctx: &mut Self::Context) -> Self::Result {
@@ -158,16 +156,45 @@ impl Handler<GetCacheKey> for DebugInfo {
     }
 }
 
-impl Handler<Compute<DebugInfo>> for DebugInfo {
-    type Result = ResponseActFuture<Self, (), <DebugInfo as CacheItem>::Error>;
+/// Hack: Get access to symbolic structs even though they live in the actor.
+struct GetObject;
 
-    fn handle(&mut self, item: Compute<DebugInfo>, _ctx: &mut Self::Context) -> Self::Result {
+impl Message for GetObject {
+    type Result = Object;
+}
+
+impl Handler<GetObject> for Object {
+    type Result = Object;
+
+    fn handle(&mut self, _item: GetObject, _ctx: &mut Self::Context) -> Self::Result {
+        self.clone()
+    }
+}
+
+// Make Object sendable like other primitive types, without wrapping it in Result
+impl<A, M> MessageResponse<A, M> for Object
+where
+    A: Actor,
+    M: Message<Result = Object>,
+{
+    fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
+        if let Some(tx) = tx {
+            tx.send(self);
+        }
+    }
+}
+
+impl Handler<Compute<Object>> for Object {
+    type Result = ResponseActFuture<Self, (), <Object as CacheItem>::Error>;
+
+    fn handle(&mut self, item: Compute<Object>, _ctx: &mut Self::Context) -> Self::Result {
         let mut urls = vec![];
         for bucket in &self.request.sources {
             let url = bucket.get_base_url();
 
             // PDB
-            if let (Some(ref debug_name), Some(ref debug_id)) = (
+            if let (FileType::Debug, Some(ref debug_name), Some(ref debug_id)) = (
+                self.request.filetype,
                 &self.request.identifier.debug_name,
                 &self.request.identifier.debug_id,
             ) {
@@ -180,7 +207,8 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
             }
 
             // PE
-            if let (Some(ref code_name), Some(ref code_id)) = (
+            if let (FileType::Code, Some(ref code_name), Some(ref code_id)) = (
+                self.request.filetype,
                 &self.request.identifier.code_name,
                 &self.request.identifier.code_id,
             ) {
@@ -189,8 +217,13 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
 
             // ELF
             if let Some(ref code_id) = self.request.identifier.code_id {
-                urls.push(url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)));
-                if let Some(ref code_name) = self.request.identifier.code_name {
+                if self.request.filetype == FileType::Debug {
+                    urls.push(url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)));
+                }
+
+                if let (FileType::Code, Some(ref code_name)) =
+                    (self.request.filetype, &self.request.identifier.code_name)
+                {
                     urls.push(url.join(&format!(
                         "{}/elf-buildid-{}/{}",
                         code_name, code_id, code_name
@@ -199,7 +232,7 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
             }
 
             // TODO: MachO, Breakpad
-            // TODO: Use DebugInfo.filetype to filter out unwanted variants
+            // TODO: Use Object.filetype to filter out unwanted variants
         }
 
         let requests = join_all(urls.into_iter().enumerate().map(|(i, url_parse_result)| {
@@ -230,24 +263,26 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
                 }
             })
             // The above future is infallible, so Rust complains about unknown type for future
-            // error. Hint at compiler that E = !
+            // error.
             .map_err(|_: ()| unreachable!())
         }));
 
         let result = requests.and_then(move |requests| {
             let payload = requests
                 .into_iter()
-                .filter_map(|(i, payload)| Some((i, payload?.map_err(DebugInfoError::from))))
+                .filter_map(|(i, payload)| Some((i, payload?.map_err(ObjectError::from))))
                 .min_by_key(|(ref i, _)| *i);
 
             // TODO: Destructure FatObject, validate file download before LoadCache is called
             // We also need to parse object here for new caching key, which depends on the object
             // type
+            //
+            // XXX(markus): Can we ever take info from Object for caching?
 
             if let Some((_, payload)) = payload {
                 Either::A(
                     File::open(item.path.clone())
-                        .map_err(DebugInfoError::from)
+                        .map_err(ObjectError::from)
                         .and_then(|file| {
                             payload.fold(file, |file, chunk| {
                                 write_all(file, chunk).map(|(file, _chunk)| file)
@@ -264,17 +299,17 @@ impl Handler<Compute<DebugInfo>> for DebugInfo {
     }
 }
 
-impl Handler<LoadCache<DebugInfo>> for DebugInfo {
-    type Result = ResponseActFuture<Self, (), <DebugInfo as CacheItem>::Error>;
+impl Handler<LoadCache<Object>> for Object {
+    type Result = ResponseActFuture<Self, (), <Object as CacheItem>::Error>;
 
-    fn handle(&mut self, item: LoadCache<DebugInfo>, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, item: LoadCache<Object>, _ctx: &mut Self::Context) -> Self::Result {
         self.object = Some(item.value);
         let object = tryfa!(self.get_object());
 
         if let Some(ref debug_id) = self.request.identifier.debug_id {
             // TODO: Also check code_id when exposed in symbolic
-            if object.id() != *debug_id {
-                tryfa!(Err(DebugInfoError::IdMismatch));
+            if object.debug_id() != *debug_id {
+                tryfa!(Err(ObjectError::IdMismatch));
             }
         }
 
@@ -282,40 +317,45 @@ impl Handler<LoadCache<DebugInfo>> for DebugInfo {
     }
 }
 
-pub struct DebugSymbolsActor {
-    cache: Addr<CacheActor<DebugInfo>>,
+pub struct ObjectsActor {
+    cache: Addr<CacheActor<Object>>,
 }
 
-impl DebugSymbolsActor {
-    pub fn new(cache: Addr<CacheActor<DebugInfo>>) -> Self {
-        DebugSymbolsActor { cache }
+impl ObjectsActor {
+    pub fn new(cache: Addr<CacheActor<Object>>) -> Self {
+        ObjectsActor { cache }
     }
 }
 
-impl Actor for DebugSymbolsActor {
+impl Actor for ObjectsActor {
     type Context = Context<Self>;
 }
 
-/// Fetch a DebugInfo from external buckets or internal cache.
+/// Fetch a Object from external buckets or internal cache.
 #[derive(Debug, Clone)]
-pub struct FetchDebugInfo {
-    pub identifier: DebugInfoId,
+pub struct FetchObject {
+    pub filetype: FileType,
+    pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
 }
 
-impl Message for FetchDebugInfo {
-    type Result = Result<Addr<DebugInfo>, DebugInfoError>;
+impl Message for FetchObject {
+    type Result = Result<Object, ObjectError>;
 }
 
-impl Handler<FetchDebugInfo> for DebugSymbolsActor {
-    type Result = ResponseActFuture<Self, Addr<DebugInfo>, DebugInfoError>;
+impl Handler<FetchObject> for ObjectsActor {
+    type Result = ResponseActFuture<Self, Object, ObjectError>;
 
-    fn handle(&mut self, message: FetchDebugInfo, _ctx: &mut Self::Context) -> Self::Result {
-        let res = self.cache.send(ComputeMemoized(DebugInfo {
+    fn handle(&mut self, message: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
+        let res = self.cache.send(ComputeMemoized(Object {
             request: message,
             object: None,
         }));
 
-        Box::new(wrap_future(res.map_err(DebugInfoError::from).flatten()))
+        Box::new(wrap_future(
+            res.flatten()
+                .and_then(|object_addr| object_addr.send(GetObject).map_err(ObjectError::from))
+                .map_err(ObjectError::from),
+        ))
     }
 }
