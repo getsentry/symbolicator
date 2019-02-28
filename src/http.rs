@@ -1,7 +1,9 @@
 use futures::future::{Either, Future, IntoFuture};
 
-use actix_web::client::{ClientRequest, ClientResponse, SendRequestError};
-use actix_web::{FutureResponse, HttpMessage};
+use actix_web::{
+    client::{ClientRequest, ClientResponse, SendRequestError},
+    FutureResponse, HttpMessage,
+};
 
 pub fn follow_redirects(
     req: ClientRequest,

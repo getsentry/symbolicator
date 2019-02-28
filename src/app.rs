@@ -1,15 +1,10 @@
-use actix;
-use actix::Actor;
-use actix::Addr;
+use actix::{self, Actor, Addr};
 
-use actix_web::server;
-use actix_web::App;
+use actix_web::{server, App};
 
 use crate::endpoints;
 
-use crate::actors::cache::CacheActor;
-use crate::actors::objects::ObjectsActor;
-use crate::actors::symbolication::SymbolicationActor;
+use crate::actors::{cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor};
 
 #[derive(Clone)]
 pub struct ServiceState {

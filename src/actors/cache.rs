@@ -1,18 +1,12 @@
-use actix::Actor;
-use actix::Addr;
-use actix::Context;
-use actix::Handler;
-use actix::MailboxError;
-use actix::Message;
-use actix::ResponseFuture;
+use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
 use futures::future::{Future, IntoFuture};
-use std::collections::BTreeMap;
-use std::fs;
-use std::io;
-use std::io::Read;
-use std::marker::PhantomData;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::{self, Read},
+    marker::PhantomData,
+    path::{Path, PathBuf},
+};
 
 use tempfile::NamedTempFile;
 

@@ -2,17 +2,16 @@ use actix::ResponseFuture;
 
 use futures::future::Future;
 
-use actix_web::http::Method;
-use actix_web::Json;
-use actix_web::State;
+use actix_web::{http::Method, Json, State};
 
 use failure::Error;
 
-use crate::actors::symbolication::SymbolicateFramesRequest;
-use crate::actors::symbolication::SymbolicateFramesResponse;
-use crate::actors::symbolication::SymbolicationError;
-use crate::app::ServiceApp;
-use crate::app::ServiceState;
+use crate::{
+    actors::symbolication::{
+        SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError,
+    },
+    app::{ServiceApp, ServiceState},
+};
 
 fn symbolicate_frames(
     state: State<ServiceState>,

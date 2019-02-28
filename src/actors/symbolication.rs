@@ -1,40 +1,25 @@
-use std::fs::File;
-use std::io;
+use std::{fs::File, io};
 
-use actix::fut::{wrap_future, Either, WrapFuture};
-use actix::Actor;
-use actix::ActorFuture;
-use actix::Addr;
-use actix::Context;
-use actix::Handler;
-use actix::MailboxError;
-use actix::Message;
-use actix::ResponseActFuture;
+use actix::{
+    fut::{wrap_future, Either, WrapFuture},
+    Actor, ActorFuture, Addr, Context, Handler, MailboxError, Message, ResponseActFuture,
+};
 
 use failure::Fail;
 
-use futures::future::join_all;
-use futures::future::{Future, IntoFuture};
+use futures::future::{join_all, Future, IntoFuture};
 
-use symbolic::common::split_path;
-use symbolic::common::ByteView;
-use symbolic::symcache;
+use symbolic::{
+    common::{split_path, ByteView},
+    symcache,
+};
 
-use serde::Deserialize;
-use serde::Deserializer;
+use serde::{Deserialize, Deserializer};
 
-use crate::actors::cache::CacheActor;
-use crate::actors::cache::CacheItem;
-use crate::actors::cache::Compute;
-use crate::actors::cache::ComputeMemoized;
-use crate::actors::cache::GetCacheKey;
-use crate::actors::cache::LoadCache;
-use crate::actors::objects::FetchObject;
-use crate::actors::objects::FileType;
-use crate::actors::objects::ObjectError;
-use crate::actors::objects::ObjectId;
-use crate::actors::objects::ObjectsActor;
-use crate::actors::objects::SourceConfig;
+use crate::actors::{
+    cache::{CacheActor, CacheItem, Compute, ComputeMemoized, GetCacheKey, LoadCache},
+    objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor, SourceConfig},
+};
 
 #[derive(Debug, Fail, From)]
 pub enum SymbolicationError {

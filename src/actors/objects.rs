@@ -1,40 +1,36 @@
-use std::fs;
-use std::io;
-use std::io::Write;
+use std::{
+    fs,
+    io::{self, Write},
+};
 
-use crate::actors::cache::CacheItem;
-use crate::actors::cache::Compute;
-use crate::actors::cache::ComputeMemoized;
-use crate::actors::cache::GetCacheKey;
-use crate::actors::cache::LoadCache;
-use crate::http::follow_redirects;
-use actix::fut::wrap_future;
-use actix::MailboxError;
-use actix::MessageResult;
+use crate::{
+    actors::cache::{CacheItem, Compute, ComputeMemoized, GetCacheKey, LoadCache},
+    http::follow_redirects,
+};
+use actix::{fut::wrap_future, MailboxError, MessageResult};
 use actix_web::error::PayloadError;
-use futures::future::{join_all, Either, Future, IntoFuture};
-use futures::Stream;
+use futures::{
+    future::{join_all, Either, Future, IntoFuture},
+    Stream,
+};
 use url::Url;
 
 use failure::Fail;
 
 use crate::actors::cache::CacheActor;
 
-use actix::Actor;
-use actix::Addr;
-use actix::Context;
-use actix::Handler;
-use actix::Message;
-use actix::ResponseActFuture;
+use actix::{Actor, Addr, Context, Handler, Message, ResponseActFuture};
 
-use actix_web::client;
-use actix_web::client::SendRequestError;
-use actix_web::http::StatusCode;
-use actix_web::HttpMessage;
+use actix_web::{
+    client::{self, SendRequestError},
+    http::StatusCode,
+    HttpMessage,
+};
 
-use symbolic::common::ByteView;
-use symbolic::common::DebugId;
-use symbolic::debuginfo;
+use symbolic::{
+    common::{ByteView, DebugId},
+    debuginfo,
+};
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
