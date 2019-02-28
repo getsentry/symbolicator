@@ -9,10 +9,11 @@ use crate::endpoints;
 
 use crate::actors::cache::CacheActor;
 use crate::actors::objects::ObjectsActor;
+use crate::actors::symbolication::SymbolicationActor;
 
 #[derive(Clone)]
 pub struct ServiceState {
-    pub objects: Addr<ObjectsActor>,
+    pub symbolication: Addr<SymbolicationActor>,
 }
 
 pub type ServiceApp = App<ServiceState>;
@@ -27,10 +28,13 @@ pub fn main() {
     env_logger::init();
     let sys = actix::System::new("symbolicator");
 
-    let download_cache = CacheActor::new("/tmp/symbolicator-symbols").start();
+    let download_cache = CacheActor::new("/tmp/symbolicator-objects").start();
     let objects = ObjectsActor::new(download_cache).start();
 
-    let state = ServiceState { objects };
+    let sym_cache = CacheActor::new("/tmp/symbolicator-symcaches").start();
+    let symbolication = SymbolicationActor::new(sym_cache, objects).start();
+
+    let state = ServiceState { symbolication };
 
     server::new(move || get_app(state.clone()))
         .bind("127.0.0.1:8080")

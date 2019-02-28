@@ -1,17 +1,19 @@
+use std::fs;
+use std::io;
+use std::io::Write;
+
 use crate::actors::cache::CacheItem;
 use crate::actors::cache::Compute;
 use crate::actors::cache::ComputeMemoized;
 use crate::actors::cache::GetCacheKey;
 use crate::actors::cache::LoadCache;
 use crate::http::follow_redirects;
-use actix::dev::MessageResponse;
-use actix::dev::ResponseChannel;
 use actix::fut::wrap_future;
 use actix::MailboxError;
+use actix::MessageResult;
 use actix_web::error::PayloadError;
 use futures::future::{join_all, Either, Future, IntoFuture};
 use futures::Stream;
-use std::io;
 use url::Url;
 
 use failure::Fail;
@@ -33,9 +35,6 @@ use actix_web::HttpMessage;
 use symbolic::common::ByteView;
 use symbolic::common::DebugId;
 use symbolic::debuginfo;
-
-use tokio::fs::File;
-use tokio::io::write_all;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -164,23 +163,10 @@ impl Message for GetObject {
 }
 
 impl Handler<GetObject> for Object {
-    type Result = Object;
+    type Result = MessageResult<GetObject>;
 
     fn handle(&mut self, _item: GetObject, _ctx: &mut Self::Context) -> Self::Result {
-        self.clone()
-    }
-}
-
-// Make Object sendable like other primitive types, without wrapping it in Result
-impl<A, M> MessageResponse<A, M> for Object
-where
-    A: Actor,
-    M: Message<Result = Object>,
-{
-    fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
-        if let Some(tx) = tx {
-            tx.send(self);
-        }
+        MessageResult(self.clone())
     }
 }
 
@@ -280,16 +266,18 @@ impl Handler<Compute<Object>> for Object {
             // XXX(markus): Can we ever take info from Object for caching?
 
             if let Some((_, payload)) = payload {
-                Either::A(
-                    File::open(item.path.clone())
-                        .map_err(ObjectError::from)
-                        .and_then(|file| {
-                            payload.fold(file, |file, chunk| {
-                                write_all(file, chunk).map(|(file, _chunk)| file)
-                            })
-                        })
-                        .map(|_| ()),
-                )
+                let file = fs::File::create(&item.path)
+                    .into_future()
+                    .map_err(ObjectError::from);
+
+                let result = file.and_then(|mut file| {
+                    payload.for_each(move |chunk| {
+                        // TODO: Call out to SyncArbiter
+                        file.write_all(&chunk).map_err(ObjectError::from)
+                    })
+                });
+
+                Either::A(result)
             } else {
                 Either::B(Ok(()).into_future())
             }
@@ -303,13 +291,20 @@ impl Handler<LoadCache<Object>> for Object {
     type Result = ResponseActFuture<Self, (), <Object as CacheItem>::Error>;
 
     fn handle(&mut self, item: LoadCache<Object>, _ctx: &mut Self::Context) -> Self::Result {
-        self.object = Some(item.value);
-        let object = tryfa!(self.get_object());
+        if item.value.is_empty() {
+            println!("Loading cache: empty!");
+            self.object = None;
+        } else {
+            println!("Loading cache: not empty!");
+            self.object = Some(item.value);
+            let object = tryfa!(self.get_object());
 
-        if let Some(ref debug_id) = self.request.identifier.debug_id {
-            // TODO: Also check code_id when exposed in symbolic
-            if object.debug_id() != *debug_id {
-                tryfa!(Err(ObjectError::IdMismatch));
+            if let Some(ref debug_id) = self.request.identifier.debug_id {
+                // TODO: Also check code_id when exposed in symbolic
+                if object.debug_id() != *debug_id {
+                    println!("Loading cache: debug_id MISMATCH!?!?!?!??!?!");
+                    tryfa!(Err(ObjectError::IdMismatch));
+                }
             }
         }
 

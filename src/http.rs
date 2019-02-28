@@ -16,10 +16,14 @@ pub fn follow_redirects(
                 .get("Location")
                 .and_then(|x| x.to_str().ok())
             {
+                debug!("Following redirect: {:?}", location);
                 let mut builder = ClientRequest::get(location);
                 for (k, v) in headers_bak {
                     if let Some(k) = k {
-                        builder.header(k, v);
+                        if k != "Host" {
+                            debug!("Preserving header: {:?}: {:?}", k, v);
+                            builder.header(k, v);
+                        }
                     }
                 }
                 return Either::A(follow_redirects(

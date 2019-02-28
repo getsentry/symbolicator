@@ -5,9 +5,9 @@ use actix::Handler;
 use actix::MailboxError;
 use actix::Message;
 use actix::ResponseFuture;
-use futures::future::result;
-use futures::future::Future;
+use futures::future::{Future, IntoFuture};
 use std::collections::BTreeMap;
+use std::fs;
 use std::io;
 use std::io::Read;
 use std::marker::PhantomData;
@@ -101,7 +101,7 @@ impl<T: CacheItem> Handler<ComputeMemoized<T>> for CacheActor<T> {
     fn handle(&mut self, item: ComputeMemoized<T>, _ctx: &mut Self::Context) -> Self::Result {
         // TODO: rewrite
         let item = item.0.start();
-        let file = NamedTempFile::new().unwrap();
+        let mut file = NamedTempFile::new().unwrap();
 
         let future = item
             .send(Compute::new(file.path().to_owned()))
@@ -109,8 +109,8 @@ impl<T: CacheItem> Handler<ComputeMemoized<T>> for CacheActor<T> {
             .and_then(move |_| {
                 let mut buf = vec![];
                 // TODO: SyncArbiter
-                let mut read = file.reopen().unwrap();
-                result(read.read_to_end(&mut buf).map_err(From::from)).map(|_| buf)
+                file.read_to_end(&mut buf).unwrap();
+                Ok(buf).into_future()
             })
             .and_then(|buf| {
                 item.send(LoadCache::new(ByteView::from_vec(buf)))
