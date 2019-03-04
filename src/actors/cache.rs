@@ -2,7 +2,6 @@ use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture
 use futures::future::{Future, IntoFuture};
 use std::{
     collections::BTreeMap,
-    fs,
     io::{self, Read},
     marker::PhantomData,
     path::{Path, PathBuf},
@@ -104,12 +103,16 @@ impl<T: CacheItem> Handler<ComputeMemoized<T>> for CacheActor<T> {
                 let mut buf = vec![];
                 // TODO: SyncArbiter
                 file.read_to_end(&mut buf).unwrap();
-                Ok(buf).into_future()
-            })
-            .and_then(|buf| {
-                item.send(LoadCache::new(ByteView::from_vec(buf)))
+
+                item.send(GetCacheKey)
                     .map_err(From::from)
-                    .map(|_| item)
+                    .and_then(move |key| {
+                        file.persist(key).unwrap();
+
+                        item.send(LoadCache::new(ByteView::from_vec(buf)))
+                            .map_err(From::from)
+                            .map(|_| item)
+                    })
             });
 
         Box::new(future)

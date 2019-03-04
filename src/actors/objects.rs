@@ -123,6 +123,7 @@ impl ObjectId {
 #[derive(Clone)]
 pub struct Object {
     request: FetchObject,
+    // TODO: cache symbolic object here
     object: Option<ByteView<'static>>,
 }
 
@@ -162,6 +163,7 @@ impl Handler<GetObject> for Object {
     type Result = MessageResult<GetObject>;
 
     fn handle(&mut self, _item: GetObject, _ctx: &mut Self::Context) -> Self::Result {
+        // TODO: Internal Arc to make this less expensive
         MessageResult(self.clone())
     }
 }
@@ -233,6 +235,7 @@ impl Handler<Compute<Object>> for Object {
             .then(move |result| match result {
                 Ok(response) => {
                     if response.status().is_success() {
+                        info!("Success hitting {}", url);
                         Ok((i, Some(response.payload())))
                     } else {
                         debug!("Unexpected status code from {}: {}", url, response.status());
@@ -240,7 +243,7 @@ impl Handler<Compute<Object>> for Object {
                     }
                 }
                 Err(e) => {
-                    debug!("Skipping response from {}: {}", url, e);
+                    warn!("Skipping response from {}: {}", url, e);
                     Ok((i, None))
                 }
             })
@@ -288,17 +291,14 @@ impl Handler<LoadCache<Object>> for Object {
 
     fn handle(&mut self, item: LoadCache<Object>, _ctx: &mut Self::Context) -> Self::Result {
         if item.value.is_empty() {
-            println!("Loading cache: empty!");
             self.object = None;
         } else {
-            println!("Loading cache: not empty!");
             self.object = Some(item.value);
             let object = tryfa!(self.get_object());
 
             if let Some(ref debug_id) = self.request.identifier.debug_id {
                 // TODO: Also check code_id when exposed in symbolic
                 if object.debug_id() != *debug_id {
-                    println!("Loading cache: debug_id MISMATCH!?!?!?!??!?!");
                     tryfa!(Err(ObjectError::IdMismatch));
                 }
             }

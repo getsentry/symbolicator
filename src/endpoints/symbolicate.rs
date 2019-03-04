@@ -17,12 +17,10 @@ fn symbolicate_frames(
     state: State<ServiceState>,
     request: Json<SymbolicateFramesRequest>,
 ) -> ResponseFuture<Json<SymbolicateFramesResponse>, Error> {
-    let symbolication = state.symbolication.clone();
-    let request = request.into_inner();
-
     Box::new(
-        symbolication
-            .send(request)
+        state
+            .symbolication
+            .send(request.into_inner())
             .map_err(SymbolicationError::from)
             .flatten()
             .map(Json)

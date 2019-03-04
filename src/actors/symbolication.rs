@@ -1,4 +1,6 @@
-use std::{fs::File, io};
+use actix::MessageResult;
+use serde::{Serialize, Serializer};
+use std::{collections::BTreeMap, fmt, fs::File, io, iter::FromIterator, sync::Arc};
 
 use actix::{
     fut::{wrap_future, Either, WrapFuture},
@@ -10,7 +12,7 @@ use failure::Fail;
 use futures::future::{join_all, Future, IntoFuture};
 
 use symbolic::{
-    common::{split_path, ByteView},
+    common::{split_path, Arch, ByteView, DebugId, InstructionInfo},
     symcache,
 };
 
@@ -54,8 +56,10 @@ impl SymbolicationActor {
     }
 }
 
+#[derive(Clone)]
 pub struct SymCache {
     // TODO: Symbolicate from object directly, put object (or only its byteview) here then
+    // TODO: cache symbolic symcache here
     inner: Option<ByteView<'static>>,
 
     /// Information for fetching the symbols for this symcache
@@ -63,6 +67,21 @@ pub struct SymCache {
     sources: Vec<SourceConfig>,
 
     objects: Addr<ObjectsActor>,
+}
+
+struct GetSymCache;
+
+impl Message for GetSymCache {
+    type Result = SymCache;
+}
+
+impl Handler<GetSymCache> for SymCache {
+    type Result = MessageResult<GetSymCache>;
+
+    fn handle(&mut self, _item: GetSymCache, _ctx: &mut Self::Context) -> Self::Result {
+        // TODO: Internal Arc to make this less expensive
+        MessageResult(self.clone())
+    }
 }
 
 impl SymCache {
@@ -109,27 +128,21 @@ impl Handler<Compute<SymCache>> for SymCache {
             .into_future()
             .into_actor(self)
             .and_then(|(debug_symbol, code_symbol), slf, _ctx| {
+                // TODO: Fall back to symbol table (go debug -> code -> breakpad again)
                 let debug_symbol_inner = debug_symbol.get_object();
                 let code_symbol_inner = code_symbol.get_object();
 
                 if debug_symbol_inner
-                    .map(|x| {
-                        let rv = x.has_debug_info();
-                        println!("debug file has debug info: {}", rv);
-                        rv
-                    })
+                    .map(|x| true || x.has_debug_info()) // XXX: undo
                     .unwrap_or(false)
                 {
-                    println!("Selecting debug file");
                     Either::A(Ok(debug_symbol).into_future().into_actor(slf))
                 } else if code_symbol_inner
                     .map(|x| x.has_debug_info())
                     .unwrap_or(false)
                 {
-                    println!("Selecting code file");
                     Either::B(Either::A(Ok(code_symbol).into_future().into_actor(slf)))
                 } else {
-                    println!("Downloading breakpad file");
                     Either::B(Either::B(
                         slf.objects
                             .send(FetchObject {
@@ -175,44 +188,59 @@ impl Handler<LoadCache<SymCache>> for SymCache {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Frame {}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Frame {
+    addr: HexValue,
+
+    module: Option<String>, // NOTE: This is "package" in Sentry
+    name: Option<String>,   // Only present if ?demangle was set
+    language: Option<String>,
+    symbol: Option<String>,
+    symbol_address: Option<HexValue>,
+    file: Option<String>,
+    line: Option<u64>,
+    line_address: Option<HexValue>, // NOTE: This does not exist in Sentry
+}
 
 #[derive(Deserialize)]
 pub struct ObjectInfo {
     debug_id: String,
-    code_id: String,
+    code_id: Option<String>,
 
     #[serde(default)]
     debug_name: Option<String>,
 
     #[serde(default)]
     code_name: Option<String>,
-    //address: HexValue,
-    //size: u64,
 
-    //#[serde(default)]
-    //module: Option<String>,
+    address: HexValue,
 
-    //#[serde(default)]
-    //name: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
 
-    //#[serde(default)]
-    //symbol: Option<String>,
+    #[serde(default)]
+    module: Option<String>,
 
-    //#[serde(default)]
-    //symbol_address: Option<HexValue>,
+    #[serde(default)]
+    name: Option<String>,
 
-    //#[serde(default)]
-    //file: Option<String>,
+    #[serde(default)]
+    symbol: Option<String>,
 
-    //#[serde(default)]
-    //line: Option<u64>,
+    #[serde(default)]
+    symbol_address: Option<HexValue>,
 
-    //#[serde(default)]
-    //line_address: Option<HexValue>,
+    #[serde(default)]
+    file: Option<String>,
+
+    #[serde(default)]
+    line: Option<u64>,
+
+    #[serde(default)]
+    line_address: Option<HexValue>,
 }
 
+#[derive(Clone, Debug, Copy)]
 struct HexValue(u64);
 
 impl<'de> Deserialize<'de> for HexValue {
@@ -234,15 +262,55 @@ impl<'de> Deserialize<'de> for HexValue {
     }
 }
 
+impl<'d> fmt::Display for HexValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
+impl Serialize for HexValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
 #[derive(Deserialize)]
 pub struct SymbolicateFramesRequest {
+    #[serde(default)]
+    meta: Meta,
+    #[serde(default)]
     sources: Vec<SourceConfig>,
-    frames: Vec<Frame>,
+    #[serde(default)]
+    threads: Vec<Thread>,
+    #[serde(default)]
     modules: Vec<ObjectInfo>,
 }
 
+#[derive(Deserialize, Default)]
+pub struct Meta {
+    #[serde(default)]
+    signal: Option<u32>,
+    #[serde(default)]
+    arch: Arch,
+}
+
+#[derive(Deserialize)]
+pub struct Thread {
+    registers: BTreeMap<String, HexValue>,
+    #[serde(flatten)]
+    stacktrace: Stacktrace,
+}
+
 #[derive(Serialize, Deserialize)]
-pub struct ErrorResponse {}
+pub struct Stacktrace {
+    frames: Vec<Frame>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ErrorResponse(String);
 
 #[derive(Serialize)]
 #[serde(tag = "status")]
@@ -251,7 +319,7 @@ pub enum SymbolicateFramesResponse {
     //retry_after: usize,
     //},
     Completed {
-        frames: Vec<Frame>,
+        stacktraces: Vec<Stacktrace>,
         errors: Vec<ErrorResponse>,
     },
 }
@@ -271,19 +339,20 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
         let sources = request.sources;
         let objects = self.objects.clone();
         let symcache = self.symcache.clone();
+        let threads = request.threads;
 
-        let symcaches = join_all(request.modules.into_iter().map(move |debug_info| {
+        let symcaches = join_all(request.modules.into_iter().map(move |object_info| {
             symcache
                 .send(ComputeMemoized(SymCache {
                     inner: None,
                     identifier: ObjectId {
-                        debug_id: debug_info.debug_id.parse().ok(),
-                        code_id: Some(debug_info.code_id),
-                        debug_name: debug_info
+                        debug_id: object_info.debug_id.parse().ok(),
+                        code_id: object_info.code_id.clone(),
+                        debug_name: object_info
                             .debug_name
                             .as_ref()
                             .map(|x| split_path(x).1.to_owned()), // TODO
-                        code_name: debug_info
+                        code_name: object_info
                             .code_name
                             .as_ref()
                             .map(|x| split_path(x).1.to_owned()), // TODO
@@ -293,17 +362,161 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                 }))
                 .map_err(SymbolicationError::from)
                 .flatten()
+                .and_then(|cache| cache.send(GetSymCache).map_err(SymbolicationError::from))
+                .then(move |result| Ok((object_info, result)))
+                .map_err(|_: ()| unreachable!())
         }));
 
-        let result = symcaches
-            .and_then(|_| {
-                Ok(SymbolicateFramesResponse::Completed {
-                    frames: vec![],
-                    errors: vec![],
+        let caches_map = symcaches.and_then(move |symcaches| {
+            let mut errors = vec![];
+
+            let caches_map = symcaches
+                .into_iter()
+                .filter_map(|(object_info, cache)| match cache {
+                    Ok(x) => Some((object_info, x)),
+                    Err(e) => {
+                        debug!("Error while getting symcache: {}", e);
+                        errors.push(ErrorResponse(format!("{}", e)));
+                        None
+                    }
+                })
+                .collect::<SymCacheMap>();
+
+            Ok((errors, Arc::new(caches_map)))
+        });
+
+        let result = caches_map
+            .and_then(move |(mut errors, caches_map)| {
+                join_all(threads.into_iter().map(move |thread| {
+                    // TODO: SyncArbiter
+                    Ok(symbolize_thread(
+                        thread,
+                        caches_map.clone(),
+                        Meta::default(),
+                    ))
+                    .into_future()
+                }))
+                .and_then(move |stacktraces_chunks| {
+                    let mut stacktraces = vec![];
+
+                    for (stacktrace, errors_chunk) in stacktraces_chunks {
+                        stacktraces.push(stacktrace);
+                        errors.extend(errors_chunk);
+                    }
+
+                    Ok(SymbolicateFramesResponse::Completed {
+                        stacktraces,
+                        errors,
+                    })
+                    .into_future()
                 })
             })
             .into_actor(self);
 
         Box::new(result)
     }
+}
+
+struct SymCacheMap {
+    inner: Vec<(ObjectInfo, SymCache)>,
+}
+
+impl FromIterator<(ObjectInfo, SymCache)> for SymCacheMap {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = (ObjectInfo, SymCache)>,
+    {
+        let mut rv = SymCacheMap {
+            inner: iter.into_iter().collect(),
+        };
+        rv.sort();
+        rv
+    }
+}
+
+impl SymCacheMap {
+    fn sort(&mut self) {
+        self.inner.sort_by_key(|(info, cache)| info.address.0);
+
+        // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
+        // some.
+        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
+            info1.size.get_or_insert(info2.address.0 - info1.address.0);
+            false
+        });
+    }
+
+    fn lookup_symcache(&self, addr: u64) -> Option<(&ObjectInfo, &SymCache)> {
+        let mut iterator = self.inner.iter().peekable();
+
+        for (ref info, ref cache) in iterator {
+            // When `size` is None, this must be the last item.
+            if info.address.0 <= addr && addr <= info.address.0 + info.size? {
+                return Some((info, cache));
+            }
+        }
+
+        None
+    }
+}
+
+fn symbolize_thread(
+    thread: Thread,
+    caches: Arc<SymCacheMap>,
+    meta: Meta,
+) -> (Stacktrace, Vec<ErrorResponse>) {
+    let ip_reg = thread.registers.get("rip").map(|x| x.0);
+
+    let mut stacktrace = Stacktrace { frames: vec![] };
+    let mut errors = vec![];
+
+    let symbolize_frame =
+        |stacktrace: &mut Stacktrace, i, frame: &Frame| -> Result<(), SymbolicationError> {
+            let instruction = InstructionInfo {
+                addr: frame.addr.0,
+                arch: meta.arch,
+                signal: meta.signal,
+                crashing_frame: i == 0,
+                ip_reg,
+            };
+
+            let caller_address = instruction.caller_address();
+            let (symcache_info, symcache) = caches
+                .lookup_symcache(caller_address)
+                .ok_or(SymbolicationError::NotFound)?;
+            let symcache = symcache.get_symcache()?;
+
+            let mut had_frames = false;
+
+            for line_info in symcache.lookup(caller_address - symcache_info.address.0)? {
+                let line_info = line_info?;
+                had_frames = true;
+
+                stacktrace.frames.push(Frame {
+                    symbol: Some(line_info.symbol().to_string()),
+                    name: Some(line_info.function_name().as_str().to_owned()), // TODO: demangle
+                    ..frame.clone()
+                });
+            }
+
+            if had_frames {
+                Ok(())
+            } else {
+                Err(SymbolicationError::NotFound)
+            }
+        };
+
+    for (i, frame) in thread.stacktrace.frames.into_iter().enumerate() {
+        let addr = frame.addr;
+        let res = symbolize_frame(&mut stacktrace, i, &frame);
+        if let Err(e) = res {
+            stacktrace.frames.push(frame);
+            errors.push(ErrorResponse(format!(
+                "Failed to symbolicate addr {}: {}",
+                addr, e
+            )));
+        };
+    }
+
+    (stacktrace, errors)
 }

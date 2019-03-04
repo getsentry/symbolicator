@@ -23,4 +23,4 @@ env_logger = "0.6.0"
 [dependencies.symbolic]
 git = "https://github.com/getsentry/symbolic"
 branch = "ref/everything"
-features = ["symcache"]
+features = ["symcache", "serde"]
