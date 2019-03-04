@@ -134,7 +134,7 @@ impl Handler<Compute<SymCache>> for SymCache {
                 let code_symbol_inner = code_symbol.get_object();
 
                 if debug_symbol_inner
-                    .map(|x| true || x.has_debug_info()) // XXX: undo
+                    .map(|_x| true) // x.has_debug_info()) // XXX: undo
                     .unwrap_or(false)
                 {
                     Either::A(Ok(debug_symbol).into_future().into_actor(slf))

@@ -128,7 +128,7 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn get_object<'a>(&'a self) -> Result<debuginfo::Object<'a>, ObjectError> {
+    pub fn get_object(&self) -> Result<debuginfo::Object<'_>, ObjectError> {
         Ok(debuginfo::Object::parse(
             &self.object.as_ref().ok_or(ObjectError::NotFound)?,
         )?)
