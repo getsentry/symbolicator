@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use crate::{
-    actors::{cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor},
+    actors::{
+        cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
+        symcaches::SymCacheActor,
+    },
     endpoints,
 };
 
@@ -66,9 +69,12 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
     let download_cache = CacheActor::new(download_cache_path).start();
     let objects = ObjectsActor::new(download_cache).start();
 
-    let sym_cache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches"));
-    let sym_cache = CacheActor::new(sym_cache_path).start();
-    let symbolication = SymbolicationActor::new(sym_cache, objects).start();
+    let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches"));
+    let symcache_cache = CacheActor::new(symcache_path).start();
+    let symcaches = SymCacheActor::new(symcache_cache, objects).start();
+
+    // TODO: Frame cache
+    let symbolication = SymbolicationActor::new(symcaches).start();
 
     let state = ServiceState { symbolication };
 
