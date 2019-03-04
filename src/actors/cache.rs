@@ -1,5 +1,5 @@
 use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
-use futures::future::{Future, IntoFuture};
+use futures::future::Future;
 use std::{
     collections::BTreeMap,
     io::{self, Read},
@@ -107,7 +107,7 @@ impl<T: CacheItem> Handler<ComputeMemoized<T>> for CacheActor<T> {
                 item.send(GetCacheKey)
                     .map_err(From::from)
                     .and_then(move |key| {
-                        file.persist(key).unwrap();
+                        file.persist(format!("cachefile-{}", key)).unwrap();
 
                         item.send(LoadCache::new(ByteView::from_vec(buf)))
                             .map_err(From::from)

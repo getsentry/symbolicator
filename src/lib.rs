@@ -2,7 +2,7 @@
 extern crate serde_derive;
 
 #[macro_use]
-extern crate log;
+extern crate log as _;
 
 #[macro_use]
 extern crate derive_more;
@@ -15,3 +15,4 @@ pub mod app;
 mod endpoints;
 
 mod http;
+mod log;

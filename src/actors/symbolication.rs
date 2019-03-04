@@ -1,3 +1,4 @@
+use crate::log::LogError;
 use actix::MessageResult;
 use serde::{Serialize, Serializer};
 use std::{collections::BTreeMap, fmt, fs::File, io, iter::FromIterator, sync::Arc};
@@ -12,7 +13,7 @@ use failure::Fail;
 use futures::future::{join_all, Future, IntoFuture};
 
 use symbolic::{
-    common::{split_path, Arch, ByteView, DebugId, InstructionInfo},
+    common::{split_path, Arch, ByteView, InstructionInfo},
     symcache,
 };
 
@@ -26,16 +27,16 @@ use crate::actors::{
 #[derive(Debug, Fail, From)]
 pub enum SymbolicationError {
     #[fail(display = "Failed to fetch objects: {}", _0)]
-    Fetching(ObjectError),
+    Fetching(#[fail(cause)] ObjectError),
 
     #[fail(display = "Failed sending message to actor: {}", _0)]
-    Mailbox(MailboxError),
+    Mailbox(#[fail(cause)] MailboxError),
 
     #[fail(display = "Failed to download: {}", _0)]
-    Io(io::Error),
+    Io(#[fail(cause)] io::Error),
 
     #[fail(display = "Failed to parse symcache: {}", _0)]
-    Parse(symcache::SymCacheError),
+    Parse(#[fail(cause)] symcache::SymCacheError),
 
     #[fail(display = "Symcache not found")]
     NotFound,
@@ -158,7 +159,7 @@ impl Handler<Compute<SymCache>> for SymCache {
             })
             .and_then(move |object, _slf, _ctx| {
                 // TODO: SyncArbiter
-                let file = tryfa!(File::open(&item.path));
+                let file = tryfa!(File::create(&item.path));
                 let object_inner = tryfa!(object.get_object());
                 let _file = tryfa!(symcache::SymCacheWriter::write_object(&object_inner, file));
 
@@ -217,27 +218,6 @@ pub struct ObjectInfo {
 
     #[serde(default)]
     size: Option<u64>,
-
-    #[serde(default)]
-    module: Option<String>,
-
-    #[serde(default)]
-    name: Option<String>,
-
-    #[serde(default)]
-    symbol: Option<String>,
-
-    #[serde(default)]
-    symbol_address: Option<HexValue>,
-
-    #[serde(default)]
-    file: Option<String>,
-
-    #[serde(default)]
-    line: Option<u64>,
-
-    #[serde(default)]
-    line_address: Option<HexValue>,
 }
 
 #[derive(Clone, Debug, Copy)]
@@ -289,7 +269,7 @@ pub struct SymbolicateFramesRequest {
     modules: Vec<ObjectInfo>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Clone, Deserialize, Default)]
 pub struct Meta {
     #[serde(default)]
     signal: Option<u32>,
@@ -337,6 +317,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
         _ctx: &mut Self::Context,
     ) -> Self::Result {
         let sources = request.sources;
+        let meta = request.meta;
         let objects = self.objects.clone();
         let symcache = self.symcache.clone();
         let threads = request.threads;
@@ -375,7 +356,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                 .filter_map(|(object_info, cache)| match cache {
                     Ok(x) => Some((object_info, x)),
                     Err(e) => {
-                        debug!("Error while getting symcache: {}", e);
+                        debug!("Error while getting symcache: {}", LogError(&e));
                         errors.push(ErrorResponse(format!("{}", e)));
                         None
                     }
@@ -389,12 +370,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
             .and_then(move |(mut errors, caches_map)| {
                 join_all(threads.into_iter().map(move |thread| {
                     // TODO: SyncArbiter
-                    Ok(symbolize_thread(
-                        thread,
-                        caches_map.clone(),
-                        Meta::default(),
-                    ))
-                    .into_future()
+                    Ok(symbolize_thread(thread, caches_map.clone(), meta.clone())).into_future()
                 }))
                 .and_then(move |stacktraces_chunks| {
                     let mut stacktraces = vec![];
@@ -436,7 +412,7 @@ impl FromIterator<(ObjectInfo, SymCache)> for SymCacheMap {
 
 impl SymCacheMap {
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, cache)| info.address.0);
+        self.inner.sort_by_key(|(info, _)| info.address.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
@@ -447,9 +423,7 @@ impl SymCacheMap {
     }
 
     fn lookup_symcache(&self, addr: u64) -> Option<(&ObjectInfo, &SymCache)> {
-        let mut iterator = self.inner.iter().peekable();
-
-        for (ref info, ref cache) in iterator {
+        for (ref info, ref cache) in self.inner.iter().peekable() {
             // When `size` is None, this must be the last item.
             if info.address.0 <= addr && addr <= info.address.0 + info.size? {
                 return Some((info, cache));
@@ -465,22 +439,30 @@ fn symbolize_thread(
     caches: Arc<SymCacheMap>,
     meta: Meta,
 ) -> (Stacktrace, Vec<ErrorResponse>) {
-    let ip_reg = thread.registers.get("rip").map(|x| x.0);
+    let ip_reg = if let Some(ip_reg_name) = meta.arch.ip_register_name() {
+        Some(thread.registers.get(ip_reg_name).map(|x| x.0))
+    } else {
+        None
+    };
 
     let mut stacktrace = Stacktrace { frames: vec![] };
     let mut errors = vec![];
 
     let symbolize_frame =
         |stacktrace: &mut Stacktrace, i, frame: &Frame| -> Result<(), SymbolicationError> {
-            let instruction = InstructionInfo {
-                addr: frame.addr.0,
-                arch: meta.arch,
-                signal: meta.signal,
-                crashing_frame: i == 0,
-                ip_reg,
+            let caller_address = if let Some(ip_reg) = ip_reg {
+                let instruction = InstructionInfo {
+                    addr: frame.addr.0,
+                    arch: meta.arch,
+                    signal: meta.signal,
+                    crashing_frame: i == 0,
+                    ip_reg,
+                };
+                instruction.caller_address()
+            } else {
+                frame.addr.0
             };
 
-            let caller_address = instruction.caller_address();
             let (symcache_info, symcache) = caches
                 .lookup_symcache(caller_address)
                 .ok_or(SymbolicationError::NotFound)?;
