@@ -2,6 +2,7 @@ use std::{
     fs,
     io::{self, Write},
 };
+use void::Void;
 
 use crate::{
     actors::cache::{CacheItem, Compute, ComputeMemoized, GetCacheKey, LoadCache},
@@ -33,6 +34,8 @@ use symbolic::{
 };
 
 use serde::Deserialize;
+
+const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -219,6 +222,7 @@ impl Handler<Compute<Object>> for Object {
 
             // TODO: MachO, Breakpad
             // TODO: Use Object.filetype to filter out unwanted variants
+            // TODO: Native variants
         }
 
         let requests = join_all(urls.into_iter().enumerate().map(|(i, url_parse_result)| {
@@ -229,7 +233,7 @@ impl Handler<Compute<Object>> for Object {
 
             follow_redirects(
                 client::get(&url)
-                    .header("User-Agent", "sentry-symbolicator/1.0")
+                    .header("User-Agent", USER_AGENT)
                     .finish()
                     .unwrap(),
                 10,
@@ -249,9 +253,7 @@ impl Handler<Compute<Object>> for Object {
                     Ok((i, None))
                 }
             })
-            // The above future is infallible, so Rust complains about unknown type for future
-            // error.
-            .map_err(|_: ()| unreachable!())
+            .map_err(|_: Void| unreachable!())
         }));
 
         let result = requests.and_then(move |requests| {

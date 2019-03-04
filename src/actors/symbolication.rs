@@ -4,6 +4,7 @@ use crate::{
 };
 use serde::{Serialize, Serializer};
 use std::{collections::BTreeMap, fmt, iter::FromIterator, sync::Arc};
+use void::Void;
 
 use actix::{
     fut::WrapFuture, Actor, Addr, Context, Handler, MailboxError, Message, ResponseActFuture,
@@ -203,7 +204,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                 .map_err(SymbolicationError::from)
                 .and_then(|result| Ok(result?))
                 .then(move |result| Ok((object_info, result)))
-                .map_err(|_: ()| unreachable!())
+                .map_err(|_: Void| unreachable!())
         }));
 
         let caches_map = symcaches.and_then(move |symcaches| {
