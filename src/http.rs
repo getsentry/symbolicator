@@ -18,12 +18,12 @@ pub fn follow_redirects(
                 .get("Location")
                 .and_then(|x| x.to_str().ok())
             {
-                debug!("Following redirect: {:?}", location);
+                log::debug!("Following redirect: {:?}", location);
                 let mut builder = ClientRequest::get(location);
                 for (k, v) in headers_bak {
                     if let Some(k) = k {
                         if k != "Host" {
-                            debug!("Preserving header: {:?}: {:?}", k, v);
+                            log::debug!("Preserving header: {:?}: {:?}", k, v);
                             builder.header(k, v);
                         }
                     }

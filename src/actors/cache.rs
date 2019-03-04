@@ -12,14 +12,14 @@ use tempfile::NamedTempFile;
 use symbolic::common::ByteView;
 
 pub struct CacheActor<M: Actor> {
-    cache_dir: PathBuf,
+    cache_dir: Option<PathBuf>,
     cache_items: BTreeMap<String, Addr<M>>,
 }
 
 impl<M: Actor> CacheActor<M> {
-    pub fn new<P: AsRef<Path>>(cache_dir: P) -> Self {
+    pub fn new<P: AsRef<Path>>(cache_dir: Option<P>) -> Self {
         CacheActor {
-            cache_dir: cache_dir.as_ref().to_owned(),
+            cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
             cache_items: BTreeMap::new(),
         }
     }

@@ -24,7 +24,7 @@ use crate::actors::{
     objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor, SourceConfig},
 };
 
-#[derive(Debug, Fail, From)]
+#[derive(Debug, Fail, derive_more::From)]
 pub enum SymbolicationError {
     #[fail(display = "Failed to fetch objects: {}", _0)]
     Fetching(#[fail(cause)] ObjectError),
@@ -86,7 +86,7 @@ impl Handler<GetSymCache> for SymCache {
 }
 
 impl SymCache {
-    fn get_symcache<'a>(&'a self) -> Result<symcache::SymCache<'a>, SymbolicationError> {
+    fn get_symcache(&self) -> Result<symcache::SymCache<'_>, SymbolicationError> {
         Ok(symcache::SymCache::parse(
             self.inner.as_ref().ok_or(SymbolicationError::NotFound)?,
         )?)
@@ -293,7 +293,7 @@ pub struct Stacktrace {
 pub struct ErrorResponse(String);
 
 #[derive(Serialize)]
-#[serde(tag = "status")]
+#[serde(tag = "status", rename_all = "camelCase")]
 pub enum SymbolicateFramesResponse {
     //Pending {
     //retry_after: usize,
@@ -356,7 +356,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                 .filter_map(|(object_info, cache)| match cache {
                     Ok(x) => Some((object_info, x)),
                     Err(e) => {
-                        debug!("Error while getting symcache: {}", LogError(&e));
+                        log::debug!("Error while getting symcache: {}", LogError(&e));
                         errors.push(ErrorResponse(format!("{}", e)));
                         None
                     }

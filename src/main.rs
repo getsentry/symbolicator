@@ -1,5 +1,9 @@
+use std::process::exit;
 use symbolicator;
 
 fn main() {
-    symbolicator::app::main();
+    if let Err(e) = symbolicator::app::run_main() {
+        println!("{}", e);
+        exit(1);
+    }
 }

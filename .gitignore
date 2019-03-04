@@ -2,3 +2,7 @@
 **/*.rs.bk
 lol*
 cachefile-*
+config
+venv
+*.pyc
+__pycache__

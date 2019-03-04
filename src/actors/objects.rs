@@ -32,6 +32,8 @@ use symbolic::{
     debuginfo,
 };
 
+use serde::Deserialize;
+
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
@@ -50,7 +52,7 @@ impl SourceConfig {
     }
 }
 
-#[derive(Debug, Fail, From)]
+#[derive(Debug, Fail, derive_more::From)]
 pub enum ObjectError {
     #[fail(display = "Failed to download: {}", _0)]
     Io(io::Error),
@@ -223,7 +225,7 @@ impl Handler<Compute<Object>> for Object {
             // TODO: Is this fallible?
             let url = url_parse_result.unwrap();
 
-            debug!("Fetching {}", url);
+            log::debug!("Fetching {}", url);
 
             follow_redirects(
                 client::get(&url)
@@ -235,15 +237,15 @@ impl Handler<Compute<Object>> for Object {
             .then(move |result| match result {
                 Ok(response) => {
                     if response.status().is_success() {
-                        info!("Success hitting {}", url);
+                        log::info!("Success hitting {}", url);
                         Ok((i, Some(response.payload())))
                     } else {
-                        debug!("Unexpected status code from {}: {}", url, response.status());
+                        log::debug!("Unexpected status code from {}: {}", url, response.status());
                         Ok((i, None))
                     }
                 }
                 Err(e) => {
-                    warn!("Skipping response from {}: {}", url, e);
+                    log::warn!("Skipping response from {}: {}", url, e);
                     Ok((i, None))
                 }
             })
