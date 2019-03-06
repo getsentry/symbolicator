@@ -1,119 +1,114 @@
-use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
-use futures::future::Future;
+use actix::{
+    fut::{wrap_future, ActorFuture, WrapFuture},
+    Actor, Context, Handler, MailboxError, Message, ResponseActFuture,
+};
+use futures::future::{Future, IntoFuture};
 use std::{
     collections::BTreeMap,
-    io::{self, Read},
-    marker::PhantomData,
+    fs::create_dir_all,
+    io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
 
-pub struct CacheActor<M: Actor> {
+#[derive(Debug, Clone)]
+pub struct CacheActor<T: CacheItemRequest> {
     cache_dir: Option<PathBuf>,
-    cache_items: BTreeMap<String, Addr<M>>,
+    cache_items: BTreeMap<String, Arc<T::Item>>,
 }
 
-impl<M: Actor> CacheActor<M> {
+impl<T: CacheItemRequest> CacheActor<T> {
     pub fn new<P: AsRef<Path>>(cache_dir: Option<P>) -> Self {
         CacheActor {
             cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
             cache_items: BTreeMap::new(),
         }
     }
+
+    fn get_scope_path(&self, scope: &Scope, cache_key: &str) -> Option<PathBuf> {
+        let dir = self.cache_dir.as_ref()?.join(scope.as_ref());
+        create_dir_all(&dir).unwrap();
+        Some(dir.join(cache_key))
+    }
 }
 
-impl<M: Actor> Actor for CacheActor<M> {
+impl<T: CacheItemRequest> Actor for CacheActor<T> {
     type Context = Context<Self>;
 }
 
-pub struct GetCacheKey;
-
-impl Message for GetCacheKey {
-    type Result = String;
+pub struct CacheKey {
+    pub cache_key: String,
+    pub scope: Scope,
 }
 
-pub struct Compute<T: CacheItem> {
-    pub path: PathBuf,
-    _phantom: PhantomData<T>,
+#[derive(Debug, Clone)]
+pub enum Scope {
+    Scoped(String),
+    Global,
 }
 
-impl<T: CacheItem> Compute<T> {
-    fn new(path: PathBuf) -> Self {
-        Compute {
-            path,
-            _phantom: PhantomData,
+impl AsRef<str> for Scope {
+    fn as_ref(&self) -> &str {
+        match *self {
+            Scope::Scoped(ref s) => &s,
+            Scope::Global => "global",
         }
     }
 }
 
-impl<T: CacheItem> Message for Compute<T> {
-    type Result = Result<(), T::Error>;
-}
-
-pub struct LoadCache<T: CacheItem> {
-    pub value: ByteView<'static>,
-    _phantom: PhantomData<T>,
-}
-
-impl<T: CacheItem> LoadCache<T> {
-    fn new(value: ByteView<'static>) -> Self {
-        LoadCache {
-            value,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<T: CacheItem> Message for LoadCache<T> {
-    type Result = Result<(), T::Error>;
-}
-
-pub trait CacheItem:
-    'static
-    + Send
-    + Actor<Context = Context<Self>>
-    + Handler<GetCacheKey>
-    + Handler<Compute<Self>>
-    + Handler<LoadCache<Self>>
-{
+pub trait CacheItemRequest: 'static + Send {
+    type Item: 'static + Send;
     type Error: 'static + From<MailboxError> + From<io::Error> + Send;
+
+    fn get_cache_key(&self) -> CacheKey;
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>>;
+    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error>;
 }
 
-pub struct ComputeMemoized<T: CacheItem>(pub T);
+pub struct ComputeMemoized<T>(pub T);
 
-impl<T: CacheItem> Message for ComputeMemoized<T> {
-    type Result = Result<Addr<T>, T::Error>;
+impl<T: CacheItemRequest> Message for ComputeMemoized<T> {
+    type Result = Result<T::Item, T::Error>;
 }
 
-impl<T: CacheItem> Handler<ComputeMemoized<T>> for CacheActor<T> {
-    type Result = ResponseFuture<Addr<T>, T::Error>;
+impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
+    type Result = ResponseActFuture<Self, T::Item, T::Error>;
 
-    fn handle(&mut self, item: ComputeMemoized<T>, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: rewrite
-        let item = item.0.start();
-        let mut file = NamedTempFile::new().unwrap();
+    fn handle(&mut self, request: ComputeMemoized<T>, _ctx: &mut Self::Context) -> Self::Result {
+        let file = tryfa!(NamedTempFile::new());
 
-        let future = item
-            .send(Compute::new(file.path().to_owned()))
-            .flatten()
-            .and_then(move |_| {
-                let mut buf = vec![];
-                // TODO: SyncArbiter
-                file.read_to_end(&mut buf).unwrap();
+        let key = request.0.get_cache_key();
 
-                item.send(GetCacheKey)
-                    .map_err(From::from)
-                    .and_then(move |key| {
-                        file.persist(format!("cachefile-{}", key)).unwrap();
+        for scope in &[key.scope.clone(), Scope::Global] {
+            let path = self.get_scope_path(scope, &key.cache_key);
 
-                        item.send(LoadCache::new(ByteView::from_vec(buf)))
-                            .map_err(From::from)
-                            .map(|_| item)
-                    })
-            });
+            if let Some(ref path) = path {
+                if path.exists() {
+                    let byteview = tryfa!(ByteView::open(path));
+                    let item = tryfa!(request.0.load(scope.clone(), byteview));
+                    return Box::new(wrap_future(Ok(item).into_future()));
+                }
+            }
+        }
+
+        let future = request.0.compute(file.path()).into_actor(self).and_then(
+            move |new_scope, slf, _ctx| {
+                let new_cache_path = slf.get_scope_path(&new_scope, &key.cache_key);
+                let item = tryfa!(request
+                    .0
+                    .load(new_scope, tryfa!(ByteView::open(file.path()))));
+
+                if let Some(ref cache_path) = new_cache_path {
+                    tryfa!(file.persist(cache_path).map_err(|x| x.error));
+                }
+
+                Box::new(Ok(item).into())
+            },
+        );
 
         Box::new(future)
     }

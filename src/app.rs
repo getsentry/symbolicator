@@ -1,7 +1,7 @@
 use crate::config::{get_config, Config, ConfigError};
 use actix::{self, Actor, Addr};
 use actix_web::{server, App};
-use std::path::PathBuf;
+use std::{fs::create_dir_all, io, path::PathBuf};
 
 use structopt::StructOpt;
 
@@ -19,6 +19,9 @@ use failure::Fail;
 pub enum CliError {
     #[fail(display = "Failed loading config: {}", _0)]
     ConfigParsing(#[fail(cause)] ConfigError),
+
+    #[fail(display = "Failed loading cache dirs: {}", _0)]
+    CacheIo(#[fail(cause)] io::Error),
 }
 
 #[derive(StructOpt)]
@@ -65,11 +68,17 @@ pub fn run_main() -> Result<(), CliError> {
 pub fn run_server(config: Config) -> Result<(), CliError> {
     let sys = actix::System::new("symbolicator");
 
-    let download_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects"));
+    let download_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
+    if let Some(ref download_cache_path) = download_cache_path {
+        create_dir_all(download_cache_path)?;
+    }
     let download_cache = CacheActor::new(download_cache_path).start();
     let objects = ObjectsActor::new(download_cache).start();
 
-    let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches"));
+    let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
+    if let Some(ref symcache_path) = symcache_path {
+        create_dir_all(symcache_path)?;
+    }
     let symcache_cache = CacheActor::new(symcache_path).start();
     let symcaches = SymCacheActor::new(symcache_cache, objects).start();
 

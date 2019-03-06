@@ -78,9 +78,10 @@ class Symbolicator(Service):
 def symbolicator(tmpdir, request, random_port, background_process):
     def inner():
         config = tmpdir.join("config")
+        cache_dir = tmpdir.mkdir("caches")
         port = random_port()
         bind = f"127.0.0.1:{port}"
-        config.write(json.dumps({"bind": bind}))
+        config.write(json.dumps({"bind": bind, "cache_dir": str(cache_dir)}))
         process = background_process(SYMBOLICATOR_BIN + ["-c", str(config), "run"])
         return Symbolicator(process=process, port=port)
 

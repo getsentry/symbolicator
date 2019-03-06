@@ -26,4 +26,4 @@ void = "1.0.2"
 [dependencies.symbolic]
 git = "https://github.com/getsentry/symbolic"
 branch = "ref/everything"
-features = ["symcache", "serde"]
+features = ["symcache", "serde", "minidump"]

@@ -16,12 +16,22 @@ check: lint
 lint: pylint rslint
 .PHONY: lint
 
-pylint: venv/bin/python
-	venv/bin/pip install -U black flake8
-	venv/bin/black tests
+pylint: venv/bin/python pyformat
+	venv/bin/pip install -U flake8
 	venv/bin/flake8 tests
 .PHONY: pylint
 
-rslint:
-	cargo +nightly fmt
+rslint: rsformat
 	cargo clippy
+
+format: pyformat rsformat
+.PHONY: format
+
+rsformat:
+	cargo +nightly fmt
+.PHONY: rsformat
+
+pyformat: venv/bin/python
+	venv/bin/pip install -U black
+	venv/bin/black tests
+.PHONY: pyformat

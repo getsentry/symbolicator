@@ -1,15 +1,14 @@
 use crate::actors::{
-    cache::{CacheActor, CacheItem, Compute, ComputeMemoized, GetCacheKey, LoadCache},
+    cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized, Scope},
     objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor, SourceConfig},
 };
-use actix::{
-    fut::{wrap_future, ActorFuture, Either, WrapFuture},
-    Actor, Addr, Context, Handler, MailboxError, Message, MessageResult, ResponseActFuture,
-    ResponseFuture,
-};
+use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
 use failure::Fail;
-use futures::{future::Future, IntoFuture};
-use std::{fs::File, io};
+use futures::{
+    future::{Either, Future},
+    IntoFuture,
+};
+use std::{fs::File, io, path::Path};
 
 use symbolic::{common::ByteView, symcache};
 
@@ -32,7 +31,7 @@ pub enum SymCacheError {
 }
 
 pub struct SymCacheActor {
-    symcaches: Addr<CacheActor<SymCache>>,
+    symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
     objects: Addr<ObjectsActor>,
 }
 
@@ -41,37 +40,19 @@ impl Actor for SymCacheActor {
 }
 
 impl SymCacheActor {
-    pub fn new(symcaches: Addr<CacheActor<SymCache>>, objects: Addr<ObjectsActor>) -> Self {
+    pub fn new(
+        symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
+        objects: Addr<ObjectsActor>,
+    ) -> Self {
         SymCacheActor { symcaches, objects }
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SymCache {
-    // TODO: Symbolicate from object directly, put object (or only its byteview) here then
-    // TODO: cache symbolic symcache here
     inner: Option<ByteView<'static>>,
-
-    /// Information for fetching the symbols for this symcache
-    identifier: ObjectId,
-    sources: Vec<SourceConfig>,
-
-    objects: Addr<ObjectsActor>,
-}
-
-struct GetSymCache;
-
-impl Message for GetSymCache {
-    type Result = SymCache;
-}
-
-impl Handler<GetSymCache> for SymCache {
-    type Result = MessageResult<GetSymCache>;
-
-    fn handle(&mut self, _item: GetSymCache, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: Internal Arc to make this less expensive
-        MessageResult(self.clone())
-    }
+    scope: Scope,
+    request: FetchSymCacheInternal,
 }
 
 impl SymCache {
@@ -82,42 +63,55 @@ impl SymCache {
     }
 }
 
-impl CacheItem for SymCache {
+#[derive(Debug, Clone)]
+pub struct FetchSymCacheInternal {
+    request: FetchSymCache,
+    objects: Addr<ObjectsActor>,
+}
+
+impl CacheItemRequest for FetchSymCacheInternal {
+    type Item = SymCache;
     type Error = SymCacheError;
-}
 
-impl Actor for SymCache {
-    type Context = Context<Self>;
-}
+    fn get_cache_key(&self) -> CacheKey {
+        CacheKey {
+            cache_key: self.request.identifier.get_cache_key(),
+            scope: Scope::Scoped("fakeproject".to_owned()), // TODO: Write project id here
+        }
+    }
 
-impl Handler<Compute<SymCache>> for SymCache {
-    type Result = ResponseActFuture<Self, (), <SymCache as CacheItem>::Error>;
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
+        let objects = self.objects.clone();
 
-    fn handle(&mut self, item: Compute<SymCache>, _ctx: &mut Self::Context) -> Self::Result {
-        let debug_symbol = self
-            .objects
+        let debug_symbol = objects
             .send(FetchObject {
                 filetype: FileType::Debug,
-                identifier: self.identifier.clone(),
-                sources: self.sources.clone(),
+                identifier: self.request.identifier.clone(),
+                sources: self.request.sources.clone(),
             })
             .map_err(SymCacheError::from)
-            .and_then(|x| x.into_future().map_err(SymCacheError::from));
+            .and_then(|x| Ok(x?));
 
-        let code_symbol = self
-            .objects
+        let code_symbol = objects
             .send(FetchObject {
                 filetype: FileType::Code,
-                identifier: self.identifier.clone(),
-                sources: self.sources.clone(),
+                identifier: self.request.identifier.clone(),
+                sources: self.request.sources.clone(),
             })
             .map_err(SymCacheError::from)
-            .and_then(|x| x.into_future().map_err(SymCacheError::from));
+            .and_then(|x| Ok(x?));
+
+        let breakpad_request = FetchObject {
+            filetype: FileType::Breakpad,
+            identifier: self.request.identifier.clone(),
+            sources: self.request.sources.clone(),
+        };
+
+        let path = path.to_owned();
 
         let result = (debug_symbol, code_symbol)
             .into_future()
-            .into_actor(self)
-            .and_then(|(debug_symbol, code_symbol), slf, _ctx| {
+            .and_then(move |(debug_symbol, code_symbol)| {
                 // TODO: Fall back to symbol table (go debug -> code -> breakpad again)
                 let debug_symbol_inner = debug_symbol.get_object();
                 let code_symbol_inner = code_symbol.get_object();
@@ -126,58 +120,45 @@ impl Handler<Compute<SymCache>> for SymCache {
                     .map(|_x| true) // x.has_debug_info()) // XXX: undo once pdb works in symbolic
                     .unwrap_or(false)
                 {
-                    Either::A(Ok(debug_symbol).into_future().into_actor(slf))
+                    Either::A(Ok(debug_symbol).into_future())
                 } else if code_symbol_inner
                     .map(|x| x.has_debug_info())
                     .unwrap_or(false)
                 {
-                    Either::B(Either::A(Ok(code_symbol).into_future().into_actor(slf)))
+                    Either::A(Ok(code_symbol).into_future())
                 } else {
-                    Either::B(Either::B(
-                        slf.objects
-                            .send(FetchObject {
-                                filetype: FileType::Breakpad,
-                                identifier: slf.identifier.clone(),
-                                sources: slf.sources.clone(),
-                            })
+                    Either::B(
+                        objects
+                            .send(breakpad_request)
                             .map_err(SymCacheError::from)
-                            .and_then(|x| x.into_future().map_err(SymCacheError::from))
-                            .into_actor(slf),
-                    ))
+                            .and_then(|x| Ok(x?)),
+                    )
                 }
             })
-            .and_then(move |object, _slf, _ctx| {
+            .and_then(move |object| {
                 // TODO: SyncArbiter
-                let file = tryfa!(File::create(&item.path));
-                let object_inner = tryfa!(object.get_object());
-                let _file = tryfa!(symcache::SymCacheWriter::write_object(&object_inner, file));
+                let file = File::create(&path).unwrap();
+                let object_inner = object.get_object().unwrap();
+                let _file = symcache::SymCacheWriter::write_object(&object_inner, file).unwrap();
 
-                Box::new(Ok(()).into())
+                // TODO: Use scope of object
+                Box::new(Ok(object.scope().clone()).into_future())
             });
 
         Box::new(result)
     }
-}
 
-impl Handler<GetCacheKey> for SymCache {
-    type Result = String;
-
-    fn handle(&mut self, _item: GetCacheKey, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: replace with new caching key discussed with jauer
-        self.identifier.get_cache_key()
+    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+        Ok(SymCache {
+            request: self,
+            scope,
+            inner: if !data.is_empty() { Some(data) } else { None },
+        })
     }
 }
 
-impl Handler<LoadCache<SymCache>> for SymCache {
-    type Result = ResponseActFuture<Self, (), <SymCache as CacheItem>::Error>;
-
-    fn handle(&mut self, item: LoadCache<SymCache>, _ctx: &mut Self::Context) -> Self::Result {
-        self.inner = Some(item.value);
-        let _symcache = tryfa!(self.get_symcache());
-        Box::new(wrap_future(Ok(()).into_future()))
-    }
-}
-
+/// Information for fetching the symbols for this symcache
+#[derive(Debug, Clone)]
 pub struct FetchSymCache {
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
@@ -190,19 +171,15 @@ impl Message for FetchSymCache {
 impl Handler<FetchSymCache> for SymCacheActor {
     type Result = ResponseFuture<SymCache, SymCacheError>;
 
-    fn handle(&mut self, message: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.symcaches
-                .send(ComputeMemoized(SymCache {
-                    inner: None,
-                    identifier: message.identifier,
-                    sources: message.sources,
+                .send(ComputeMemoized(FetchSymCacheInternal {
+                    request,
                     objects: self.objects.clone(),
                 }))
                 .map_err(SymCacheError::from)
-                .and_then(|response| response.map_err(SymCacheError::from))
-                .and_then(|result| result.send(GetSymCache).map_err(SymCacheError::from))
-                .map_err(SymCacheError::from),
+                .and_then(|response| Ok(response?)),
         )
     }
 }

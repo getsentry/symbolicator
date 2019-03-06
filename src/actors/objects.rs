@@ -1,14 +1,14 @@
+use crate::actors::cache::{CacheKey, ComputeMemoized, Scope};
+use actix::ResponseFuture;
 use std::{
     fs,
     io::{self, Write},
+    path::Path,
 };
 use void::Void;
 
-use crate::{
-    actors::cache::{CacheItem, Compute, ComputeMemoized, GetCacheKey, LoadCache},
-    http::follow_redirects,
-};
-use actix::{fut::wrap_future, MailboxError, MessageResult};
+use crate::{actors::cache::CacheItemRequest, http::follow_redirects};
+use actix::MailboxError;
 use actix_web::error::PayloadError;
 use futures::{
     future::{join_all, Either, Future, IntoFuture},
@@ -20,7 +20,7 @@ use failure::Fail;
 
 use crate::actors::cache::CacheActor;
 
-use actix::{Actor, Addr, Context, Handler, Message, ResponseActFuture};
+use actix::{Actor, Addr, Context, Handler, Message};
 
 use actix_web::{
     client::{self, SendRequestError},
@@ -124,68 +124,27 @@ impl ObjectId {
     }
 }
 
-/// Handle to local cache file.
-#[derive(Clone)]
-pub struct Object {
-    request: FetchObject,
-    // TODO: cache symbolic object here
-    object: Option<ByteView<'static>>,
-}
-
-impl Object {
-    pub fn get_object(&self) -> Result<debuginfo::Object<'_>, ObjectError> {
-        Ok(debuginfo::Object::parse(
-            &self.object.as_ref().ok_or(ObjectError::NotFound)?,
-        )?)
-    }
-}
-
-impl Actor for Object {
-    type Context = Context<Self>;
-}
-
-impl CacheItem for Object {
+impl CacheItemRequest for FetchObject {
+    type Item = Object;
     type Error = ObjectError;
-}
 
-impl Handler<GetCacheKey> for Object {
-    type Result = String;
-
-    fn handle(&mut self, _item: GetCacheKey, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: Add bucket config here
-        self.request.identifier.get_cache_key()
+    fn get_cache_key(&self) -> CacheKey {
+        CacheKey {
+            cache_key: self.identifier.get_cache_key(),
+            scope: Scope::Scoped("fakeproject".to_owned()), // TODO: Write project id here
+        }
     }
-}
 
-/// Hack: Get access to symbolic structs even though they live in the actor.
-struct GetObject;
-
-impl Message for GetObject {
-    type Result = Object;
-}
-
-impl Handler<GetObject> for Object {
-    type Result = MessageResult<GetObject>;
-
-    fn handle(&mut self, _item: GetObject, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: Internal Arc to make this less expensive
-        MessageResult(self.clone())
-    }
-}
-
-impl Handler<Compute<Object>> for Object {
-    type Result = ResponseActFuture<Self, (), <Object as CacheItem>::Error>;
-
-    fn handle(&mut self, item: Compute<Object>, _ctx: &mut Self::Context) -> Self::Result {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
         let mut urls = vec![];
-        for bucket in &self.request.sources {
+        for bucket in &self.sources {
             let url = bucket.get_base_url();
 
             // PDB
             if let (FileType::Debug, Some(ref debug_name), Some(ref debug_id)) = (
-                self.request.filetype,
-                &self.request.identifier.debug_name,
-                &self.request.identifier.debug_id,
+                self.filetype,
+                &self.identifier.debug_name,
+                &self.identifier.debug_id,
             ) {
                 urls.push(url.join(&format!(
                     "{}/{}/{}",
@@ -197,21 +156,21 @@ impl Handler<Compute<Object>> for Object {
 
             // PE
             if let (FileType::Code, Some(ref code_name), Some(ref code_id)) = (
-                self.request.filetype,
-                &self.request.identifier.code_name,
-                &self.request.identifier.code_id,
+                self.filetype,
+                &self.identifier.code_name,
+                &self.identifier.code_id,
             ) {
                 urls.push(url.join(&format!("{}/{}/{}", code_name, code_id, code_name)));
             }
 
             // ELF
-            if let Some(ref code_id) = self.request.identifier.code_id {
-                if self.request.filetype == FileType::Debug {
+            if let Some(ref code_id) = self.identifier.code_id {
+                if self.filetype == FileType::Debug {
                     urls.push(url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)));
                 }
 
                 if let (FileType::Code, Some(ref code_name)) =
-                    (self.request.filetype, &self.request.identifier.code_name)
+                    (self.filetype, &self.identifier.code_name)
                 {
                     urls.push(url.join(&format!(
                         "{}/elf-buildid-{}/{}",
@@ -256,20 +215,18 @@ impl Handler<Compute<Object>> for Object {
             .map_err(|_: Void| unreachable!())
         }));
 
+        let path = path.to_owned();
+        let filetype = self.filetype;
+
         let result = requests.and_then(move |requests| {
             let payload = requests
                 .into_iter()
                 .filter_map(|(i, payload)| Some((i, payload?.map_err(ObjectError::from))))
                 .min_by_key(|(ref i, _)| *i);
 
-            // TODO: Destructure FatObject, validate file download before LoadCache is called
-            // We also need to parse object here for new caching key, which depends on the object
-            // type
-            //
-            // XXX(markus): Can we ever take info from Object for caching?
-
             if let Some((_, payload)) = payload {
-                let file = fs::File::create(&item.path)
+                log::debug!("Found {:?} file", filetype);
+                let file = fs::File::create(&path)
                     .into_future()
                     .map_err(ObjectError::from);
 
@@ -280,44 +237,68 @@ impl Handler<Compute<Object>> for Object {
                     })
                 });
 
-                Either::A(result)
+                // TODO: Global iff bucket was public
+                Either::A(result.map(|()| Scope::Global))
             } else {
-                Either::B(Ok(()).into_future())
+                log::debug!("No {:?} file found", filetype);
+                Either::B(Ok(Scope::Global).into_future())
             }
         });
 
-        Box::new(wrap_future(result))
+        Box::new(result)
     }
-}
 
-impl Handler<LoadCache<Object>> for Object {
-    type Result = ResponseActFuture<Self, (), <Object as CacheItem>::Error>;
+    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+        let is_empty = data.is_empty();
+        let rv = Object {
+            request: self,
+            scope,
+            object: if is_empty { None } else { Some(data) },
+        };
 
-    fn handle(&mut self, item: LoadCache<Object>, _ctx: &mut Self::Context) -> Self::Result {
-        if item.value.is_empty() {
-            self.object = None;
-        } else {
-            self.object = Some(item.value);
-            let object = tryfa!(self.get_object());
+        if !is_empty {
+            let object = rv.get_object()?;
 
-            if let Some(ref debug_id) = self.request.identifier.debug_id {
+            if let Some(ref debug_id) = rv.request.identifier.debug_id {
                 // TODO: Also check code_id when exposed in symbolic
                 if object.debug_id() != *debug_id {
-                    tryfa!(Err(ObjectError::IdMismatch));
+                    return Err(ObjectError::IdMismatch);
                 }
             }
         }
 
-        Box::new(wrap_future(Ok(()).into_future()))
+        Ok(rv)
     }
 }
 
+/// Handle to local cache file.
+#[derive(Debug, Clone)]
+pub struct Object {
+    request: FetchObject,
+    scope: Scope,
+    // TODO: cache symbolic object here
+    object: Option<ByteView<'static>>,
+}
+
+impl Object {
+    pub fn get_object(&self) -> Result<debuginfo::Object<'_>, ObjectError> {
+        Ok(debuginfo::Object::parse(
+            &self.object.as_ref().ok_or(ObjectError::NotFound)?,
+        )?)
+    }
+
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ObjectsActor {
-    cache: Addr<CacheActor<Object>>,
+    cache: Addr<CacheActor<FetchObject>>,
 }
 
 impl ObjectsActor {
-    pub fn new(cache: Addr<CacheActor<Object>>) -> Self {
+    pub fn new(cache: Addr<CacheActor<FetchObject>>) -> Self {
         ObjectsActor { cache }
     }
 }
@@ -339,18 +320,14 @@ impl Message for FetchObject {
 }
 
 impl Handler<FetchObject> for ObjectsActor {
-    type Result = ResponseActFuture<Self, Object, ObjectError>;
+    type Result = ResponseFuture<Object, ObjectError>;
 
     fn handle(&mut self, message: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
-        let res = self.cache.send(ComputeMemoized(Object {
-            request: message,
-            object: None,
-        }));
-
-        Box::new(wrap_future(
-            res.flatten()
-                .and_then(|object_addr| object_addr.send(GetObject).map_err(ObjectError::from))
-                .map_err(ObjectError::from),
-        ))
+        Box::new(
+            self.cache
+                .send(ComputeMemoized(message))
+                .map_err(ObjectError::from)
+                .and_then(|response| Ok(response?)),
+        )
     }
 }
