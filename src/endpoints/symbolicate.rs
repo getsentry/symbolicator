@@ -7,10 +7,8 @@ use actix_web::{http::Method, Json, State};
 use failure::Error;
 
 use crate::{
-    actors::symbolication::{
-        SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError,
-    },
     app::{ServiceApp, ServiceState},
+    types::{SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError},
 };
 
 fn symbolicate_frames(

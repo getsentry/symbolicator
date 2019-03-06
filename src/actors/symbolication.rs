@@ -1,42 +1,21 @@
 use crate::{
-    actors::symcaches::{FetchSymCache, SymCache, SymCacheActor, SymCacheError},
+    actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
     log::LogError,
+    types::{
+        ErrorResponse, Frame, Meta, ObjectInfo, Stacktrace, SymbolicateFramesRequest,
+        SymbolicateFramesResponse, SymbolicationError, Thread,
+    },
 };
-use serde::{Serialize, Serializer};
-use std::{collections::BTreeMap, fmt, iter::FromIterator, sync::Arc};
+use std::{iter::FromIterator, sync::Arc};
 use void::Void;
 
-use actix::{
-    fut::WrapFuture, Actor, Addr, Context, Handler, MailboxError, Message, ResponseActFuture,
-};
-
-use failure::Fail;
+use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
 
 use futures::future::{join_all, Future, IntoFuture};
 
-use symbolic::{
-    common::{split_path, Arch, InstructionInfo},
-    symcache,
-};
+use symbolic::common::{split_path, InstructionInfo};
 
-use serde::{Deserialize, Deserializer};
-
-use crate::actors::objects::{ObjectId, SourceConfig};
-
-#[derive(Debug, Fail, derive_more::From)]
-pub enum SymbolicationError {
-    #[fail(display = "Failed sending message to symcache actor: {}", _0)]
-    Mailbox(#[fail(cause)] MailboxError),
-
-    #[fail(display = "Failed to get symcache: {}", _0)]
-    SymCache(#[fail(cause)] SymCacheError),
-
-    #[fail(display = "Failed to parse symcache during symbolication: {}", _0)]
-    Parse(#[fail(cause)] symcache::SymCacheError),
-
-    #[fail(display = "Symbol not found")]
-    NotFound,
-}
+use crate::actors::objects::ObjectId;
 
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
@@ -50,125 +29,6 @@ impl SymbolicationActor {
     pub fn new(symcaches: Addr<SymCacheActor>) -> Self {
         SymbolicationActor { symcaches }
     }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Frame {
-    addr: HexValue,
-
-    module: Option<String>, // NOTE: This is "package" in Sentry
-    name: Option<String>,   // Only present if ?demangle was set
-    language: Option<String>,
-    symbol: Option<String>,
-    symbol_address: Option<HexValue>,
-    file: Option<String>,
-    line: Option<u64>,
-    line_address: Option<HexValue>, // NOTE: This does not exist in Sentry
-}
-
-#[derive(Deserialize)]
-pub struct ObjectInfo {
-    debug_id: String,
-    code_id: Option<String>,
-
-    #[serde(default)]
-    debug_name: Option<String>,
-
-    #[serde(default)]
-    code_name: Option<String>,
-
-    address: HexValue,
-
-    #[serde(default)]
-    size: Option<u64>,
-}
-
-#[derive(Clone, Debug, Copy)]
-struct HexValue(u64);
-
-impl<'de> Deserialize<'de> for HexValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let string: &str = Deserialize::deserialize(deserializer)?;
-        if string.starts_with("0x") || string.starts_with("0X") {
-            if let Ok(x) = u64::from_str_radix(&string[2..], 16) {
-                return Ok(HexValue(x));
-            }
-        }
-
-        Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(string),
-            &"a hex string starting with 0x",
-        ))
-    }
-}
-
-impl<'d> fmt::Display for HexValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#x}", self.0)
-    }
-}
-
-impl Serialize for HexValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.to_string().serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
-pub struct SymbolicateFramesRequest {
-    #[serde(default)]
-    meta: Meta,
-    #[serde(default)]
-    sources: Vec<SourceConfig>,
-    #[serde(default)]
-    threads: Vec<Thread>,
-    #[serde(default)]
-    modules: Vec<ObjectInfo>,
-}
-
-#[derive(Clone, Deserialize, Default)]
-pub struct Meta {
-    #[serde(default)]
-    signal: Option<u32>,
-    #[serde(default)]
-    arch: Arch,
-}
-
-#[derive(Deserialize)]
-pub struct Thread {
-    registers: BTreeMap<String, HexValue>,
-    #[serde(flatten)]
-    stacktrace: Stacktrace,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Stacktrace {
-    frames: Vec<Frame>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ErrorResponse(String);
-
-#[derive(Serialize)]
-#[serde(tag = "status", rename_all = "camelCase")]
-pub enum SymbolicateFramesResponse {
-    //Pending {
-    //retry_after: usize,
-    //},
-    Completed {
-        stacktraces: Vec<Stacktrace>,
-        errors: Vec<ErrorResponse>,
-    },
-}
-
-impl Message for SymbolicateFramesRequest {
-    type Result = Result<SymbolicateFramesResponse, SymbolicationError>;
 }
 
 impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
