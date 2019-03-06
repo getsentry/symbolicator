@@ -1,6 +1,9 @@
-use crate::actors::{
-    cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized, Scope},
-    objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor, SourceConfig},
+use crate::{
+    actors::{
+        cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
+        objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor, SourceConfig},
+    },
+    types::Scope,
 };
 use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
 use failure::Fail;
@@ -137,11 +140,10 @@ impl CacheItemRequest for FetchSymCacheInternal {
             })
             .and_then(move |object| {
                 // TODO: SyncArbiter
-                let file = File::create(&path).unwrap();
-                let object_inner = object.get_object().unwrap();
-                let _file = symcache::SymCacheWriter::write_object(&object_inner, file).unwrap();
+                let file = tryf!(File::create(&path));
+                let object_inner = tryf!(object.get_object());
+                let _file = tryf!(symcache::SymCacheWriter::write_object(&object_inner, file));
 
-                // TODO: Use scope of object
                 Box::new(Ok(object.scope().clone()).into_future())
             });
 

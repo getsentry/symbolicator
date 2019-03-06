@@ -15,6 +15,8 @@ use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
 
+use crate::types::Scope;
+
 #[derive(Debug, Clone)]
 pub struct CacheActor<T: CacheItemRequest> {
     cache_dir: Option<PathBuf>,
@@ -29,10 +31,14 @@ impl<T: CacheItemRequest> CacheActor<T> {
         }
     }
 
-    fn get_scope_path(&self, scope: &Scope, cache_key: &str) -> Option<PathBuf> {
-        let dir = self.cache_dir.as_ref()?.join(scope.as_ref());
-        create_dir_all(&dir).unwrap();
-        Some(dir.join(cache_key))
+    fn get_scope_path(&self, scope: &Scope, cache_key: &str) -> Result<Option<PathBuf>, io::Error> {
+        let dir = match self.cache_dir.as_ref() {
+            Some(x) => x.join(scope.as_ref()),
+            None => return Ok(None),
+        };
+
+        create_dir_all(&dir)?;
+        Ok(Some(dir.join(cache_key)))
     }
 }
 
@@ -43,12 +49,6 @@ impl<T: CacheItemRequest> Actor for CacheActor<T> {
 pub struct CacheKey {
     pub cache_key: String,
     pub scope: Scope,
-}
-
-#[derive(Debug, Clone)]
-pub enum Scope {
-    Scoped(String),
-    Global,
 }
 
 impl AsRef<str> for Scope {
@@ -79,12 +79,13 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
     type Result = ResponseActFuture<Self, T::Item, T::Error>;
 
     fn handle(&mut self, request: ComputeMemoized<T>, _ctx: &mut Self::Context) -> Self::Result {
+        // XXX: Unsure if we need SyncArbiter here
         let file = tryfa!(NamedTempFile::new());
 
         let key = request.0.get_cache_key();
 
         for scope in &[key.scope.clone(), Scope::Global] {
-            let path = self.get_scope_path(scope, &key.cache_key);
+            let path = tryfa!(self.get_scope_path(scope, &key.cache_key));
 
             if let Some(ref path) = path {
                 if path.exists() {
@@ -97,7 +98,7 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
         let future = request.0.compute(file.path()).into_actor(self).and_then(
             move |new_scope, slf, _ctx| {
-                let new_cache_path = slf.get_scope_path(&new_scope, &key.cache_key);
+                let new_cache_path = tryfa!(slf.get_scope_path(&new_scope, &key.cache_key));
                 let item = tryfa!(request
                     .0
                     .load(new_scope, tryfa!(ByteView::open(file.path()))));

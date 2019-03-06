@@ -1,4 +1,7 @@
-use crate::actors::cache::{CacheKey, ComputeMemoized, Scope};
+use crate::{
+    actors::cache::{CacheKey, ComputeMemoized},
+    types::Scope,
+};
 use actix::ResponseFuture;
 use std::{
     fs,
@@ -44,6 +47,7 @@ pub enum SourceConfig {
         id: String,
         #[serde(with = "url_serde")]
         url: Url,
+        scope: Scope,
     },
 }
 

@@ -8,3 +8,4 @@ mod endpoints;
 mod config;
 mod http;
 mod log;
+mod types;

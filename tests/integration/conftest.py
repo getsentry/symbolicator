@@ -76,12 +76,18 @@ class Symbolicator(Service):
 
 @pytest.fixture
 def symbolicator(tmpdir, request, random_port, background_process):
-    def inner():
+    def inner(**config_data):
         config = tmpdir.join("config")
-        cache_dir = tmpdir.mkdir("caches")
         port = random_port()
         bind = f"127.0.0.1:{port}"
-        config.write(json.dumps({"bind": bind, "cache_dir": str(cache_dir)}))
+
+        config_data["bind"] = bind
+
+        config_data.setdefault("cache_dir", tmpdir.join("caches"))
+        if config_data["cache_dir"]:
+            config_data["cache_dir"] = str(config_data["cache_dir"])
+
+        config.write(json.dumps(config_data))
         process = background_process(SYMBOLICATOR_BIN + ["-c", str(config), "run"])
         return Symbolicator(process=process, port=port)
 
