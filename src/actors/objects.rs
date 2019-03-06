@@ -76,10 +76,10 @@ pub enum ObjectError {
     #[fail(display = "Bad status code: {}", _0)]
     BadStatusCode(StatusCode),
 
-    #[fail(display = "Failed sending request to bucket: {}", _0)]
+    #[fail(display = "Failed sending request to source: {}", _0)]
     SendRequest(SendRequestError),
 
-    #[fail(display = "Failed downloading bucket: {}", _0)]
+    #[fail(display = "Failed downloading source: {}", _0)]
     Payload(PayloadError),
 
     #[fail(display = "No symbols found")]
@@ -93,7 +93,7 @@ pub enum FileType {
     Breakpad,
 }
 
-/// Information to find a Object in external buckets and also internal cache.
+/// Information to find a Object in external sources and also internal cache.
 #[derive(Debug, Clone)]
 pub struct ObjectId {
     pub debug_id: Option<DebugId>,
@@ -141,8 +141,8 @@ impl CacheItemRequest for FetchObject {
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
         let mut urls = vec![];
-        for bucket in &self.sources {
-            let url = bucket.get_base_url();
+        for source in &self.sources {
+            let url = source.get_base_url();
 
             // PDB
             if let (FileType::Debug, Some(ref debug_name), Some(ref debug_id)) = (
@@ -241,7 +241,7 @@ impl CacheItemRequest for FetchObject {
                     })
                 });
 
-                // TODO: Global iff bucket was public
+                // TODO: Global iff source was public
                 Either::A(result.map(|()| Scope::Global))
             } else {
                 log::debug!("No {:?} file found", filetype);
@@ -311,7 +311,7 @@ impl Actor for ObjectsActor {
     type Context = Context<Self>;
 }
 
-/// Fetch a Object from external buckets or internal cache.
+/// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FetchObject {
     pub filetype: FileType,
