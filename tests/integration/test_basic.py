@@ -7,9 +7,12 @@ def cache_dir_param(tmpdir, request):
         return tmpdir.mkdir("caches")
 
 
-def test_basic(symbolicator, cache_dir_param):
+@pytest.mark.parametrize("is_public", [True, False])
+def test_basic(symbolicator, cache_dir_param, is_public):
+    scope = "myscope"
+
     input = {
-        "meta": {"arch": "x86"},
+        "meta": {"arch": "x86", "scope": scope},
         "threads": [
             {
                 "registers": {"eip": "0x0000000001509530"},
@@ -31,7 +34,7 @@ def test_basic(symbolicator, cache_dir_param):
                 "type": "http",
                 "id": "microsoft",
                 "url": "https://msdl.microsoft.com/download/symbols/",
-                "scope": "global",
+                "is_public": is_public,
             }
         ],
     }
@@ -64,14 +67,15 @@ def test_basic(symbolicator, cache_dir_param):
     }
 
     if cache_dir_param:
-        object, = cache_dir_param.join("objects/global").listdir()
+        stored_in_scope = "global" if is_public else scope
+        object, = cache_dir_param.join("objects").join(stored_in_scope).listdir()
         assert (
             object.basename
             == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1--wkernel32.pdb-kernel32.dll"
         )
         assert object.size() > 0
 
-        symcache, = cache_dir_param.join("symcaches/global").listdir()
+        symcache, = cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
         assert (
             symcache.basename
             == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1--wkernel32.pdb-kernel32.dll"
@@ -81,7 +85,7 @@ def test_basic(symbolicator, cache_dir_param):
 
 def test_missing_symbols(symbolicator, cache_dir_param):
     input = {
-        "meta": {"arch": "x86"},
+        "meta": {"arch": "x86", "scope": "myscope"},
         "threads": [
             {
                 "registers": {"eip": "0x0000000001509530"},

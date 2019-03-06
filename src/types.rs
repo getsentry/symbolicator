@@ -3,10 +3,36 @@ use actix::{MailboxError, Message};
 use failure::Fail;
 use std::{collections::BTreeMap, fmt};
 use symbolic::{common::Arch, symcache};
+use url::Url;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::actors::objects::SourceConfig;
+#[derive(Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SourceConfig {
+    Http {
+        id: String,
+        #[serde(with = "url_serde")]
+        url: Url,
+
+        #[serde(default)]
+        is_public: bool,
+    },
+}
+
+impl SourceConfig {
+    pub fn get_base_url(&self) -> &Url {
+        match *self {
+            SourceConfig::Http { ref url, .. } => &url,
+        }
+    }
+
+    pub fn is_public(&self) -> bool {
+        match *self {
+            SourceConfig::Http { is_public, .. } => is_public,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -86,7 +112,6 @@ impl Serialize for HexValue {
 
 #[derive(Deserialize)]
 pub struct SymbolicateFramesRequest {
-    #[serde(default)]
     pub meta: Meta,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
@@ -96,12 +121,13 @@ pub struct SymbolicateFramesRequest {
     pub modules: Vec<ObjectInfo>,
 }
 
-#[derive(Clone, Deserialize, Default)]
+#[derive(Clone, Deserialize)]
 pub struct Meta {
     #[serde(default)]
     pub signal: Option<u32>,
     #[serde(default)]
     pub arch: Arch,
+    pub scope: Scope,
 }
 
 #[derive(Deserialize)]

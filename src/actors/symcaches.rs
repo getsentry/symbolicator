@@ -1,9 +1,9 @@
 use crate::{
     actors::{
         cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
-        objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor, SourceConfig},
+        objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor},
     },
-    types::Scope,
+    types::{Scope, SourceConfig},
 };
 use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
 use failure::Fail;
@@ -91,6 +91,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 filetype: FileType::Debug,
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
+                scope: self.request.scope.clone(),
             })
             .map_err(SymCacheError::from)
             .and_then(|x| Ok(x?));
@@ -100,6 +101,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 filetype: FileType::Code,
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
+                scope: self.request.scope.clone(),
             })
             .map_err(SymCacheError::from)
             .and_then(|x| Ok(x?));
@@ -108,6 +110,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             filetype: FileType::Breakpad,
             identifier: self.request.identifier.clone(),
             sources: self.request.sources.clone(),
+            scope: self.request.scope.clone(),
         };
 
         let path = path.to_owned();
@@ -164,6 +167,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 pub struct FetchSymCache {
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
+    pub scope: Scope,
 }
 
 impl Message for FetchSymCache {

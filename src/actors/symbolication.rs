@@ -41,6 +41,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
     ) -> Self::Result {
         let sources = request.sources;
         let meta = request.meta;
+        let scope = meta.scope.clone();
         let symcaches = self.symcaches.clone();
         let threads = request.threads;
 
@@ -60,6 +61,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                             .map(|x| split_path(x).1.to_owned()), // TODO
                     },
                     sources: sources.clone(),
+                    scope: scope.clone(),
                 })
                 .map_err(SymbolicationError::from)
                 .and_then(|result| Ok(result?))

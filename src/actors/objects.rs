@@ -1,6 +1,6 @@
 use crate::{
     actors::cache::{CacheKey, ComputeMemoized},
-    types::Scope,
+    types::{Scope, SourceConfig},
 };
 use actix::ResponseFuture;
 use std::{
@@ -17,7 +17,6 @@ use futures::{
     future::{join_all, Either, Future, IntoFuture},
     Stream,
 };
-use url::Url;
 
 use failure::Fail;
 
@@ -36,28 +35,7 @@ use symbolic::{
     debuginfo,
 };
 
-use serde::Deserialize;
-
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum SourceConfig {
-    Http {
-        id: String,
-        #[serde(with = "url_serde")]
-        url: Url,
-        scope: Scope,
-    },
-}
-
-impl SourceConfig {
-    fn get_base_url(&self) -> &Url {
-        match *self {
-            SourceConfig::Http { ref url, .. } => &url,
-        }
-    }
-}
 
 #[derive(Debug, Fail, derive_more::From)]
 pub enum ObjectError {
@@ -150,12 +128,15 @@ impl CacheItemRequest for FetchObject {
                 &self.identifier.debug_name,
                 &self.identifier.debug_id,
             ) {
-                urls.push(url.join(&format!(
-                    "{}/{}/{}",
-                    debug_name,
-                    debug_id.breakpad(),
-                    debug_name
-                )));
+                urls.push((
+                    source.clone(),
+                    url.join(&format!(
+                        "{}/{}/{}",
+                        debug_name,
+                        debug_id.breakpad(),
+                        debug_name
+                    )),
+                ));
             }
 
             // PE
@@ -164,22 +145,31 @@ impl CacheItemRequest for FetchObject {
                 &self.identifier.code_name,
                 &self.identifier.code_id,
             ) {
-                urls.push(url.join(&format!("{}/{}/{}", code_name, code_id, code_name)));
+                urls.push((
+                    source.clone(),
+                    url.join(&format!("{}/{}/{}", code_name, code_id, code_name)),
+                ));
             }
 
             // ELF
             if let Some(ref code_id) = self.identifier.code_id {
                 if self.filetype == FileType::Debug {
-                    urls.push(url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)));
+                    urls.push((
+                        source.clone(),
+                        url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)),
+                    ));
                 }
 
                 if let (FileType::Code, Some(ref code_name)) =
                     (self.filetype, &self.identifier.code_name)
                 {
-                    urls.push(url.join(&format!(
-                        "{}/elf-buildid-{}/{}",
-                        code_name, code_id, code_name
-                    )));
+                    urls.push((
+                        source.clone(),
+                        url.join(&format!(
+                            "{}/elf-buildid-{}/{}",
+                            code_name, code_id, code_name
+                        )),
+                    ));
                 }
             }
 
@@ -188,47 +178,56 @@ impl CacheItemRequest for FetchObject {
             // TODO: Native variants
         }
 
-        let requests = join_all(urls.into_iter().enumerate().map(|(i, url_parse_result)| {
-            // TODO: Is this fallible?
-            let url = url_parse_result.unwrap();
+        let requests = join_all(urls.into_iter().enumerate().map(
+            |(i, (source, url_parse_result))| {
+                // TODO: Is this fallible?
+                let url = url_parse_result.unwrap();
 
-            log::debug!("Fetching {}", url);
+                log::debug!("Fetching {}", url);
 
-            follow_redirects(
-                client::get(&url)
-                    .header("User-Agent", USER_AGENT)
-                    .finish()
-                    .unwrap(),
-                10,
-            )
-            .then(move |result| match result {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        log::info!("Success hitting {}", url);
-                        Ok((i, Some(response.payload())))
-                    } else {
-                        log::debug!("Unexpected status code from {}: {}", url, response.status());
-                        Ok((i, None))
+                follow_redirects(
+                    client::get(&url)
+                        .header("User-Agent", USER_AGENT)
+                        .finish()
+                        .unwrap(),
+                    10,
+                )
+                .then(move |result| match result {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            log::info!("Success hitting {}", url);
+                            Ok((i, source, Some(response.payload())))
+                        } else {
+                            log::debug!(
+                                "Unexpected status code from {}: {}",
+                                url,
+                                response.status()
+                            );
+                            Ok((i, source, None))
+                        }
                     }
-                }
-                Err(e) => {
-                    log::warn!("Skipping response from {}: {}", url, e);
-                    Ok((i, None))
-                }
-            })
-            .map_err(|_: Void| unreachable!())
-        }));
+                    Err(e) => {
+                        log::warn!("Skipping response from {}: {}", url, e);
+                        Ok((i, source, None))
+                    }
+                })
+                .map_err(|_: Void| unreachable!())
+            },
+        ));
 
         let path = path.to_owned();
         let filetype = self.filetype;
+        let request_scope = self.scope.clone();
 
         let result = requests.and_then(move |requests| {
             let payload = requests
                 .into_iter()
-                .filter_map(|(i, payload)| Some((i, payload?.map_err(ObjectError::from))))
-                .min_by_key(|(ref i, _)| *i);
+                .filter_map(|(i, source, payload)| {
+                    Some((i, source, payload?.map_err(ObjectError::from)))
+                })
+                .min_by_key(|(ref i, _, _)| *i);
 
-            if let Some((_, payload)) = payload {
+            if let Some((_, source, payload)) = payload {
                 log::debug!("Found {:?} file", filetype);
                 let file = fs::File::create(&path)
                     .into_future()
@@ -241,8 +240,13 @@ impl CacheItemRequest for FetchObject {
                     })
                 });
 
-                // TODO: Global iff source was public
-                Either::A(result.map(|()| Scope::Global))
+                let scope = if source.is_public() {
+                    Scope::Global
+                } else {
+                    request_scope
+                };
+
+                Either::A(result.map(|()| scope))
             } else {
                 log::debug!("No {:?} file found", filetype);
                 Either::B(Ok(Scope::Global).into_future())
@@ -314,6 +318,7 @@ impl Actor for ObjectsActor {
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FetchObject {
+    pub scope: Scope,
     pub filetype: FileType,
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
