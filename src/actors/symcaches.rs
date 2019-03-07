@@ -1,36 +1,47 @@
 use crate::{
     actors::{
         cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
-        objects::{FetchObject, FileType, ObjectError, ObjectId, ObjectsActor},
+        objects::{FetchObject, FileType, ObjectId, ObjectsActor},
     },
     types::{Scope, SourceConfig},
 };
-use actix::{Actor, Addr, Context, Handler, MailboxError, Message, ResponseFuture};
-use failure::Fail;
+use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+use failure::{Fail, ResultExt};
 use futures::{
     future::{Either, Future},
     IntoFuture,
 };
-use std::{fs::File, io, path::Path};
-
+use std::{fs::File, io, path::Path, sync::Arc};
 use symbolic::{common::ByteView, symcache};
 
-#[derive(Fail, Debug, derive_more::From)]
-pub enum SymCacheError {
-    #[fail(display = "Failed to fetch objects: {}", _0)]
-    Fetching(#[fail(cause)] ObjectError),
+#[derive(Fail, Debug, Clone, Copy)]
+pub enum SymCacheErrorKind {
+    #[fail(display = "failed to fetch objects")]
+    Fetching,
 
-    #[fail(display = "Failed to download: {}", _0)]
-    Io(#[fail(cause)] io::Error),
+    #[fail(display = "failed to download")]
+    Io,
 
-    #[fail(display = "Failed sending message to objects actor: {}", _0)]
-    Mailbox(#[fail(cause)] MailboxError),
+    #[fail(display = "failed sending message to objects actor")]
+    Mailbox,
 
-    #[fail(display = "Failed to parse symcache during download: {}", _0)]
-    Parse(#[fail(cause)] symcache::SymCacheError),
+    #[fail(display = "failed to parse symcache during download")]
+    Parse,
 
-    #[fail(display = "Symcache not found")]
+    #[fail(display = "symcache not found")]
     NotFound,
+}
+
+symbolic::common::derive_failure!(
+    SymCacheError,
+    SymCacheErrorKind,
+    doc = "Errors happening while generating a symcache"
+);
+
+impl From<io::Error> for SymCacheError {
+    fn from(e: io::Error) -> Self {
+        e.context(SymCacheErrorKind::Io).into()
+    }
 }
 
 pub struct SymCacheActor {
@@ -51,7 +62,7 @@ impl SymCacheActor {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SymCache {
     inner: Option<ByteView<'static>>,
     scope: Scope,
@@ -60,13 +71,12 @@ pub struct SymCache {
 
 impl SymCache {
     pub fn get_symcache(&self) -> Result<symcache::SymCache<'_>, SymCacheError> {
-        Ok(symcache::SymCache::parse(
-            self.inner.as_ref().ok_or(SymCacheError::NotFound)?,
-        )?)
+        let bytes = self.inner.as_ref().ok_or(SymCacheErrorKind::NotFound)?;
+        Ok(symcache::SymCache::parse(bytes).context(SymCacheErrorKind::Parse)?)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects: Addr<ObjectsActor>,
@@ -93,8 +103,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
             })
-            .map_err(SymCacheError::from)
-            .and_then(|x| Ok(x?));
+            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
+            .and_then(|x| Ok(x.context(SymCacheErrorKind::Fetching)?));
 
         let code_symbol = objects
             .send(FetchObject {
@@ -103,8 +113,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
             })
-            .map_err(SymCacheError::from)
-            .and_then(|x| Ok(x?));
+            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
+            .and_then(|x| Ok(x.context(SymCacheErrorKind::Fetching)?));
 
         let breakpad_request = FetchObject {
             filetype: FileType::Breakpad,
@@ -136,16 +146,18 @@ impl CacheItemRequest for FetchSymCacheInternal {
                     Either::B(
                         objects
                             .send(breakpad_request)
-                            .map_err(SymCacheError::from)
-                            .and_then(|x| Ok(x?)),
+                            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
+                            .and_then(|x| x.context(SymCacheErrorKind::Fetching))
+                            .map_err(SymCacheError::from),
                     )
                 }
             })
             .and_then(move |object| {
                 // TODO: SyncArbiter
-                let file = tryf!(File::create(&path));
-                let object_inner = tryf!(object.get_object());
-                let _file = tryf!(symcache::SymCacheWriter::write_object(&object_inner, file));
+                let file = tryf!(File::create(&path).context(SymCacheErrorKind::Io));
+                let object_inner = tryf!(object.get_object().context(SymCacheErrorKind::Parse));
+                let _file = tryf!(symcache::SymCacheWriter::write_object(&object_inner, file)
+                    .context(SymCacheErrorKind::Io));
 
                 Box::new(Ok(object.scope().clone()).into_future())
             });
@@ -171,11 +183,11 @@ pub struct FetchSymCache {
 }
 
 impl Message for FetchSymCache {
-    type Result = Result<SymCache, SymCacheError>;
+    type Result = Result<Arc<SymCache>, Arc<SymCacheError>>;
 }
 
 impl Handler<FetchSymCache> for SymCacheActor {
-    type Result = ResponseFuture<SymCache, SymCacheError>;
+    type Result = ResponseFuture<Arc<SymCache>, Arc<SymCacheError>>;
 
     fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
@@ -184,7 +196,7 @@ impl Handler<FetchSymCache> for SymCacheActor {
                     request,
                     objects: self.objects.clone(),
                 }))
-                .map_err(SymCacheError::from)
+                .map_err(|e| Arc::new(e.context(SymCacheErrorKind::Mailbox).into()))
                 .and_then(|response| Ok(response?)),
         )
     }

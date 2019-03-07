@@ -1,34 +1,29 @@
 use crate::{
     actors::cache::{CacheKey, ComputeMemoized},
-    types::{Scope, SourceConfig},
+    types::{ArcFail, Scope, SourceConfig},
 };
 use actix::ResponseFuture;
 use std::{
     fs,
     io::{self, Write},
     path::Path,
+    sync::Arc,
 };
 use void::Void;
 
 use crate::{actors::cache::CacheItemRequest, http::follow_redirects};
-use actix::MailboxError;
-use actix_web::error::PayloadError;
 use futures::{
     future::{join_all, Either, Future, IntoFuture},
     Stream,
 };
 
-use failure::Fail;
+use failure::{Fail, ResultExt};
 
 use crate::actors::cache::CacheActor;
 
 use actix::{Actor, Addr, Context, Handler, Message};
 
-use actix_web::{
-    client::{self, SendRequestError},
-    http::StatusCode,
-    HttpMessage,
-};
+use actix_web::{client, HttpMessage};
 
 use symbolic::{
     common::{ByteView, DebugId},
@@ -37,31 +32,46 @@ use symbolic::{
 
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
-#[derive(Debug, Fail, derive_more::From)]
-pub enum ObjectError {
-    #[fail(display = "Failed to download: {}", _0)]
-    Io(io::Error),
+#[derive(Debug, Fail, Clone, Copy)]
+pub enum ObjectErrorKind {
+    #[fail(display = "failed to download")]
+    Io,
 
-    #[fail(display = "Failed sending message to actor: {}", _0)]
-    Mailbox(MailboxError),
+    #[fail(display = "failed sending message to actor")]
+    Mailbox,
 
-    #[fail(display = "Failed parsing object: {}", _0)]
-    Parsing(symbolic::debuginfo::ObjectError),
+    #[fail(display = "failed parsing object")]
+    Parsing,
 
-    #[fail(display = "Mismatching IDs")]
+    #[fail(display = "mismatching IDs")]
     IdMismatch,
 
-    #[fail(display = "Bad status code: {}", _0)]
-    BadStatusCode(StatusCode),
+    #[fail(display = "bad status code")]
+    BadStatusCode,
 
-    #[fail(display = "Failed sending request to source: {}", _0)]
-    SendRequest(SendRequestError),
+    #[fail(display = "failed sending request to source")]
+    SendRequest,
 
-    #[fail(display = "Failed downloading source: {}", _0)]
-    Payload(PayloadError),
+    #[fail(display = "failed downloading source")]
+    Payload,
 
-    #[fail(display = "No symbols found")]
+    #[fail(display = "no symbols found")]
     NotFound,
+
+    #[fail(display = "failed to look into cache")]
+    Caching,
+}
+
+symbolic::common::derive_failure!(
+    ObjectError,
+    ObjectErrorKind,
+    doc = "Errors happening while fetching objects"
+);
+
+impl From<io::Error> for ObjectError {
+    fn from(e: io::Error) -> Self {
+        e.context(ObjectErrorKind::Io).into()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -223,20 +233,26 @@ impl CacheItemRequest for FetchObject {
             let payload = requests
                 .into_iter()
                 .filter_map(|(i, source, payload)| {
-                    Some((i, source, payload?.map_err(ObjectError::from)))
+                    Some((
+                        i,
+                        source,
+                        payload?.map_err(|e| e.context(ObjectErrorKind::Payload).into()),
+                    ))
                 })
                 .min_by_key(|(ref i, _, _)| *i);
 
             if let Some((_, source, payload)) = payload {
                 log::debug!("Found {:?} file", filetype);
                 let file = fs::File::create(&path)
-                    .into_future()
-                    .map_err(ObjectError::from);
+                    .context(ObjectErrorKind::Io)
+                    .map_err(ObjectError::from)
+                    .into_future();
 
                 let result = file.and_then(|mut file| {
                     payload.for_each(move |chunk| {
                         // TODO: Call out to SyncArbiter
-                        file.write_all(&chunk).map_err(ObjectError::from)
+                        file.write_all(&chunk)
+                            .map_err(|e| e.context(ObjectErrorKind::Io).into())
                     })
                 });
 
@@ -270,7 +286,7 @@ impl CacheItemRequest for FetchObject {
             if let Some(ref debug_id) = rv.request.identifier.debug_id {
                 // TODO: Also check code_id when exposed in symbolic
                 if object.debug_id() != *debug_id {
-                    return Err(ObjectError::IdMismatch);
+                    return Err(ObjectErrorKind::IdMismatch.into());
                 }
             }
         }
@@ -290,9 +306,8 @@ pub struct Object {
 
 impl Object {
     pub fn get_object(&self) -> Result<debuginfo::Object<'_>, ObjectError> {
-        Ok(debuginfo::Object::parse(
-            &self.object.as_ref().ok_or(ObjectError::NotFound)?,
-        )?)
+        let bytes = self.object.as_ref().ok_or(ObjectErrorKind::NotFound)?;
+        Ok(debuginfo::Object::parse(&bytes).context(ObjectErrorKind::Parsing)?)
     }
 
     pub fn scope(&self) -> &Scope {
@@ -300,7 +315,7 @@ impl Object {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ObjectsActor {
     cache: Addr<CacheActor<FetchObject>>,
 }
@@ -325,18 +340,22 @@ pub struct FetchObject {
 }
 
 impl Message for FetchObject {
-    type Result = Result<Object, ObjectError>;
+    type Result = Result<Arc<Object>, ObjectError>;
 }
 
 impl Handler<FetchObject> for ObjectsActor {
-    type Result = ResponseFuture<Object, ObjectError>;
+    type Result = ResponseFuture<Arc<Object>, ObjectError>;
 
     fn handle(&mut self, message: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.cache
                 .send(ComputeMemoized(message))
-                .map_err(ObjectError::from)
-                .and_then(|response| Ok(response?)),
+                .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
+                // XXX: `response.context` should work, but doesn't because ResultExt is not
+                // implemented for `Result<_, Arc<F>> where F: Fail`
+                .and_then(|response| {
+                    Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching))?)
+                }),
         )
     }
 }

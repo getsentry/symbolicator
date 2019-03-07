@@ -2,8 +2,8 @@ use crate::{
     actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
     log::LogError,
     types::{
-        ErrorResponse, Frame, Meta, ObjectInfo, Stacktrace, SymbolicateFramesRequest,
-        SymbolicateFramesResponse, SymbolicationError, Thread,
+        ArcFail, ErrorResponse, Frame, Meta, ObjectInfo, Stacktrace, SymbolicateFramesRequest,
+        SymbolicateFramesResponse, SymbolicationError, SymbolicationErrorKind, Thread,
     },
 };
 use std::{iter::FromIterator, sync::Arc};
@@ -16,6 +16,8 @@ use futures::future::{join_all, Future, IntoFuture};
 use symbolic::common::{split_path, InstructionInfo};
 
 use crate::actors::objects::ObjectId;
+
+use failure::{Fail, ResultExt};
 
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
@@ -63,8 +65,15 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                     sources: sources.clone(),
                     scope: scope.clone(),
                 })
-                .map_err(SymbolicationError::from)
-                .and_then(|result| Ok(result?))
+                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
+                // XXX: `result.context` should work
+                .and_then(|result| {
+                    result.map_err(|e| {
+                        SymbolicationError::from(
+                            ArcFail(e).context(SymbolicationErrorKind::Caching),
+                        )
+                    })
+                })
                 .then(move |result| Ok((object_info, result)))
                 .map_err(|_: Void| unreachable!())
         }));
@@ -91,6 +100,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
             .and_then(move |(mut errors, caches_map)| {
                 join_all(threads.into_iter().map(move |thread| {
                     // TODO: SyncArbiter
+                    // TODO: Singlethreaded processing of all threads, no arc around map
                     Ok(symbolize_thread(thread, caches_map.clone(), meta.clone())).into_future()
                 }))
                 .and_then(move |stacktraces_chunks| {
@@ -115,13 +125,13 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
 }
 
 struct SymCacheMap {
-    inner: Vec<(ObjectInfo, SymCache)>,
+    inner: Vec<(ObjectInfo, Arc<SymCache>)>,
 }
 
-impl FromIterator<(ObjectInfo, SymCache)> for SymCacheMap {
+impl FromIterator<(ObjectInfo, Arc<SymCache>)> for SymCacheMap {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = (ObjectInfo, SymCache)>,
+        T: IntoIterator<Item = (ObjectInfo, Arc<SymCache>)>,
     {
         let mut rv = SymCacheMap {
             inner: iter.into_iter().collect(),
@@ -186,13 +196,18 @@ fn symbolize_thread(
 
             let (symcache_info, symcache) = caches
                 .lookup_symcache(caller_address)
-                .ok_or(SymbolicationError::NotFound)?;
-            let symcache = symcache.get_symcache()?;
+                .ok_or(SymbolicationErrorKind::NotFound)?;
+            let symcache = symcache
+                .get_symcache()
+                .context(SymbolicationErrorKind::SymCache)?;
 
             let mut had_frames = false;
 
-            for line_info in symcache.lookup(caller_address - symcache_info.address.0)? {
-                let line_info = line_info?;
+            for line_info in symcache
+                .lookup(caller_address - symcache_info.address.0)
+                .context(SymbolicationErrorKind::SymCache)?
+            {
+                let line_info = line_info.context(SymbolicationErrorKind::SymCache)?;
                 had_frames = true;
 
                 stacktrace.frames.push(Frame {
@@ -205,7 +220,7 @@ fn symbolize_thread(
             if had_frames {
                 Ok(())
             } else {
-                Err(SymbolicationError::NotFound)
+                Err(SymbolicationErrorKind::NotFound.into())
             }
         };
 

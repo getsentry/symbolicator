@@ -4,11 +4,14 @@ use futures::future::Future;
 
 use actix_web::{http::Method, Json, State};
 
-use failure::Error;
+use failure::{Error, Fail};
 
 use crate::{
     app::{ServiceApp, ServiceState},
-    types::{SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError},
+    types::{
+        SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError,
+        SymbolicationErrorKind,
+    },
 };
 
 fn symbolicate_frames(
@@ -19,10 +22,11 @@ fn symbolicate_frames(
         state
             .symbolication
             .send(request.into_inner())
+            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
             .map_err(SymbolicationError::from)
             .flatten()
             .map(Json)
-            .map_err(From::from),
+            .map_err(Error::from),
     )
 }
 

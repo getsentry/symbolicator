@@ -1,8 +1,7 @@
-use crate::actors::symcaches::SymCacheError;
-use actix::{MailboxError, Message};
-use failure::Fail;
-use std::{collections::BTreeMap, fmt};
-use symbolic::{common::Arch, symcache};
+use actix::Message;
+use failure::{Backtrace, Fail};
+use std::{collections::BTreeMap, fmt, sync::Arc};
+use symbolic::common::Arch;
 use url::Url;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -34,12 +33,21 @@ impl SourceConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(untagged)]
 pub enum Scope {
     #[serde(rename = "global")]
     Global,
     Scoped(String),
+}
+
+impl AsRef<str> for Scope {
+    fn as_ref(&self) -> &str {
+        match *self {
+            Scope::Scoped(ref s) => &s,
+            Scope::Global => "global",
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -161,17 +169,45 @@ impl Message for SymbolicateFramesRequest {
     type Result = Result<SymbolicateFramesResponse, SymbolicationError>;
 }
 
-#[derive(Debug, Fail, derive_more::From)]
-pub enum SymbolicationError {
-    #[fail(display = "Failed sending message to symcache actor: {}", _0)]
-    Mailbox(#[fail(cause)] MailboxError),
+#[derive(Debug, Fail)]
+pub enum SymbolicationErrorKind {
+    #[fail(display = "failed sending message to symcache actor")]
+    Mailbox,
 
-    #[fail(display = "Failed to get symcache: {}", _0)]
-    SymCache(#[fail(cause)] SymCacheError),
+    #[fail(display = "failed to get symcache")]
+    SymCache,
 
-    #[fail(display = "Failed to parse symcache during symbolication: {}", _0)]
-    Parse(#[fail(cause)] symcache::SymCacheError),
+    #[fail(display = "failed to parse symcache during symbolication")]
+    Parse,
 
-    #[fail(display = "Symbol not found")]
+    #[fail(display = "symbol not found")]
     NotFound,
+
+    #[fail(display = "failed to look into cache")]
+    Caching,
+}
+
+symbolic::common::derive_failure!(
+    SymbolicationError,
+    SymbolicationErrorKind,
+    doc = "Errors during symbolication"
+);
+
+#[derive(Debug, Clone)]
+pub struct ArcFail<T>(pub Arc<T>);
+
+impl<T: Fail> Fail for ArcFail<T> {
+    fn cause(&self) -> Option<&Fail> {
+        self.0.cause()
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        self.0.backtrace()
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for ArcFail<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
+    }
 }
