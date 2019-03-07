@@ -20,14 +20,15 @@ use symbolic::common::ByteView;
 
 use crate::types::Scope;
 
+// Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
+// newtype around it.
+type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
+
 #[derive(Clone)]
 pub struct CacheActor<T: CacheItemRequest> {
     cache_dir: Option<PathBuf>,
 
-    // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
-    // newtype around it.
-    current_computations:
-        BTreeMap<CacheKey, Shared<oneshot::Receiver<Result<Arc<T::Item>, Arc<T::Error>>>>>,
+    current_computations: BTreeMap<CacheKey, ComputationChannel<T::Item, T::Error>>,
 }
 
 impl<T: CacheItemRequest> CacheActor<T> {

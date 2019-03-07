@@ -87,7 +87,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                     Ok(x) => Some((object_info, x)),
                     Err(e) => {
                         log::debug!("Error while getting symcache: {}", LogError(&e));
-                        errors.push(ErrorResponse(format!("{}", e)));
+                        errors.push(ErrorResponse(format!("{}", LogError(&e))));
                         None
                     }
                 })
@@ -231,7 +231,8 @@ fn symbolize_thread(
             stacktrace.frames.push(frame);
             errors.push(ErrorResponse(format!(
                 "Failed to symbolicate addr {}: {}",
-                addr, e
+                addr,
+                LogError(&e)
             )));
         };
     }

@@ -146,7 +146,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                     Either::B(
                         objects
                             .send(breakpad_request)
-                            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
+                            .map_err(|e| e.context(SymCacheErrorKind::Mailbox))
                             .and_then(|x| x.context(SymCacheErrorKind::Fetching))
                             .map_err(SymCacheError::from),
                     )

@@ -5,9 +5,9 @@ venv/bin/python: Makefile
 	virtualenv -p $$SEMAPHORE_PYTHON_VERSION venv
 
 integration-test: venv/bin/python
-	venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests flask
+	venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist
 	cargo build
-	@venv/bin/pytest tests --reruns 5 -vv
+	@venv/bin/pytest tests --reruns 5 -n12
 .PHONY: integration-test
 
 check: lint

@@ -5,6 +5,9 @@ import os
 import json
 import pytest
 import requests
+import threading
+
+from pytest_localserver.http import WSGIServer
 
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
 
@@ -83,8 +86,7 @@ def symbolicator(tmpdir, request, random_port, background_process):
 
         config_data["bind"] = bind
 
-        config_data.setdefault("cache_dir", tmpdir.join("caches"))
-        if config_data["cache_dir"]:
+        if config_data.get("cache_dir"):
             config_data["cache_dir"] = str(config_data["cache_dir"])
 
         config.write(json.dumps(config_data))
@@ -92,3 +94,45 @@ def symbolicator(tmpdir, request, random_port, background_process):
         return Symbolicator(process=process, port=port)
 
     return inner
+
+
+class HitCounter:
+    def __init__(self, url, hits):
+        self.url = url
+        self.hits = hits
+
+
+@pytest.fixture
+def hitcounter(request):
+    errors = []
+    hits = {}
+    hitlock = threading.Lock()
+
+    def app(environ, start_response):
+        try:
+            path = environ["PATH_INFO"]
+            with hitlock:
+                hits.setdefault(path, 0)
+                hits[path] += 1
+
+            if path.startswith("/msdl/"):
+                path = path[len("/msdl/") :]
+                with requests.get(
+                    f"https://msdl.microsoft.com/download/symbols/{path}"
+                ) as r:
+                    start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
+                    yield r.content
+            else:
+                raise AssertionError("Bad path: {}".format(path))
+        except Exception as e:
+            errors.append(e)
+
+    @request.addfinalizer
+    def _():
+        for error in errors:
+            raise error
+
+    server = WSGIServer(application=app, threaded=True)
+    server.start()
+    request.addfinalizer(server.stop)
+    return HitCounter(url=server.url, hits=hits)
