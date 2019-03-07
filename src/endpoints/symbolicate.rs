@@ -1,10 +1,10 @@
 use actix::ResponseFuture;
 
-use futures::future::Future;
-
 use actix_web::{http::Method, Json, State};
 
 use failure::{Error, Fail};
+
+use futures::future::Future;
 
 use crate::{
     app::{ServiceApp, ServiceState},

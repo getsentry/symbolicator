@@ -1,26 +1,32 @@
-use crate::{
-    actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
-    http::follow_redirects,
-    types::{ArcFail, FileType, ObjectId, Scope, SourceConfig},
-};
-use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use std::{
     fs,
     io::{self, Write},
     path::Path,
     sync::Arc,
 };
-use tokio_threadpool::ThreadPool;
-use void::Void;
+
+use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+
+use actix_web::{client, HttpMessage};
+
+use failure::{Fail, ResultExt};
 
 use futures::{
     future::{join_all, lazy, Either, Future, IntoFuture},
     Stream,
 };
 
-use actix_web::{client, HttpMessage};
-use failure::{Fail, ResultExt};
 use symbolic::{common::ByteView, debuginfo};
+
+use tokio_threadpool::ThreadPool;
+
+use void::Void;
+
+use crate::{
+    actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
+    http::follow_redirects,
+    types::{ArcFail, FileType, ObjectId, Scope, SourceConfig},
+};
 
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 

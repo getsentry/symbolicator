@@ -1,9 +1,14 @@
-use crate::config::{get_config, Config, ConfigError};
-use actix::{self, Actor, Addr};
-use actix_web::{server, App};
 use std::{fs::create_dir_all, io, path::PathBuf};
 
+use actix::{self, Actor, Addr};
+
+use actix_web::{server, App};
+
+use failure::Fail;
+
 use structopt::StructOpt;
+
+use crate::config::{get_config, Config, ConfigError};
 
 use crate::{
     actors::{
@@ -12,8 +17,6 @@ use crate::{
     },
     endpoints,
 };
-
-use failure::Fail;
 
 #[derive(Fail, Debug, derive_more::From)]
 pub enum CliError {

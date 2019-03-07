@@ -28,7 +28,9 @@ format: pyformat rsformat
 .PHONY: format
 
 rsformat:
-	cargo +nightly fmt
+	cargo +nightly fmt  # Import merging, preparing for reorder script
+	find src/ -type f | xargs -n1 python scripts/reorder_imports.py
+	cargo +stable fmt   # Better formatting for the rest
 .PHONY: rsformat
 
 pyformat: venv/bin/python

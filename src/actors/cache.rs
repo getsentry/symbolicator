@@ -1,11 +1,3 @@
-use actix::{
-    fut::{wrap_future, ActorFuture, WrapFuture},
-    Actor, AsyncContext, Context, Handler, Message, ResponseActFuture,
-};
-use futures::{
-    future::{Future, IntoFuture, Shared, SharedError},
-    sync::oneshot,
-};
 use std::{
     collections::BTreeMap,
     fs::create_dir_all,
@@ -14,9 +6,19 @@ use std::{
     sync::Arc,
 };
 
-use tempfile::NamedTempFile;
+use actix::{
+    fut::{wrap_future, ActorFuture, WrapFuture},
+    Actor, AsyncContext, Context, Handler, Message, ResponseActFuture,
+};
+
+use futures::{
+    future::{Future, IntoFuture, Shared, SharedError},
+    sync::oneshot,
+};
 
 use symbolic::common::ByteView;
+
+use tempfile::NamedTempFile;
 
 use crate::types::Scope;
 

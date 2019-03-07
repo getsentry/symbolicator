@@ -1,3 +1,17 @@
+use std::{iter::FromIterator, sync::Arc};
+
+use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
+
+use failure::{Fail, ResultExt};
+
+use futures::future::{join_all, lazy, Future};
+
+use symbolic::common::{split_path, InstructionInfo};
+
+use tokio_threadpool::ThreadPool;
+
+use void::Void;
+
 use crate::{
     actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
     log::LogError,
@@ -7,13 +21,6 @@ use crate::{
         SymbolicationErrorKind, Thread,
     },
 };
-use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
-use failure::{Fail, ResultExt};
-use futures::future::{join_all, lazy, Future};
-use std::{iter::FromIterator, sync::Arc};
-use symbolic::common::{split_path, InstructionInfo};
-use tokio_threadpool::ThreadPool;
-use void::Void;
 
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,

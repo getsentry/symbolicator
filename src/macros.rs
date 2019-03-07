@@ -5,7 +5,7 @@ macro_rules! tryf {
             Ok(value) => value,
             Err(e) => {
                 return Box::new(::futures::future::err(::std::convert::From::from(e)))
-                    as Box<dyn Future<Item = _, Error = _>>
+                    as Box<dyn Future<Item = _, Error = _>>;
             }
         }
     };

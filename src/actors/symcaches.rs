@@ -1,3 +1,23 @@
+use std::{
+    fs::File,
+    io::{self, BufWriter},
+    path::Path,
+    sync::Arc,
+};
+
+use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+
+use failure::{Fail, ResultExt};
+
+use futures::{
+    future::{Either, Future},
+    lazy, IntoFuture,
+};
+
+use symbolic::{common::ByteView, symcache};
+
+use tokio_threadpool::ThreadPool;
+
 use crate::{
     actors::{
         cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
@@ -5,20 +25,6 @@ use crate::{
     },
     types::{FileType, ObjectId, Scope, SourceConfig},
 };
-use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
-use failure::{Fail, ResultExt};
-use futures::{
-    future::{Either, Future},
-    lazy, IntoFuture,
-};
-use std::{
-    fs::File,
-    io::{self, BufWriter},
-    path::Path,
-    sync::Arc,
-};
-use symbolic::{common::ByteView, symcache};
-use tokio_threadpool::ThreadPool;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum SymCacheErrorKind {

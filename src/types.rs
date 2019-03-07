@@ -1,8 +1,13 @@
-use actix::Message;
-use failure::{Backtrace, Fail};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::BTreeMap, fmt, sync::Arc};
+
+use actix::Message;
+
+use failure::{Backtrace, Fail};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 use symbolic::common::{Arch, CodeId, DebugId};
+
 use url::Url;
 
 #[derive(Deserialize, Clone, Debug)]

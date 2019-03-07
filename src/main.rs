@@ -1,4 +1,5 @@
 use std::process::exit;
+
 use symbolicator;
 
 fn main() {

@@ -4,9 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde_yaml;
-
 use failure::Fail;
+
+use serde_yaml;
 
 #[derive(Fail, Debug, derive_more::From)]
 pub enum ConfigError {
