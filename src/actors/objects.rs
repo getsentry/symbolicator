@@ -1,30 +1,25 @@
 use crate::{
-    actors::cache::{CacheKey, ComputeMemoized},
+    actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
+    http::follow_redirects,
     types::{ArcFail, FileType, ObjectId, Scope, SourceConfig},
 };
-use actix::ResponseFuture;
+use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use std::{
     fs,
     io::{self, Write},
     path::Path,
     sync::Arc,
 };
+use tokio_threadpool::ThreadPool;
 use void::Void;
 
-use crate::{actors::cache::CacheItemRequest, http::follow_redirects};
 use futures::{
-    future::{join_all, Either, Future, IntoFuture},
+    future::{join_all, lazy, Either, Future, IntoFuture},
     Stream,
 };
 
-use failure::{Fail, ResultExt};
-
-use crate::actors::cache::CacheActor;
-
-use actix::{Actor, Addr, Context, Handler, Message};
-
 use actix_web::{client, HttpMessage};
-
+use failure::{Fail, ResultExt};
 use symbolic::{common::ByteView, debuginfo};
 
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -49,9 +44,6 @@ pub enum ObjectErrorKind {
     #[fail(display = "failed sending request to source")]
     SendRequest,
 
-    #[fail(display = "failed downloading source")]
-    Payload,
-
     #[fail(display = "no symbols found")]
     NotFound,
 
@@ -71,27 +63,32 @@ impl From<io::Error> for ObjectError {
     }
 }
 
-impl CacheItemRequest for FetchObject {
+pub struct FetchObjectInternal {
+    request: FetchObject,
+    threadpool: Arc<ThreadPool>,
+}
+
+impl CacheItemRequest for FetchObjectInternal {
     type Item = Object;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: self.identifier.get_cache_key(),
-            scope: self.scope.clone(),
+            cache_key: self.request.identifier.get_cache_key(),
+            scope: self.request.scope.clone(),
         }
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
         let mut urls = vec![];
-        for source in &self.sources {
+        for source in &self.request.sources {
             let url = source.get_base_url();
 
             // PDB
             if let (FileType::Debug, Some(ref debug_name), Some(ref debug_id)) = (
-                self.filetype,
-                &self.identifier.debug_name,
-                &self.identifier.debug_id,
+                self.request.filetype,
+                &self.request.identifier.debug_name,
+                &self.request.identifier.debug_id,
             ) {
                 urls.push((
                     source.clone(),
@@ -106,9 +103,9 @@ impl CacheItemRequest for FetchObject {
 
             // PE
             if let (FileType::Code, Some(ref code_name), Some(ref code_id)) = (
-                self.filetype,
-                &self.identifier.code_name,
-                &self.identifier.code_id,
+                self.request.filetype,
+                &self.request.identifier.code_name,
+                &self.request.identifier.code_id,
             ) {
                 urls.push((
                     source.clone(),
@@ -117,8 +114,8 @@ impl CacheItemRequest for FetchObject {
             }
 
             // ELF
-            if let Some(ref code_id) = self.identifier.code_id {
-                if self.filetype == FileType::Debug {
+            if let Some(ref code_id) = self.request.identifier.code_id {
+                if self.request.filetype == FileType::Debug {
                     urls.push((
                         source.clone(),
                         url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)),
@@ -126,7 +123,7 @@ impl CacheItemRequest for FetchObject {
                 }
 
                 if let (FileType::Code, Some(ref code_name)) =
-                    (self.filetype, &self.identifier.code_name)
+                    (self.request.filetype, &self.request.identifier.code_name)
                 {
                     urls.push((
                         source.clone(),
@@ -181,8 +178,9 @@ impl CacheItemRequest for FetchObject {
         ));
 
         let path = path.to_owned();
-        let filetype = self.filetype;
-        let request_scope = self.scope.clone();
+        let filetype = self.request.filetype;
+        let request_scope = self.request.scope.clone();
+        let threadpool = self.threadpool.clone();
 
         let result = requests.and_then(move |requests| {
             let payload = requests
@@ -191,7 +189,7 @@ impl CacheItemRequest for FetchObject {
                     Some((
                         i,
                         source,
-                        payload?.map_err(|e| e.context(ObjectErrorKind::Payload).into()),
+                        payload?.map_err(|e| ObjectError::from(e.context(ObjectErrorKind::Io))),
                     ))
                 })
                 .min_by_key(|(ref i, _, _)| *i);
@@ -199,15 +197,12 @@ impl CacheItemRequest for FetchObject {
             if let Some((_, source, payload)) = payload {
                 log::debug!("Found {:?} file", filetype);
                 let file = fs::File::create(&path)
-                    .context(ObjectErrorKind::Io)
-                    .map_err(ObjectError::from)
+                    .map_err(|e| ObjectError::from(e.context(ObjectErrorKind::Io)))
                     .into_future();
 
-                let result = file.and_then(|mut file| {
-                    payload.for_each(move |chunk| {
-                        // TODO: Call out to SyncArbiter
-                        file.write_all(&chunk)
-                            .map_err(|e| e.context(ObjectErrorKind::Io).into())
+                let result = file.and_then(|file| {
+                    payload.fold(file, move |mut file, chunk| {
+                        threadpool.spawn_handle(lazy(move || file.write_all(&chunk).map(|_| file)))
                     })
                 });
 
@@ -217,7 +212,7 @@ impl CacheItemRequest for FetchObject {
                     request_scope
                 };
 
-                Either::A(result.map(|()| scope))
+                Either::A(result.map(|_| scope))
             } else {
                 log::debug!("No {:?} file found", filetype);
                 Either::B(Ok(Scope::Global).into_future())
@@ -230,7 +225,7 @@ impl CacheItemRequest for FetchObject {
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
         let is_empty = data.is_empty();
         let rv = Object {
-            request: self,
+            request: self.request,
             scope,
             object: if is_empty { None } else { Some(data) },
         };
@@ -279,12 +274,16 @@ impl Object {
 
 #[derive(Clone)]
 pub struct ObjectsActor {
-    cache: Addr<CacheActor<FetchObject>>,
+    cache: Addr<CacheActor<FetchObjectInternal>>,
+    threadpool: Arc<ThreadPool>,
 }
 
 impl ObjectsActor {
-    pub fn new(cache: Addr<CacheActor<FetchObject>>) -> Self {
-        ObjectsActor { cache }
+    pub fn new(cache: Addr<CacheActor<FetchObjectInternal>>) -> Self {
+        ObjectsActor {
+            cache,
+            threadpool: Arc::new(ThreadPool::new()),
+        }
     }
 }
 
@@ -308,10 +307,13 @@ impl Message for FetchObject {
 impl Handler<FetchObject> for ObjectsActor {
     type Result = ResponseFuture<Arc<Object>, ObjectError>;
 
-    fn handle(&mut self, message: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, request: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.cache
-                .send(ComputeMemoized(message))
+                .send(ComputeMemoized(FetchObjectInternal {
+                    request,
+                    threadpool: self.threadpool.clone(),
+                }))
                 .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
                 .and_then(|response| {
                     Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching))?)

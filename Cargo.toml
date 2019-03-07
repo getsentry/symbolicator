@@ -21,7 +21,7 @@ env_logger = "0.6.0"
 structopt = "0.2.14"
 serde_yaml = "0.8.8"
 void = "1.0.2"
-num_cpus = "1.10.0"
+tokio-threadpool = "0.1.12"
 
 [dependencies.symbolic]
 git = "https://github.com/getsentry/symbolic"
