@@ -6,6 +6,8 @@ use url::Url;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use symbolic::common::{CodeId, DebugId};
+
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
@@ -212,5 +214,47 @@ impl<T: Fail> Fail for ArcFail<T> {
 impl<T: fmt::Display> fmt::Display for ArcFail<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.fmt(f)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileType {
+    Debug,
+    Code,
+    Breakpad,
+}
+
+/// Information to find a Object in external sources and also internal cache.
+#[derive(Debug, Clone)]
+pub struct ObjectId {
+    pub debug_id: Option<DebugId>,
+    pub code_id: Option<CodeId>,
+    pub debug_name: Option<String>,
+    pub code_name: Option<String>,
+}
+
+impl ObjectId {
+    pub fn get_cache_key(&self) -> String {
+        let mut rv = String::new();
+        if let Some(ref debug_id) = self.debug_id {
+            rv.push_str(&debug_id.to_string());
+        }
+        rv.push_str("-");
+        if let Some(ref code_id) = self.code_id {
+            rv.push_str(code_id.as_str());
+        }
+
+        // TODO: replace with new caching key discussed with jauer
+        rv.push_str("-");
+        if let Some(ref debug_name) = self.debug_name {
+            rv.push_str(debug_name);
+        }
+
+        rv.push_str("-");
+        if let Some(ref code_name) = self.code_name {
+            rv.push_str(code_name);
+        }
+
+        rv
     }
 }

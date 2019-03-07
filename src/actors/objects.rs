@@ -1,6 +1,6 @@
 use crate::{
     actors::cache::{CacheKey, ComputeMemoized},
-    types::{ArcFail, Scope, SourceConfig},
+    types::{ArcFail, FileType, ObjectId, Scope, SourceConfig},
 };
 use actix::ResponseFuture;
 use std::{
@@ -25,10 +25,7 @@ use actix::{Actor, Addr, Context, Handler, Message};
 
 use actix_web::{client, HttpMessage};
 
-use symbolic::{
-    common::{ByteView, CodeId, DebugId},
-    debuginfo,
-};
+use symbolic::{common::ByteView, debuginfo};
 
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
@@ -71,48 +68,6 @@ symbolic::common::derive_failure!(
 impl From<io::Error> for ObjectError {
     fn from(e: io::Error) -> Self {
         e.context(ObjectErrorKind::Io).into()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FileType {
-    Debug,
-    Code,
-    Breakpad,
-}
-
-/// Information to find a Object in external sources and also internal cache.
-#[derive(Debug, Clone)]
-pub struct ObjectId {
-    pub debug_id: Option<DebugId>,
-    pub code_id: Option<CodeId>,
-    pub debug_name: Option<String>,
-    pub code_name: Option<String>,
-}
-
-impl ObjectId {
-    pub fn get_cache_key(&self) -> String {
-        let mut rv = String::new();
-        if let Some(ref debug_id) = self.debug_id {
-            rv.push_str(&debug_id.to_string());
-        }
-        rv.push_str("-");
-        if let Some(ref code_id) = self.code_id {
-            rv.push_str(code_id.as_str());
-        }
-
-        // TODO: replace with new caching key discussed with jauer
-        rv.push_str("-");
-        if let Some(ref debug_name) = self.debug_name {
-            rv.push_str(debug_name);
-        }
-
-        rv.push_str("-");
-        if let Some(ref code_name) = self.code_name {
-            rv.push_str(code_name);
-        }
-
-        rv
     }
 }
 

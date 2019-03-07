@@ -2,8 +2,9 @@ use crate::{
     actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
     log::LogError,
     types::{
-        ArcFail, ErrorResponse, Frame, Meta, ObjectInfo, Stacktrace, SymbolicateFramesRequest,
-        SymbolicateFramesResponse, SymbolicationError, SymbolicationErrorKind, Thread,
+        ArcFail, ErrorResponse, Frame, Meta, ObjectId, ObjectInfo, Stacktrace,
+        SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError,
+        SymbolicationErrorKind, Thread,
     },
 };
 use actix::{Message, MessageResult, SyncArbiter, SyncContext};
@@ -15,8 +16,6 @@ use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
 use futures::future::{join_all, Future};
 
 use symbolic::common::{split_path, InstructionInfo};
-
-use crate::actors::objects::ObjectId;
 
 use failure::{Fail, ResultExt};
 

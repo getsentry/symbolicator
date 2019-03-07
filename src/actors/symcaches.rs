@@ -1,9 +1,9 @@
 use crate::{
     actors::{
         cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
-        objects::{FetchObject, FileType, Object, ObjectId, ObjectsActor},
+        objects::{FetchObject, Object, ObjectsActor},
     },
-    types::{Scope, SourceConfig},
+    types::{FileType, ObjectId, Scope, SourceConfig},
 };
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture, SyncArbiter, SyncContext};
 use failure::{Fail, ResultExt};
