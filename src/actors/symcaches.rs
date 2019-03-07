@@ -137,7 +137,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
             cache_key: self.request.identifier.get_cache_key(),
-            scope: Scope::Scoped("fakeproject".to_owned()), // TODO: Write project id here
+            scope: self.request.scope.clone(),
         }
     }
 
@@ -182,7 +182,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 let code_symbol_inner = code_symbol.get_object();
 
                 if debug_symbol_inner
-                    .map(|_x| true) // x.has_debug_info()) // XXX: undo once pdb works in symbolic
+                    .map(|_x| true) // x.has_debug_info()) // TODO: undo once pdb works in symbolic
                     .unwrap_or(false)
                 {
                     Either::A(Ok(debug_symbol).into_future())

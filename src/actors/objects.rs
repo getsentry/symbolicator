@@ -123,7 +123,7 @@ impl CacheItemRequest for FetchObject {
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
             cache_key: self.identifier.get_cache_key(),
-            scope: Scope::Scoped("fakeproject".to_owned()), // TODO: Write project id here
+            scope: self.scope.clone(),
         }
     }
 
