@@ -1,8 +1,11 @@
 use actix::{
     fut::{wrap_future, ActorFuture, WrapFuture},
-    Actor, Context, Handler, Message, ResponseActFuture, ResponseFuture,
+    Actor, AsyncContext, Context, Handler, Message, ResponseActFuture,
 };
-use futures::future::{Future, IntoFuture, Shared, SharedError};
+use futures::{
+    future::{Future, IntoFuture, Shared, SharedError},
+    sync::oneshot,
+};
 use std::{
     collections::BTreeMap,
     fs::create_dir_all,
@@ -10,7 +13,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use void::Void;
 
 use tempfile::NamedTempFile;
 
@@ -25,7 +27,7 @@ pub struct CacheActor<T: CacheItemRequest> {
     // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
     // newtype around it.
     current_computations:
-        BTreeMap<CacheKey, Shared<ResponseFuture<Result<Arc<T::Item>, Arc<T::Error>>, Void>>>,
+        BTreeMap<CacheKey, Shared<oneshot::Receiver<Result<Arc<T::Item>, Arc<T::Error>>>>>,
 }
 
 impl<T: CacheItemRequest> CacheActor<T> {
@@ -34,16 +36,6 @@ impl<T: CacheItemRequest> CacheActor<T> {
             cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
             current_computations: BTreeMap::new(),
         }
-    }
-
-    fn get_scope_path(&self, scope: &Scope, cache_key: &str) -> Result<Option<PathBuf>, io::Error> {
-        let dir = match self.cache_dir.as_ref() {
-            Some(x) => x.join(scope.as_ref()),
-            None => return Ok(None),
-        };
-
-        create_dir_all(&dir)?;
-        Ok(Some(dir.join(cache_key)))
     }
 }
 
@@ -78,50 +70,97 @@ impl<T: CacheItemRequest> Message for ComputeMemoized<T> {
 impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
     type Result = ResponseActFuture<Self, Arc<T::Item>, Arc<T::Error>>;
 
-    fn handle(&mut self, request: ComputeMemoized<T>, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, request: ComputeMemoized<T>, ctx: &mut Self::Context) -> Self::Result {
         let key = request.0.get_cache_key();
 
-        if let Some(shared_channel) = self.current_computations.get(&key) {
-            return Box::new(wrap_future(
-                shared_channel
-                    .clone()
-                    .map_err(|_: SharedError<Void>| unreachable!())
-                    .and_then(|result| (*result).clone()),
-            ));
-        }
+        let channel = if let Some(channel) = self.current_computations.get(&key) {
+            channel.clone()
+        } else {
+            let cache_dir = self.cache_dir.clone();
 
-        // XXX: Unsure if we need SyncArbiter here
-        let file = tryfa!(NamedTempFile::new().map_err(|e| Arc::new(e.into())));
+            let (tx, rx) = oneshot::channel();
 
-        for scope in &[key.scope.clone(), Scope::Global] {
-            let path = tryfa!(self
-                .get_scope_path(scope, &key.cache_key)
-                .map_err(|e| Arc::new(e.into())));
+            let file = NamedTempFile::new().map_err(T::Error::from).into_future();
 
-            if let Some(ref path) = path {
-                if path.exists() {
-                    let byteview = tryfa!(ByteView::open(path).map_err(|e| Arc::new(e.into())));
-                    let item = tryfa!(request.0.load(scope.clone(), byteview));
-                    return Box::new(wrap_future(Ok(Arc::new(item)).into_future()));
-                }
-            }
-        }
+            let result = file.and_then(clone!(key, |file| {
+                for &scope in &[&key.scope, &Scope::Global] {
+                    let path = tryf!(get_scope_path(
+                        cache_dir.as_ref().map(|x| &**x),
+                        scope,
+                        &key.cache_key
+                    ));
 
-        let future = request.0.compute(file.path()).into_actor(self).and_then(
-            move |new_scope, slf, _ctx| {
-                let new_cache_path = tryfa!(slf.get_scope_path(&new_scope, &key.cache_key));
-                let item = tryfa!(request
-                    .0
-                    .load(new_scope, tryfa!(ByteView::open(file.path()))));
-
-                if let Some(ref cache_path) = new_cache_path {
-                    tryfa!(file.persist(cache_path).map_err(|x| x.error));
+                    if let Some(ref path) = path {
+                        if path.exists() {
+                            let byteview = tryf!(ByteView::open(path));
+                            let item = tryf!(request.0.load(scope.clone(), byteview));
+                            return Box::new(Ok(item).into_future());
+                        }
+                    }
                 }
 
-                Box::new(Ok(Arc::new(item)).into())
-            },
-        );
+                Box::new(request.0.compute(file.path()).and_then(move |new_scope| {
+                    let new_cache_path = tryf!(get_scope_path(
+                        cache_dir.as_ref().map(|x| &**x),
+                        &new_scope,
+                        &key.cache_key
+                    ));
+                    let item = tryf!(request
+                        .0
+                        .load(new_scope, tryf!(ByteView::open(file.path()))));
 
-        Box::new(future.map_err(|e, _, _| Arc::new(e)))
+                    if let Some(ref cache_path) = new_cache_path {
+                        tryf!(file.persist(cache_path).map_err(|x| x.error));
+                    }
+
+                    Box::new(Ok(item).into_future())
+                })) as Box<dyn Future<Item = T::Item, Error = T::Error>>
+            }));
+
+            // XXX: Unsure if we need SyncArbiter here
+            ctx.spawn(
+                result
+                    .into_actor(self)
+                    .then(clone!(key, |result, slf, _ctx| {
+                        slf.current_computations.remove(&key);
+                        wrap_future(
+                            tx.send(match result {
+                                Ok(x) => Ok(Arc::new(x)),
+                                Err(e) => Err(Arc::new(e)),
+                            })
+                            .map_err(|_| ())
+                            .into_future(),
+                        )
+                    })),
+            );
+
+            let channel = rx.shared();
+
+            self.current_computations
+                .insert(key.clone(), channel.clone());
+            channel
+        };
+
+        Box::new(wrap_future(
+            channel
+                .map_err(|_: SharedError<oneshot::Canceled>| {
+                    panic!("Oneshot channel cancelled! Race condition or system shutting down")
+                })
+                .and_then(|result| (*result).clone()),
+        ))
     }
+}
+
+fn get_scope_path(
+    cache_dir: Option<&Path>,
+    scope: &Scope,
+    cache_key: &str,
+) -> Result<Option<PathBuf>, io::Error> {
+    let dir = match cache_dir {
+        Some(x) => x.join(scope.as_ref()),
+        None => return Ok(None),
+    };
+
+    create_dir_all(&dir)?;
+    Ok(Some(dir.join(cache_key)))
 }
