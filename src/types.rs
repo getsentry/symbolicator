@@ -193,6 +193,9 @@ symbolic::common::derive_failure!(
     doc = "Errors during symbolication"
 );
 
+/// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot
+/// contribute a blanket impl upstream because it would conflict with at least this blanket impl
+/// from failure: `impl<E: StdError + Send + Sync + 'static> Fail for E`
 #[derive(Debug, Clone)]
 pub struct ArcFail<T>(pub Arc<T>);
 

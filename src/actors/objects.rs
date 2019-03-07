@@ -358,8 +358,6 @@ impl Handler<FetchObject> for ObjectsActor {
             self.cache
                 .send(ComputeMemoized(message))
                 .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
-                // XXX: `response.context` should work, but doesn't because ResultExt is not
-                // implemented for `Result<_, Arc<F>> where F: Fail`
                 .and_then(|response| {
                     Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching))?)
                 }),
