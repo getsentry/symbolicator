@@ -100,6 +100,7 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                     }
                 }
 
+                // XXX: Unsure if we need SyncArbiter here
                 Box::new(request.0.compute(file.path()).and_then(move |new_scope| {
                     let new_cache_path = tryf!(get_scope_path(
                         cache_dir.as_ref().map(|x| &**x),
@@ -118,7 +119,6 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                 })) as Box<dyn Future<Item = T::Item, Error = T::Error>>
             }));
 
-            // XXX: Unsure if we need SyncArbiter here
             ctx.spawn(
                 result
                     .into_actor(self)
