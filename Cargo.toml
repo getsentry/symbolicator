@@ -16,12 +16,12 @@ url = { version = "1.7.2", features = ["serde"] }
 derive_more = "0.14.0"
 url_serde = "0.2.0"
 log = "0.4.6"
-tokio = "0.1.15"
 tempfile = "3.0.7"
 env_logger = "0.6.0"
 structopt = "0.2.14"
 serde_yaml = "0.8.8"
 void = "1.0.2"
+num_cpus = "1.10.0"
 
 [dependencies.symbolic]
 git = "https://github.com/getsentry/symbolic"

@@ -7,7 +7,7 @@ venv/bin/python: Makefile
 integration-test: venv/bin/python
 	venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist
 	cargo build
-	@venv/bin/pytest tests --reruns 5 -n12
+	@venv/bin/pytest tests --reruns 5 -n12 -vv
 .PHONY: integration-test
 
 check: lint

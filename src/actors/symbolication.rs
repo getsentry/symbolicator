@@ -6,12 +6,13 @@ use crate::{
         SymbolicateFramesResponse, SymbolicationError, SymbolicationErrorKind, Thread,
     },
 };
+use actix::{Message, MessageResult, SyncArbiter, SyncContext};
 use std::{iter::FromIterator, sync::Arc};
 use void::Void;
 
 use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
 
-use futures::future::{join_all, Future, IntoFuture};
+use futures::future::{join_all, Future};
 
 use symbolic::common::{split_path, InstructionInfo};
 
@@ -21,6 +22,7 @@ use failure::{Fail, ResultExt};
 
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
+    workerpool: Addr<SymbolicationWorker>,
 }
 
 impl Actor for SymbolicationActor {
@@ -29,7 +31,56 @@ impl Actor for SymbolicationActor {
 
 impl SymbolicationActor {
     pub fn new(symcaches: Addr<SymCacheActor>) -> Self {
-        SymbolicationActor { symcaches }
+        // TODO: Make the number configurable via config file
+        let thread_count = num_cpus::get();
+
+        log::info!("starting {} symbolication workers", thread_count);
+        let workerpool = SyncArbiter::start(thread_count, || SymbolicationWorker);
+
+        SymbolicationActor {
+            symcaches,
+            workerpool,
+        }
+    }
+}
+
+struct SymbolicationWorker;
+
+impl Actor for SymbolicationWorker {
+    type Context = SyncContext<Self>;
+}
+
+struct SymbolicateSync {
+    threads: Vec<Thread>,
+    meta: Meta,
+    symcache_map: SymCacheMap,
+    errors: Vec<ErrorResponse>,
+}
+
+impl Message for SymbolicateSync {
+    type Result = SymbolicateFramesResponse;
+}
+
+impl Handler<SymbolicateSync> for SymbolicationWorker {
+    type Result = MessageResult<SymbolicateSync>;
+
+    fn handle(&mut self, message: SymbolicateSync, _ctx: &mut Self::Context) -> Self::Result {
+        let SymbolicateSync {
+            threads,
+            symcache_map,
+            meta,
+            mut errors,
+        } = message;
+
+        let stacktraces = threads
+            .into_iter()
+            .map(|thread| symbolize_thread(thread, &symcache_map, &meta, &mut errors))
+            .collect();
+
+        MessageResult(SymbolicateFramesResponse::Completed {
+            stacktraces,
+            errors,
+        })
     }
 }
 
@@ -52,7 +103,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                 .send(FetchSymCache {
                     identifier: ObjectId {
                         debug_id: object_info.debug_id.parse().ok(),
-                        code_id: object_info.code_id.clone(),
+                        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
                         debug_name: object_info
                             .debug_name
                             .as_ref()
@@ -78,45 +129,32 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                 .map_err(|_: Void| unreachable!())
         }));
 
-        let caches_map = symcaches.and_then(move |symcaches| {
-            let mut errors = vec![];
+        let workerpool = self.workerpool.clone();
 
-            let caches_map = symcaches
-                .into_iter()
-                .filter_map(|(object_info, cache)| match cache {
-                    Ok(x) => Some((object_info, x)),
-                    Err(e) => {
-                        log::debug!("Error while getting symcache: {}", LogError(&e));
-                        errors.push(ErrorResponse(format!("{}", LogError(&e))));
-                        None
-                    }
-                })
-                .collect::<SymCacheMap>();
+        let result = symcaches
+            .and_then(move |symcaches| {
+                let mut errors = vec![];
 
-            Ok((errors, Arc::new(caches_map)))
-        });
-
-        let result = caches_map
-            .and_then(move |(mut errors, caches_map)| {
-                join_all(threads.into_iter().map(move |thread| {
-                    // TODO: SyncArbiter
-                    // TODO: Singlethreaded processing of all threads, no arc around map
-                    Ok(symbolize_thread(thread, caches_map.clone(), meta.clone())).into_future()
-                }))
-                .and_then(move |stacktraces_chunks| {
-                    let mut stacktraces = vec![];
-
-                    for (stacktrace, errors_chunk) in stacktraces_chunks {
-                        stacktraces.push(stacktrace);
-                        errors.extend(errors_chunk);
-                    }
-
-                    Ok(SymbolicateFramesResponse::Completed {
-                        stacktraces,
-                        errors,
+                let symcache_map = symcaches
+                    .into_iter()
+                    .filter_map(|(object_info, cache)| match cache {
+                        Ok(x) => Some((object_info, x)),
+                        Err(e) => {
+                            log::debug!("Error while getting symcache: {}", LogError(&e));
+                            errors.push(ErrorResponse(format!("{}", LogError(&e))));
+                            None
+                        }
                     })
-                    .into_future()
-                })
+                    .collect::<SymCacheMap>();
+
+                workerpool
+                    .send(SymbolicateSync {
+                        errors,
+                        meta,
+                        symcache_map,
+                        threads,
+                    })
+                    .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
             })
             .into_actor(self);
 
@@ -167,9 +205,10 @@ impl SymCacheMap {
 
 fn symbolize_thread(
     thread: Thread,
-    caches: Arc<SymCacheMap>,
-    meta: Meta,
-) -> (Stacktrace, Vec<ErrorResponse>) {
+    caches: &SymCacheMap,
+    meta: &Meta,
+    errors: &mut Vec<ErrorResponse>,
+) -> Stacktrace {
     let ip_reg = if let Some(ip_reg_name) = meta.arch.ip_register_name() {
         Some(thread.registers.get(ip_reg_name).map(|x| x.0))
     } else {
@@ -177,7 +216,6 @@ fn symbolize_thread(
     };
 
     let mut stacktrace = Stacktrace { frames: vec![] };
-    let mut errors = vec![];
 
     let symbolize_frame =
         |stacktrace: &mut Stacktrace, i, frame: &Frame| -> Result<(), SymbolicationError> {
@@ -237,5 +275,5 @@ fn symbolize_thread(
         };
     }
 
-    (stacktrace, errors)
+    stacktrace
 }

@@ -1,17 +1,22 @@
 use crate::{
     actors::{
         cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
-        objects::{FetchObject, FileType, ObjectId, ObjectsActor},
+        objects::{FetchObject, FileType, Object, ObjectId, ObjectsActor},
     },
     types::{Scope, SourceConfig},
 };
-use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture, SyncArbiter, SyncContext};
 use failure::{Fail, ResultExt};
 use futures::{
     future::{Either, Future},
     IntoFuture,
 };
-use std::{fs::File, io, path::Path, sync::Arc};
+use std::{
+    fs::File,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use symbolic::{common::ByteView, symcache};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -44,13 +49,45 @@ impl From<io::Error> for SymCacheError {
     }
 }
 
+struct SymCacheWorker;
+
+impl Actor for SymCacheWorker {
+    type Context = SyncContext<Self>;
+}
+
+struct WriteSymCacheSync {
+    path: PathBuf,
+    object: Arc<Object>,
+}
+
+impl Message for WriteSymCacheSync {
+    type Result = Result<(), SymCacheError>;
+}
+
+impl Handler<WriteSymCacheSync> for SymCacheWorker {
+    type Result = Result<(), SymCacheError>;
+
+    fn handle(&mut self, message: WriteSymCacheSync, _ctx: &mut Self::Context) -> Self::Result {
+        let file = File::create(&message.path).context(SymCacheErrorKind::Io)?;
+        let object_inner = message
+            .object
+            .get_object()
+            .context(SymCacheErrorKind::Parse)?;
+        let _file = symcache::SymCacheWriter::write_object(&object_inner, file)
+            .context(SymCacheErrorKind::Io)?;
+
+        Ok(())
+    }
+}
+
 pub struct SymCacheActor {
     symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
     objects: Addr<ObjectsActor>,
+    workerpool: Addr<SymCacheWorker>,
 }
 
 impl Actor for SymCacheActor {
-    type Context = Context<SymCacheActor>;
+    type Context = Context<Self>;
 }
 
 impl SymCacheActor {
@@ -58,7 +95,17 @@ impl SymCacheActor {
         symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
         objects: Addr<ObjectsActor>,
     ) -> Self {
-        SymCacheActor { symcaches, objects }
+        // TODO: Make the number configurable via config file
+        let thread_count = num_cpus::get();
+
+        log::info!("starting {} symbolication workers", thread_count);
+        let workerpool = SyncArbiter::start(thread_count, || SymCacheWorker);
+
+        SymCacheActor {
+            symcaches,
+            objects,
+            workerpool,
+        }
     }
 }
 
@@ -80,6 +127,7 @@ impl SymCache {
 pub struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects: Addr<ObjectsActor>,
+    workerpool: Addr<SymCacheWorker>,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -124,6 +172,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         };
 
         let path = path.to_owned();
+        let workerpool = self.workerpool.clone();
 
         let result = (debug_symbol, code_symbol)
             .into_future()
@@ -153,13 +202,14 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 }
             })
             .and_then(move |object| {
-                // TODO: SyncArbiter
-                let file = tryf!(File::create(&path).context(SymCacheErrorKind::Io));
-                let object_inner = tryf!(object.get_object().context(SymCacheErrorKind::Parse));
-                let _file = tryf!(symcache::SymCacheWriter::write_object(&object_inner, file)
-                    .context(SymCacheErrorKind::Io));
-
-                Box::new(Ok(object.scope().clone()).into_future())
+                let scope = object.scope().clone();
+                workerpool
+                    .send(WriteSymCacheSync {
+                        path: path.to_owned(),
+                        object,
+                    })
+                    .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
+                    .map(|_| scope)
             });
 
         Box::new(result)
@@ -195,6 +245,7 @@ impl Handler<FetchSymCache> for SymCacheActor {
                 .send(ComputeMemoized(FetchSymCacheInternal {
                     request,
                     objects: self.objects.clone(),
+                    workerpool: self.workerpool.clone(),
                 }))
                 .map_err(|e| Arc::new(e.context(SymCacheErrorKind::Mailbox).into()))
                 .and_then(|response| Ok(response?)),

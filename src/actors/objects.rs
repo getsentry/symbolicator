@@ -26,7 +26,7 @@ use actix::{Actor, Addr, Context, Handler, Message};
 use actix_web::{client, HttpMessage};
 
 use symbolic::{
-    common::{ByteView, DebugId},
+    common::{ByteView, CodeId, DebugId},
     debuginfo,
 };
 
@@ -85,7 +85,7 @@ pub enum FileType {
 #[derive(Debug, Clone)]
 pub struct ObjectId {
     pub debug_id: Option<DebugId>,
-    pub code_id: Option<String>,
+    pub code_id: Option<CodeId>,
     pub debug_name: Option<String>,
     pub code_name: Option<String>,
 }
@@ -98,7 +98,7 @@ impl ObjectId {
         }
         rv.push_str("-");
         if let Some(ref code_id) = self.code_id {
-            rv.push_str(code_id);
+            rv.push_str(code_id.as_str());
         }
 
         // TODO: replace with new caching key discussed with jauer
@@ -284,9 +284,16 @@ impl CacheItemRequest for FetchObject {
             let object = rv.get_object()?;
 
             if let Some(ref debug_id) = rv.request.identifier.debug_id {
-                // TODO: Also check code_id when exposed in symbolic
                 if object.debug_id() != *debug_id {
                     return Err(ObjectErrorKind::IdMismatch.into());
+                }
+            }
+
+            if let Some(ref code_id) = rv.request.identifier.code_id {
+                if let Some(ref object_code_id) = object.code_id() {
+                    if object_code_id != code_id {
+                        return Err(ObjectErrorKind::IdMismatch.into());
+                    }
                 }
             }
         }
