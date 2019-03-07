@@ -1,12 +1,9 @@
 use actix::Message;
 use failure::{Backtrace, Fail};
-use std::{collections::BTreeMap, fmt, sync::Arc};
-use symbolic::common::Arch;
-use url::Url;
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-use symbolic::common::{CodeId, DebugId};
+use std::{collections::BTreeMap, fmt, sync::Arc};
+use symbolic::common::{Arch, CodeId, DebugId};
+use url::Url;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
