@@ -3,6 +3,8 @@ name = "symbolicator"
 version = "0.1.0"
 authors = ["Markus Unterwaditzer <markus@unterwaditzer.net>"]
 edition = "2018"
+license = "MIT"
+include = ["src/**/*", "Cargo.toml"]
 
 [dependencies]
 actix-web = { version = "0.7.18", features = ["tls"] }
