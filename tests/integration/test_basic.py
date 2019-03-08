@@ -94,47 +94,43 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
         ],
     )
 
-    service = symbolicator(cache_dir=cache_dir_param)
-    service.wait_healthcheck()
+    # i = 0: Cache miss
+    # i = 1: Cache hit
+    # i = 2: Assert that touching the file during cache hit did not destroy the cache
+    for i in range(3):
+        service = symbolicator(cache_dir=cache_dir_param)
+        service.wait_healthcheck()
 
-    response = service.post("/symbolicate", json=input)
-    response.raise_for_status()
+        response = service.post("/symbolicate", json=input)
+        response.raise_for_status()
 
-    assert response.json() == SUCCESS_WINDOWS
+        assert response.json() == SUCCESS_WINDOWS
 
-    if cache_dir_param:
-        stored_in_scope = "global" if is_public else scope
-        assert {
-            o.basename: o.size()
-            for o in cache_dir_param.join("objects").join(stored_in_scope).listdir()
-        } == {
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.pdb": 846_848,
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.pe": 0,
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.breakpad": 0,
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.elf-code": 0,
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.elf-debug": 0,
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.mach-code": 0,
-            "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.mach-debug": 0,
-        }
+        if cache_dir_param:
+            stored_in_scope = "global" if is_public else scope
+            assert {
+                o.basename: o.size()
+                for o in cache_dir_param.join("objects").join(stored_in_scope).listdir()
+            } == {
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.pdb": 846_848,
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.pe": 0,
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.breakpad": 0,
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.elf-code": 0,
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.elf-debug": 0,
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.mach-code": 0,
+                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.mach-debug": 0,
+            }
 
-        symcache, = cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
-        assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
-        assert symcache.size() > 0
+            symcache, = (
+                cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
+            )
+            assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+            assert symcache.size() > 0
 
-    assert hitcounter.hits == {
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
-    }
-
-    response = service.post("/symbolicate", json=input)
-    response.raise_for_status()
-
-    if cache_dir_param:
         assert hitcounter.hits == {
             "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
-        }
-    else:
-        assert hitcounter.hits == {
-            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 2
+            if cache_dir_param
+            else (i + 1)
         }
 
 
