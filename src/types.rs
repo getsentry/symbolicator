@@ -18,21 +18,26 @@ pub enum SourceConfig {
         #[serde(with = "url_serde")]
         url: Url,
 
+        layout: DirectoryLayout,
+
+        #[serde(default = "FileType::all_vec")]
+        filetypes: Vec<FileType>,
+
         #[serde(default)]
         is_public: bool,
     },
 }
 
 impl SourceConfig {
-    pub fn get_base_url(&self) -> &Url {
-        match *self {
-            SourceConfig::Http { ref url, .. } => &url,
-        }
-    }
-
     pub fn is_public(&self) -> bool {
         match *self {
             SourceConfig::Http { is_public, .. } => is_public,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        match *self {
+            SourceConfig::Http { ref id, .. } => id,
         }
     }
 }
@@ -219,11 +224,71 @@ impl<T: fmt::Display> fmt::Display for ArcFail<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FileType {
-    Debug,
-    Code,
+    /// Windows/PDB code files
+    PE,
+    /// Windows/PDB debug files
+    PDB,
+    /// Macos/Mach debug files
+    MachDebug,
+    /// Macos/Mach code files
+    MachCode,
+    /// Linux/ELF debug files
+    ELFDebug,
+    /// Linux/ELF code files
+    ELFCode,
+    /// Breakpad files (this is the reason we have a flat enum for what at first sight could've
+    /// been two enums)
     Breakpad,
+}
+
+impl FileType {
+    #[inline]
+    pub fn all() -> &'static [Self] {
+        use FileType::*;
+        &[PDB, MachDebug, ELFDebug, PE, MachCode, ELFCode, Breakpad]
+    }
+
+    #[inline]
+    pub fn debug_types() -> &'static [Self] {
+        use FileType::*;
+        &[PDB, MachDebug, ELFDebug]
+    }
+
+    #[inline]
+    pub fn code_types() -> &'static [Self] {
+        use FileType::*;
+        &[PE, MachCode, ELFCode]
+    }
+
+    #[inline]
+    pub fn all_vec() -> Vec<Self> {
+        Self::all().iter().cloned().collect()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DirectoryLayout {
+    Native,
+    Symstore,
+}
+
+impl AsRef<str> for FileType {
+    fn as_ref(&self) -> &str {
+        use FileType::*;
+        match *self {
+            PE => "pe",
+            PDB => "pdb",
+            MachDebug => "mach-debug",
+            MachCode => "mach-code",
+            ELFDebug => "elf-debug",
+            ELFCode => "elf-code",
+            Breakpad => "breakpad",
+        }
+    }
 }
 
 /// Information to find a Object in external sources and also internal cache.
@@ -241,20 +306,9 @@ impl ObjectId {
         if let Some(ref debug_id) = self.debug_id {
             rv.push_str(&debug_id.to_string());
         }
-        rv.push_str("-");
+        rv.push_str("_");
         if let Some(ref code_id) = self.code_id {
             rv.push_str(code_id.as_str());
-        }
-
-        // TODO: replace with new caching key discussed with jauer
-        rv.push_str("-");
-        if let Some(ref debug_name) = self.debug_name {
-            rv.push_str(debug_name);
-        }
-
-        rv.push_str("-");
-        if let Some(ref code_name) = self.code_name {
-            rv.push_str(code_name);
         }
 
         rv

@@ -85,7 +85,6 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
     let symcache_cache = CacheActor::new(symcache_path).start();
     let symcaches = SymCacheActor::new(symcache_cache, objects).start();
 
-    // TODO: Frame cache
     let symbolication = SymbolicationActor::new(symcaches).start();
 
     let state = ServiceState { symbolication };

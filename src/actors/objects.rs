@@ -9,6 +9,8 @@ use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 
 use actix_web::{client, HttpMessage};
 
+use bytes::Bytes;
+
 use failure::{Fail, ResultExt};
 
 use futures::{
@@ -20,7 +22,7 @@ use symbolic::{common::ByteView, debuginfo};
 
 use tokio_threadpool::ThreadPool;
 
-use void::Void;
+use crate::types::DirectoryLayout;
 
 use crate::{
     actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
@@ -69,8 +71,12 @@ impl From<io::Error> for ObjectError {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FetchObjectInternal {
-    request: FetchObject,
+    filetype: FileType,
+    scope: Scope,
+    identifier: ObjectId,
+    source: SourceConfig,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -80,127 +86,33 @@ impl CacheItemRequest for FetchObjectInternal {
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: self.request.identifier.get_cache_key(),
-            scope: self.request.scope.clone(),
+            cache_key: format!(
+                "{}.{}.{}",
+                self.source.id(),
+                self.identifier.get_cache_key(),
+                self.filetype.as_ref()
+            ),
+            scope: self.scope.clone(),
         }
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
-        let mut urls = vec![];
-        for source in &self.request.sources {
-            let url = source.get_base_url();
-
-            // PDB
-            if let (FileType::Debug, Some(ref debug_name), Some(ref debug_id)) = (
-                self.request.filetype,
-                &self.request.identifier.debug_name,
-                &self.request.identifier.debug_id,
-            ) {
-                urls.push((
-                    source.clone(),
-                    url.join(&format!(
-                        "{}/{}/{}",
-                        debug_name,
-                        debug_id.breakpad(),
-                        debug_name
-                    )),
-                ));
-            }
-
-            // PE
-            if let (FileType::Code, Some(ref code_name), Some(ref code_id)) = (
-                self.request.filetype,
-                &self.request.identifier.code_name,
-                &self.request.identifier.code_id,
-            ) {
-                urls.push((
-                    source.clone(),
-                    url.join(&format!("{}/{}/{}", code_name, code_id, code_name)),
-                ));
-            }
-
-            // ELF
-            if let Some(ref code_id) = self.request.identifier.code_id {
-                if self.request.filetype == FileType::Debug {
-                    urls.push((
-                        source.clone(),
-                        url.join(&format!("_.debug/elf-buildid-sym-{}/_.debug", code_id)),
-                    ));
-                }
-
-                if let (FileType::Code, Some(ref code_name)) =
-                    (self.request.filetype, &self.request.identifier.code_name)
-                {
-                    urls.push((
-                        source.clone(),
-                        url.join(&format!(
-                            "{}/elf-buildid-{}/{}",
-                            code_name, code_id, code_name
-                        )),
-                    ));
-                }
-            }
-
-            // TODO: MachO, Breakpad
-            // TODO: Use Object.filetype to filter out unwanted variants
-            // TODO: Native variants
-        }
-
-        let requests = join_all(urls.into_iter().enumerate().map(
-            |(i, (source, url_parse_result))| {
-                // TODO: Is this fallible?
-                let url = url_parse_result.unwrap();
-
-                log::debug!("Fetching {}", url);
-
-                follow_redirects(
-                    client::get(&url)
-                        .header("User-Agent", USER_AGENT)
-                        .finish()
-                        .unwrap(),
-                    10,
-                )
-                .then(move |result| match result {
-                    Ok(response) => {
-                        if response.status().is_success() {
-                            log::info!("Success hitting {}", url);
-                            Ok((i, source, Some(response.payload())))
-                        } else {
-                            log::debug!(
-                                "Unexpected status code from {}: {}",
-                                url,
-                                response.status()
-                            );
-                            Ok((i, source, None))
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("Skipping response from {}: {}", url, e);
-                        Ok((i, source, None))
-                    }
-                })
-                .map_err(|_: Void| unreachable!())
-            },
-        ));
+        let request = download_from_source(self.source.clone(), self.filetype, &self.identifier);
 
         let path = path.to_owned();
-        let filetype = self.request.filetype;
-        let request_scope = self.request.scope.clone();
+        let filetype = self.filetype;
+        let source = self.source.clone();
+        let request_scope = self.scope.clone();
         let threadpool = self.threadpool.clone();
 
-        let result = requests.and_then(move |requests| {
-            let payload = requests
-                .into_iter()
-                .filter_map(|(i, source, payload)| {
-                    Some((
-                        i,
-                        source,
-                        payload?.map_err(|e| ObjectError::from(e.context(ObjectErrorKind::Io))),
-                    ))
-                })
-                .min_by_key(|(ref i, _, _)| *i);
+        let final_scope = if source.is_public() {
+            Scope::Global
+        } else {
+            request_scope
+        };
 
-            if let Some((_, source, payload)) = payload {
+        let result = request.and_then(move |payload| {
+            if let Some(payload) = payload {
                 log::debug!("Found {:?} file", filetype);
                 let file = fs::File::create(&path)
                     .map_err(|e| ObjectError::from(e.context(ObjectErrorKind::Io)))
@@ -212,16 +124,10 @@ impl CacheItemRequest for FetchObjectInternal {
                     })
                 });
 
-                let scope = if source.is_public() {
-                    Scope::Global
-                } else {
-                    request_scope
-                };
-
-                Either::A(result.map(|_| scope))
+                Either::A(result.map(|_| final_scope))
             } else {
                 log::debug!("No {:?} file found", filetype);
-                Either::B(Ok(Scope::Global).into_future())
+                Either::B(Ok(final_scope).into_future())
             }
         });
 
@@ -231,7 +137,7 @@ impl CacheItemRequest for FetchObjectInternal {
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
         let is_empty = data.is_empty();
         let rv = Object {
-            request: self.request,
+            request: self,
             scope,
             object: if is_empty { None } else { Some(data) },
         };
@@ -261,9 +167,8 @@ impl CacheItemRequest for FetchObjectInternal {
 /// Handle to local cache file.
 #[derive(Debug, Clone)]
 pub struct Object {
-    request: FetchObject,
+    request: FetchObjectInternal,
     scope: Scope,
-    // TODO: cache symbolic object here
     object: Option<ByteView<'static>>,
 }
 
@@ -300,8 +205,9 @@ impl Actor for ObjectsActor {
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FetchObject {
+    pub require_debug_info: bool,
+    pub filetypes: Vec<FileType>,
     pub scope: Scope,
-    pub filetype: FileType,
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
 }
@@ -314,16 +220,208 @@ impl Handler<FetchObject> for ObjectsActor {
     type Result = ResponseFuture<Arc<Object>, ObjectError>;
 
     fn handle(&mut self, request: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
-        Box::new(
-            self.cache
-                .send(ComputeMemoized(FetchObjectInternal {
-                    request,
+        let FetchObject {
+            filetypes,
+            scope,
+            identifier,
+            sources,
+            require_debug_info,
+        } = request;
+        let mut requests = vec![];
+
+        for filetype in filetypes {
+            for source in sources.iter().cloned() {
+                requests.push(FetchObjectInternal {
+                    source,
+                    filetype,
+                    scope: scope.clone(),
+                    identifier: identifier.clone(),
                     threadpool: self.threadpool.clone(),
-                }))
-                .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
-                .and_then(|response| {
-                    Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching))?)
-                }),
+                })
+            }
+        }
+
+        let cache = self.cache.clone();
+
+        Box::new(
+            join_all(requests.into_iter().enumerate().map(move |(i, request)| {
+                cache
+                    .send(ComputeMemoized(request))
+                    .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
+                    .and_then(move |response| {
+                        Ok((
+                            i,
+                            response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching))?,
+                        ))
+                    })
+            }))
+            .and_then(move |responses| {
+                let (_, response) = responses
+                    .into_iter()
+                    .filter_map(|(i, response)| {
+                        if response.get_object().ok()?.has_debug_info() || !require_debug_info {
+                            Some((i, response))
+                        } else {
+                            None
+                        }
+                    })
+                    .min_by_key(|(ref i, _)| *i)
+                    .ok_or(ObjectError::from(ObjectErrorKind::NotFound))?;
+                Ok(response)
+            }),
         )
+    }
+}
+
+fn get_directory_path(
+    directory_layout: DirectoryLayout,
+    filetype: FileType,
+    identifier: &ObjectId,
+) -> Option<String> {
+    use DirectoryLayout::*;
+    use FileType::*;
+
+    match (directory_layout, filetype) {
+        (_, PDB) => {
+            // PDB (Microsoft Symbol Server)
+            let debug_name = identifier.debug_name.as_ref()?;
+            let debug_id = identifier.debug_id.as_ref()?;
+            // XXX: Calling `breakpad` here is kinda wrong. We really only want to have no hyphens.
+            Some(format!(
+                "{}/{}/{}",
+                debug_name,
+                debug_id.breakpad(),
+                debug_name
+            ))
+        }
+        (_, PE) => {
+            // PE (Microsoft Symbol Server)
+            let code_name = identifier.code_name.as_ref()?;
+            let code_id = identifier.code_id.as_ref()?;
+            Some(format!("{}/{}/{}", code_name, code_id, code_name))
+        }
+        (Symstore, ELFDebug) => {
+            // ELF debug files (Microsoft Symbol Server)
+            let code_id = identifier.code_id.as_ref()?;
+            Some(format!("_.debug/elf-buildid-sym-{}/_.debug", code_id))
+        }
+        (Native, ELFDebug) => {
+            // TODO: Native paths
+            None
+        }
+        (Symstore, ELFCode) => {
+            // ELF code files (Microsoft Symbol Server)
+            let code_id = identifier.code_id.as_ref()?;
+            let code_name = identifier.code_name.as_ref()?;
+            Some(format!(
+                "{}/elf-buildid-{}/{}",
+                code_name, code_id, code_name
+            ))
+        }
+        (Native, ELFCode) => {
+            // TODO: Native paths
+            None
+        }
+        (Symstore, MachDebug) => {
+            // Mach debug files (Microsoft Symbol Server)
+            let code_id = identifier.code_id.as_ref()?;
+            Some(format!("_.dwarf/mach-uuid-sym-{}/_.dwarf", code_id))
+        }
+        (Native, MachDebug) => {
+            // TODO: Native paths
+            None
+        }
+        (Symstore, MachCode) => {
+            // Mach code files (Microsoft Symbol Server)
+            let code_id = identifier.code_id.as_ref()?;
+            let code_name = identifier.code_name.as_ref()?;
+            Some(format!("{}/mach-uuid-{}/{}", code_name, code_id, code_name))
+        }
+        (Native, MachCode) => {
+            // TODO: Native paths
+            None
+        }
+        (_, Breakpad) => {
+            // Breakpad
+            let debug_name = identifier.debug_name.as_ref()?;
+            let debug_id = identifier.debug_id.as_ref()?;
+
+            let new_debug_name = if debug_name.ends_with(".exe")
+                || debug_name.ends_with(".dll")
+                || debug_name.ends_with(".pdb")
+            {
+                &debug_name[..debug_name.len() - 4]
+            } else {
+                &debug_name[..]
+            };
+
+            Some(format!(
+                "{}.sym/{}/{}",
+                new_debug_name,
+                debug_id.breakpad(),
+                debug_name
+            ))
+        }
+    }
+}
+
+fn download_from_source(
+    source: SourceConfig,
+    filetype: FileType,
+    identifier: &ObjectId,
+) -> Box<
+    dyn Future<
+        Item = Option<Box<dyn Stream<Item = Bytes, Error = ObjectError>>>,
+        Error = ObjectError,
+    >,
+> {
+    match source {
+        SourceConfig::Http {
+            url,
+            layout,
+            filetypes,
+            ..
+        } => {
+            if !filetypes.contains(&filetype) {
+                return Box::new(Ok(None).into_future());
+            }
+
+            // TODO: Is this fallible?
+            let download_path = match get_directory_path(layout, filetype, identifier) {
+                Some(x) => x,
+                None => return Box::new(Ok(None).into_future()),
+            };
+            let download_url = url.join(&download_path).unwrap();
+
+            let response = follow_redirects(
+                client::get(&download_url)
+                    .header("User-Agent", USER_AGENT)
+                    .finish()
+                    .unwrap(),
+                10,
+            )
+            .then(move |result| match result {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        log::info!("Success hitting {}", url);
+                        Ok(Some(Box::new(
+                            response
+                                .payload()
+                                .map_err(|e| e.context(ObjectErrorKind::Io).into()),
+                        )
+                            as Box<dyn Stream<Item = _, Error = _>>))
+                    } else {
+                        log::debug!("Unexpected status code from {}: {}", url, response.status());
+                        Ok(None)
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Skipping response from {}: {}", url, e);
+                    Ok(None)
+                }
+            });
+
+            Box::new(response)
+        }
     }
 }

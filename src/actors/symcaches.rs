@@ -9,10 +9,7 @@ use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 
 use failure::{Fail, ResultExt};
 
-use futures::{
-    future::{Either, Future},
-    lazy, IntoFuture,
-};
+use futures::{future::Future, lazy};
 
 use symbolic::{common::ByteView, symcache};
 
@@ -116,72 +113,34 @@ impl CacheItemRequest for FetchSymCacheInternal {
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
         let objects = self.objects.clone();
 
-        let debug_symbol = objects
+        let object = objects
             .send(FetchObject {
-                filetype: FileType::Debug,
+                filetypes: FileType::debug_types()
+                    .iter()
+                    .cloned()
+                    .chain(FileType::code_types().iter().cloned())
+                    .chain(Some(FileType::Breakpad).into_iter())
+                    .collect(),
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
+                require_debug_info: false, // TODO: undo once pdb works in symbolic
             })
             .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
             .and_then(|x| Ok(x.context(SymCacheErrorKind::Fetching)?));
-
-        let code_symbol = objects
-            .send(FetchObject {
-                filetype: FileType::Code,
-                identifier: self.request.identifier.clone(),
-                sources: self.request.sources.clone(),
-                scope: self.request.scope.clone(),
-            })
-            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
-            .and_then(|x| Ok(x.context(SymCacheErrorKind::Fetching)?));
-
-        let breakpad_request = FetchObject {
-            filetype: FileType::Breakpad,
-            identifier: self.request.identifier.clone(),
-            sources: self.request.sources.clone(),
-            scope: self.request.scope.clone(),
-        };
 
         let path = path.to_owned();
         let threadpool = self.threadpool.clone();
 
-        let result = (debug_symbol, code_symbol)
-            .into_future()
-            .and_then(move |(debug_symbol, code_symbol)| {
-                // TODO: Fall back to symbol table (go debug -> code -> breakpad again)
-                let debug_symbol_inner = debug_symbol.get_object();
-                let code_symbol_inner = code_symbol.get_object();
-
-                if debug_symbol_inner
-                    .map(|_x| true) // x.has_debug_info()) // TODO: undo once pdb works in symbolic
-                    .unwrap_or(false)
-                {
-                    Either::A(Ok(debug_symbol).into_future())
-                } else if code_symbol_inner
-                    .map(|x| x.has_debug_info())
-                    .unwrap_or(false)
-                {
-                    Either::A(Ok(code_symbol).into_future())
-                } else {
-                    Either::B(
-                        objects
-                            .send(breakpad_request)
-                            .map_err(|e| e.context(SymCacheErrorKind::Mailbox))
-                            .and_then(|x| x.context(SymCacheErrorKind::Fetching))
-                            .map_err(SymCacheError::from),
-                    )
-                }
-            })
-            .and_then(move |object| {
-                threadpool.spawn_handle(lazy(move || {
-                    let file = BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
-                    let object_inner = object.get_object().context(SymCacheErrorKind::Parse)?;
-                    let _file = symcache::SymCacheWriter::write_object(&object_inner, file)
-                        .context(SymCacheErrorKind::Io)?;
-                    Ok(object.scope().clone())
-                }))
-            });
+        let result = object.and_then(move |object| {
+            threadpool.spawn_handle(lazy(move || {
+                let file = BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
+                let object_inner = object.get_object().context(SymCacheErrorKind::Parse)?;
+                let _file = symcache::SymCacheWriter::write_object(&object_inner, file)
+                    .context(SymCacheErrorKind::Io)?;
+                Ok(object.scope().clone())
+            }))
+        });
 
         Box::new(result)
     }
