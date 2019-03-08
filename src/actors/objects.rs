@@ -306,8 +306,9 @@ fn get_directory_path(
             Some(format!("_.debug/elf-buildid-sym-{}/_.debug", code_id))
         }
         (Native, ELFDebug) => {
-            // TODO: Native paths
-            None
+            // ELF debug files (GDB format = "native")
+            let code_id = identifier.code_id.as_ref()?;
+            Some(format!("{}.debug", chunk_gdb(code_id.as_str())?))
         }
         (Symstore, ELFCode) => {
             // ELF code files (Microsoft Symbol Server)
@@ -319,8 +320,9 @@ fn get_directory_path(
             ))
         }
         (Native, ELFCode) => {
-            // TODO: Native paths
-            None
+            // ELF code files (GDB format = "native")
+            let code_id = identifier.code_id.as_ref()?;
+            chunk_gdb(code_id.as_str())
         }
         (Symstore, MachDebug) => {
             // Mach debug files (Microsoft Symbol Server)
@@ -328,8 +330,9 @@ fn get_directory_path(
             Some(format!("_.dwarf/mach-uuid-sym-{}/_.dwarf", code_id))
         }
         (Native, MachDebug) => {
-            // TODO: Native paths
-            None
+            // Mach debug files (LLDB format = "native")
+            let code_id = identifier.code_id.as_ref()?;
+            chunk_lldb(code_id.as_str())
         }
         (Symstore, MachCode) => {
             // Mach code files (Microsoft Symbol Server)
@@ -338,8 +341,9 @@ fn get_directory_path(
             Some(format!("{}/mach-uuid-{}/{}", code_name, code_id, code_name))
         }
         (Native, MachCode) => {
-            // TODO: Native paths
-            None
+            // Mach code files (LLDB format = "native")
+            let code_id = identifier.code_id.as_ref()?;
+            Some(format!("{}.app", chunk_lldb(code_id.as_str())?))
         }
         (_, Breakpad) => {
             // Breakpad
@@ -386,12 +390,13 @@ fn download_from_source(
                 return Box::new(Ok(None).into_future());
             }
 
-            // TODO: Is this fallible?
-            let download_path = match get_directory_path(layout, filetype, identifier) {
+            // XXX: Probably should send an error if the URL turns out to be invalid
+            let download_url = match get_directory_path(layout, filetype, identifier)
+                .and_then(|x| url.join(&x).ok())
+            {
                 Some(x) => x,
                 None => return Box::new(Ok(None).into_future()),
             };
-            let download_url = url.join(&download_path).unwrap();
 
             let response = follow_redirects(
                 client::get(&download_url)
@@ -423,5 +428,31 @@ fn download_from_source(
 
             Box::new(response)
         }
+    }
+}
+
+fn chunk_gdb(code_id: &str) -> Option<String> {
+    // this is just a panic guard. It is not meant to validate the GNU build id
+    if code_id.len() > 2 {
+        Some(format!("{}/{}", &code_id[..2], &code_id[2..]))
+    } else {
+        None
+    }
+}
+
+fn chunk_lldb(code_id: &str) -> Option<String> {
+    // this is just a panic guard. It is not meant to validate the UUID
+    if code_id.len() > 20 {
+        Some(format!(
+            "{}/{}/{}/{}/{}/{}",
+            &code_id[0..4],
+            &code_id[4..8],
+            &code_id[8..12],
+            &code_id[12..16],
+            &code_id[16..20],
+            &code_id[20..]
+        ))
+    } else {
+        None
     }
 }

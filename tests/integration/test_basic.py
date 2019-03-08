@@ -11,7 +11,6 @@ WINDOWS_DATA = {
             "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
             "code_name": "C:\\Windows\\System32\\kernel32.dll",
             "debug_name": "C:\\Windows\\System32\\wkernel32.pdb",
-            "type": "pe",
             "address": "0x749d0000",
             "size": 851_968,
         }
