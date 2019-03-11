@@ -97,18 +97,18 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
         app
     }
 
+    let bind = config
+        .bind
+        .as_ref()
+        .map(|x| &**x)
+        .unwrap_or("127.0.0.1:42069");
+
     server::new(move || get_app(state.clone()))
-        .bind(
-            config
-                .bind
-                .as_ref()
-                .map(|x| &**x)
-                .unwrap_or("127.0.0.1:42069"),
-        )
+        .bind(bind)
         .unwrap()
         .start();
 
-    println!("Started http server: 127.0.0.1:8080");
+    println!("Started http server: {}", bind);
     let _ = sys.run();
     Ok(())
 }
