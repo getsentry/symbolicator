@@ -15,13 +15,14 @@ All keys are optional, the values in this config are the defaults.
 
 * `cache_dir`: Path to a directory, to cache symbols. If it is `null`, there is
   no caching. You really want caching in production. See
-  [#ref-caching](Caching).
+  [Caching](#ref-caching).
 * `bind`: Host and port for HTTP interface.
 
 Start the server: `symbolicator -c ./foo.yml run`
 
-<a name=ref-caching />
 ## Caching
+
+<a name=ref-caching />
 
 If you provide a `cache_dir`, the server assumes to have full control over that
 directory. Pointing other instances to the same directory will cause
