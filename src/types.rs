@@ -75,6 +75,9 @@ pub struct Frame {
 
 #[derive(Deserialize)]
 pub struct ObjectInfo {
+    #[serde(rename = "type")]
+    pub ty: ObjectType,
+
     pub debug_id: String,
     pub code_id: Option<String>,
 
@@ -89,6 +92,9 @@ pub struct ObjectInfo {
     #[serde(default)]
     pub size: Option<u64>,
 }
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ObjectType(String);
 
 #[derive(Clone, Debug, Copy)]
 pub struct HexValue(pub u64);
@@ -261,6 +267,18 @@ impl FileType {
     pub fn code_types() -> &'static [Self] {
         use FileType::*;
         &[PE, MachCode, ELFCode]
+    }
+
+    /// Given an object type, returns filetypes in the order they should be tried.
+    #[inline]
+    pub fn from_object_type(ty: &ObjectType) -> &'static [Self] {
+        use FileType::*;
+        match &ty.0[..] {
+            "macho" | "apple" => &[MachDebug, MachCode, Breakpad],
+            "pe" => &[PDB, PE, Breakpad],
+            "elf" => &[PDB, PE, Breakpad],
+            _ => Self::all(),
+        }
     }
 
     #[inline]

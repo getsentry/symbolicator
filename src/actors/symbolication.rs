@@ -59,6 +59,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
         let symcaches = join_all(request.modules.into_iter().map(move |object_info| {
             symcaches
                 .send(FetchSymCache {
+                    object_type: object_info.ty.clone(),
                     identifier: ObjectId {
                         debug_id: object_info.debug_id.parse().ok(),
                         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),

@@ -206,7 +206,7 @@ impl Actor for ObjectsActor {
 #[derive(Debug, Clone)]
 pub struct FetchObject {
     pub require_debug_info: bool,
-    pub filetypes: Vec<FileType>,
+    pub filetypes: &'static [FileType],
     pub scope: Scope,
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
@@ -229,7 +229,7 @@ impl Handler<FetchObject> for ObjectsActor {
         } = request;
         let mut requests = vec![];
 
-        for filetype in filetypes {
+        for &filetype in filetypes {
             for source in sources.iter().cloned() {
                 requests.push(FetchObjectInternal {
                     source,

@@ -20,7 +20,7 @@ use crate::{
         cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
         objects::{FetchObject, ObjectsActor},
     },
-    types::{FileType, ObjectId, Scope, SourceConfig},
+    types::{FileType, ObjectId, ObjectType, Scope, SourceConfig},
 };
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -115,12 +115,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let object = objects
             .send(FetchObject {
-                filetypes: FileType::debug_types()
-                    .iter()
-                    .cloned()
-                    .chain(FileType::code_types().iter().cloned())
-                    .chain(Some(FileType::Breakpad).into_iter())
-                    .collect(),
+                filetypes: FileType::from_object_type(&self.request.object_type),
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
@@ -157,6 +152,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 /// Information for fetching the symbols for this symcache
 #[derive(Debug, Clone)]
 pub struct FetchSymCache {
+    pub object_type: ObjectType,
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
     pub scope: Scope,
