@@ -113,6 +113,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
         let objects = self.objects.clone();
 
+        // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
+        // in Sentry itself?
         let object = objects
             .send(FetchObject {
                 filetypes: FileType::from_object_type(&self.request.object_type),
