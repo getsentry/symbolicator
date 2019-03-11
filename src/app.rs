@@ -29,6 +29,7 @@ pub enum CliError {
 
 #[derive(StructOpt)]
 struct Cli {
+    /// Path to your configuration file. Defaults to `./config`.
     #[structopt(
         long = "config",
         short = "c",
@@ -102,7 +103,7 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
                 .bind
                 .as_ref()
                 .map(|x| &**x)
-                .unwrap_or("127.0.0.1:8080"),
+                .unwrap_or("127.0.0.1:42069"),
         )
         .unwrap()
         .start();
