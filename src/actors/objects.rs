@@ -205,7 +205,6 @@ impl Actor for ObjectsActor {
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FetchObject {
-    pub require_debug_info: bool,
     pub filetypes: &'static [FileType],
     pub scope: Scope,
     pub identifier: ObjectId,
@@ -225,7 +224,6 @@ impl Handler<FetchObject> for ObjectsActor {
             scope,
             identifier,
             sources,
-            require_debug_info,
         } = request;
         let mut requests = vec![];
 
@@ -258,14 +256,18 @@ impl Handler<FetchObject> for ObjectsActor {
             .and_then(move |responses| {
                 let (_, response) = responses
                     .into_iter()
-                    .filter_map(|(i, response)| {
-                        if response.get_object().ok()?.has_debug_info() || !require_debug_info {
-                            Some((i, response))
-                        } else {
-                            None
-                        }
+                    .min_by_key(|(ref i, response)| {
+                        (
+                            // Prefer object files with debug info over object files without
+                            // Prefer files that contain an object over unparseable files
+                            match response.get_object().map(|x| x.has_debug_info()) {
+                                Ok(true) => 0,
+                                Ok(false) => 1,
+                                Err(_) => 2,
+                            },
+                            *i,
+                        )
                     })
-                    .min_by_key(|(ref i, _)| *i)
                     .ok_or(ObjectError::from(ObjectErrorKind::NotFound))?;
                 Ok(response)
             }),

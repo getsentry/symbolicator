@@ -121,7 +121,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
-                require_debug_info: false, // TODO: undo once pdb works in symbolic
             })
             .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
             .and_then(|x| Ok(x.context(SymCacheErrorKind::Fetching)?));
@@ -132,7 +131,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let result = object.and_then(move |object| {
             threadpool.spawn_handle(lazy(move || {
                 let file = BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
-                let object_inner = object.get_object().context(SymCacheErrorKind::Parse)?;
+                let object_inner = object.get_object().context(SymCacheErrorKind::Fetching)?;
                 let _file = symcache::SymCacheWriter::write_object(&object_inner, file)
                     .context(SymCacheErrorKind::Io)?;
                 Ok(object.scope().clone())
