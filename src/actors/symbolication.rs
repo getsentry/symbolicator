@@ -32,9 +32,7 @@ impl Actor for SymbolicationActor {
 }
 
 impl SymbolicationActor {
-    pub fn new(symcaches: Addr<SymCacheActor>) -> Self {
-        let threadpool = Arc::new(ThreadPool::new());
-
+    pub fn new(symcaches: Addr<SymCacheActor>, threadpool: Arc<ThreadPool>) -> Self {
         SymbolicationActor {
             symcaches,
             threadpool,

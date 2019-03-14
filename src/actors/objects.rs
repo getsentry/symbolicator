@@ -190,11 +190,8 @@ pub struct ObjectsActor {
 }
 
 impl ObjectsActor {
-    pub fn new(cache: Addr<CacheActor<FetchObjectInternal>>) -> Self {
-        ObjectsActor {
-            cache,
-            threadpool: Arc::new(ThreadPool::new()),
-        }
+    pub fn new(cache: Addr<CacheActor<FetchObjectInternal>>, threadpool: Arc<ThreadPool>) -> Self {
+        ObjectsActor { cache, threadpool }
     }
 }
 
@@ -268,7 +265,7 @@ impl Handler<FetchObject> for ObjectsActor {
                             *i,
                         )
                     })
-                    .ok_or(ObjectError::from(ObjectErrorKind::NotFound))?;
+                    .ok_or_else(|| ObjectError::from(ObjectErrorKind::NotFound))?;
                 Ok(response)
             }),
         )

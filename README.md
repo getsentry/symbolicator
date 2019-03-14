@@ -4,21 +4,25 @@
 
 ## Setup
 
+### Config
+
 Write this to a file:
 
 ```yaml
 cache_dir: null
 bind: 127.0.0.1:42069
+metrics: null
 ```
-
-All keys are optional, the values in this config are the defaults.
 
 * `cache_dir`: Path to a directory, to cache symbols. If it is `null`, there is
   no caching. You really want caching in production. See
   [Caching](#ref-caching).
 * `bind`: Host and port for HTTP interface.
+* `metrics`: If set, symbolicator will send metrics to a statsd service. See [Metrics](#ref-metrics)
 
-Start the server: `symbolicator -c ./foo.yml run`
+### Starting
+
+Start the server with: `symbolicator -c ./foo.yml run`
 
 ## Caching
 
@@ -45,3 +49,18 @@ intensive. It is expected that the service is still IO bound.
 
 `symbolicator` mmaps a lot to save memory. It should not consume a lot of
 memory at all.
+
+## Metrics
+
+<a name=ref-metrics />
+
+The `metrics` value in your config is an object with two keys:
+
+```yaml
+metrics:
+statsd: 127.0.0.1:1234
+prefix: sentry.symbolicator
+```
+
+`statsd` points to your service, `prefix` is the prefix added in front of all
+metrics. Both keys are mandatory if you set `metrics` to a non-`null` value.

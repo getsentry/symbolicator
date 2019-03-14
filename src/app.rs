@@ -1,4 +1,4 @@
-use std::{fs::create_dir_all, io, path::PathBuf};
+use std::{fs::create_dir_all, io, path::PathBuf, sync::Arc};
 
 use actix::{self, Actor, Addr};
 
@@ -8,7 +8,14 @@ use failure::Fail;
 
 use structopt::StructOpt;
 
-use crate::config::{get_config, Config, ConfigError};
+use tokio_threadpool::ThreadPool;
+
+use crate::middlewares::Metrics;
+
+use crate::{
+    config::{get_config, Config, ConfigError},
+    metrics,
+};
 
 use crate::{
     actors::{
@@ -70,45 +77,46 @@ pub fn run_main() -> Result<(), CliError> {
 }
 
 pub fn run_server(config: Config) -> Result<(), CliError> {
+    if let Some(ref metrics) = config.metrics {
+        metrics::configure_statsd(&metrics.prefix, &metrics.statsd);
+    }
+
     let sys = actix::System::new("symbolicator");
+
+    let cpu_threadpool = Arc::new(ThreadPool::new());
+    let io_threadpool = Arc::new(ThreadPool::new());
 
     let download_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
     if let Some(ref download_cache_path) = download_cache_path {
         create_dir_all(download_cache_path)?;
     }
     let download_cache = CacheActor::new(download_cache_path).start();
-    let objects = ObjectsActor::new(download_cache).start();
+    let objects = ObjectsActor::new(download_cache, io_threadpool.clone()).start();
 
     let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
     if let Some(ref symcache_path) = symcache_path {
         create_dir_all(symcache_path)?;
     }
     let symcache_cache = CacheActor::new(symcache_path).start();
-    let symcaches = SymCacheActor::new(symcache_cache, objects).start();
+    let symcaches = SymCacheActor::new(symcache_cache, objects, cpu_threadpool.clone()).start();
 
-    let symbolication = SymbolicationActor::new(symcaches).start();
+    let symbolication = SymbolicationActor::new(symcaches, cpu_threadpool.clone()).start();
 
     let state = ServiceState { symbolication };
 
     fn get_app(state: ServiceState) -> ServiceApp {
-        let mut app = App::with_state(state);
+        let mut app = App::with_state(state).middleware(Metrics);
         app = endpoints::symbolicate::register(app);
         app = endpoints::healthcheck::register(app);
         app
     }
 
-    let bind = config
-        .bind
-        .as_ref()
-        .map(|x| &**x)
-        .unwrap_or("127.0.0.1:42069");
-
     server::new(move || get_app(state.clone()))
-        .bind(bind)
+        .bind(&config.bind)
         .unwrap()
         .start();
 
-    println!("Started http server: {}", bind);
+    println!("Started http server: {}", config.bind);
     let _ = sys.run();
     Ok(())
 }

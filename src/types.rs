@@ -283,7 +283,7 @@ impl FileType {
 
     #[inline]
     pub fn all_vec() -> Vec<Self> {
-        Self::all().iter().cloned().collect()
+        Self::all().to_vec()
     }
 }
 

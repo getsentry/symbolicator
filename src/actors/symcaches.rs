@@ -67,9 +67,8 @@ impl SymCacheActor {
     pub fn new(
         symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
         objects: Addr<ObjectsActor>,
+        threadpool: Arc<ThreadPool>,
     ) -> Self {
-        let threadpool = Arc::new(ThreadPool::new());
-
         SymCacheActor {
             symcaches,
             objects,

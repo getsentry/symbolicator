@@ -19,8 +19,26 @@ pub enum ConfigError {
 
 #[derive(serde::Deserialize)]
 pub struct Config {
+    /// Which directory to use when caching. Default is not to cache.
     pub cache_dir: Option<PathBuf>,
-    pub bind: Option<String>,
+    /// Which port to bind for, for HTTP interface
+    #[serde(default = "default_bind")]
+    pub bind: String,
+    /// If set, configuration for reporting metrics to a statsd instance
+    pub metrics: Option<Metrics>,
+}
+
+fn default_bind() -> String {
+    "127.0.0.1:42069".to_owned()
+}
+
+/// Control the metrics.
+#[derive(serde::Deserialize, Debug)]
+pub struct Metrics {
+    /// host/port of statsd instance
+    pub statsd: String,
+    /// The prefix that should be added to all metrics.
+    pub prefix: String,
 }
 
 pub fn get_config(path: Option<PathBuf>) -> Result<Config, ConfigError> {

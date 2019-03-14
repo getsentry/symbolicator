@@ -3,7 +3,7 @@
 lol*
 cachefile-*
 config
-venv
+.venv
 *.pyc
 __pycache__
 objects
