@@ -1,4 +1,4 @@
-use std::{iter::FromIterator, sync::Arc};
+use std::{iter::FromIterator, sync::Arc, time::Duration};
 
 use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
 
@@ -11,6 +11,8 @@ use symbolic::common::{split_path, InstructionInfo};
 use tokio_threadpool::ThreadPool;
 
 use void::Void;
+
+use crate::futures::measure_task;
 
 use crate::{
     actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
@@ -88,37 +90,44 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
 
         let threadpool = self.threadpool.clone();
 
-        let result = symcaches
-            .and_then(move |symcaches| {
-                threadpool.spawn_handle(lazy(move || {
-                    let mut errors = vec![];
+        let result = symcaches.and_then(move |symcaches| {
+            threadpool.spawn_handle(lazy(move || {
+                let mut errors = vec![];
 
-                    let symcache_map = symcaches
-                        .into_iter()
-                        .filter_map(|(object_info, cache)| match cache {
-                            Ok(x) => Some((object_info, x)),
-                            Err(e) => {
-                                log::debug!("Error while getting symcache: {}", LogError(&e));
-                                errors.push(ErrorResponse(format!("{}", LogError(&e))));
-                                None
-                            }
-                        })
-                        .collect::<SymCacheMap>();
-
-                    let stacktraces = threads
-                        .into_iter()
-                        .map(|thread| symbolize_thread(thread, &symcache_map, &meta, &mut errors))
-                        .collect();
-
-                    Ok(SymbolicateFramesResponse::Completed {
-                        stacktraces,
-                        errors,
+                let symcache_map = symcaches
+                    .into_iter()
+                    .filter_map(|(object_info, cache)| match cache {
+                        Ok(x) => Some((object_info, x)),
+                        Err(e) => {
+                            log::debug!("Error while getting symcache: {}", LogError(&e));
+                            errors.push(ErrorResponse(format!("{}", LogError(&e))));
+                            None
+                        }
                     })
-                }))
-            })
-            .into_actor(self);
+                    .collect::<SymCacheMap>();
 
-        Box::new(result)
+                let stacktraces = threads
+                    .into_iter()
+                    .map(|thread| symbolize_thread(thread, &symcache_map, &meta, &mut errors))
+                    .collect();
+
+                Ok(SymbolicateFramesResponse::Completed {
+                    stacktraces,
+                    errors,
+                })
+            }))
+        });
+
+        Box::new(
+            measure_task(
+                "symbolicate",
+                Some((Duration::from_secs(420), || {
+                    SymbolicationErrorKind::Timeout.into()
+                })),
+                result,
+            )
+            .into_actor(self),
+        )
     }
 }
 

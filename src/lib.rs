@@ -9,6 +9,7 @@ pub mod app;
 mod endpoints;
 
 mod config;
+mod futures;
 mod http;
 mod log;
 mod middlewares;

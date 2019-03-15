@@ -200,6 +200,9 @@ pub enum SymbolicationErrorKind {
 
     #[fail(display = "failed to look into cache")]
     Caching,
+
+    #[fail(display = "symbolication took too long")]
+    Timeout,
 }
 
 symbolic::common::derive_failure!(
