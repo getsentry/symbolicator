@@ -7,7 +7,7 @@ use std::{
 };
 
 use actix::{
-    fut::{wrap_future, ActorFuture, WrapFuture},
+    fut::{ActorFuture, WrapFuture},
     Actor, AsyncContext, Context, Handler, Message, ResponseActFuture,
 };
 
@@ -130,14 +130,14 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                     .into_actor(self)
                     .then(clone!(key, |result, slf, _ctx| {
                         slf.current_computations.remove(&key);
-                        wrap_future(
-                            tx.send(match result {
-                                Ok(x) => Ok(Arc::new(x)),
-                                Err(e) => Err(Arc::new(e)),
-                            })
-                            .map_err(|_| ())
-                            .into_future(),
-                        )
+
+                        tx.send(match result {
+                            Ok(x) => Ok(Arc::new(x)),
+                            Err(e) => Err(Arc::new(e)),
+                        })
+                        .map_err(|_| ())
+                        .into_future()
+                        .into_actor(slf)
                     })),
             );
 
@@ -148,13 +148,14 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
             channel
         };
 
-        Box::new(wrap_future(
+        Box::new(
             channel
                 .map_err(|_: SharedError<oneshot::Canceled>| {
                     panic!("Oneshot channel cancelled! Race condition or system shutting down")
                 })
-                .and_then(|result| (*result).clone()),
-        ))
+                .and_then(|result| (*result).clone())
+                .into_actor(self),
+        )
     }
 }
 

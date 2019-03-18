@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, iter::FromIterator, sync::Arc, time::Duration};
 
-use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
-
-use actix::{fut::wrap_future, ActorFuture, AsyncContext};
+use actix::{
+    fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, ResponseActFuture,
+};
 
 use failure::{Fail, ResultExt};
 
@@ -156,15 +156,17 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
             } else {
                 let (tx, rx) = oneshot::channel();
 
-                ctx.spawn(wrap_future(self.do_symbolicate(request).then(
-                    move |result| {
-                        tx.send(match result {
-                            Ok(x) => Ok(Arc::new(x)),
-                            Err(e) => Err(Arc::new(e)),
+                ctx.spawn(
+                    self.do_symbolicate(request)
+                        .then(move |result| {
+                            tx.send(match result {
+                                Ok(x) => Ok(Arc::new(x)),
+                                Err(e) => Err(Arc::new(e)),
+                            })
+                            .map_err(|_| ())
                         })
-                        .map_err(|_| ())
-                    },
-                )));
+                        .into_actor(self),
+                );
 
                 let channel = rx.shared();
                 self.requests.insert(request_id.clone(), channel.clone());
@@ -182,24 +184,26 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                     .timeout(Duration::from_secs(request_meta.timeout))
                     .into_actor(self)
                     .then(move |result, slf, _ctx| {
-                        wrap_future(match result {
+                        match result {
                             Ok(x) => {
                                 slf.requests.remove(&request_id);
-                                Ok(x).into_future()
+                                Ok(x)
                             }
                             Err(e) => {
                                 if let Some(inner) = e.into_inner() {
                                     slf.requests.remove(&request_id);
-                                    Err(inner).into_future()
+                                    Err(inner)
                                 } else {
-                                    Ok(SymbolicateFramesResponse::Pending {}).into_future()
+                                    Ok(SymbolicateFramesResponse::Pending {})
                                 }
                             }
-                        })
+                        }
+                        .into_future()
+                        .into_actor(slf)
                     }),
             )
         } else {
-            Box::new(wrap_future(self.do_symbolicate(request)))
+            Box::new(self.do_symbolicate(request).into_actor(self))
         }
     }
 }
