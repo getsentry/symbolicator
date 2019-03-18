@@ -59,7 +59,7 @@ impl AsRef<str> for Scope {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
     pub addr: HexValue,
 
@@ -142,6 +142,14 @@ pub struct SymbolicateFramesRequest {
     pub threads: Vec<Thread>,
     #[serde(default)]
     pub modules: Vec<ObjectInfo>,
+    #[serde(default)]
+    pub request: Option<RequestMeta>,
+}
+
+#[derive(Deserialize)]
+pub struct RequestMeta {
+    pub timeout: u64,
+    pub request_id: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -160,20 +168,18 @@ pub struct Thread {
     pub stacktrace: Stacktrace,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stacktrace {
     pub frames: Vec<Frame>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse(pub String);
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum SymbolicateFramesResponse {
-    //Pending {
-    //retry_after: usize,
-    //},
+    Pending {},
     Completed {
         stacktraces: Vec<Stacktrace>,
         errors: Vec<ErrorResponse>,
@@ -200,6 +206,9 @@ pub enum SymbolicationErrorKind {
 
     #[fail(display = "failed to look into cache")]
     Caching,
+
+    #[fail(display = "symbolication took too long")]
+    Timeout,
 }
 
 symbolic::common::derive_failure!(

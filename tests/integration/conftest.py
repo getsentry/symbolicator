@@ -100,6 +100,7 @@ class HitCounter:
     def __init__(self, url, hits):
         self.url = url
         self.hits = hits
+        self.before_request = None
 
 
 @pytest.fixture
@@ -108,7 +109,12 @@ def hitcounter(request):
     hits = {}
     hitlock = threading.Lock()
 
+    rv = None
+
     def app(environ, start_response):
+        if rv.before_request:
+            rv.before_request()
+
         try:
             path = environ["PATH_INFO"]
             with hitlock:
@@ -135,4 +141,5 @@ def hitcounter(request):
     server = WSGIServer(application=app, threaded=True)
     server.start()
     request.addfinalizer(server.stop)
-    return HitCounter(url=server.url, hits=hits)
+    rv = HitCounter(url=server.url, hits=hits)
+    return rv

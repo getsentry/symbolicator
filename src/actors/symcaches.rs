@@ -3,6 +3,7 @@ use std::{
     io::{self, BufWriter},
     path::Path,
     sync::Arc,
+    time::Duration,
 };
 
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
@@ -14,6 +15,8 @@ use futures::{future::Future, lazy};
 use symbolic::{common::ByteView, symcache};
 
 use tokio_threadpool::ThreadPool;
+
+use crate::futures::measure_task;
 
 use crate::{
     actors::{
@@ -39,6 +42,9 @@ pub enum SymCacheErrorKind {
 
     #[fail(display = "symcache not found")]
     NotFound,
+
+    #[fail(display = "symcache building took too long")]
+    Timeout,
 }
 
 symbolic::common::derive_failure!(
@@ -137,7 +143,13 @@ impl CacheItemRequest for FetchSymCacheInternal {
             }))
         });
 
-        Box::new(result)
+        Box::new(measure_task(
+            "fetch_symcache",
+            Some((Duration::from_secs(300), || {
+                SymCacheErrorKind::Timeout.into()
+            })),
+            result,
+        ))
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {

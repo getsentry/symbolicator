@@ -3,6 +3,7 @@ use std::{
     io::{self, Write},
     path::Path,
     sync::Arc,
+    time::Duration,
 };
 
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
@@ -21,6 +22,8 @@ use futures::{
 use symbolic::{common::ByteView, debuginfo};
 
 use tokio_threadpool::ThreadPool;
+
+use crate::futures::measure_task;
 
 use crate::types::DirectoryLayout;
 
@@ -57,6 +60,9 @@ pub enum ObjectErrorKind {
 
     #[fail(display = "failed to look into cache")]
     Caching,
+
+    #[fail(display = "object download took too long")]
+    Timeout,
 }
 
 symbolic::common::derive_failure!(
@@ -131,7 +137,11 @@ impl CacheItemRequest for FetchObjectInternal {
             }
         });
 
-        Box::new(result)
+        Box::new(measure_task(
+            "fetch_object",
+            Some((Duration::from_secs(120), || ObjectErrorKind::Timeout.into())),
+            result,
+        ))
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
