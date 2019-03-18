@@ -1,12 +1,21 @@
-use std::{iter::FromIterator, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter::FromIterator, sync::Arc, time::Duration};
 
 use actix::{fut::WrapFuture, Actor, Addr, Context, Handler, ResponseActFuture};
+
+use actix::{fut::wrap_future, ActorFuture, AsyncContext};
 
 use failure::{Fail, ResultExt};
 
 use futures::future::{join_all, lazy, Future};
 
+use futures::{
+    future::{IntoFuture, Shared, SharedError},
+    sync::oneshot,
+};
+
 use symbolic::common::{split_path, InstructionInfo};
+
+use tokio::prelude::FutureExt;
 
 use tokio_threadpool::ThreadPool;
 
@@ -24,9 +33,14 @@ use crate::{
     },
 };
 
+// Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
+// newtype around it.
+type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
+
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
     threadpool: Arc<ThreadPool>,
+    requests: BTreeMap<String, ComputationChannel<SymbolicateFramesResponse, SymbolicationError>>,
 }
 
 impl Actor for SymbolicationActor {
@@ -35,21 +49,19 @@ impl Actor for SymbolicationActor {
 
 impl SymbolicationActor {
     pub fn new(symcaches: Addr<SymCacheActor>, threadpool: Arc<ThreadPool>) -> Self {
+        let requests = BTreeMap::new();
+
         SymbolicationActor {
             symcaches,
             threadpool,
+            requests,
         }
     }
-}
 
-impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
-    type Result = ResponseActFuture<Self, SymbolicateFramesResponse, SymbolicationError>;
-
-    fn handle(
+    fn do_symbolicate(
         &mut self,
         request: SymbolicateFramesRequest,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
+    ) -> impl Future<Item = SymbolicateFramesResponse, Error = SymbolicationError> {
         let sources = request.sources;
         let meta = request.meta;
         let scope = meta.scope.clone();
@@ -118,16 +130,77 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
             }))
         });
 
-        Box::new(
-            measure_task(
-                "symbolicate",
-                Some((Duration::from_secs(420), || {
-                    SymbolicationErrorKind::Timeout.into()
-                })),
-                result,
-            )
-            .into_actor(self),
+        measure_task(
+            "symbolicate",
+            Some((Duration::from_secs(420), || {
+                SymbolicationErrorKind::Timeout.into()
+            })),
+            result,
         )
+    }
+}
+
+impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
+    type Result = ResponseActFuture<Self, SymbolicateFramesResponse, SymbolicationError>;
+
+    fn handle(
+        &mut self,
+        mut request: SymbolicateFramesRequest,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        if let Some(request_meta) = request.request.take() {
+            let request_id = request_meta.request_id.clone();
+
+            let channel = if let Some(channel) = self.requests.get(&request_id) {
+                channel.clone()
+            } else {
+                let (tx, rx) = oneshot::channel();
+
+                ctx.spawn(wrap_future(self.do_symbolicate(request).then(
+                    move |result| {
+                        tx.send(match result {
+                            Ok(x) => Ok(Arc::new(x)),
+                            Err(e) => Err(Arc::new(e)),
+                        })
+                        .map_err(|_| ())
+                    },
+                )));
+
+                let channel = rx.shared();
+                self.requests.insert(request_id.clone(), channel.clone());
+                channel
+            };
+
+            Box::new(
+                channel
+                    .map_err(|_: SharedError<oneshot::Canceled>| {
+                        panic!("Oneshot channel cancelled! Race condition or system shutting down")
+                    })
+                    .and_then(|result| (*result).clone())
+                    .map(|x| (*x).clone())
+                    .map_err(|e| ArcFail(e).context(SymbolicationErrorKind::Mailbox).into())
+                    .timeout(Duration::from_secs(request_meta.timeout))
+                    .into_actor(self)
+                    .then(move |result, slf, _ctx| {
+                        wrap_future(match result {
+                            Ok(x) => {
+                                slf.requests.remove(&request_id);
+                                Ok(x).into_future()
+                            }
+                            Err(e) => {
+                                if let Some(inner) = e.into_inner() {
+                                    slf.requests.remove(&request_id);
+                                    Err(inner).into_future()
+                                } else {
+                                    Ok(SymbolicateFramesResponse::Pending {}).into_future()
+                                }
+                            }
+                        })
+                    }),
+            )
+        } else {
+            Box::new(wrap_future(self.do_symbolicate(request)))
+        }
     }
 }
 
