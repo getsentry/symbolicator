@@ -49,7 +49,7 @@ FAILED_SYMBOLICATION = {
         "failed to look into cache\n"
         "  caused by: failed to fetch objects\n"
         "  caused by: no symbols found",
-        "Failed to symbolicate addr 0x749e8630: symbol not found",
+        "Failed to symbolicate addr 0x749e8630: no debug file found for address",
     ],
     "stacktraces": [
         {

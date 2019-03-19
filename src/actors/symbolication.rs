@@ -280,7 +280,7 @@ fn symbolize_thread(
 
             let (symcache_info, symcache) = caches
                 .lookup_symcache(caller_address)
-                .ok_or(SymbolicationErrorKind::NotFound)?;
+                .ok_or(SymbolicationErrorKind::SymCacheNotFound)?;
             let symcache = symcache
                 .get_symcache()
                 .context(SymbolicationErrorKind::SymCache)?;

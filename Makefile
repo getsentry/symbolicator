@@ -28,6 +28,7 @@ format: pyformat rsformat
 .PHONY: format
 
 rsformat:
+	cargo +nightly fmt  # imports
 	cargo +stable fmt
 .PHONY: rsformat
 

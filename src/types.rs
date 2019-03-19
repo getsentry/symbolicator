@@ -13,31 +13,46 @@ use url::Url;
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
-    Http {
-        id: String,
-        #[serde(with = "url_serde")]
-        url: Url,
+    Sentry(SentrySourceConfig),
+    Http(HttpSourceConfig),
+}
 
-        layout: DirectoryLayout,
+#[derive(Deserialize, Clone, Debug)]
+pub struct SentrySourceConfig {
+    pub id: String,
+    #[serde(with = "url_serde")]
+    pub url: Url,
 
-        #[serde(default = "FileType::all_vec")]
-        filetypes: Vec<FileType>,
+    pub token: String,
+}
 
-        #[serde(default)]
-        is_public: bool,
-    },
+#[derive(Deserialize, Clone, Debug)]
+pub struct HttpSourceConfig {
+    pub id: String,
+    #[serde(with = "url_serde")]
+    pub url: Url,
+
+    pub layout: DirectoryLayout,
+
+    #[serde(default = "FileType::all_vec")]
+    pub filetypes: Vec<FileType>,
+
+    #[serde(default)]
+    pub is_public: bool,
 }
 
 impl SourceConfig {
     pub fn is_public(&self) -> bool {
         match *self {
-            SourceConfig::Http { is_public, .. } => is_public,
+            SourceConfig::Http(ref x) => x.is_public,
+            SourceConfig::Sentry(_) => false,
         }
     }
 
     pub fn id(&self) -> &str {
         match *self {
-            SourceConfig::Http { ref id, .. } => id,
+            SourceConfig::Http(ref x) => &x.id,
+            SourceConfig::Sentry(ref x) => &x.id,
         }
     }
 }
@@ -201,7 +216,10 @@ pub enum SymbolicationErrorKind {
     #[fail(display = "failed to parse symcache during symbolication")]
     Parse,
 
-    #[fail(display = "symbol not found")]
+    #[fail(display = "no debug file found for address")]
+    SymCacheNotFound,
+
+    #[fail(display = "no symbol found in debug file")]
     NotFound,
 
     #[fail(display = "failed to look into cache")]
