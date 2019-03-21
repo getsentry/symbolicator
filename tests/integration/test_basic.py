@@ -2,9 +2,6 @@ import pytest
 import time
 import threading
 
-TIMEOUT = {"status": "pending"}
-
-
 WINDOWS_DATA = {
     "threads": [
         {
@@ -224,12 +221,13 @@ def test_sources_without_filetypes(symbolicator, hitcounter):
     assert not hitcounter.hits
 
 
-def test_timeouts(symbolicator, hitcounter):
+@pytest.mark.parametrize("predefined_request_id", [None, "123"])
+def test_timeouts(symbolicator, hitcounter, predefined_request_id):
     hitcounter.before_request = lambda: time.sleep(3)
 
     input = dict(
         meta={"arch": "x86", "scope": "myscope"},
-        request={"timeout": 1, "request_id": "123"},
+        request={"timeout": 1, "request_id": predefined_request_id},
         sources=[
             {
                 "type": "http",
@@ -250,15 +248,25 @@ def test_timeouts(symbolicator, hitcounter):
     for _ in range(10):
         response = service.post("/symbolicate", json=input)
         response.raise_for_status()
-
-        responses.append(response.json())
-        if responses[-1] != TIMEOUT:
+        response = response.json()
+        responses.append(response)
+        if response["status"] == "completed":
             break
+        elif response["status"] == "pending":
+            if predefined_request_id:
+                assert predefined_request_id == response["request_id"]
+            else:
+                input["request"]["request_id"] = response["request_id"]
+        else:
+            assert False
+
+    for response in responses[:-1]:
+        assert response["status"] == "pending"
+        assert response["request_id"] == input["request"]["request_id"]
+
+    assert responses[-1] == SUCCESS_WINDOWS
+    assert len(responses) > 1
 
     assert hitcounter.hits == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
     }
-
-    assert responses[:-1] == [TIMEOUT] * (len(responses) - 1)
-    assert responses[-1] == SUCCESS_WINDOWS
-    assert len(responses) > 1

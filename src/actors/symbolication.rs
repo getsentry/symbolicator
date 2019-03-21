@@ -19,6 +19,8 @@ use tokio::prelude::FutureExt;
 
 use tokio_threadpool::ThreadPool;
 
+use uuid;
+
 use void::Void;
 
 use crate::futures::measure_task;
@@ -149,7 +151,10 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
         ctx: &mut Self::Context,
     ) -> Self::Result {
         if let Some(request_meta) = request.request.take() {
-            let request_id = request_meta.request_id.clone();
+            let request_id = request_meta
+                .request_id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
             let channel = if let Some(channel) = self.requests.get(&request_id) {
                 channel.clone()
@@ -194,7 +199,12 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                                     slf.requests.remove(&request_id);
                                     Err(inner)
                                 } else {
-                                    Ok(SymbolicateFramesResponse::Pending {})
+                                    Ok(SymbolicateFramesResponse::Pending {
+                                        request_id,
+                                        // XXX(markus): Probably need a better estimation at some
+                                        // point.
+                                        retry_after: 120,
+                                    })
                                 }
                             }
                         }

@@ -166,7 +166,8 @@ pub struct SymbolicateFramesRequest {
 #[derive(Deserialize)]
 pub struct RequestMeta {
     pub timeout: u64,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -196,7 +197,10 @@ pub struct ErrorResponse(pub String);
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum SymbolicateFramesResponse {
-    Pending {},
+    Pending {
+        request_id: String,
+        retry_after: usize,
+    },
     Completed {
         stacktraces: Vec<Stacktrace>,
         errors: Vec<ErrorResponse>,
