@@ -76,11 +76,11 @@ impl SymbolicationActor {
                         debug_id: object_info.debug_id.parse().ok(),
                         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
                         debug_name: object_info
-                            .debug_name
+                            .debug_file
                             .as_ref()
                             .map(|x| split_path(x).1.to_owned()), // TODO
                         code_name: object_info
-                            .code_name
+                            .code_file
                             .as_ref()
                             .map(|x| split_path(x).1.to_owned()), // TODO
                     },
@@ -227,12 +227,14 @@ impl FromIterator<(ObjectInfo, Arc<SymCache>)> for SymCacheMap {
 
 impl SymCacheMap {
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _)| info.address.0);
+        self.inner.sort_by_key(|(info, _)| info.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
         self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
-            info1.size.get_or_insert(info2.address.0 - info1.address.0);
+            info1
+                .image_size
+                .get_or_insert(info2.image_addr.0 - info1.image_addr.0);
             false
         });
     }
@@ -240,7 +242,7 @@ impl SymCacheMap {
     fn lookup_symcache(&self, addr: u64) -> Option<(&ObjectInfo, &SymCache)> {
         for (ref info, ref cache) in self.inner.iter().peekable() {
             // When `size` is None, this must be the last item.
-            if info.address.0 <= addr && addr <= info.address.0 + info.size? {
+            if info.image_addr.0 <= addr && addr <= info.image_addr.0 + info.image_size? {
                 return Some((info, cache));
             }
         }
@@ -267,7 +269,7 @@ fn symbolize_thread(
         |stacktrace: &mut Stacktrace, i, frame: &Frame| -> Result<(), SymbolicationError> {
             let caller_address = if let Some(ip_reg) = ip_reg {
                 let instruction = InstructionInfo {
-                    addr: frame.addr.0,
+                    addr: frame.instruction_addr.0,
                     arch: meta.arch,
                     signal: meta.signal,
                     crashing_frame: i == 0,
@@ -275,7 +277,7 @@ fn symbolize_thread(
                 };
                 instruction.caller_address()
             } else {
-                frame.addr.0
+                frame.instruction_addr.0
             };
 
             let (symcache_info, symcache) = caches
@@ -288,7 +290,7 @@ fn symbolize_thread(
             let mut had_frames = false;
 
             for line_info in symcache
-                .lookup(caller_address - symcache_info.address.0)
+                .lookup(caller_address - symcache_info.image_addr.0)
                 .context(SymbolicationErrorKind::SymCache)?
             {
                 let line_info = line_info.context(SymbolicationErrorKind::SymCache)?;
@@ -296,7 +298,7 @@ fn symbolize_thread(
 
                 stacktrace.frames.push(Frame {
                     symbol: Some(line_info.symbol().to_string()),
-                    name: Some(line_info.function_name().as_str().to_owned()), // TODO: demangle
+                    function: Some(line_info.function_name().as_str().to_owned()), // TODO: demangle
                     ..frame.clone()
                 });
             }
@@ -309,7 +311,7 @@ fn symbolize_thread(
         };
 
     for (i, frame) in thread.stacktrace.frames.into_iter().enumerate() {
-        let addr = frame.addr;
+        let addr = frame.instruction_addr;
         let res = symbolize_frame(&mut stacktrace, i, &frame);
         if let Err(e) = res {
             stacktrace.frames.push(frame);

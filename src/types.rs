@@ -74,20 +74,22 @@ impl AsRef<str> for Scope {
     }
 }
 
+/// See semaphore's Frame for docs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
-    pub addr: HexValue,
+    pub instruction_addr: HexValue,
 
-    pub module: Option<String>, // NOTE: This is "package" in Sentry
-    pub name: Option<String>,   // Only present if ?demangle was set
-    pub language: Option<String>,
+    pub package: Option<String>, // NOTE: This is "package" in Sentry
+    pub lang: Option<String>,
     pub symbol: Option<String>,
-    pub symbol_address: Option<HexValue>,
-    pub file: Option<String>,
-    pub line: Option<u64>,
-    pub line_address: Option<HexValue>, // NOTE: This does not exist in Sentry
+    pub function: Option<String>,
+    pub symbol_addr: Option<HexValue>,
+    pub filename: Option<String>,
+    pub lineno: Option<u64>,
+    pub line_addr: Option<HexValue>, // NOTE: This does not exist in Sentry
 }
 
+/// See semaphore's DebugImage for docs
 #[derive(Deserialize)]
 pub struct ObjectInfo {
     #[serde(rename = "type")]
@@ -97,15 +99,15 @@ pub struct ObjectInfo {
     pub code_id: Option<String>,
 
     #[serde(default)]
-    pub debug_name: Option<String>,
+    pub debug_file: Option<String>,
 
     #[serde(default)]
-    pub code_name: Option<String>,
+    pub code_file: Option<String>,
 
-    pub address: HexValue,
+    pub image_addr: HexValue,
 
     #[serde(default)]
-    pub size: Option<u64>,
+    pub image_size: Option<u64>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -301,9 +303,9 @@ impl FileType {
     pub fn from_object_type(ty: &ObjectType) -> &'static [Self] {
         use FileType::*;
         match &ty.0[..] {
-            "macho" | "apple" => &[MachDebug, MachCode, Breakpad],
+            "macho" => &[MachDebug, MachCode, Breakpad],
             "pe" => &[PDB, PE, Breakpad],
-            "elf" => &[PDB, PE, Breakpad],
+            "elf" => &[ELFDebug, ELFCode, Breakpad],
             _ => Self::all(),
         }
     }
