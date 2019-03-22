@@ -85,6 +85,7 @@ pub struct Frame {
     pub function: Option<String>,
     pub symbol_addr: Option<HexValue>,
     pub filename: Option<String>,
+    pub abs_path: Option<String>,
     pub lineno: Option<u64>,
     pub line_addr: Option<HexValue>, // NOTE: This does not exist in Sentry
 
@@ -194,7 +195,12 @@ pub struct Stacktrace {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ErrorResponse(pub String);
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ErrorResponse {
+    NativeMissingDsym { data: String },
+    //NativeBadDsym { data: String } ,
+    //NativeMissingSymbol { data: String },
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]

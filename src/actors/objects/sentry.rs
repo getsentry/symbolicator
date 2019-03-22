@@ -77,6 +77,7 @@ pub fn prepare_downloads(
     Box::new(
         client::get(&index_url)
             .header("User-Agent", USER_AGENT)
+            .header("Authorization", format!("Bearer {}", source.token))
             .finish()
             .unwrap()
             .send()
@@ -130,6 +131,7 @@ pub fn download_from_source(
 
     let response = client::get(&download_url)
         .header("User-Agent", USER_AGENT)
+        .header("Authorization", format!("Bearer {}", source.token))
         .finish()
         .unwrap()
         .send()

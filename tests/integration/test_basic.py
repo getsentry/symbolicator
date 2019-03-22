@@ -27,12 +27,14 @@ SUCCESS_WINDOWS = {
         {
             "frames": [
                 {
+                    "original_index": 0,
                     "instruction_addr": "0x749e8630",
-                    "filename": None,
+                    "filename": "",
                     "lang": None,
                     "lineno": None,
                     "line_addr": None,
-                    "package": None,
+                    "abs_path": "",
+                    "package": "C:\\Windows\\System32\\kernel32.dll",
                     "function": "@BaseThreadInitThunk@12",
                     "symbol": "@BaseThreadInitThunk@12",
                     "symbol_addr": None,
@@ -46,17 +48,27 @@ SUCCESS_WINDOWS = {
 
 FAILED_SYMBOLICATION = {
     "errors": [
-        "failed to look into cache\n"
-        "  caused by: failed to fetch objects\n"
-        "  caused by: no symbols found",
-        "Failed to symbolicate addr 0x749e8630: no debug file found for address",
+        {
+            "data": (
+                "failed to look into cache\n"
+                "  caused by: failed to fetch objects\n"
+                "  caused by: no symbols found"
+            ),
+            "type": "nativeMissingDsym",
+        },
+        {
+            "data": "Failed to symbolicate addr 0x749e8630: no debug file found for address",
+            "type": "nativeMissingDsym",
+        },
     ],
     "stacktraces": [
         {
             "frames": [
                 {
+                    "original_index": 0,
                     "instruction_addr": "0x749e8630",
                     "filename": None,
+                    "abs_path": None,
                     "lang": None,
                     "lineno": None,
                     "line_addr": None,

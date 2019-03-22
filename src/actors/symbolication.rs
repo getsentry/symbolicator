@@ -114,7 +114,10 @@ impl SymbolicationActor {
                         Ok(x) => Some((object_info, x)),
                         Err(e) => {
                             log::debug!("Error while getting symcache: {}", LogError(&e));
-                            errors.push(ErrorResponse(format!("{}", LogError(&e))));
+                            errors.push(ErrorResponse::NativeMissingDsym {
+                                // TODO: Proper error types
+                                data: LogError(&e).to_string(),
+                            });
                             None
                         }
                     })
@@ -306,9 +309,13 @@ fn symbolize_thread(
                 let line_info = line_info.context(SymbolicationErrorKind::SymCache)?;
                 had_frames = true;
 
+                // TODO(jauer): Verify, this was a hackjob
                 stacktrace.frames.push(Frame {
                     symbol: Some(line_info.symbol().to_string()),
-                    function: Some(line_info.function_name().as_str().to_owned()), // TODO: demangle
+                    abs_path: Some(line_info.path()),
+                    package: symcache_info.code_file.clone(),
+                    function: Some(line_info.function_name().to_string()), // TODO: demangle
+                    filename: Some(line_info.filename().to_string()), // TODO: Relative path to compilation_dir
                     ..frame.clone()
                 });
             }
@@ -327,11 +334,10 @@ fn symbolize_thread(
         let res = symbolize_frame(&mut stacktrace, i, &frame);
         if let Err(e) = res {
             stacktrace.frames.push(frame);
-            errors.push(ErrorResponse(format!(
-                "Failed to symbolicate addr {}: {}",
-                addr,
-                LogError(&e)
-            )));
+            errors.push(ErrorResponse::NativeMissingDsym {
+                // TODO: Proper error types
+                data: format!("Failed to symbolicate addr {}: {}", addr, LogError(&e)),
+            });
         };
     }
 
