@@ -320,8 +320,10 @@ fn symbolize_thread(
             }
         };
 
-    for (i, frame) in thread.stacktrace.frames.into_iter().enumerate() {
+    for (i, mut frame) in thread.stacktrace.frames.into_iter().enumerate() {
         let addr = frame.instruction_addr;
+        frame.original_index = Some(i);
+
         let res = symbolize_frame(&mut stacktrace, i, &frame);
         if let Err(e) = res {
             stacktrace.frames.push(frame);

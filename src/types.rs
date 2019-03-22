@@ -79,7 +79,7 @@ impl AsRef<str> for Scope {
 pub struct Frame {
     pub instruction_addr: HexValue,
 
-    pub package: Option<String>, // NOTE: This is "package" in Sentry
+    pub package: Option<String>,
     pub lang: Option<String>,
     pub symbol: Option<String>,
     pub function: Option<String>,
@@ -87,6 +87,8 @@ pub struct Frame {
     pub filename: Option<String>,
     pub lineno: Option<u64>,
     pub line_addr: Option<HexValue>, // NOTE: This does not exist in Sentry
+
+    pub original_index: Option<usize>,
 }
 
 /// See semaphore's DebugImage for docs
