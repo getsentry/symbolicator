@@ -318,6 +318,7 @@ fn symbolize_thread(
                     package: symcache_info.code_file.clone(),
                     function: Some(line_info.function_name().to_string()), // TODO: demangle
                     filename: Some(line_info.filename().to_string()), // TODO: Relative path to compilation_dir
+                    lineno: Some(line_info.line()),
                     ..frame.clone()
                 });
             }

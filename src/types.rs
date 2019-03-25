@@ -86,7 +86,7 @@ pub struct Frame {
     pub symbol_addr: Option<HexValue>,
     pub filename: Option<String>,
     pub abs_path: Option<String>,
-    pub lineno: Option<u64>,
+    pub lineno: Option<u32>,
     pub line_addr: Option<HexValue>, // NOTE: This does not exist in Sentry
 
     pub original_index: Option<usize>,
