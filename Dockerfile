@@ -1,4 +1,4 @@
-FROM rust:1.33-slim-stretch AS symbolicator-build
+FROM rust:slim-stretch AS symbolicator-build
 
 WORKDIR /work
 

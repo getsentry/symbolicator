@@ -1,0 +1,34 @@
+---
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-t",
+        "us.gcr.io/$PROJECT_ID/$REPO_NAME:latest",
+        "-t",
+        "us.gcr.io/$PROJECT_ID/$REPO_NAME:$COMMIT_SHA",
+        ".",
+      ]
+#   # Login to provide credentials for the push.
+#   # PASSWORD is decrypted before this step runs.
+#   # Note: You need a shell to resolve environment variables with $$
+#   - name: "gcr.io/cloud-builders/docker"
+#     entrypoint: "bash"
+#     args: ["-c", "docker login --username=[MY-USER] --password=$$PASSWORD"]
+#     secretEnv: ["PASSWORD"]
+
+#   # Push the image to Dockerhub.
+#   - name: "gcr.io/cloud-builders/docker"
+#     args: ["push", "[MY-USER]/myubuntu"]
+
+# secrets:
+#   - kmsKeyName: projects/[PROJECT-ID]/locations/global/keyRings/[KEYRING-NAME]/cryptoKeys/[KEY-NAME]
+#     secretEnv:
+#       PASSWORD: <base64-encoded encrypted Dockerhub password>
+
+images:
+  [
+    "us.gcr.io/$PROJECT_ID/$REPO_NAME:latest",
+    "us.gcr.io/$PROJECT_ID/$REPO_NAME:$COMMIT_SHA",
+  ]
