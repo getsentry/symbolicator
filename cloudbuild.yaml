@@ -1,0 +1,20 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  args: [
+    '-c',
+    'docker pull us.gcr.io/$PROJECT_ID/symbolicator:latest || true',
+  ]
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+            'build',
+            '-t', 'us.gcr.io/$PROJECT_ID/symbolicator:latest',
+            '-t', 'us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA',
+            '--cache-from', 'us.gcr.io/$PROJECT_ID/symbolicator:latest',
+            '.'
+        ]
+images: [
+  'us.gcr.io/$PROJECT_ID/symbolicator:latest',
+  'us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA',
+  ]
+timeout: 60m
