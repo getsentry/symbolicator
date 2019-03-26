@@ -32,7 +32,7 @@ steps:
         "build",
         "-t", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
         "-t", "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
-        "--cache-from', 'us.gcr.io/$PROJECT_ID/symbolicator:builder",
+        "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:builder",
         "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
         ".",
       ]
