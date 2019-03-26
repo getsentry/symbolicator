@@ -36,10 +36,17 @@ steps:
         "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
         ".",
       ]
+
+  # Only tag "latest" when on master
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+    - '-c'
+    - '[[ "$BRANCH_NAME" == "master" ]] && docker push us.gcr.io/$PROJECT_ID/symbolicator:latest || true'
+
 images:
   [
     "us.gcr.io/$PROJECT_ID/symbolicator:builder",
-    "us.gcr.io/$PROJECT_ID/symbolicator:latest",
     "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
   ]
 timeout: 60m
