@@ -31,7 +31,7 @@ SUCCESS_WINDOWS = {
                     "instruction_addr": "0x749e8630",
                     "filename": "",
                     "lang": None,
-                    "lineno": None,
+                    "lineno": 0,
                     "line_addr": None,
                     "abs_path": "",
                     "package": "C:\\Windows\\System32\\kernel32.dll",
@@ -127,13 +127,13 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
                 o.basename: o.size()
                 for o in cache_dir_param.join("objects").join(stored_in_scope).listdir()
             } == {
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.pdb": 846_848,
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.pe": 0,
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.breakpad": 0,
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.elf-code": 0,
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.elf-debug": 0,
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.mach-code": 0,
-                "microsoft.ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_.mach-debug": 0,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__pdb": 846_848,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__pe": 0,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__breakpad": 0,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__elf-code": 0,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__elf-debug": 0,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__mach-code": 0,
+                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__mach-debug": 0,
             }
 
             symcache, = (

@@ -165,10 +165,14 @@ fn get_scope_path(
     cache_key: &str,
 ) -> Result<Option<PathBuf>, io::Error> {
     let dir = match cache_dir {
-        Some(x) => x.join(scope.as_ref()),
+        Some(x) => x.join(safe_path_segment(scope.as_ref())),
         None => return Ok(None),
     };
 
     create_dir_all(&dir)?;
-    Ok(Some(dir.join(cache_key)))
+    Ok(Some(dir.join(safe_path_segment(cache_key))))
+}
+
+fn safe_path_segment(s: &str) -> String {
+    s.replace(".", "_").replace("/", "_")
 }
