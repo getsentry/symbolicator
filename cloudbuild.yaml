@@ -4,7 +4,7 @@ steps:
     args:
       [
         "-c",
-        "docker pull us.gcr.io/$PROJECT_ID/$REPO_NAME:latest || true"
+        "docker pull us.gcr.io/$PROJECT_ID/symbolicator:latest || true"
       ]
 
   # Pull the image with the first build stage
@@ -13,7 +13,7 @@ steps:
     args:
       [
         "-c",
-        "docker pull us.gcr.io/$PROJECT_ID/$REPO_NAME:builder || true"
+        "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"
       ]
 
   - name: "gcr.io/cloud-builders/docker"
@@ -21,8 +21,8 @@ steps:
       [
         "build",
         "--target", "symbolicator-build",
-        "-t", "us.gcr.io/$PROJECT_ID/$REPO_NAME:builder",
-        "--cache-from", "us.gcr.io/$PROJECT_ID/$REPO_NAME:builder",
+        "-t", "us.gcr.io/$PROJECT_ID/symbolicator:builder",
+        "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:builder",
         ".",
       ]
 
@@ -30,16 +30,16 @@ steps:
     args:
       [
         "build",
-        "-t", "us.gcr.io/$PROJECT_ID/$REPO_NAME:latest",
-        "-t", "us.gcr.io/$PROJECT_ID/$REPO_NAME:$COMMIT_SHA",
-        "--cache-from', 'us.gcr.io/$PROJECT_ID/$REPO_NAME:builder",
-        "--cache-from", "us.gcr.io/$PROJECT_ID/$REPO_NAME:latest",
+        "-t", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
+        "-t", "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
+        "--cache-from', 'us.gcr.io/$PROJECT_ID/symbolicator:builder",
+        "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
         ".",
       ]
 images:
   [
-    "us.gcr.io/$PROJECT_ID/$REPO_NAME:builder",
-    "us.gcr.io/$PROJECT_ID/$REPO_NAME:latest",
-    "us.gcr.io/$PROJECT_ID/$REPO_NAME:$COMMIT_SHA",
+    "us.gcr.io/$PROJECT_ID/symbolicator:builder",
+    "us.gcr.io/$PROJECT_ID/symbolicator:latest",
+    "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
   ]
 timeout: 60m
