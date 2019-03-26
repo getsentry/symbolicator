@@ -9,15 +9,15 @@ use futures::future::Future;
 use crate::{
     app::{ServiceApp, ServiceState},
     types::{
-        SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError,
+        SymbolicationRequest, SymbolicationResponse, SymbolicationError,
         SymbolicationErrorKind,
     },
 };
 
 fn symbolicate_frames(
     state: State<ServiceState>,
-    request: Json<SymbolicateFramesRequest>,
-) -> ResponseFuture<Json<SymbolicateFramesResponse>, Error> {
+    request: Json<SymbolicationRequest>,
+) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     Box::new(
         state
             .symbolication

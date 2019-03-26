@@ -6,7 +6,7 @@ use failure::{Backtrace, Fail};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use symbolic::common::{Arch, CodeId, DebugId};
+use symbolic::common::{Arch, CodeId, DebugId, Language};
 
 use url::Url;
 
@@ -80,14 +80,13 @@ pub struct Frame {
     pub instruction_addr: HexValue,
 
     pub package: Option<String>,
-    pub lang: Option<String>,
+    pub lang: Option<Language>,
     pub symbol: Option<String>,
     pub function: Option<String>,
-    pub symbol_addr: Option<HexValue>,
     pub filename: Option<String>,
     pub abs_path: Option<String>,
     pub lineno: Option<u32>,
-    pub line_addr: Option<HexValue>, // NOTE: This does not exist in Sentry
+    pub sym_addr: Option<HexValue>,
 
     pub original_index: Option<usize>,
 }
@@ -97,6 +96,9 @@ pub struct Frame {
 pub struct ObjectInfo {
     #[serde(rename = "type")]
     pub ty: ObjectType,
+
+    #[serde(default)]
+    pub arch: Arch,
 
     pub debug_id: String,
     pub code_id: Option<String>,
@@ -154,7 +156,7 @@ impl Serialize for HexValue {
 }
 
 #[derive(Deserialize)]
-pub struct SymbolicateFramesRequest {
+pub struct SymbolicationRequest {
     pub meta: Meta,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
@@ -177,8 +179,6 @@ pub struct RequestMeta {
 pub struct Meta {
     #[serde(default)]
     pub signal: Option<u32>,
-    #[serde(default)]
-    pub arch: Arch,
     pub scope: Scope,
 }
 
@@ -204,7 +204,7 @@ pub enum ErrorResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
-pub enum SymbolicateFramesResponse {
+pub enum SymbolicationResponse {
     Pending {
         request_id: String,
         retry_after: usize,
@@ -215,8 +215,8 @@ pub enum SymbolicateFramesResponse {
     },
 }
 
-impl Message for SymbolicateFramesRequest {
-    type Result = Result<SymbolicateFramesResponse, SymbolicationError>;
+impl Message for SymbolicationRequest {
+    type Result = Result<SymbolicationResponse, SymbolicationError>;
 }
 
 #[derive(Debug, Fail)]

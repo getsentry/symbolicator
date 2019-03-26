@@ -29,15 +29,14 @@ SUCCESS_WINDOWS = {
                 {
                     "original_index": 0,
                     "instruction_addr": "0x749e8630",
-                    "filename": "",
+                    "filename": None,
                     "lang": None,
                     "lineno": 0,
-                    "line_addr": None,
-                    "abs_path": "",
+                    "abs_path": None,
                     "package": "C:\\Windows\\System32\\kernel32.dll",
                     "function": "@BaseThreadInitThunk@12",
                     "symbol": "@BaseThreadInitThunk@12",
-                    "symbol_addr": None,
+                    "sym_addr": "0x749e8630",
                 }
             ]
         }
@@ -71,11 +70,10 @@ FAILED_SYMBOLICATION = {
                     "abs_path": None,
                     "lang": None,
                     "lineno": None,
-                    "line_addr": None,
                     "package": None,
                     "function": None,
                     "symbol": None,
-                    "symbol_addr": None,
+                    "sym_addr": None,
                 }
             ]
         }

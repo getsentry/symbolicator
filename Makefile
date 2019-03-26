@@ -5,7 +5,7 @@ export SEMAPHORE_PYTHON_VERSION := python3
 	virtualenv -p $$SEMAPHORE_PYTHON_VERSION .venv
 
 integration-test: .venv/bin/python
-	.venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist
+	.venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist pytest-icdiff
 	cargo build
 	@.venv/bin/pytest tests --reruns 5 -n12 -vv
 .PHONY: integration-test

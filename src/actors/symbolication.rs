@@ -13,7 +13,7 @@ use futures::{
     sync::oneshot,
 };
 
-use symbolic::common::{split_path, InstructionInfo};
+use symbolic::common::{split_path, InstructionInfo, Language};
 
 use tokio::prelude::FutureExt;
 
@@ -29,8 +29,8 @@ use crate::{
     actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
     log::LogError,
     types::{
-        ArcFail, ErrorResponse, Frame, Meta, ObjectId, ObjectInfo, Stacktrace,
-        SymbolicateFramesRequest, SymbolicateFramesResponse, SymbolicationError,
+        ArcFail, ErrorResponse, Frame, HexValue, Meta, ObjectId, ObjectInfo, Stacktrace,
+        SymbolicationRequest, SymbolicationResponse, SymbolicationError,
         SymbolicationErrorKind, Thread,
     },
 };
@@ -42,7 +42,7 @@ type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests: BTreeMap<String, ComputationChannel<SymbolicateFramesResponse, SymbolicationError>>,
+    requests: BTreeMap<String, ComputationChannel<SymbolicationResponse, SymbolicationError>>,
 }
 
 impl Actor for SymbolicationActor {
@@ -62,8 +62,8 @@ impl SymbolicationActor {
 
     fn do_symbolicate(
         &mut self,
-        request: SymbolicateFramesRequest,
-    ) -> impl Future<Item = SymbolicateFramesResponse, Error = SymbolicationError> {
+        request: SymbolicationRequest,
+    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let sources = request.sources;
         let meta = request.meta;
         let scope = meta.scope.clone();
@@ -128,7 +128,7 @@ impl SymbolicationActor {
                     .map(|thread| symbolize_thread(thread, &symcache_map, &meta, &mut errors))
                     .collect();
 
-                Ok(SymbolicateFramesResponse::Completed {
+                Ok(SymbolicationResponse::Completed {
                     stacktraces,
                     errors,
                 })
@@ -145,12 +145,12 @@ impl SymbolicationActor {
     }
 }
 
-impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
-    type Result = ResponseActFuture<Self, SymbolicateFramesResponse, SymbolicationError>;
+impl Handler<SymbolicationRequest> for SymbolicationActor {
+    type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
 
     fn handle(
         &mut self,
-        mut request: SymbolicateFramesRequest,
+        mut request: SymbolicationRequest,
         ctx: &mut Self::Context,
     ) -> Self::Result {
         if let Some(request_meta) = request.request.take() {
@@ -204,7 +204,7 @@ impl Handler<SymbolicateFramesRequest> for SymbolicationActor {
                                     slf.requests.remove(&request_id);
                                     Err(inner)
                                 } else {
-                                    Ok(SymbolicateFramesResponse::Pending {
+                                    Ok(SymbolicationResponse::Pending {
                                         request_id,
                                         // XXX(markus): Probably need a better estimation at some
                                         // point.
@@ -272,35 +272,39 @@ fn symbolize_thread(
     meta: &Meta,
     errors: &mut Vec<ErrorResponse>,
 ) -> Stacktrace {
-    let ip_reg = if let Some(ip_reg_name) = meta.arch.ip_register_name() {
-        Some(thread.registers.get(ip_reg_name).map(|x| x.0))
-    } else {
-        None
-    };
+    let registers = thread.registers;
 
     let mut stacktrace = Stacktrace { frames: vec![] };
 
     let symbolize_frame =
         |stacktrace: &mut Stacktrace, i, frame: &Frame| -> Result<(), SymbolicationError> {
-            let caller_address = if let Some(ip_reg) = ip_reg {
-                let instruction = InstructionInfo {
-                    addr: frame.instruction_addr.0,
-                    arch: meta.arch,
-                    signal: meta.signal,
-                    crashing_frame: i == 0,
-                    ip_reg,
-                };
-                instruction.caller_address()
-            } else {
-                frame.instruction_addr.0
-            };
-
             let (symcache_info, symcache) = caches
-                .lookup_symcache(caller_address)
+                .lookup_symcache(frame.instruction_addr.0)
                 .ok_or(SymbolicationErrorKind::SymCacheNotFound)?;
             let symcache = symcache
                 .get_symcache()
                 .context(SymbolicationErrorKind::SymCache)?;
+
+            let crashing_frame = i == 0;
+
+            let ip_reg = if crashing_frame {
+                symcache_info
+                    .arch
+                    .ip_register_name()
+                    .and_then(|ip_reg_name| registers.get(ip_reg_name))
+                    .map(|x| x.0)
+            } else {
+                None
+            };
+
+            let instruction_info = InstructionInfo {
+                addr: frame.instruction_addr.0,
+                arch: symcache_info.arch,
+                signal: meta.signal,
+                crashing_frame,
+                ip_reg,
+            };
+            let caller_address = instruction_info.caller_address();
 
             let mut had_frames = false;
 
@@ -311,15 +315,36 @@ fn symbolize_thread(
                 let line_info = line_info.context(SymbolicationErrorKind::SymCache)?;
                 had_frames = true;
 
-                // TODO(jauer): Verify, this was a hackjob
+                let abs_path = line_info.path();
+                let filename = line_info.filename().to_string(); // TODO: Relative path to compilation_dir
+                let lang = line_info.language();
                 stacktrace.frames.push(Frame {
                     symbol: Some(line_info.symbol().to_string()),
-                    abs_path: Some(line_info.path()),
+                    abs_path: if !abs_path.is_empty() {
+                        Some(abs_path)
+                    } else {
+                        None
+                    },
                     package: symcache_info.code_file.clone(),
                     function: Some(line_info.function_name().to_string()), // TODO: demangle
-                    filename: Some(line_info.filename().to_string()), // TODO: Relative path to compilation_dir
+                    filename: if !filename.is_empty() {
+                        Some(filename)
+                    } else {
+                        None
+                    },
                     lineno: Some(line_info.line()),
-                    ..frame.clone()
+                    instruction_addr: HexValue(
+                        symcache_info.image_addr.0 + line_info.instruction_address(),
+                    ),
+                    sym_addr: Some(HexValue(
+                        symcache_info.image_addr.0 + line_info.function_address(),
+                    )),
+                    lang: if lang != Language::Unknown {
+                        Some(lang)
+                    } else {
+                        None
+                    },
+                    original_index: Some(i),
                 });
             }
 
@@ -332,10 +357,10 @@ fn symbolize_thread(
 
     for (i, mut frame) in thread.stacktrace.frames.into_iter().enumerate() {
         let addr = frame.instruction_addr;
-        frame.original_index = Some(i);
 
         let res = symbolize_frame(&mut stacktrace, i, &frame);
         if let Err(e) = res {
+            frame.original_index = Some(i);
             stacktrace.frames.push(frame);
             errors.push(ErrorResponse::NativeMissingDsym {
                 // TODO: Proper error types
