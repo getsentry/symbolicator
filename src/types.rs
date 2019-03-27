@@ -220,6 +220,7 @@ pub enum SymbolicationResponse {
         stacktraces: Vec<SymbolicatedStacktrace>,
         modules: Vec<FetchedDebugFile>,
     },
+    UnknownRequest {},
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

@@ -223,12 +223,11 @@ def test_sources_without_filetypes(symbolicator, hitcounter):
     assert not hitcounter.hits
 
 
-@pytest.mark.parametrize("predefined_request_id", [None, "123"])
-def test_timeouts(symbolicator, hitcounter, predefined_request_id):
+def test_timeouts(symbolicator, hitcounter):
     hitcounter.before_request = lambda: time.sleep(3)
 
     input = dict(
-        request={"timeout": 1, "request_id": predefined_request_id},
+        request={"timeout": 1},
         sources=[
             {
                 "type": "http",
@@ -254,10 +253,7 @@ def test_timeouts(symbolicator, hitcounter, predefined_request_id):
         if response["status"] == "completed":
             break
         elif response["status"] == "pending":
-            if predefined_request_id:
-                assert predefined_request_id == response["request_id"]
-            else:
-                input["request"]["request_id"] = response["request_id"]
+            input["request"]["request_id"] = response["request_id"]
         else:
             assert False
 

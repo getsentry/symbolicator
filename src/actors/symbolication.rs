@@ -364,16 +364,24 @@ impl Handler<SymbolicationRequest> for SymbolicationActor {
         ctx: &mut Self::Context,
     ) -> Self::Result {
         if let Some(request_meta) = request.request.take() {
-            let request_id = request_meta.request_id.clone().unwrap_or_else(|| loop {
-                let request_id = uuid::Uuid::new_v4().to_string();
-                if !self.requests.contains_key(&request_id) {
-                    break request_id;
+            let (request_id, channel) = if let Some(request_id) = request_meta.request_id {
+                if let Some(channel) = self.requests.get(&request_id) {
+                    (request_id, channel.clone())
+                } else {
+                    return Box::new(
+                        Ok(SymbolicationResponse::UnknownRequest {})
+                            .into_future()
+                            .into_actor(self),
+                    );
                 }
-            });
-
-            let channel = if let Some(channel) = self.requests.get(&request_id) {
-                channel.clone()
             } else {
+                let request_id = loop {
+                    let request_id = uuid::Uuid::new_v4().to_string();
+                    if !self.requests.contains_key(&request_id) {
+                        break request_id;
+                    }
+                };
+
                 let (tx, rx) = oneshot::channel();
 
                 ctx.spawn(
@@ -390,7 +398,7 @@ impl Handler<SymbolicationRequest> for SymbolicationActor {
 
                 let channel = rx.shared();
                 self.requests.insert(request_id.clone(), channel.clone());
-                channel
+                (request_id, channel)
             };
 
             Box::new(
