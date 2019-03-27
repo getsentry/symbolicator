@@ -52,9 +52,6 @@ pub enum ObjectErrorKind {
     #[fail(display = "failed sending request to source")]
     SendRequest,
 
-    #[fail(display = "no symbols found")]
-    NotFound,
-
     #[fail(display = "failed to look into cache")]
     Caching,
 
@@ -151,29 +148,44 @@ impl CacheItemRequest for FetchFile {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
-        let is_empty = data.is_empty();
-        let rv = ObjectFile {
-            request: self,
+        Ok(ObjectFile {
+            request: Some(self),
             scope,
-            object: if is_empty { None } else { Some(data) },
+            object: if data.is_empty() { None } else { Some(data) },
+        })
+    }
+}
+
+/// Handle to local cache file.
+#[derive(Debug, Clone)]
+pub struct ObjectFile {
+    request: Option<FetchFile>,
+    scope: Scope,
+    object: Option<ByteView<'static>>,
+}
+
+impl ObjectFile {
+    pub fn get_object(&self) -> Result<Option<debuginfo::Object<'_>>, ObjectError> {
+        let bytes = match self.object {
+            Some(ref x) => x,
+            None => return Ok(None),
         };
+        let parsed = debuginfo::Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
 
-        if !is_empty {
-            let object = rv.get_object()?;
-
-            let object_id = match rv.request.file_id {
+        if let Some(ref request) = self.request {
+            let object_id = match request.file_id {
                 FileId::Http { ref object_id, .. } => object_id,
                 FileId::Sentry { ref object_id, .. } => object_id,
             };
 
             if let Some(ref debug_id) = object_id.debug_id {
-                if object.debug_id() != *debug_id {
+                if parsed.debug_id() != *debug_id {
                     return Err(ObjectErrorKind::IdMismatch.into());
                 }
             }
 
             if let Some(ref code_id) = object_id.code_id {
-                if let Some(ref object_code_id) = object.code_id() {
+                if let Some(ref object_code_id) = parsed.code_id() {
                     if object_code_id != code_id {
                         return Err(ObjectErrorKind::IdMismatch.into());
                     }
@@ -181,22 +193,7 @@ impl CacheItemRequest for FetchFile {
             }
         }
 
-        Ok(rv)
-    }
-}
-
-/// Handle to local cache file.
-#[derive(Debug, Clone)]
-pub struct ObjectFile {
-    request: FetchFile,
-    scope: Scope,
-    object: Option<ByteView<'static>>,
-}
-
-impl ObjectFile {
-    pub fn get_object(&self) -> Result<debuginfo::Object<'_>, ObjectError> {
-        let bytes = self.object.as_ref().ok_or(ObjectErrorKind::NotFound)?;
-        Ok(debuginfo::Object::parse(&bytes).context(ObjectErrorKind::Parsing)?)
+        Ok(Some(parsed))
     }
 
     pub fn scope(&self) -> &Scope {
@@ -259,7 +256,7 @@ impl Handler<FetchObject> for ObjectsActor {
             .collect();
 
         Box::new(join_all(prepare_futures).and_then(move |responses| {
-            let (_, response) = responses
+            responses
                 .into_iter()
                 .flatten()
                 .enumerate()
@@ -270,8 +267,7 @@ impl Handler<FetchObject> for ObjectsActor {
                         match response
                             .as_ref()
                             .ok()
-                            .and_then(|o| o.get_object().ok())
-                            .map(|x| x.has_debug_info())
+                            .and_then(|o| Some(o.get_object().ok()??.has_debug_info()))
                         {
                             Some(true) => 0,
                             Some(false) => 1,
@@ -280,9 +276,14 @@ impl Handler<FetchObject> for ObjectsActor {
                         *i,
                     )
                 })
-                .ok_or_else(|| ObjectError::from(ObjectErrorKind::NotFound))?;
-
-            response
+                .map(|(_, response)| response)
+                .unwrap_or_else(move || {
+                    Ok(Arc::new(ObjectFile {
+                        request: None,
+                        scope,
+                        object: None,
+                    }))
+                })
         }))
     }
 }

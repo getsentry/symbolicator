@@ -9,8 +9,7 @@ use futures::future::Future;
 use crate::{
     app::{ServiceApp, ServiceState},
     types::{
-        SymbolicationRequest, SymbolicationResponse, SymbolicationError,
-        SymbolicationErrorKind,
+        SymbolicationError, SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
     },
 };
 

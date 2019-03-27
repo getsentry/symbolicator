@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{self, BufWriter},
+    io::{self, BufWriter, Write},
     path::Path,
     sync::Arc,
     time::Duration,
@@ -28,20 +28,20 @@ use crate::{
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum SymCacheErrorKind {
-    #[fail(display = "failed to fetch objects")]
-    Fetching,
-
     #[fail(display = "failed to download")]
     Io,
+
+    #[fail(display = "failed to download object")]
+    Fetching,
 
     #[fail(display = "failed sending message to objects actor")]
     Mailbox,
 
-    #[fail(display = "failed to parse symcache during download")]
-    Parse,
+    #[fail(display = "failed to parse symcache")]
+    Parsing,
 
-    #[fail(display = "symcache not found")]
-    NotFound,
+    #[fail(display = "failed to parse object")]
+    ObjectParsing,
 
     #[fail(display = "symcache building took too long")]
     Timeout,
@@ -91,9 +91,19 @@ pub struct SymCache {
 }
 
 impl SymCache {
-    pub fn get_symcache(&self) -> Result<symcache::SymCache<'_>, SymCacheError> {
-        let bytes = self.inner.as_ref().ok_or(SymCacheErrorKind::NotFound)?;
-        Ok(symcache::SymCache::parse(bytes).context(SymCacheErrorKind::Parse)?)
+    pub fn get_symcache(&self) -> Result<Option<symcache::SymCache<'_>>, SymCacheError> {
+        let bytes = match self.inner {
+            Some(ref x) => x,
+            None => return Ok(None),
+        };
+
+        if &bytes[..] == b"malformed" {
+            return Err(SymCacheErrorKind::ObjectParsing.into());
+        }
+
+        Ok(Some(
+            symcache::SymCache::parse(bytes).context(SymCacheErrorKind::Parsing)?,
+        ))
     }
 }
 
@@ -118,9 +128,12 @@ impl CacheItemRequest for FetchSymCacheInternal {
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
         let objects = self.objects.clone();
 
+        let path = path.to_owned();
+        let threadpool = self.threadpool.clone();
+
         // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
         // in Sentry itself?
-        let object = objects
+        let result = objects
             .send(FetchObject {
                 filetypes: FileType::from_object_type(&self.request.object_type),
                 identifier: self.request.identifier.clone(),
@@ -128,20 +141,26 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 scope: self.request.scope.clone(),
             })
             .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
-            .and_then(|x| Ok(x.context(SymCacheErrorKind::Fetching)?));
+            .and_then(move |result| {
+                threadpool.spawn_handle(lazy(move || {
+                    let object = result.context(SymCacheErrorKind::Fetching)?;
+                    let mut file =
+                        BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
+                    match object.get_object() {
+                        Ok(Some(object)) => {
+                            let _file = symcache::SymCacheWriter::write_object(&object, file)
+                                .context(SymCacheErrorKind::Io)?;
+                        }
+                        Ok(None) => (),
+                        Err(_) => {
+                            file.write_all(b"malformed")
+                                .context(SymCacheErrorKind::Io)?;
+                        }
+                    };
 
-        let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
-
-        let result = object.and_then(move |object| {
-            threadpool.spawn_handle(lazy(move || {
-                let file = BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
-                let object_inner = object.get_object().context(SymCacheErrorKind::Fetching)?;
-                let _file = symcache::SymCacheWriter::write_object(&object_inner, file)
-                    .context(SymCacheErrorKind::Io)?;
-                Ok(object.scope().clone())
-            }))
-        });
+                    Ok(object.scope().clone())
+                }))
+            });
 
         Box::new(measure_task(
             "fetch_symcache",

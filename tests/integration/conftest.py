@@ -128,6 +128,14 @@ def hitcounter(request):
                 ) as r:
                     start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
                     yield r.content
+            elif path.startswith("/respond_statuscode/"):
+                statuscode = int(path.split("/")[2])
+                start_response(f"{statuscode} BOGUS", [])
+                yield b""
+
+            elif path.startswith("/garbage_data/"):
+                start_response("200 OK", [])
+                yield b"bogus"
             else:
                 raise AssertionError("Bad path: {}".format(path))
         except Exception as e:

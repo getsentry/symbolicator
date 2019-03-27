@@ -74,11 +74,25 @@ impl AsRef<str> for Scope {
     }
 }
 
-/// See semaphore's Frame for docs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Frame {
+#[derive(Debug, Clone, Deserialize)]
+pub struct RawFrame {
     pub instruction_addr: HexValue,
+}
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameStatus {
+    Symbolicated,
+    MissingSymbol,
+    UnknownImage,
+    MissingDebugFile,
+    MalformedDebugFile,
+}
+
+/// See semaphore's Frame for docs
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolicatedFrame {
+    pub instruction_addr: HexValue,
     pub package: Option<String>,
     pub lang: Option<Language>,
     pub symbol: Option<String>,
@@ -89,10 +103,12 @@ pub struct Frame {
     pub sym_addr: Option<HexValue>,
 
     pub original_index: Option<usize>,
+
+    pub status: FrameStatus,
 }
 
 /// See semaphore's DebugImage for docs
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ObjectInfo {
     #[serde(rename = "type")]
     pub ty: ObjectType,
@@ -115,7 +131,7 @@ pub struct ObjectInfo {
     pub image_size: Option<u64>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ObjectType(String);
 
 #[derive(Clone, Debug, Copy)]
@@ -161,7 +177,7 @@ pub struct SymbolicationRequest {
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
     #[serde(default)]
-    pub threads: Vec<Thread>,
+    pub threads: Vec<RawStacktrace>,
     #[serde(default)]
     pub modules: Vec<ObjectInfo>,
     #[serde(default)]
@@ -182,37 +198,43 @@ pub struct Meta {
     pub scope: Scope,
 }
 
-#[derive(Deserialize)]
-pub struct Thread {
+#[derive(Deserialize, Debug, Clone)]
+pub struct RawStacktrace {
     pub registers: BTreeMap<String, HexValue>,
-    #[serde(flatten)]
-    pub stacktrace: Stacktrace,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Stacktrace {
-    pub frames: Vec<Frame>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum ErrorResponse {
-    NativeMissingDsym { data: String },
-    //NativeBadDsym { data: String } ,
-    //NativeMissingSymbol { data: String },
+    pub frames: Vec<RawFrame>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "status", rename_all = "camelCase")]
+pub struct SymbolicatedStacktrace {
+    pub frames: Vec<SymbolicatedFrame>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
 pub enum SymbolicationResponse {
     Pending {
         request_id: String,
         retry_after: usize,
     },
     Completed {
-        stacktraces: Vec<Stacktrace>,
-        errors: Vec<ErrorResponse>,
+        stacktraces: Vec<SymbolicatedStacktrace>,
+        modules: Vec<FetchedDebugFile>,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DebugFileStatus {
+    Found,
+    Unused,
+    MissingDebugFile,
+    MalformedDebugFile,
+    FetchingFailed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FetchedDebugFile {
+    pub status: DebugFileStatus,
 }
 
 impl Message for SymbolicationRequest {

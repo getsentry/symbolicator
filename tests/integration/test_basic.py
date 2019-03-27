@@ -3,6 +3,7 @@ import time
 import threading
 
 WINDOWS_DATA = {
+    "meta": {"arch": "x86", "scope": "myscope"},
     "threads": [
         {
             "registers": {"eip": "0x0000000001509530"},
@@ -22,11 +23,11 @@ WINDOWS_DATA = {
 }
 
 SUCCESS_WINDOWS = {
-    "errors": [],
     "stacktraces": [
         {
             "frames": [
                 {
+                    "status": "symbolicated",
                     "original_index": 0,
                     "instruction_addr": "0x749e8630",
                     "filename": None,
@@ -41,45 +42,39 @@ SUCCESS_WINDOWS = {
             ]
         }
     ],
+    "modules": [{"status": "found"}],
     "status": "completed",
 }
 
 
-FAILED_SYMBOLICATION = {
-    "errors": [
-        {
-            "data": (
-                "failed to look into cache\n"
-                "  caused by: failed to fetch objects\n"
-                "  caused by: no symbols found"
-            ),
-            "type": "nativeMissingDsym",
-        },
-        {
-            "data": "Failed to symbolicate addr 0x749e8630: no debug file found for address",
-            "type": "nativeMissingDsym",
-        },
-    ],
-    "stacktraces": [
-        {
-            "frames": [
-                {
-                    "original_index": 0,
-                    "instruction_addr": "0x749e8630",
-                    "filename": None,
-                    "abs_path": None,
-                    "lang": None,
-                    "lineno": None,
-                    "package": None,
-                    "function": None,
-                    "symbol": None,
-                    "sym_addr": None,
-                }
-            ]
-        }
-    ],
-    "status": "completed",
-}
+def _make_unsuccessful_result(status):
+    return {
+        "stacktraces": [
+            {
+                "frames": [
+                    {
+                        "status": status,
+                        "original_index": 0,
+                        "instruction_addr": "0x749e8630",
+                        "abs_path": None,
+                        "filename": None,
+                        "function": None,
+                        "lang": None,
+                        "lineno": None,
+                        "package": None,
+                        "sym_addr": None,
+                        "symbol": None,
+                    }
+                ]
+            }
+        ],
+        "modules": [{"status": status}],
+        "status": "completed",
+    }
+
+
+MISSING_DEBUG_FILE = _make_unsuccessful_result("missing_debug_file")
+MALFORMED_DEBUG_FILE = _make_unsuccessful_result("malformed_debug_file")
 
 
 @pytest.fixture(params=[True, False])
@@ -90,10 +85,8 @@ def cache_dir_param(tmpdir, request):
 
 @pytest.mark.parametrize("is_public", [True, False])
 def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
-    scope = "myscope"
 
     input = dict(
-        meta={"arch": "x86", "scope": scope},
         **WINDOWS_DATA,
         sources=[
             {
@@ -106,6 +99,8 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             }
         ],
     )
+
+    scope = input["meta"]["scope"]
 
     # i = 0: Cache miss
     # i = 1: Cache hit
@@ -148,7 +143,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
 
 
 def test_no_sources(symbolicator, cache_dir_param):
-    input = dict(meta={"arch": "x86", "scope": "myscope"}, **WINDOWS_DATA, sources=[])
+    input = dict(**WINDOWS_DATA, sources=[])
 
     service = symbolicator(cache_dir=cache_dir_param)
     service.wait_healthcheck()
@@ -156,7 +151,7 @@ def test_no_sources(symbolicator, cache_dir_param):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == FAILED_SYMBOLICATION
+    assert response.json() == MISSING_DEBUG_FILE
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
@@ -165,10 +160,9 @@ def test_no_sources(symbolicator, cache_dir_param):
 
 @pytest.mark.parametrize("is_public", [True, False])
 def test_lookup_deduplication(symbolicator, hitcounter, is_public):
-    input = {
-        "meta": {"arch": "x86", "scope": "myscope"},
-        "modules": WINDOWS_DATA["modules"],
-        "sources": [
+    input = dict(
+        **WINDOWS_DATA,
+        sources=[
             {
                 "type": "http",
                 "id": "microsoft",
@@ -178,19 +172,16 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
                 "is_public": is_public,
             }
         ],
-    }
+    )
 
     service = symbolicator(cache_dir=None)
     service.wait_healthcheck()
+    responses = []
 
     def f():
         response = service.post("/symbolicate", json=input)
         response.raise_for_status()
-        assert response.json() == {
-            "errors": [],
-            "stacktraces": [],
-            "status": "completed",
-        }
+        responses.append(response.json())
 
     ts = []
     for _ in range(20):
@@ -201,6 +192,8 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
     for t in ts:
         t.join()
 
+    assert responses == [SUCCESS_WINDOWS] * 20
+
     assert hitcounter.hits == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
     }
@@ -208,7 +201,6 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
 
 def test_sources_without_filetypes(symbolicator, hitcounter):
     input = dict(
-        meta={"arch": "x86", "scope": "myscope"},
         sources=[
             {
                 "type": "http",
@@ -227,7 +219,7 @@ def test_sources_without_filetypes(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == FAILED_SYMBOLICATION
+    assert response.json() == MISSING_DEBUG_FILE
     assert not hitcounter.hits
 
 
@@ -236,7 +228,6 @@ def test_timeouts(symbolicator, hitcounter, predefined_request_id):
     hitcounter.before_request = lambda: time.sleep(3)
 
     input = dict(
-        meta={"arch": "x86", "scope": "myscope"},
         request={"timeout": 1, "request_id": predefined_request_id},
         sources=[
             {
@@ -280,3 +271,49 @@ def test_timeouts(symbolicator, hitcounter, predefined_request_id):
     assert hitcounter.hits == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
     }
+
+
+@pytest.mark.parametrize("statuscode", [400, 500, 404])
+def test_unreachable_bucket(symbolicator, hitcounter, statuscode):
+    input = dict(
+        sources=[
+            {
+                "type": "http",
+                "id": "broken",
+                "layout": "symstore",
+                "url": f"{hitcounter.url}/respond_statuscode/{statuscode}/",
+            }
+        ],
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+    response = response.json()
+    # TODO(markus): Better error reporting
+    assert response == MISSING_DEBUG_FILE
+
+
+def test_malformed_objects(symbolicator, hitcounter):
+    input = dict(
+        sources=[
+            {
+                "type": "http",
+                "id": "broken",
+                "layout": "symstore",
+                "url": f"{hitcounter.url}/garbage_data/",
+            }
+        ],
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+    response = response.json()
+    assert response == MALFORMED_DEBUG_FILE

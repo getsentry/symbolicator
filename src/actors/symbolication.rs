@@ -1,12 +1,17 @@
-use std::{collections::BTreeMap, iter::FromIterator, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::FromIterator,
+    sync::Arc,
+    time::Duration,
+};
 
 use actix::{
     fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, ResponseActFuture,
 };
 
-use failure::{Fail, ResultExt};
+use failure::Fail;
 
-use futures::future::{join_all, lazy, Future};
+use futures::future::{join_all, lazy, Either, Future};
 
 use futures::{
     future::{IntoFuture, Shared, SharedError},
@@ -21,17 +26,15 @@ use tokio_threadpool::ThreadPool;
 
 use uuid;
 
-use void::Void;
-
 use crate::futures::measure_task;
 
 use crate::{
-    actors::symcaches::{FetchSymCache, SymCache, SymCacheActor},
+    actors::symcaches::{FetchSymCache, SymCache, SymCacheActor, SymCacheErrorKind},
     log::LogError,
     types::{
-        ArcFail, ErrorResponse, Frame, HexValue, Meta, ObjectId, ObjectInfo, Stacktrace,
-        SymbolicationRequest, SymbolicationResponse, SymbolicationError,
-        SymbolicationErrorKind, Thread,
+        ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId,
+        ObjectInfo, RawFrame, RawStacktrace, SymbolicatedFrame, SymbolicatedStacktrace,
+        SymbolicationError, SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
     },
 };
 
@@ -64,76 +67,34 @@ impl SymbolicationActor {
         &mut self,
         request: SymbolicationRequest,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let sources = request.sources;
-        let meta = request.meta;
-        let scope = meta.scope.clone();
-        let symcaches = self.symcaches.clone();
-        let threads = request.threads;
+        let meta = request.meta.clone();
+        let threads = request.threads.clone();
 
-        let symcaches = join_all(request.modules.into_iter().map(move |object_info| {
-            symcaches
-                .send(FetchSymCache {
-                    object_type: object_info.ty.clone(),
-                    identifier: ObjectId {
-                        debug_id: object_info.debug_id.parse().ok(),
-                        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
-                        debug_name: object_info
-                            .debug_file
-                            .as_ref()
-                            .map(|x| split_path(x).1.to_owned()), // TODO
-                        code_name: object_info
-                            .code_file
-                            .as_ref()
-                            .map(|x| split_path(x).1.to_owned()), // TODO
-                    },
-                    sources: sources.clone(),
-                    scope: scope.clone(),
-                })
-                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
-                // XXX: `result.context` should work
-                .and_then(|result| {
-                    result.map_err(|e| {
-                        SymbolicationError::from(
-                            ArcFail(e).context(SymbolicationErrorKind::Caching),
-                        )
-                    })
-                })
-                .then(move |result| Ok((object_info, result)))
-                .map_err(|_: Void| unreachable!())
-        }));
+        let object_lookup: ObjectLookup = request.modules.iter().cloned().collect();
 
         let threadpool = self.threadpool.clone();
 
-        let result = symcaches.and_then(move |symcaches| {
-            threadpool.spawn_handle(lazy(move || {
-                let mut errors = vec![];
+        let result = object_lookup
+            .fetch_objects(self.symcaches.clone(), request)
+            .and_then(move |object_lookup| {
+                threadpool.spawn_handle(lazy(move || {
+                    let stacktraces = threads
+                        .into_iter()
+                        .map(|thread| symbolize_thread(thread, &object_lookup, &meta))
+                        .collect();
 
-                let symcache_map = symcaches
-                    .into_iter()
-                    .filter_map(|(object_info, cache)| match cache {
-                        Ok(x) => Some((object_info, x)),
-                        Err(e) => {
-                            log::debug!("Error while getting symcache: {}", LogError(&e));
-                            errors.push(ErrorResponse::NativeMissingDsym {
-                                // TODO: Proper error types
-                                data: LogError(&e).to_string(),
-                            });
-                            None
-                        }
+                    let modules = object_lookup
+                        .inner
+                        .into_iter()
+                        .map(|(_, _, status)| FetchedDebugFile { status })
+                        .collect();
+
+                    Ok(SymbolicationResponse::Completed {
+                        modules,
+                        stacktraces,
                     })
-                    .collect::<SymCacheMap>();
-
-                let stacktraces = threads
-                    .into_iter()
-                    .map(|thread| symbolize_thread(thread, &symcache_map, &meta, &mut errors))
-                    .collect();
-
-                Ok(SymbolicationResponse::Completed {
-                    stacktraces,
-                    errors,
-                })
-            }))
-        });
+                }))
+            });
 
         measure_task(
             "symbolicate",
@@ -143,6 +104,255 @@ impl SymbolicationActor {
             result,
         )
     }
+}
+
+struct ObjectLookup {
+    inner: Vec<(ObjectInfo, Option<Arc<SymCache>>, DebugFileStatus)>,
+}
+
+impl FromIterator<ObjectInfo> for ObjectLookup {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = ObjectInfo>,
+    {
+        let mut rv = ObjectLookup {
+            inner: iter
+                .into_iter()
+                .map(|x| (x, None, DebugFileStatus::Unused))
+                .collect(),
+        };
+        rv.sort();
+        rv
+    }
+}
+
+impl ObjectLookup {
+    fn sort(&mut self) {
+        self.inner.sort_by_key(|(info, _, _)| info.image_addr.0);
+
+        // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
+        // some.
+        self.inner
+            .dedup_by(|(ref info2, _, _), (ref mut info1, _, _)| {
+                info1
+                    .image_size
+                    .get_or_insert(info2.image_addr.0 - info1.image_addr.0);
+                false
+            });
+    }
+
+    fn fetch_objects(
+        self,
+        symcache_actor: Addr<SymCacheActor>,
+        request: SymbolicationRequest,
+    ) -> impl Future<Item = Self, Error = SymbolicationError> {
+        let mut referenced_objects = BTreeSet::new();
+        let sources = request.sources;
+        let stacktraces = request.threads;
+        let meta = request.meta;
+        let scope = meta.scope.clone();
+
+        for stacktrace in stacktraces {
+            for frame in stacktrace.frames {
+                if let Some((i, ..)) = self.lookup_object(frame.instruction_addr.0) {
+                    referenced_objects.insert(i);
+                }
+            }
+        }
+
+        join_all(
+            self.inner
+                .into_iter()
+                .enumerate()
+                .map(move |(i, (object_info, _, _))| {
+                    if referenced_objects.contains(&i) {
+                        Either::A(
+                            symcache_actor
+                                .send(FetchSymCache {
+                                    object_type: object_info.ty.clone(),
+                                    identifier: object_id_from_object_info(&object_info),
+                                    sources: sources.clone(),
+                                    scope: scope.clone(),
+                                })
+                                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
+                                .and_then(move |result| {
+                                    let symcache = match result {
+                                        Ok(x) => x,
+                                        Err(e) => {
+                                            let status = match e.kind() {
+                                                SymCacheErrorKind::Fetching => {
+                                                    DebugFileStatus::FetchingFailed
+                                                }
+                                                _ => Err(ArcFail(e)
+                                                    .context(SymbolicationErrorKind::SymCache))?,
+                                            };
+
+                                            return Ok((object_info, None, status));
+                                        }
+                                    };
+
+                                    let status = match symcache.get_symcache() {
+                                        Ok(Some(_)) => DebugFileStatus::Found,
+                                        Ok(None) => DebugFileStatus::MissingDebugFile,
+                                        Err(e) => match e.kind() {
+                                            SymCacheErrorKind::ObjectParsing => {
+                                                DebugFileStatus::MalformedDebugFile
+                                            }
+                                            SymCacheErrorKind::Fetching => {
+                                                DebugFileStatus::FetchingFailed
+                                            }
+
+                                            _ => Err(e.context(SymbolicationErrorKind::SymCache))?,
+                                        },
+                                    };
+
+                                    Ok((object_info, Some(symcache), status))
+                                }),
+                        )
+                    } else {
+                        Either::B(Ok((object_info, None, DebugFileStatus::Unused)).into_future())
+                    }
+                }),
+        )
+        .map(|results| ObjectLookup {
+            inner: results.into_iter().collect(),
+        })
+    }
+
+    fn lookup_object(
+        &self,
+        addr: u64,
+    ) -> Option<(usize, &ObjectInfo, Option<&SymCache>, DebugFileStatus)> {
+        for (i, (info, cache, status)) in self.inner.iter().enumerate() {
+            // When `size` is None, this must be the last item.
+            if info.image_addr.0 <= addr && addr <= info.image_addr.0 + info.image_size? {
+                return Some((i, info, cache.as_ref().map(|x| &**x), *status));
+            }
+        }
+
+        None
+    }
+}
+
+fn symbolize_thread(
+    thread: RawStacktrace,
+    caches: &ObjectLookup,
+    meta: &Meta,
+) -> SymbolicatedStacktrace {
+    let registers = thread.registers;
+
+    let mut stacktrace = SymbolicatedStacktrace { frames: vec![] };
+
+    let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
+        let (object_info, symcache) = match caches.lookup_object(frame.instruction_addr.0) {
+            Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
+            Some((_, _, None, _)) => return Err(FrameStatus::MissingDebugFile),
+            None => return Err(FrameStatus::UnknownImage),
+        };
+
+        let symcache = match symcache.get_symcache() {
+            Ok(Some(x)) => x,
+            Ok(None) => return Err(FrameStatus::MissingDebugFile),
+            Err(_) => return Err(FrameStatus::MalformedDebugFile),
+        };
+
+        let crashing_frame = i == 0;
+
+        let ip_reg = if crashing_frame {
+            object_info
+                .arch
+                .ip_register_name()
+                .and_then(|ip_reg_name| registers.get(ip_reg_name))
+                .map(|x| x.0)
+        } else {
+            None
+        };
+
+        let instruction_info = InstructionInfo {
+            addr: frame.instruction_addr.0,
+            arch: object_info.arch,
+            signal: meta.signal,
+            crashing_frame,
+            ip_reg,
+        };
+        let caller_address = instruction_info.caller_address();
+
+        let line_infos = match symcache.lookup(caller_address - object_info.image_addr.0) {
+            Ok(x) => x,
+            Err(_) => return Err(FrameStatus::MalformedDebugFile),
+        };
+
+        let mut rv = vec![];
+
+        for line_info in line_infos {
+            let line_info = match line_info {
+                Ok(x) => x,
+                Err(_) => return Err(FrameStatus::MalformedDebugFile),
+            };
+
+            let abs_path = line_info.path();
+            let filename = line_info.filename().to_string(); // TODO: Relative path to compilation_dir
+            let lang = line_info.language();
+            rv.push(SymbolicatedFrame {
+                status: FrameStatus::Symbolicated,
+                symbol: Some(line_info.symbol().to_string()),
+                abs_path: if !abs_path.is_empty() {
+                    Some(abs_path)
+                } else {
+                    None
+                },
+                package: object_info.code_file.clone(),
+                function: Some(line_info.function_name().to_string()), // TODO: demangle
+                filename: if !filename.is_empty() {
+                    Some(filename)
+                } else {
+                    None
+                },
+                lineno: Some(line_info.line()),
+                instruction_addr: HexValue(
+                    object_info.image_addr.0 + line_info.instruction_address(),
+                ),
+                sym_addr: Some(HexValue(
+                    object_info.image_addr.0 + line_info.function_address(),
+                )),
+                lang: if lang != Language::Unknown {
+                    Some(lang)
+                } else {
+                    None
+                },
+                original_index: Some(i),
+            });
+        }
+
+        if rv.is_empty() {
+            Err(FrameStatus::MissingSymbol)
+        } else {
+            Ok(rv)
+        }
+    };
+
+    for (i, frame) in thread.frames.into_iter().enumerate() {
+        match symbolize_frame(i, &frame) {
+            Ok(frames) => stacktrace.frames.extend(frames),
+            Err(status) => {
+                stacktrace.frames.push(SymbolicatedFrame {
+                    status,
+                    original_index: Some(i),
+                    instruction_addr: frame.instruction_addr,
+                    package: None,
+                    lang: None,
+                    symbol: None,
+                    function: None,
+                    filename: None,
+                    abs_path: None,
+                    lineno: None,
+                    sym_addr: None,
+                });
+            }
+        }
+    }
+
+    stacktrace
 }
 
 impl Handler<SymbolicationRequest> for SymbolicationActor {
@@ -223,151 +433,17 @@ impl Handler<SymbolicationRequest> for SymbolicationActor {
     }
 }
 
-struct SymCacheMap {
-    inner: Vec<(ObjectInfo, Arc<SymCache>)>,
-}
-
-impl FromIterator<(ObjectInfo, Arc<SymCache>)> for SymCacheMap {
-    fn from_iter<T>(iter: T) -> Self
-    where
-        T: IntoIterator<Item = (ObjectInfo, Arc<SymCache>)>,
-    {
-        let mut rv = SymCacheMap {
-            inner: iter.into_iter().collect(),
-        };
-        rv.sort();
-        rv
+fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
+    ObjectId {
+        debug_id: object_info.debug_id.parse().ok(),
+        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
+        debug_name: object_info
+            .debug_file
+            .as_ref()
+            .map(|x| split_path(x).1.to_owned()),
+        code_name: object_info
+            .code_file
+            .as_ref()
+            .map(|x| split_path(x).1.to_owned()),
     }
-}
-
-impl SymCacheMap {
-    fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _)| info.image_addr.0);
-
-        // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
-        // some.
-        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
-            info1
-                .image_size
-                .get_or_insert(info2.image_addr.0 - info1.image_addr.0);
-            false
-        });
-    }
-
-    fn lookup_symcache(&self, addr: u64) -> Option<(&ObjectInfo, &SymCache)> {
-        for (ref info, ref cache) in self.inner.iter().peekable() {
-            // When `size` is None, this must be the last item.
-            if info.image_addr.0 <= addr && addr <= info.image_addr.0 + info.image_size? {
-                return Some((info, cache));
-            }
-        }
-
-        None
-    }
-}
-
-fn symbolize_thread(
-    thread: Thread,
-    caches: &SymCacheMap,
-    meta: &Meta,
-    errors: &mut Vec<ErrorResponse>,
-) -> Stacktrace {
-    let registers = thread.registers;
-
-    let mut stacktrace = Stacktrace { frames: vec![] };
-
-    let symbolize_frame =
-        |stacktrace: &mut Stacktrace, i, frame: &Frame| -> Result<(), SymbolicationError> {
-            let (symcache_info, symcache) = caches
-                .lookup_symcache(frame.instruction_addr.0)
-                .ok_or(SymbolicationErrorKind::SymCacheNotFound)?;
-            let symcache = symcache
-                .get_symcache()
-                .context(SymbolicationErrorKind::SymCache)?;
-
-            let crashing_frame = i == 0;
-
-            let ip_reg = if crashing_frame {
-                symcache_info
-                    .arch
-                    .ip_register_name()
-                    .and_then(|ip_reg_name| registers.get(ip_reg_name))
-                    .map(|x| x.0)
-            } else {
-                None
-            };
-
-            let instruction_info = InstructionInfo {
-                addr: frame.instruction_addr.0,
-                arch: symcache_info.arch,
-                signal: meta.signal,
-                crashing_frame,
-                ip_reg,
-            };
-            let caller_address = instruction_info.caller_address();
-
-            let mut had_frames = false;
-
-            for line_info in symcache
-                .lookup(caller_address - symcache_info.image_addr.0)
-                .context(SymbolicationErrorKind::SymCache)?
-            {
-                let line_info = line_info.context(SymbolicationErrorKind::SymCache)?;
-                had_frames = true;
-
-                let abs_path = line_info.path();
-                let filename = line_info.filename().to_string(); // TODO: Relative path to compilation_dir
-                let lang = line_info.language();
-                stacktrace.frames.push(Frame {
-                    symbol: Some(line_info.symbol().to_string()),
-                    abs_path: if !abs_path.is_empty() {
-                        Some(abs_path)
-                    } else {
-                        None
-                    },
-                    package: symcache_info.code_file.clone(),
-                    function: Some(line_info.function_name().to_string()), // TODO: demangle
-                    filename: if !filename.is_empty() {
-                        Some(filename)
-                    } else {
-                        None
-                    },
-                    lineno: Some(line_info.line()),
-                    instruction_addr: HexValue(
-                        symcache_info.image_addr.0 + line_info.instruction_address(),
-                    ),
-                    sym_addr: Some(HexValue(
-                        symcache_info.image_addr.0 + line_info.function_address(),
-                    )),
-                    lang: if lang != Language::Unknown {
-                        Some(lang)
-                    } else {
-                        None
-                    },
-                    original_index: Some(i),
-                });
-            }
-
-            if had_frames {
-                Ok(())
-            } else {
-                Err(SymbolicationErrorKind::NotFound.into())
-            }
-        };
-
-    for (i, mut frame) in thread.stacktrace.frames.into_iter().enumerate() {
-        let addr = frame.instruction_addr;
-
-        let res = symbolize_frame(&mut stacktrace, i, &frame);
-        if let Err(e) = res {
-            frame.original_index = Some(i);
-            stacktrace.frames.push(frame);
-            errors.push(ErrorResponse::NativeMissingDsym {
-                // TODO: Proper error types
-                data: format!("Failed to symbolicate addr {}: {}", addr, LogError(&e)),
-            });
-        };
-    }
-
-    stacktrace
 }
