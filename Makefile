@@ -1,4 +1,4 @@
-export SEMAPHORE_PYTHON_VERSION := python3
+export SYMBOLICATOR_PYTHON_VERSION := python3
 
 all: check test
 .PHONY: all
@@ -74,4 +74,4 @@ format-python: .venv/bin/python
 
 .venv/bin/python: Makefile
 	rm -rf .venv
-	virtualenv -p $$SEMAPHORE_PYTHON_VERSION .venv
+	virtualenv -p $$SYMBOLICATOR_PYTHON_VERSION .venv

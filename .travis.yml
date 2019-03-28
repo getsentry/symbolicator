@@ -12,6 +12,9 @@ branches:
     - master
     - /^release\/[\d.]+$/
 
+env:
+  - SYMBOLICATOR_PYTHON_VERSION=python3.7
+
 matrix:
   include:
     - name: "style check"
