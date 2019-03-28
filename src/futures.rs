@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use futures::{future::Either, lazy, Future};
+use futures::future::{self, Either, Future};
 use tokio::prelude::FutureExt;
 
 pub fn measure_task<T, E, F>(
@@ -13,7 +13,7 @@ where
 {
     let creation_time = Instant::now();
 
-    lazy(move || {
+    future::lazy(move || {
         metric!(timer(&format!("{}.wait_time", task_name)) = creation_time.elapsed());
         let start_time = Instant::now();
 
