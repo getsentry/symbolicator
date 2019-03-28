@@ -10,15 +10,15 @@ Write this to a file:
 
 ```yaml
 cache_dir: null
-bind: 127.0.0.1:42069
+bind: 127.0.0.1:3021
 metrics: null
 ```
 
-* `cache_dir`: Path to a directory, to cache symbols. If it is `null`, there is
+- `cache_dir`: Path to a directory, to cache symbols. If it is `null`, there is
   no caching. You really want caching in production. See
   [Caching](#ref-caching).
-* `bind`: Host and port for HTTP interface.
-* `metrics`: If set, symbolicator will send metrics to a statsd service. See [Metrics](#ref-metrics)
+- `bind`: Host and port for HTTP interface.
+- `metrics`: If set, symbolicator will send metrics to a statsd service. See [Metrics](#ref-metrics)
 
 ### Starting
 

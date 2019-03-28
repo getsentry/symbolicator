@@ -29,7 +29,7 @@ pub struct Config {
 }
 
 fn default_bind() -> String {
-    "127.0.0.1:42069".to_owned()
+    "127.0.0.1:3021".to_owned()
 }
 
 /// Control the metrics.
