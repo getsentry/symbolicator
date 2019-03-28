@@ -30,7 +30,6 @@ use crate::futures::measure_task;
 
 use crate::{
     actors::symcaches::{FetchSymCache, SymCache, SymCacheActor, SymCacheErrorKind},
-    log::LogError,
     types::{
         ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId,
         ObjectInfo, RawFrame, RawStacktrace, SymbolicatedFrame, SymbolicatedStacktrace,
