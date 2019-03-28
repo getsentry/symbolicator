@@ -1,6 +1,6 @@
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix::{Actor, Addr};
@@ -42,6 +42,13 @@ struct Cli {
     command: Command,
 }
 
+impl Cli {
+    /// Returns the path to the configuration file.
+    pub fn config(&self) -> Option<&Path> {
+        self.config.as_ref().map(PathBuf::as_path)
+    }
+}
+
 #[derive(StructOpt)]
 #[structopt(bin_name = "symbolicator")]
 enum Command {
@@ -60,7 +67,7 @@ pub type ServiceApp = App<ServiceState>;
 pub fn run_main() -> Result<(), CliError> {
     env_logger::init();
     let cli = Cli::from_args();
-    let config = Config::get(cli.config)?;
+    let config = Config::get(cli.config())?;
 
     match cli.command {
         Command::Run => run_server(config)?,
@@ -70,8 +77,8 @@ pub fn run_main() -> Result<(), CliError> {
 }
 
 pub fn run_server(config: Config) -> Result<(), CliError> {
-    if let Some(ref metrics) = config.metrics {
-        metrics::configure_statsd(&metrics.prefix, &metrics.statsd);
+    if let Some(ref statsd) = config.metrics.statsd {
+        metrics::configure_statsd(&config.metrics.prefix, statsd);
     }
 
     let sys = actix::System::new("symbolicator");

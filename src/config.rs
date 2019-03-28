@@ -3,8 +3,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use failure::Fail;
+use serde::Deserialize;
 
-#[derive(Fail, Debug, derive_more::From)]
+#[derive(Debug, Fail, derive_more::From)]
 pub enum ConfigError {
     #[fail(display = "Failed to open file: {}", _0)]
     Io(#[fail(cause)] io::Error),
@@ -14,36 +15,44 @@ pub enum ConfigError {
 }
 
 /// Control the metrics.
-#[derive(serde::Deserialize, Debug)]
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Metrics {
     /// host/port of statsd instance
-    pub statsd: String,
+    pub statsd: Option<String>,
+
     /// The prefix that should be added to all metrics.
     pub prefix: String,
 }
 
-fn default_bind() -> String {
-    "127.0.0.1:3021".to_owned()
-}
-
-#[derive(serde::Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct Config {
     /// Which directory to use when caching. Default is not to cache.
     pub cache_dir: Option<PathBuf>,
+
     /// Which port to bind for, for HTTP interface
-    #[serde(default = "default_bind")]
     pub bind: String,
+
     /// If set, configuration for reporting metrics to a statsd instance
-    pub metrics: Option<Metrics>,
+    pub metrics: Metrics,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            cache_dir: None,
+            bind: "127.0.0.1:3021".to_owned(),
+            metrics: Metrics::default(),
+        }
+    }
 }
 
 impl Config {
-    pub fn get(path: Option<PathBuf>) -> Result<Self, ConfigError> {
-        let path_ref: &Path = path
-            .as_ref()
-            .map(|x| x.as_path())
-            .unwrap_or_else(|| "config".as_ref());
-        let file = File::open(path_ref)?;
-        Ok(serde_yaml::from_reader(file)?)
+    pub fn get(path: Option<&Path>) -> Result<Self, ConfigError> {
+        Ok(match path {
+            Some(path) => serde_yaml::from_reader(File::open(path)?)?,
+            None => Config::default(),
+        })
     }
 }
