@@ -1,25 +1,19 @@
 use std::sync::Arc;
 
 use actix::Addr;
-
 use actix_web::{client, HttpMessage};
-
 use failure::Fail;
-
-use futures::{future::join_all, Future, IntoFuture, Stream};
-
+use futures::{future, Future, IntoFuture, Stream};
 use tokio_threadpool::ThreadPool;
 
-use crate::{
-    actors::{
-        cache::{CacheActor, ComputeMemoized},
-        objects::{
-            DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-            USER_AGENT,
-        },
-    },
-    http::follow_redirects,
-    types::{ArcFail, DirectoryLayout, FileType, HttpSourceConfig, ObjectId, Scope, SourceConfig},
+use crate::actors::cache::{CacheActor, ComputeMemoized};
+use crate::actors::objects::{
+    DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
+    USER_AGENT,
+};
+use crate::http;
+use crate::types::{
+    ArcFail, DirectoryLayout, FileType, HttpSourceConfig, ObjectId, Scope, SourceConfig,
 };
 
 pub fn prepare_downloads(
@@ -44,7 +38,7 @@ pub fn prepare_downloads(
         });
     }
 
-    Box::new(join_all(requests.into_iter().map(move |request| {
+    Box::new(future::join_all(requests.into_iter().map(move |request| {
         cache
             .send(ComputeMemoized(request))
             .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
@@ -78,7 +72,7 @@ pub fn download_from_source(
         None => return Box::new(Ok(None).into_future()),
     };
 
-    let response = follow_redirects(
+    let response = http::follow_redirects(
         client::get(&download_url)
             .header("User-Agent", USER_AGENT)
             .finish()

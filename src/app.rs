@@ -1,29 +1,22 @@
-use std::{fs::create_dir_all, io, path::PathBuf, sync::Arc};
+use std::fs;
+use std::io;
+use std::path::PathBuf;
+use std::sync::Arc;
 
-use actix::{self, Actor, Addr};
-
+use actix::{Actor, Addr};
 use actix_web::{server, App};
-
 use failure::Fail;
-
 use structopt::StructOpt;
-
 use tokio_threadpool::ThreadPool;
 
+use crate::actors::{
+    cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
+    symcaches::SymCacheActor,
+};
+use crate::config::{Config, ConfigError};
+use crate::endpoints;
+use crate::metrics;
 use crate::middlewares::Metrics;
-
-use crate::{
-    config::{get_config, Config, ConfigError},
-    metrics,
-};
-
-use crate::{
-    actors::{
-        cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
-        symcaches::SymCacheActor,
-    },
-    endpoints,
-};
 
 #[derive(Fail, Debug, derive_more::From)]
 pub enum CliError {
@@ -67,7 +60,7 @@ pub type ServiceApp = App<ServiceState>;
 pub fn run_main() -> Result<(), CliError> {
     env_logger::init();
     let cli = Cli::from_args();
-    let config = get_config(cli.config)?;
+    let config = Config::get(cli.config)?;
 
     match cli.command {
         Command::Run => run_server(config)?,
@@ -88,14 +81,14 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
 
     let download_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
     if let Some(ref download_cache_path) = download_cache_path {
-        create_dir_all(download_cache_path)?;
+        fs::create_dir_all(download_cache_path)?;
     }
     let download_cache = CacheActor::new(download_cache_path).start();
     let objects = ObjectsActor::new(download_cache, io_threadpool.clone()).start();
 
     let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
     if let Some(ref symcache_path) = symcache_path {
-        create_dir_all(symcache_path)?;
+        fs::create_dir_all(symcache_path)?;
     }
     let symcache_cache = CacheActor::new(symcache_path).start();
     let symcaches = SymCacheActor::new(symcache_cache, objects, cpu_threadpool.clone()).start();

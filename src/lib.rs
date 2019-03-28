@@ -5,12 +5,12 @@ mod macros;
 mod metrics;
 
 mod actors;
-pub mod app;
-mod endpoints;
-
 mod config;
+mod endpoints;
 mod futures;
 mod http;
 mod log;
 mod middlewares;
 mod types;
+
+pub mod app;

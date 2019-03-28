@@ -1,13 +1,11 @@
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::collections::BTreeMap;
+use std::fmt;
+use std::sync::Arc;
 
 use actix::Message;
-
 use failure::{Backtrace, Fail};
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 use symbolic::common::{Arch, CodeId, DebugId, Language};
-
 use url::Url;
 
 #[derive(Deserialize, Clone, Debug)]

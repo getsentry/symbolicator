@@ -1,30 +1,19 @@
-use std::{
-    fs::File,
-    io::{self, BufWriter, Write},
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
 
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
-
 use failure::{Fail, ResultExt};
-
-use futures::{future::Future, lazy};
-
+use futures::Future;
 use symbolic::{common::ByteView, symcache};
-
 use tokio_threadpool::ThreadPool;
 
+use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
+use crate::actors::objects::{FetchObject, ObjectsActor};
 use crate::futures::measure_task;
-
-use crate::{
-    actors::{
-        cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized},
-        objects::{FetchObject, ObjectsActor},
-    },
-    types::{FileType, ObjectId, ObjectType, Scope, SourceConfig},
-};
+use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum SymCacheErrorKind {
@@ -142,7 +131,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             })
             .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
             .and_then(move |result| {
-                threadpool.spawn_handle(lazy(move || {
+                threadpool.spawn_handle(futures::lazy(move || {
                     let object = result.context(SymCacheErrorKind::Fetching)?;
                     let mut file =
                         BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);

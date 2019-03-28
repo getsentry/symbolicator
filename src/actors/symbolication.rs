@@ -1,29 +1,18 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    iter::FromIterator,
-    sync::Arc,
-    time::Duration,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::iter::FromIterator;
+use std::sync::Arc;
+use std::time::Duration;
 
 use actix::{
     fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, ResponseActFuture,
 };
 
 use failure::Fail;
-
-use futures::future::{join_all, lazy, Either, Future};
-
-use futures::{
-    future::{IntoFuture, Shared, SharedError},
-    sync::oneshot,
-};
-
+use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
+use futures::sync::oneshot;
 use symbolic::common::{split_path, InstructionInfo, Language};
-
 use tokio::prelude::FutureExt;
-
 use tokio_threadpool::ThreadPool;
-
 use uuid;
 
 use crate::futures::measure_task;
@@ -76,7 +65,7 @@ impl SymbolicationActor {
         let result = object_lookup
             .fetch_objects(self.symcaches.clone(), request)
             .and_then(move |object_lookup| {
-                threadpool.spawn_handle(lazy(move || {
+                threadpool.spawn_handle(future::lazy(move || {
                     let stacktraces = threads
                         .into_iter()
                         .map(|thread| symbolize_thread(thread, &object_lookup, &meta))
@@ -159,7 +148,7 @@ impl ObjectLookup {
             }
         }
 
-        join_all(
+        future::join_all(
             self.inner
                 .into_iter()
                 .enumerate()

@@ -1,9 +1,7 @@
 use std::time::Instant;
 
-use actix_web::{
-    middleware::{Finished, Middleware, Started},
-    Error, HttpRequest, HttpResponse,
-};
+use actix_web::middleware::{Finished, Middleware, Started};
+use actix_web::{Error, HttpRequest, HttpResponse};
 
 /// Basic metrics
 pub struct Metrics;

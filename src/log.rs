@@ -1,10 +1,10 @@
-use std::{env, fmt};
+use std::fmt;
 
 use failure::AsFail;
 
 /// Returns whether backtrace printing is enabled.
 pub fn backtrace_enabled() -> bool {
-    match env::var("RUST_BACKTRACE").as_ref().map(|x| x.as_str()) {
+    match std::env::var("RUST_BACKTRACE").as_ref().map(|x| x.as_str()) {
         Ok("1") | Ok("full") => true,
         _ => false,
     }

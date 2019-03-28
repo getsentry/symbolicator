@@ -1,31 +1,22 @@
-use std::{
-    fs,
-    io::{self, Write},
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
 
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
-
 use bytes::Bytes;
-
 use failure::{Fail, ResultExt};
 
-use futures::{
-    future::{join_all, lazy, Either, Future, IntoFuture},
-    Stream,
-};
-
-use symbolic::{common::ByteView, debuginfo};
-
+use futures::future::{self, Either};
+use futures::{Future, IntoFuture, Stream};
+use symbolic::common::ByteView;
+use symbolic::debuginfo::Object;
 use tokio_threadpool::ThreadPool;
 
-use crate::{
-    actors::cache::{CacheActor, CacheItemRequest, CacheKey},
-    futures::measure_task,
-    types::{FileType, ObjectId, Scope, SourceConfig},
-};
+use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey};
+use crate::futures::measure_task;
+use crate::types::{FileType, ObjectId, Scope, SourceConfig};
 
 mod http;
 mod sentry;
@@ -129,7 +120,9 @@ impl CacheItemRequest for FetchFile {
 
                 let result = file.and_then(|file| {
                     payload.fold(file, move |mut file, chunk| {
-                        threadpool.spawn_handle(lazy(move || file.write_all(&chunk).map(|_| file)))
+                        threadpool.spawn_handle(future::lazy(move || {
+                            file.write_all(&chunk).map(|_| file)
+                        }))
                     })
                 });
 
@@ -165,12 +158,12 @@ pub struct ObjectFile {
 }
 
 impl ObjectFile {
-    pub fn get_object(&self) -> Result<Option<debuginfo::Object<'_>>, ObjectError> {
+    pub fn get_object(&self) -> Result<Option<Object<'_>>, ObjectError> {
         let bytes = match self.object {
             Some(ref x) => x,
             None => return Ok(None),
         };
-        let parsed = debuginfo::Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
+        let parsed = Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
 
         if let Some(ref request) = self.request {
             let object_id = match request.file_id {
@@ -255,36 +248,38 @@ impl Handler<FetchObject> for ObjectsActor {
             })
             .collect();
 
-        Box::new(join_all(prepare_futures).and_then(move |responses| {
-            responses
-                .into_iter()
-                .flatten()
-                .enumerate()
-                .min_by_key(|(ref i, response)| {
-                    (
-                        // Prefer object files with debug info over object files without
-                        // Prefer files that contain an object over unparseable files
-                        match response
-                            .as_ref()
-                            .ok()
-                            .and_then(|o| Some(o.get_object().ok()??.has_debug_info()))
-                        {
-                            Some(true) => 0,
-                            Some(false) => 1,
-                            None => 2,
-                        },
-                        *i,
-                    )
-                })
-                .map(|(_, response)| response)
-                .unwrap_or_else(move || {
-                    Ok(Arc::new(ObjectFile {
-                        request: None,
-                        scope,
-                        object: None,
-                    }))
-                })
-        }))
+        Box::new(
+            future::join_all(prepare_futures).and_then(move |responses| {
+                responses
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                    .min_by_key(|(ref i, response)| {
+                        (
+                            // Prefer object files with debug info over object files without
+                            // Prefer files that contain an object over unparseable files
+                            match response
+                                .as_ref()
+                                .ok()
+                                .and_then(|o| Some(o.get_object().ok()??.has_debug_info()))
+                            {
+                                Some(true) => 0,
+                                Some(false) => 1,
+                                None => 2,
+                            },
+                            *i,
+                        )
+                    })
+                    .map(|(_, response)| response)
+                    .unwrap_or_else(move || {
+                        Ok(Arc::new(ObjectFile {
+                            request: None,
+                            scope,
+                            object: None,
+                        }))
+                    })
+            }),
+        )
     }
 }
 

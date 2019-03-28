@@ -1,16 +1,11 @@
 use actix::ResponseFuture;
-
 use actix_web::{http::Method, Json, State};
-
 use failure::{Error, Fail};
+use futures::Future;
 
-use futures::future::Future;
-
-use crate::{
-    app::{ServiceApp, ServiceState},
-    types::{
-        SymbolicationError, SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
-    },
+use crate::app::{ServiceApp, ServiceState};
+use crate::types::{
+    SymbolicationError, SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
 };
 
 fn symbolicate_frames(

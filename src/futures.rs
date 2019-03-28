@@ -1,7 +1,6 @@
 use std::time::{Duration, Instant};
 
 use futures::{future::Either, lazy, Future};
-
 use tokio::prelude::FutureExt;
 
 pub fn measure_task<T, E, F>(

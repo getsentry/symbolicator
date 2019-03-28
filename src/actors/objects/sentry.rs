@@ -1,28 +1,19 @@
 use std::sync::Arc;
 
 use actix::Addr;
-
 use actix_web::{client, HttpMessage};
 
-use futures::{
-    future::{join_all, Either, IntoFuture},
-    Future, Stream,
-};
-
 use failure::Fail;
-
+use futures::future::{self, Either};
+use futures::{Future, IntoFuture, Stream};
 use tokio_threadpool::ThreadPool;
 
-use crate::{
-    actors::{
-        cache::{CacheActor, ComputeMemoized},
-        objects::{
-            DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-            USER_AGENT,
-        },
-    },
-    types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig, SourceConfig},
+use crate::actors::cache::{CacheActor, ComputeMemoized};
+use crate::actors::objects::{
+    DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
+    USER_AGENT,
 };
+use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig, SourceConfig};
 
 #[derive(Debug, Fail, Clone, Copy)]
 pub enum SentryErrorKind {
@@ -94,7 +85,7 @@ pub fn prepare_downloads(
                     Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
                 }
             })
-            .and_then(clone!(source, object_id, |entries| join_all(
+            .and_then(clone!(source, object_id, |entries| future::join_all(
                 entries.into_iter().map(move |api_response| cache
                     .send(ComputeMemoized(FetchFile {
                         source: SourceConfig::Sentry(source.clone()),

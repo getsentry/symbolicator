@@ -1,23 +1,14 @@
-use std::{
-    collections::BTreeMap,
-    fs::{self, create_dir_all},
-    io,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::collections::BTreeMap;
+use std::fs::{self, OpenOptions};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use actix::{
-    fut::{ActorFuture, WrapFuture},
-    Actor, AsyncContext, Context, Handler, Message, ResponseActFuture,
-};
-
-use futures::{
-    future::{Future, IntoFuture, Shared, SharedError},
-    sync::oneshot,
-};
-
+use actix::fut::{ActorFuture, WrapFuture};
+use actix::{Actor, AsyncContext, Context, Handler, Message, ResponseActFuture};
+use futures::future::{Future, IntoFuture, Shared, SharedError};
+use futures::sync::oneshot;
 use symbolic::common::ByteView;
-
 use tempfile::NamedTempFile;
 
 use crate::types::Scope;
@@ -95,10 +86,8 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
                     if let Some(ref path) = path {
                         if path.exists() {
-                            let _ = tryf!(fs::OpenOptions::new()
-                                .append(true)
-                                .truncate(false)
-                                .open(&path));
+                            let _ =
+                                tryf!(OpenOptions::new().append(true).truncate(false).open(&path));
                             let byteview = tryf!(ByteView::open(path));
                             let item = tryf!(request.0.load(scope.clone(), byteview));
                             return Box::new(Ok(item).into_future());
@@ -169,7 +158,7 @@ fn get_scope_path(
         None => return Ok(None),
     };
 
-    create_dir_all(&dir)?;
+    fs::create_dir_all(&dir)?;
     Ok(Some(dir.join(safe_path_segment(cache_key))))
 }
 

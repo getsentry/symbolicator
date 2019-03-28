@@ -1,13 +1,11 @@
 //! Provides access to the metrics sytem.
-use std::{net::ToSocketAddrs, sync::Arc};
+use std::net::ToSocketAddrs;
+use std::sync::Arc;
 
 use cadence::StatsdClient;
-
-use lazy_static::lazy_static;
-
 use parking_lot::RwLock;
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref METRICS_CLIENT: RwLock<Option<Arc<StatsdClient>>> = RwLock::new(None);
 }
 
