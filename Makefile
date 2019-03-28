@@ -1,38 +1,77 @@
 export SEMAPHORE_PYTHON_VERSION := python3
 
-.venv/bin/python: Makefile
-	rm -rf .venv
-	virtualenv -p $$SEMAPHORE_PYTHON_VERSION .venv
+all: check test
+.PHONY: all
 
-integration-test: .venv/bin/python
+check: style lint
+.PHONY: check
+
+clean:
+	cargo clean
+	rm -rf .venv
+.PHONY: clean
+
+# Tests
+
+test: test-rust test-integration
+.PHONY: test
+
+test-rust:
+	cargo test --all --all-features
+.PHONY: test-rust
+
+test-integration: .venv/bin/python
 	.venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist pytest-icdiff
 	cargo build
 	@.venv/bin/pytest tests --reruns 5 -n12 -vv
-.PHONY: integration-test
+.PHONY: test-integration
 
-check: lint integration-test
-.PHONY: check
+# Style checking
 
-lint: pylint rslint
+style: style-rust style-python
+.PHONY: style
+
+style-python: .venv/bin/python
+	@echo TODO
+.PHONY: style-python
+
+style-rust:
+	@rustup component add rustfmt --toolchain stable 2> /dev/null
+	cargo +stable fmt -- --check
+.PHONY: style-rust
+
+# Linting
+
+lint: lint-rust lint-python
 .PHONY: lint
 
-pylint: .venv/bin/python pyformat
+lint-python: .venv/bin/python
 	.venv/bin/pip install -U flake8
 	.venv/bin/flake8 tests
-.PHONY: pylint
+.PHONY: lint-python
 
-rslint: rsformat
-	cargo clippy
+lint-rust:
+	@rustup component add clippy --toolchain stable 2> /dev/null
+	cargo +stable clippy --all-features --all --tests --examples -- -D clippy::all
+.PHONY: lint-rust
 
-format: pyformat rsformat
+# Formatting
+
+format: format-rust format-python
 .PHONY: format
 
-rsformat:
-	cargo +nightly fmt  # imports
+format-rust:
+	@rustup component add rustfmt --toolchain stable 2> /dev/null
 	cargo +stable fmt
-.PHONY: rsformat
+.PHONY: format-rust
 
-pyformat: .venv/bin/python
+format-python: .venv/bin/python
 	.venv/bin/pip install -U black
 	.venv/bin/black tests
-.PHONY: pyformat
+.PHONY: format-python
+
+# Dependencies
+
+.venv/bin/python: Makefile
+	rm -rf .venv
+	virtualenv -p $$SEMAPHORE_PYTHON_VERSION .venv
