@@ -1,0 +1,34 @@
+language: rust
+rust: stable
+
+cache:
+  cargo: true
+
+git:
+  depth: 1
+
+branches:
+  only:
+    - master
+    - /^release\/[\d.]+$/
+
+matrix:
+  include:
+    - name: "style check"
+      script: make -e style
+
+    - name: "lint"
+      script: make -e lint
+
+    - name: "test"
+      script: make -e test
+
+notifications:
+  webhooks:
+    urls:
+      - https://zeus.ci/hooks/53a70baa-5131-11e9-902b-0a580a282506/public/provider/travis/webhook
+    on_success: always
+    on_failure: always
+    on_start: always
+    on_cancel: always
+    on_error: always
