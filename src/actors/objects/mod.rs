@@ -158,7 +158,7 @@ pub struct ObjectFile {
 }
 
 impl ObjectFile {
-    pub fn get_object(&self) -> Result<Option<Object<'_>>, ObjectError> {
+    pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         let bytes = match self.object {
             Some(ref x) => x,
             None => return Ok(None),
@@ -261,7 +261,7 @@ impl Handler<FetchObject> for ObjectsActor {
                             match response
                                 .as_ref()
                                 .ok()
-                                .and_then(|o| Some(o.get_object().ok()??.has_debug_info()))
+                                .and_then(|o| Some(o.parse().ok()??.has_debug_info()))
                             {
                                 Some(true) => 0,
                                 Some(false) => 1,

@@ -73,14 +73,14 @@ impl SymCacheActor {
 }
 
 #[derive(Clone)]
-pub struct SymCache {
+pub struct SymCacheFile {
     inner: Option<ByteView<'static>>,
     scope: Scope,
     request: FetchSymCacheInternal,
 }
 
-impl SymCache {
-    pub fn get_symcache(&self) -> Result<Option<symcache::SymCache<'_>>, SymCacheError> {
+impl SymCacheFile {
+    pub fn parse(&self) -> Result<Option<symcache::SymCache<'_>>, SymCacheError> {
         let bytes = match self.inner {
             Some(ref x) => x,
             None => return Ok(None),
@@ -104,7 +104,7 @@ pub struct FetchSymCacheInternal {
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
-    type Item = SymCache;
+    type Item = SymCacheFile;
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -135,7 +135,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                     let object = result.context(SymCacheErrorKind::Fetching)?;
                     let mut file =
                         BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
-                    match object.get_object() {
+                    match object.parse() {
                         Ok(Some(object)) => {
                             let _file = symcache::SymCacheWriter::write_object(&object, file)
                                 .context(SymCacheErrorKind::Io)?;
@@ -161,7 +161,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
-        Ok(SymCache {
+        Ok(SymCacheFile {
             request: self,
             scope,
             inner: if !data.is_empty() { Some(data) } else { None },
@@ -179,11 +179,11 @@ pub struct FetchSymCache {
 }
 
 impl Message for FetchSymCache {
-    type Result = Result<Arc<SymCache>, Arc<SymCacheError>>;
+    type Result = Result<Arc<SymCacheFile>, Arc<SymCacheError>>;
 }
 
 impl Handler<FetchSymCache> for SymCacheActor {
-    type Result = ResponseFuture<Arc<SymCache>, Arc<SymCacheError>>;
+    type Result = ResponseFuture<Arc<SymCacheFile>, Arc<SymCacheError>>;
 
     fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(

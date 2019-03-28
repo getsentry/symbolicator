@@ -6,7 +6,6 @@ use std::time::Duration;
 use actix::{
     fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, ResponseActFuture,
 };
-
 use failure::Fail;
 use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
@@ -15,15 +14,12 @@ use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
+use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::futures::measure_task;
-
-use crate::{
-    actors::symcaches::{FetchSymCache, SymCache, SymCacheActor, SymCacheErrorKind},
-    types::{
-        ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId,
-        ObjectInfo, RawFrame, RawStacktrace, SymbolicatedFrame, SymbolicatedStacktrace,
-        SymbolicationError, SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
-    },
+use crate::types::{
+    ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId, ObjectInfo,
+    RawFrame, RawStacktrace, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
+    SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
 };
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -95,7 +91,7 @@ impl SymbolicationActor {
 }
 
 struct ObjectLookup {
-    inner: Vec<(ObjectInfo, Option<Arc<SymCache>>, DebugFileStatus)>,
+    inner: Vec<(ObjectInfo, Option<Arc<SymCacheFile>>, DebugFileStatus)>,
 }
 
 impl FromIterator<ObjectInfo> for ObjectLookup {
@@ -179,7 +175,7 @@ impl ObjectLookup {
                                         }
                                     };
 
-                                    let status = match symcache.get_symcache() {
+                                    let status = match symcache.parse() {
                                         Ok(Some(_)) => DebugFileStatus::Found,
                                         Ok(None) => DebugFileStatus::MissingDebugFile,
                                         Err(e) => match e.kind() {
@@ -210,7 +206,7 @@ impl ObjectLookup {
     fn lookup_object(
         &self,
         addr: u64,
-    ) -> Option<(usize, &ObjectInfo, Option<&SymCache>, DebugFileStatus)> {
+    ) -> Option<(usize, &ObjectInfo, Option<&SymCacheFile>, DebugFileStatus)> {
         for (i, (info, cache, status)) in self.inner.iter().enumerate() {
             // When `size` is None, this must be the last item.
             if info.image_addr.0 <= addr && addr <= info.image_addr.0 + info.image_size? {
@@ -238,7 +234,7 @@ fn symbolize_thread(
             None => return Err(FrameStatus::UnknownImage),
         };
 
-        let symcache = match symcache.get_symcache() {
+        let symcache = match symcache.parse() {
             Ok(Some(x)) => x,
             Ok(None) => return Err(FrameStatus::MissingDebugFile),
             Err(_) => return Err(FrameStatus::MalformedDebugFile),
