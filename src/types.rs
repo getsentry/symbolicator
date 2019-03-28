@@ -178,15 +178,26 @@ pub struct SymbolicationRequest {
     pub threads: Vec<RawStacktrace>,
     #[serde(default)]
     pub modules: Vec<ObjectInfo>,
-    #[serde(default)]
-    pub request: Option<RequestMeta>,
+}
+
+#[derive(Deserialize)]
+pub struct ResumedSymbolicationRequest {
+    pub request_id: String,
 }
 
 #[derive(Deserialize)]
 pub struct RequestMeta {
-    pub timeout: u64,
-    #[serde(default)]
-    pub request_id: Option<String>,
+    pub timeout: Option<u64>,
+}
+
+pub struct RequestWithMeta<T>(pub T, pub RequestMeta);
+
+impl Message for RequestWithMeta<SymbolicationRequest> {
+    type Result = Result<SymbolicationResponse, SymbolicationError>;
+}
+
+impl Message for RequestWithMeta<ResumedSymbolicationRequest> {
+    type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
 }
 
 #[derive(Clone, Deserialize)]
@@ -218,7 +229,6 @@ pub enum SymbolicationResponse {
         stacktraces: Vec<SymbolicatedStacktrace>,
         modules: Vec<FetchedDebugFile>,
     },
-    UnknownRequest {},
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -234,10 +244,6 @@ pub enum DebugFileStatus {
 #[derive(Debug, Clone, Serialize)]
 pub struct FetchedDebugFile {
     pub status: DebugFileStatus,
-}
-
-impl Message for SymbolicationRequest {
-    type Result = Result<SymbolicationResponse, SymbolicationError>;
 }
 
 #[derive(Debug, Fail)]

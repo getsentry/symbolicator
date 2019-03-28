@@ -108,6 +108,7 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
         let mut app = App::with_state(state).middleware(Metrics);
         app = endpoints::symbolicate::register(app);
         app = endpoints::healthcheck::register(app);
+        app = endpoints::requests::register(app);
         app
     }
 

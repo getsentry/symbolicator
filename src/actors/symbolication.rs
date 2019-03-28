@@ -18,8 +18,9 @@ use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, 
 use crate::futures::measure_task;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId, ObjectInfo,
-    RawFrame, RawStacktrace, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
-    SymbolicationErrorKind, SymbolicationRequest, SymbolicationResponse,
+    RawFrame, RawStacktrace, RequestMeta, RequestWithMeta, ResumedSymbolicationRequest,
+    SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind,
+    SymbolicationRequest, SymbolicationResponse,
 };
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -44,6 +45,56 @@ impl SymbolicationActor {
             symcaches,
             threadpool,
             requests,
+        }
+    }
+
+    fn wrap_response_channel(
+        &self,
+        request_id: String,
+        request_meta: RequestMeta,
+        channel: ComputationChannel<SymbolicationResponse, SymbolicationError>,
+    ) -> ResponseActFuture<Self, SymbolicationResponse, SymbolicationError> {
+        let rv = channel
+            .map_err(|_: SharedError<oneshot::Canceled>| {
+                panic!("Oneshot channel cancelled! Race condition or system shutting down")
+            })
+            .and_then(|result| (*result).clone())
+            .map(|x| (*x).clone())
+            .map_err(|e| ArcFail(e).context(SymbolicationErrorKind::Mailbox).into());
+
+        if let Some(timeout) = request_meta.timeout {
+            Box::new(
+                rv.timeout(Duration::from_secs(timeout))
+                    .into_actor(self)
+                    .then(move |result, slf, _ctx| {
+                        match result {
+                            Ok(x) => {
+                                slf.requests.remove(&request_id);
+                                Ok(x)
+                            }
+                            Err(e) => {
+                                if let Some(inner) = e.into_inner() {
+                                    slf.requests.remove(&request_id);
+                                    Err(inner)
+                                } else {
+                                    Ok(SymbolicationResponse::Pending {
+                                        request_id,
+                                        // XXX(markus): Probably need a better estimation at some
+                                        // point.
+                                        retry_after: 30,
+                                    })
+                                }
+                            }
+                        }
+                        .into_future()
+                        .into_actor(slf)
+                    }),
+            )
+        } else {
+            Box::new(rv.into_actor(self).then(move |result, slf, _ctx| {
+                slf.requests.remove(&request_id);
+                result.into_future().into_actor(slf)
+            }))
         }
     }
 
@@ -339,89 +390,60 @@ fn symbolize_thread(
     stacktrace
 }
 
-impl Handler<SymbolicationRequest> for SymbolicationActor {
+impl Handler<RequestWithMeta<ResumedSymbolicationRequest>> for SymbolicationActor {
+    type Result = ResponseActFuture<Self, Option<SymbolicationResponse>, SymbolicationError>;
+
+    fn handle(
+        &mut self,
+        RequestWithMeta(request, meta): RequestWithMeta<ResumedSymbolicationRequest>,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let request_id = request.request_id;
+
+        if let Some(channel) = self.requests.get(&request_id) {
+            Box::new(
+                self.wrap_response_channel(request_id, meta, channel.clone())
+                    .map(|x, _, _| Some(x)),
+            )
+        } else {
+            Box::new(Ok(None).into_future().into_actor(self))
+        }
+    }
+}
+
+impl Handler<RequestWithMeta<SymbolicationRequest>> for SymbolicationActor {
     type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
 
     fn handle(
         &mut self,
-        mut request: SymbolicationRequest,
+        RequestWithMeta(request, meta): RequestWithMeta<SymbolicationRequest>,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        if let Some(request_meta) = request.request.take() {
-            let (request_id, channel) = if let Some(request_id) = request_meta.request_id {
-                if let Some(channel) = self.requests.get(&request_id) {
-                    (request_id, channel.clone())
-                } else {
-                    return Box::new(
-                        Ok(SymbolicationResponse::UnknownRequest {})
-                            .into_future()
-                            .into_actor(self),
-                    );
-                }
-            } else {
-                let request_id = loop {
-                    let request_id = uuid::Uuid::new_v4().to_string();
-                    if !self.requests.contains_key(&request_id) {
-                        break request_id;
-                    }
-                };
+        let request_id = loop {
+            let request_id = uuid::Uuid::new_v4().to_string();
+            if !self.requests.contains_key(&request_id) {
+                break request_id;
+            }
+        };
 
-                let (tx, rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
 
-                ctx.spawn(
-                    self.do_symbolicate(request)
-                        .then(move |result| {
-                            tx.send(match result {
-                                Ok(x) => Ok(Arc::new(x)),
-                                Err(e) => Err(Arc::new(e)),
-                            })
-                            .map_err(|_| ())
-                        })
-                        .into_actor(self),
-                );
-
-                let channel = rx.shared();
-                self.requests.insert(request_id.clone(), channel.clone());
-                (request_id, channel)
-            };
-
-            Box::new(
-                channel
-                    .map_err(|_: SharedError<oneshot::Canceled>| {
-                        panic!("Oneshot channel cancelled! Race condition or system shutting down")
+        ctx.spawn(
+            self.do_symbolicate(request)
+                .then(move |result| {
+                    tx.send(match result {
+                        Ok(x) => Ok(Arc::new(x)),
+                        Err(e) => Err(Arc::new(e)),
                     })
-                    .and_then(|result| (*result).clone())
-                    .map(|x| (*x).clone())
-                    .map_err(|e| ArcFail(e).context(SymbolicationErrorKind::Mailbox).into())
-                    .timeout(Duration::from_secs(request_meta.timeout))
-                    .into_actor(self)
-                    .then(move |result, slf, _ctx| {
-                        match result {
-                            Ok(x) => {
-                                slf.requests.remove(&request_id);
-                                Ok(x)
-                            }
-                            Err(e) => {
-                                if let Some(inner) = e.into_inner() {
-                                    slf.requests.remove(&request_id);
-                                    Err(inner)
-                                } else {
-                                    Ok(SymbolicationResponse::Pending {
-                                        request_id,
-                                        // XXX(markus): Probably need a better estimation at some
-                                        // point.
-                                        retry_after: 30,
-                                    })
-                                }
-                            }
-                        }
-                        .into_future()
-                        .into_actor(slf)
-                    }),
-            )
-        } else {
-            Box::new(self.do_symbolicate(request).into_actor(self))
-        }
+                    .map_err(|_| ())
+                })
+                .into_actor(self),
+        );
+
+        let channel = rx.shared();
+        self.requests.insert(request_id.clone(), channel.clone());
+
+        Box::new(self.wrap_response_channel(request_id, meta, channel))
     }
 }
 

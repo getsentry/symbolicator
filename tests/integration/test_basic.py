@@ -226,19 +226,7 @@ def test_sources_without_filetypes(symbolicator, hitcounter):
 def test_timeouts(symbolicator, hitcounter):
     hitcounter.before_request = lambda: time.sleep(3)
 
-    input = dict(
-        request={"timeout": 1},
-        sources=[
-            {
-                "type": "http",
-                "id": "microsoft",
-                "filetypes": ["pdb", "pe"],
-                "layout": "symstore",
-                "url": f"{hitcounter.url}/msdl/",
-            }
-        ],
-        **WINDOWS_DATA,
-    )
+    request_id = None
 
     responses = []
 
@@ -246,20 +234,36 @@ def test_timeouts(symbolicator, hitcounter):
     service.wait_healthcheck()
 
     for _ in range(10):
-        response = service.post("/symbolicate", json=input)
+        if request_id:
+            response = service.get("/requests/{}?timeout=1".format(request_id))
+        else:
+            input = dict(
+                sources=[
+                    {
+                        "type": "http",
+                        "id": "microsoft",
+                        "filetypes": ["pdb", "pe"],
+                        "layout": "symstore",
+                        "url": f"{hitcounter.url}/msdl/",
+                    }
+                ],
+                **WINDOWS_DATA,
+            )
+            response = service.post("/symbolicate?timeout=1", json=input)
+
         response.raise_for_status()
         response = response.json()
         responses.append(response)
         if response["status"] == "completed":
             break
         elif response["status"] == "pending":
-            input["request"]["request_id"] = response["request_id"]
+            request_id = response["request_id"]
         else:
             assert False
 
     for response in responses[:-1]:
         assert response["status"] == "pending"
-        assert response["request_id"] == input["request"]["request_id"]
+        assert response["request_id"] == request_id
 
     assert responses[-1] == SUCCESS_WINDOWS
     assert len(responses) > 1
