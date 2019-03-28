@@ -6,12 +6,11 @@
 
 ### Config
 
-Write this to a file:
+Write this to a file (config.yml):
 
 ```yaml
 cache_dir: null
 bind: 127.0.0.1:3021
-metrics: null
 ```
 
 - `cache_dir`: Path to a directory, to cache symbols. If it is `null`, there is
@@ -22,7 +21,7 @@ metrics: null
 
 ### Starting
 
-Start the server with: `symbolicator -c ./foo.yml run`
+Start the server with: `symbolicator -c ./config.yml run`
 
 ## Caching
 
@@ -58,8 +57,8 @@ The `metrics` value in your config is an object with two keys:
 
 ```yaml
 metrics:
-statsd: 127.0.0.1:1234
-prefix: sentry.symbolicator
+  statsd: 127.0.0.1:1234
+  prefix: sentry.symbolicator
 ```
 
 `statsd` points to your service, `prefix` is the prefix added in front of all

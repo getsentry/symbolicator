@@ -29,7 +29,7 @@ pub enum CliError {
 
 #[derive(StructOpt)]
 struct Cli {
-    /// Path to your configuration file. Defaults to `./config`.
+    /// Path to your configuration file.
     #[structopt(
         long = "config",
         short = "c",
