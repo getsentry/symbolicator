@@ -1,5 +1,0 @@
-merge_imports = true
-reorder_imports = true
-merge_derives = true
-newline_style = "Unix"
-imports_layout = "Horizontal"
