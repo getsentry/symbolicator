@@ -147,7 +147,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
                                 .context(SymCacheErrorKind::Io)?;
                         }
                         Ok(None) => (),
-                        Err(_) => {
+                        Err(err) => {
+                            log::warn!("Could not parse object: {}", err);
                             file.write_all(b"malformed")
                                 .context(SymCacheErrorKind::Io)?;
                         }

@@ -173,6 +173,11 @@ impl ObjectFile {
 
             if let Some(ref debug_id) = object_id.debug_id {
                 if parsed.debug_id() != *debug_id {
+                    log::debug!(
+                        "debug id mismatch. got {}, expected {}",
+                        parsed.debug_id(),
+                        debug_id
+                    );
                     return Err(ObjectErrorKind::IdMismatch.into());
                 }
             }
@@ -180,6 +185,11 @@ impl ObjectFile {
             if let Some(ref code_id) = object_id.code_id {
                 if let Some(ref object_code_id) = parsed.code_id() {
                     if object_code_id != code_id {
+                        log::debug!(
+                            "code id mismatch. got {}, expected {}",
+                            object_code_id,
+                            code_id
+                        );
                         return Err(ObjectErrorKind::IdMismatch.into());
                     }
                 }
