@@ -153,7 +153,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         Box::new(measure_task(
             "fetch_symcache",
-            Some((Duration::from_secs(300), || {
+            Some((Duration::from_secs(1200), || {
                 SymCacheErrorKind::Timeout.into()
             })),
             result,

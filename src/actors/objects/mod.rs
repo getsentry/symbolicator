@@ -135,7 +135,7 @@ impl CacheItemRequest for FetchFile {
 
         Box::new(measure_task(
             "fetch_object",
-            Some((Duration::from_secs(120), || ObjectErrorKind::Timeout.into())),
+            Some((Duration::from_secs(600), || ObjectErrorKind::Timeout.into())),
             result,
         ))
     }

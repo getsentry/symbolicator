@@ -133,7 +133,7 @@ impl SymbolicationActor {
 
         measure_task(
             "symbolicate",
-            Some((Duration::from_secs(420), || {
+            Some((Duration::from_secs(3600), || {
                 SymbolicationErrorKind::Timeout.into()
             })),
             result,
