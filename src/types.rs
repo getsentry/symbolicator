@@ -17,9 +17,9 @@ pub struct Signal(pub u32);
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
-    Sentry(SentrySourceConfig),
-    Http(HttpSourceConfig),
-    S3(S3SourceConfig),
+    Sentry(Arc<SentrySourceConfig>),
+    Http(Arc<HttpSourceConfig>),
+    S3(Arc<S3SourceConfig>),
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -50,14 +50,38 @@ pub struct HttpSourceConfig {
 }
 
 #[derive(Deserialize, Clone, Debug)]
+pub struct S3SourceKey {
+    pub region: rusoto_core::Region,
+    pub access_key: String,
+    pub secret_key: String,
+}
+
+impl PartialEq for S3SourceKey {
+    fn eq(&self, other: &S3SourceKey) -> bool {
+        self.access_key == other.access_key
+            && self.secret_key == other.secret_key
+            && self.region == other.region
+    }
+}
+
+impl Eq for S3SourceKey {}
+
+impl std::hash::Hash for S3SourceKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.access_key.hash(state);
+        self.secret_key.hash(state);
+        self.region.name().hash(state);
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceConfig {
     pub id: String,
-    pub region: rusoto_core::Region,
     pub bucket: String,
     #[serde(default)]
     pub prefix: String,
-    pub access_key: String,
-    pub secret_key: String,
+    #[serde(flatten)]
+    pub source_key: Arc<S3SourceKey>,
 
     pub layout: DirectoryLayout,
 

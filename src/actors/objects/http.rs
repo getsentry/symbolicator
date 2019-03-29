@@ -18,7 +18,7 @@ use crate::types::{
 };
 
 pub fn prepare_downloads(
-    source: &HttpSourceConfig,
+    source: &Arc<HttpSourceConfig>,
     scope: Scope,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
