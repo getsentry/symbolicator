@@ -175,6 +175,7 @@ impl ObjectFile {
 
             if let Some(ref debug_id) = object_id.debug_id {
                 if parsed.debug_id() != *debug_id {
+                    metric!(counter("object.debug_id_mismatch") += 1);
                     log::debug!(
                         "debug id mismatch. got {}, expected {}",
                         parsed.debug_id(),
@@ -186,6 +187,7 @@ impl ObjectFile {
             if let Some(ref code_id) = object_id.code_id {
                 if let Some(ref object_code_id) = parsed.code_id() {
                     if object_code_id != code_id {
+                        metric!(counter("object.code_id_mismatch") += 1);
                         log::debug!(
                             "code id mismatch. got {}, expected {}",
                             object_code_id,
