@@ -17,8 +17,8 @@ use uuid;
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::futures::measure_task;
 use crate::types::{
-    ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId, ObjectInfo,
-    RawFrame, RawStacktrace, RequestId, ResumedSymbolicationRequest, SymbolicatedFrame,
+    ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
+    RawFrame, RawStacktrace, RequestId, ResumedSymbolicationRequest, Signal, SymbolicatedFrame,
     SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationRequest,
     SymbolicationResponse,
 };
@@ -102,7 +102,7 @@ impl SymbolicationActor {
         &mut self,
         request: SymbolicationRequest,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let meta = request.meta.clone();
+        let signal = request.signal;
         let threads = request.threads.clone();
 
         let object_lookup: ObjectLookup = request.modules.iter().cloned().collect();
@@ -115,16 +115,20 @@ impl SymbolicationActor {
                 threadpool.spawn_handle(future::lazy(move || {
                     let stacktraces = threads
                         .into_iter()
-                        .map(|thread| symbolize_thread(thread, &object_lookup, &meta))
+                        .map(|thread| symbolize_thread(thread, &object_lookup, signal))
                         .collect();
 
                     let modules = object_lookup
                         .inner
                         .into_iter()
-                        .map(|(_, _, status)| FetchedDebugFile { status })
+                        .map(|(object_info, _, status)| FetchedDebugFile {
+                            status,
+                            object_info,
+                        })
                         .collect();
 
                     Ok(SymbolicationResponse::Completed {
+                        signal,
                         modules,
                         stacktraces,
                     })
@@ -271,7 +275,7 @@ impl ObjectLookup {
 fn symbolize_thread(
     thread: RawStacktrace,
     caches: &ObjectLookup,
-    meta: &Meta,
+    signal: Option<Signal>,
 ) -> SymbolicatedStacktrace {
     let registers = thread.registers;
 
@@ -305,7 +309,7 @@ fn symbolize_thread(
         let instruction_info = InstructionInfo {
             addr: frame.instruction_addr.0,
             arch: object_info.arch,
-            signal: meta.signal,
+            signal: signal.map(|x| x.0),
             crashing_frame,
             ip_reg,
         };

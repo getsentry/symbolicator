@@ -3,7 +3,7 @@ import time
 import threading
 
 WINDOWS_DATA = {
-    "meta": {"arch": "x86"},
+    "signal": 11,
     "threads": [
         {
             "registers": {"eip": "0x0000000001509530"},
@@ -13,7 +13,9 @@ WINDOWS_DATA = {
     "modules": [
         {
             "type": "symbolic",
+            "arch": "x86",
             "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+            "code_id": None,
             "code_file": "C:\\Windows\\System32\\kernel32.dll",
             "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
             "image_addr": "0x749d0000",
@@ -42,7 +44,7 @@ SUCCESS_WINDOWS = {
             ]
         }
     ],
-    "modules": [{"status": "found"}],
+    "modules": [dict(status="found", **WINDOWS_DATA["modules"][0])],
     "status": "completed",
 }
 
@@ -68,7 +70,7 @@ def _make_unsuccessful_result(status):
                 ]
             }
         ],
-        "modules": [{"status": status}],
+        "modules": [dict(status=status, **WINDOWS_DATA["modules"][0])],
         "status": "completed",
     }
 

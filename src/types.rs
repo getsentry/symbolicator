@@ -11,6 +11,9 @@ use url::Url;
 #[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RequestId(pub String);
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub struct Signal(pub u32);
+
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
@@ -115,7 +118,7 @@ pub struct SymbolicatedFrame {
 }
 
 /// See semaphore's DebugImage for docs
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ObjectInfo {
     #[serde(rename = "type")]
     pub ty: ObjectType,
@@ -138,7 +141,7 @@ pub struct ObjectInfo {
     pub image_size: Option<u64>,
 }
 
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ObjectType(String);
 
 #[derive(Clone, Debug, Copy)]
@@ -181,8 +184,7 @@ impl Serialize for HexValue {
 pub struct SymbolicationRequest {
     pub timeout: Option<u64>,
     pub scope: Scope,
-
-    pub meta: Meta,
+    pub signal: Option<Signal>,
     pub sources: Vec<SourceConfig>,
     pub threads: Vec<RawStacktrace>,
     pub modules: Vec<ObjectInfo>,
@@ -191,7 +193,7 @@ pub struct SymbolicationRequest {
 impl SymbolicationRequest {
     pub fn new(body: SymbolicationRequestBody, params: SymbolicationRequestQueryParams) -> Self {
         let SymbolicationRequestBody {
-            meta,
+            signal,
             sources,
             threads,
             modules,
@@ -200,7 +202,7 @@ impl SymbolicationRequest {
         let SymbolicationRequestQueryParams { timeout, scope } = params;
 
         SymbolicationRequest {
-            meta,
+            signal,
             sources,
             threads,
             modules,
@@ -220,7 +222,8 @@ pub struct SymbolicationRequestQueryParams {
 
 #[derive(Deserialize)]
 pub struct SymbolicationRequestBody {
-    pub meta: Meta,
+    #[serde(default)]
+    pub signal: Option<Signal>,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
     #[serde(default)]
@@ -269,12 +272,6 @@ impl Message for ResumedSymbolicationRequest {
     type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
 }
 
-#[derive(Clone, Deserialize)]
-pub struct Meta {
-    #[serde(default)]
-    pub signal: Option<u32>,
-}
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct RawStacktrace {
     pub registers: BTreeMap<String, HexValue>,
@@ -294,6 +291,7 @@ pub enum SymbolicationResponse {
         retry_after: usize,
     },
     Completed {
+        signal: Option<Signal>,
         stacktraces: Vec<SymbolicatedStacktrace>,
         modules: Vec<FetchedDebugFile>,
     },
@@ -312,6 +310,8 @@ pub enum DebugFileStatus {
 #[derive(Debug, Clone, Serialize)]
 pub struct FetchedDebugFile {
     pub status: DebugFileStatus,
+    #[serde(flatten)]
+    pub object_info: ObjectInfo,
 }
 
 #[derive(Debug, Fail)]
