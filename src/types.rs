@@ -32,6 +32,9 @@ pub struct HttpSourceConfig {
 
     pub layout: DirectoryLayout,
 
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+
     #[serde(default = "FileType::all_vec")]
     pub filetypes: Vec<FileType>,
 

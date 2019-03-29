@@ -30,3 +30,5 @@ parking_lot = "0.7.1"
 tokio = "0.1.17"
 uuid = "0.7.2"
 symbolic = { version = "6.0.3", features = ["symcache", "common-serde", "minidump"] }
+rusoto_s3 = "0.37.0"
+rusoto_core = "0.37.0"

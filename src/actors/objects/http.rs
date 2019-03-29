@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use actix::Addr;
+use actix_web::http::header::HeaderName;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
 use futures::{future, Future, IntoFuture, Stream};
@@ -73,10 +74,16 @@ pub fn download_from_source(
     };
 
     let response = http::follow_redirects(
-        client::get(&download_url)
-            .header("User-Agent", USER_AGENT)
-            .finish()
-            .unwrap(),
+        {
+            let mut builder = client::get(&download_url);
+            for (key, value) in source.headers.iter() {
+                if let Ok(key) = HeaderName::from_bytes(key.as_bytes()) {
+                    builder.header(key, value.as_str());
+                }
+            }
+            builder.header("user-agent", USER_AGENT);
+            builder.finish().unwrap()
+        },
         10,
     )
     .then(move |result| match result {
