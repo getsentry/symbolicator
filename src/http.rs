@@ -51,7 +51,7 @@ pub fn follow_redirects(
                 let mut builder = ClientRequest::get(&target_uri);
                 for (k, v) in headers_bak {
                     if let Some(k) = k {
-                        if k == "host" || (!same_host && (k == "authorzation" || k == "cookie")) {
+                        if k == "host" || (!same_host && (k == "authorization" || k == "cookie")) {
                             log::debug!("Dropping header: {:?}: {:?}", k, v);
                         } else {
                             log::debug!("Preserving header: {:?}: {:?}", k, v);
