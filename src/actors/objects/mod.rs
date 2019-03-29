@@ -34,9 +34,6 @@ pub enum ObjectErrorKind {
     #[fail(display = "failed parsing object")]
     Parsing,
 
-    #[fail(display = "mismatching IDs")]
-    IdMismatch,
-
     #[fail(display = "bad status code")]
     BadStatusCode,
 
@@ -165,6 +162,11 @@ impl ObjectFile {
         };
         let parsed = Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
 
+        // in theory it would make sense to error about id mismatches here but
+        // tests show that at least microsoft's symbol server will just return
+        // PDBs with different ages.  As an example ntdll.dll with the debug ID
+        // 4A236F6A0B3941D1966B41A4FC77738C2 is reported as
+        // 4A236F6A0B3941D1966B41A4FC77738C4 from the server.
         if let Some(ref request) = self.request {
             let object_id = match request.file_id {
                 FileId::Http { ref object_id, .. } => object_id,
@@ -178,7 +180,6 @@ impl ObjectFile {
                         parsed.debug_id(),
                         debug_id
                     );
-                    return Err(ObjectErrorKind::IdMismatch.into());
                 }
             }
 
@@ -190,7 +191,6 @@ impl ObjectFile {
                             object_code_id,
                             code_id
                         );
-                        return Err(ObjectErrorKind::IdMismatch.into());
                     }
                 }
             }
