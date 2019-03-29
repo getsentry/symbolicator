@@ -5,19 +5,22 @@ use futures::Future;
 
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
-    RequestMeta, RequestWithMeta, ResumedSymbolicationRequest, SymbolicationError,
-    SymbolicationErrorKind,
+    ResumedSymbolicationRequest, ResumedSymbolicationRequestPath,
+    ResumedSymbolicationRequestQueryParams, SymbolicationError, SymbolicationErrorKind,
 };
 
 fn resume_request(
     state: State<ServiceState>,
-    request: Path<ResumedSymbolicationRequest>,
-    meta: Query<RequestMeta>,
+    path: Path<ResumedSymbolicationRequestPath>,
+    query: Query<ResumedSymbolicationRequestQueryParams>,
 ) -> ResponseFuture<HttpResponse, Error> {
     Box::new(
         state
             .symbolication
-            .send(RequestWithMeta(request.into_inner(), meta.into_inner()))
+            .send(ResumedSymbolicationRequest::new(
+                path.into_inner(),
+                query.into_inner(),
+            ))
             .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
             .map_err(SymbolicationError::from)
             .flatten()

@@ -3,7 +3,7 @@ import time
 import threading
 
 WINDOWS_DATA = {
-    "meta": {"arch": "x86", "scope": "myscope"},
+    "meta": {"arch": "x86"},
     "threads": [
         {
             "registers": {"eip": "0x0000000001509530"},
@@ -85,6 +85,7 @@ def cache_dir_param(tmpdir, request):
 
 @pytest.mark.parametrize("is_public", [True, False])
 def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
+    scope = "myscope"
 
     input = dict(
         **WINDOWS_DATA,
@@ -100,8 +101,6 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
         ],
     )
 
-    scope = input["meta"]["scope"]
-
     # i = 0: Cache miss
     # i = 1: Cache hit
     # i = 2: Assert that touching the file during cache hit did not destroy the cache
@@ -109,7 +108,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
         service = symbolicator(cache_dir=cache_dir_param)
         service.wait_healthcheck()
 
-        response = service.post("/symbolicate", json=input)
+        response = service.post(f"/symbolicate?scope={scope}", json=input)
         response.raise_for_status()
 
         assert response.json() == SUCCESS_WINDOWS
@@ -132,7 +131,10 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             symcache, = (
                 cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
             )
-            assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+            assert (
+                symcache.basename
+                == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__s:microsoft"
+            )
             assert symcache.size() > 0
 
         assert hitcounter.hits == {
@@ -155,7 +157,9 @@ def test_no_sources(symbolicator, cache_dir_param):
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
-        assert not cache_dir_param.join("symcaches/global").listdir()
+        symcache, = cache_dir_param.join("symcaches/global").listdir()
+        assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+        assert symcache.size() == 0
 
 
 @pytest.mark.parametrize("is_public", [True, False])

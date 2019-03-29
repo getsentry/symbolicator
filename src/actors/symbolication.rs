@@ -18,9 +18,9 @@ use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, 
 use crate::futures::measure_task;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, Meta, ObjectId, ObjectInfo,
-    RawFrame, RawStacktrace, RequestMeta, RequestWithMeta, ResumedSymbolicationRequest,
-    SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind,
-    SymbolicationRequest, SymbolicationResponse,
+    RawFrame, RawStacktrace, RequestId, ResumedSymbolicationRequest, SymbolicatedFrame,
+    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationRequest,
+    SymbolicationResponse,
 };
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -30,7 +30,7 @@ type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests: BTreeMap<String, ComputationChannel<SymbolicationResponse, SymbolicationError>>,
+    requests: BTreeMap<RequestId, ComputationChannel<SymbolicationResponse, SymbolicationError>>,
 }
 
 impl Actor for SymbolicationActor {
@@ -50,8 +50,8 @@ impl SymbolicationActor {
 
     fn wrap_response_channel(
         &self,
-        request_id: String,
-        request_meta: RequestMeta,
+        request_id: RequestId,
+        timeout: Option<u64>,
         channel: ComputationChannel<SymbolicationResponse, SymbolicationError>,
     ) -> ResponseActFuture<Self, SymbolicationResponse, SymbolicationError> {
         let rv = channel
@@ -62,7 +62,7 @@ impl SymbolicationActor {
             .map(|x| (*x).clone())
             .map_err(|e| ArcFail(e).context(SymbolicationErrorKind::Mailbox).into());
 
-        if let Some(timeout) = request_meta.timeout {
+        if let Some(timeout) = timeout {
             Box::new(
                 rv.timeout(Duration::from_secs(timeout))
                     .into_actor(self)
@@ -184,8 +184,7 @@ impl ObjectLookup {
         let mut referenced_objects = BTreeSet::new();
         let sources = request.sources;
         let stacktraces = request.threads;
-        let meta = request.meta;
-        let scope = meta.scope.clone();
+        let scope = request.scope.clone();
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
@@ -390,19 +389,19 @@ fn symbolize_thread(
     stacktrace
 }
 
-impl Handler<RequestWithMeta<ResumedSymbolicationRequest>> for SymbolicationActor {
+impl Handler<ResumedSymbolicationRequest> for SymbolicationActor {
     type Result = ResponseActFuture<Self, Option<SymbolicationResponse>, SymbolicationError>;
 
     fn handle(
         &mut self,
-        RequestWithMeta(request, meta): RequestWithMeta<ResumedSymbolicationRequest>,
+        request: ResumedSymbolicationRequest,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
         let request_id = request.request_id;
 
         if let Some(channel) = self.requests.get(&request_id) {
             Box::new(
-                self.wrap_response_channel(request_id, meta, channel.clone())
+                self.wrap_response_channel(request_id, request.timeout, channel.clone())
                     .map(|x, _, _| Some(x)),
             )
         } else {
@@ -411,20 +410,18 @@ impl Handler<RequestWithMeta<ResumedSymbolicationRequest>> for SymbolicationActo
     }
 }
 
-impl Handler<RequestWithMeta<SymbolicationRequest>> for SymbolicationActor {
+impl Handler<SymbolicationRequest> for SymbolicationActor {
     type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
 
-    fn handle(
-        &mut self,
-        RequestWithMeta(request, meta): RequestWithMeta<SymbolicationRequest>,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
+    fn handle(&mut self, request: SymbolicationRequest, ctx: &mut Self::Context) -> Self::Result {
         let request_id = loop {
-            let request_id = uuid::Uuid::new_v4().to_string();
+            let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.contains_key(&request_id) {
                 break request_id;
             }
         };
+
+        let timeout = request.timeout;
 
         let (tx, rx) = oneshot::channel();
 
@@ -443,7 +440,7 @@ impl Handler<RequestWithMeta<SymbolicationRequest>> for SymbolicationActor {
         let channel = rx.shared();
         self.requests.insert(request_id.clone(), channel.clone());
 
-        Box::new(self.wrap_response_channel(request_id, meta, channel))
+        Box::new(self.wrap_response_channel(request_id, timeout, channel))
     }
 }
 

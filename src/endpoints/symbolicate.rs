@@ -5,19 +5,22 @@ use futures::Future;
 
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
-    RequestMeta, RequestWithMeta, SymbolicationError, SymbolicationErrorKind, SymbolicationRequest,
-    SymbolicationResponse,
+    SymbolicationError, SymbolicationErrorKind, SymbolicationRequest, SymbolicationRequestBody,
+    SymbolicationRequestQueryParams, SymbolicationResponse,
 };
 
 fn symbolicate_frames(
     state: State<ServiceState>,
-    request: Json<SymbolicationRequest>,
-    meta: Query<RequestMeta>,
+    body: Json<SymbolicationRequestBody>,
+    meta: Query<SymbolicationRequestQueryParams>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     Box::new(
         state
             .symbolication
-            .send(RequestWithMeta(request.into_inner(), meta.into_inner()))
+            .send(SymbolicationRequest::new(
+                body.into_inner(),
+                meta.into_inner(),
+            ))
             .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
             .map_err(SymbolicationError::from)
             .flatten()

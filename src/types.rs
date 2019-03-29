@@ -8,6 +8,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use url::Url;
 
+#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+pub struct RequestId(pub String);
+
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
@@ -69,6 +72,12 @@ impl AsRef<str> for Scope {
             Scope::Scoped(ref s) => &s,
             Scope::Global => "global",
         }
+    }
+}
+
+impl Default for Scope {
+    fn default() -> Self {
+        Scope::Global
     }
 }
 
@@ -169,8 +178,48 @@ impl Serialize for HexValue {
     }
 }
 
-#[derive(Deserialize)]
 pub struct SymbolicationRequest {
+    pub timeout: Option<u64>,
+    pub scope: Scope,
+
+    pub meta: Meta,
+    pub sources: Vec<SourceConfig>,
+    pub threads: Vec<RawStacktrace>,
+    pub modules: Vec<ObjectInfo>,
+}
+
+impl SymbolicationRequest {
+    pub fn new(body: SymbolicationRequestBody, params: SymbolicationRequestQueryParams) -> Self {
+        let SymbolicationRequestBody {
+            meta,
+            sources,
+            threads,
+            modules,
+        } = body;
+
+        let SymbolicationRequestQueryParams { timeout, scope } = params;
+
+        SymbolicationRequest {
+            meta,
+            sources,
+            threads,
+            modules,
+            timeout,
+            scope,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SymbolicationRequestQueryParams {
+    #[serde(default)]
+    pub timeout: Option<u64>,
+    #[serde(default)]
+    pub scope: Scope,
+}
+
+#[derive(Deserialize)]
+pub struct SymbolicationRequestBody {
     pub meta: Meta,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
@@ -180,23 +229,43 @@ pub struct SymbolicationRequest {
     pub modules: Vec<ObjectInfo>,
 }
 
-#[derive(Deserialize)]
 pub struct ResumedSymbolicationRequest {
-    pub request_id: String,
-}
-
-#[derive(Deserialize)]
-pub struct RequestMeta {
+    pub request_id: RequestId,
     pub timeout: Option<u64>,
 }
 
-pub struct RequestWithMeta<T>(pub T, pub RequestMeta);
+impl ResumedSymbolicationRequest {
+    pub fn new(
+        path: ResumedSymbolicationRequestPath,
+        query: ResumedSymbolicationRequestQueryParams,
+    ) -> Self {
+        let ResumedSymbolicationRequestPath { request_id } = path;
 
-impl Message for RequestWithMeta<SymbolicationRequest> {
+        let ResumedSymbolicationRequestQueryParams { timeout } = query;
+
+        ResumedSymbolicationRequest {
+            request_id,
+            timeout,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ResumedSymbolicationRequestPath {
+    pub request_id: RequestId,
+}
+
+#[derive(Deserialize)]
+pub struct ResumedSymbolicationRequestQueryParams {
+    #[serde(default)]
+    pub timeout: Option<u64>,
+}
+
+impl Message for SymbolicationRequest {
     type Result = Result<SymbolicationResponse, SymbolicationError>;
 }
 
-impl Message for RequestWithMeta<ResumedSymbolicationRequest> {
+impl Message for ResumedSymbolicationRequest {
     type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
 }
 
@@ -204,7 +273,6 @@ impl Message for RequestWithMeta<ResumedSymbolicationRequest> {
 pub struct Meta {
     #[serde(default)]
     pub signal: Option<u32>,
-    pub scope: Scope,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -222,7 +290,7 @@ pub struct SymbolicatedStacktrace {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum SymbolicationResponse {
     Pending {
-        request_id: String,
+        request_id: RequestId,
         retry_after: usize,
     },
     Completed {

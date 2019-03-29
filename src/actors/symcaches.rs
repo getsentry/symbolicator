@@ -108,8 +108,14 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
+        let mut cache_key = self.request.identifier.get_cache_key();
+
+        for source in &self.request.sources {
+            cache_key.push_str(&format!(".s:{}", source.id()));
+        }
+
         CacheKey {
-            cache_key: self.request.identifier.get_cache_key(),
+            cache_key,
             scope: self.request.scope.clone(),
         }
     }
