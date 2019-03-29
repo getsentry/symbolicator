@@ -18,6 +18,7 @@ bind: 127.0.0.1:3021
   [Caching](#ref-caching).
 - `bind`: Host and port for HTTP interface.
 - `metrics`: If set, symbolicator will send metrics to a statsd service. See [Metrics](#ref-metrics)
+- `sentry_dsn`: DSN to sentry project to report internal errors to.
 
 ### Starting
 
