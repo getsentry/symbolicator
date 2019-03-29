@@ -31,7 +31,7 @@ pub fn prepare_downloads(
         requests.push(FetchFile {
             source: SourceConfig::Http(source.clone()),
             scope: scope.clone(),
-            file_id: FileId::Http {
+            file_id: FileId::External {
                 filetype,
                 object_id: object_id.clone(),
             },
@@ -54,7 +54,7 @@ pub fn download_from_source(
     file_id: &FileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let (object_id, filetype) = match file_id {
-        FileId::Http {
+        FileId::External {
             object_id,
             filetype,
         } => (object_id, *filetype),
@@ -114,7 +114,7 @@ pub fn download_from_source(
     Box::new(response)
 }
 
-fn get_directory_path(
+pub fn get_directory_path(
     directory_layout: DirectoryLayout,
     filetype: FileType,
     identifier: &ObjectId,

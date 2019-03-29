@@ -2104,6 +2104,7 @@ dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_core 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusoto_credential 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_s3 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sentry 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sentry-actix 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -19,6 +19,7 @@ pub struct Signal(pub u32);
 pub enum SourceConfig {
     Sentry(SentrySourceConfig),
     Http(HttpSourceConfig),
+    S3(S3SourceConfig),
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -48,10 +49,27 @@ pub struct HttpSourceConfig {
     pub is_public: bool,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+pub struct S3SourceConfig {
+    pub id: String,
+    pub region: rusoto_core::Region,
+    pub bucket: String,
+    #[serde(default)]
+    pub prefix: String,
+    pub access_key: String,
+    pub secret_key: String,
+
+    pub layout: DirectoryLayout,
+
+    #[serde(default = "FileType::all_vec")]
+    pub filetypes: Vec<FileType>,
+}
+
 impl SourceConfig {
     pub fn is_public(&self) -> bool {
         match *self {
             SourceConfig::Http(ref x) => x.is_public,
+            SourceConfig::S3(_) => false,
             SourceConfig::Sentry(_) => false,
         }
     }
@@ -59,6 +77,7 @@ impl SourceConfig {
     pub fn id(&self) -> &str {
         match *self {
             SourceConfig::Http(ref x) => &x.id,
+            SourceConfig::S3(ref x) => &x.id,
             SourceConfig::Sentry(ref x) => &x.id,
         }
     }
