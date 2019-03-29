@@ -3,7 +3,7 @@ import time
 import threading
 
 WINDOWS_DATA = {
-    "signal": 11,
+    "signal": None,
     "threads": [
         {
             "registers": {"eip": "0x0000000001509530"},
@@ -25,6 +25,7 @@ WINDOWS_DATA = {
 }
 
 SUCCESS_WINDOWS = {
+    "signal": None,
     "stacktraces": [
         {
             "frames": [
@@ -51,6 +52,7 @@ SUCCESS_WINDOWS = {
 
 def _make_unsuccessful_result(status):
     return {
+        "signal": None,
         "stacktraces": [
             {
                 "frames": [
