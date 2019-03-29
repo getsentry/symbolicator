@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -69,6 +70,10 @@ pub fn run_main() -> Result<(), CliError> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config())?;
 
+    let _sentry = sentry::init(config.sentry_dsn.as_ref().map(|x| &**x));
+    env::set_var("RUST_BACKTRACE", "1");
+    sentry::integrations::panic::register_panic_handler();
+
     match cli.command {
         Command::Run => run_server(config)?,
     }
@@ -105,7 +110,10 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
     let state = ServiceState { symbolication };
 
     fn get_app(state: ServiceState) -> ServiceApp {
-        let mut app = App::with_state(state).middleware(Metrics);
+        let mut app = App::with_state(state)
+            .middleware(Metrics)
+            .middleware(sentry_actix::SentryMiddleware::new());
+
         app = endpoints::symbolicate::register(app);
         app = endpoints::healthcheck::register(app);
         app = endpoints::requests::register(app);

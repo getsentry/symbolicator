@@ -36,6 +36,9 @@ pub struct Config {
 
     /// If set, configuration for reporting metrics to a statsd instance
     pub metrics: Metrics,
+
+    /// DSN to report internal errors to
+    pub sentry_dsn: Option<String>,
 }
 
 impl Default for Config {
@@ -44,6 +47,7 @@ impl Default for Config {
             cache_dir: None,
             bind: "127.0.0.1:3021".to_owned(),
             metrics: Metrics::default(),
+            sentry_dsn: None,
         }
     }
 }

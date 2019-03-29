@@ -14,6 +14,8 @@ use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
+use sentry::integrations::failure::capture_fail;
+
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::futures::measure_task;
 use crate::types::{
@@ -203,53 +205,61 @@ impl ObjectLookup {
                 .into_iter()
                 .enumerate()
                 .map(move |(i, (object_info, _, _))| {
-                    if referenced_objects.contains(&i) {
-                        Either::A(
-                            symcache_actor
-                                .send(FetchSymCache {
-                                    object_type: object_info.ty.clone(),
-                                    identifier: object_id_from_object_info(&object_info),
-                                    sources: sources.clone(),
-                                    scope: scope.clone(),
-                                })
-                                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
-                                .and_then(move |result| {
-                                    let symcache = match result {
-                                        Ok(x) => x,
-                                        Err(e) => {
-                                            let status = match e.kind() {
-                                                SymCacheErrorKind::Fetching => {
-                                                    DebugFileStatus::FetchingFailed
-                                                }
-                                                _ => Err(ArcFail(e)
-                                                    .context(SymbolicationErrorKind::SymCache))?,
-                                            };
+                    if !referenced_objects.contains(&i) {
+                        return Either::B(
+                            Ok((object_info, None, DebugFileStatus::Unused)).into_future(),
+                        );
+                    }
 
-                                            return Ok((object_info, None, status));
-                                        }
-                                    };
-
-                                    let status = match symcache.parse() {
-                                        Ok(Some(_)) => DebugFileStatus::Found,
-                                        Ok(None) => DebugFileStatus::MissingDebugFile,
-                                        Err(e) => match e.kind() {
-                                            SymCacheErrorKind::ObjectParsing => {
-                                                DebugFileStatus::MalformedDebugFile
-                                            }
+                    Either::A(
+                        symcache_actor
+                            .send(FetchSymCache {
+                                object_type: object_info.ty.clone(),
+                                identifier: object_id_from_object_info(&object_info),
+                                sources: sources.clone(),
+                                scope: scope.clone(),
+                            })
+                            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
+                            .and_then(move |result| {
+                                let symcache = match result {
+                                    Ok(x) => x,
+                                    Err(e) => {
+                                        let status = match e.kind() {
                                             SymCacheErrorKind::Fetching => {
                                                 DebugFileStatus::FetchingFailed
                                             }
+                                            SymCacheErrorKind::Timeout => {
+                                                // Timeouts of object downloads are caught by
+                                                // FetchingFailed
+                                                DebugFileStatus::TooLarge
+                                            }
+                                            _ => {
+                                                capture_fail(&ArcFail(e));
+                                                DebugFileStatus::Other
+                                            }
+                                        };
 
-                                            _ => Err(e.context(SymbolicationErrorKind::SymCache))?,
-                                        },
-                                    };
+                                        return Ok((object_info, None, status));
+                                    }
+                                };
 
-                                    Ok((object_info, Some(symcache), status))
-                                }),
-                        )
-                    } else {
-                        Either::B(Ok((object_info, None, DebugFileStatus::Unused)).into_future())
-                    }
+                                let status = match symcache.parse() {
+                                    Ok(Some(_)) => DebugFileStatus::Found,
+                                    Ok(None) => DebugFileStatus::MissingDebugFile,
+                                    Err(e) => match e.kind() {
+                                        SymCacheErrorKind::ObjectParsing => {
+                                            DebugFileStatus::MalformedDebugFile
+                                        }
+                                        _ => {
+                                            capture_fail(&e);
+                                            DebugFileStatus::Other
+                                        }
+                                    },
+                                };
+
+                                Ok((object_info, Some(symcache), status))
+                            }),
+                    )
                 }),
         )
         .map(|results| ObjectLookup {

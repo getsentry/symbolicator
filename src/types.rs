@@ -305,6 +305,8 @@ pub enum DebugFileStatus {
     MissingDebugFile,
     MalformedDebugFile,
     FetchingFailed,
+    TooLarge,
+    Other,
 }
 
 #[derive(Debug, Clone, Serialize)]
