@@ -60,6 +60,7 @@ enum Command {
 
 #[derive(Clone)]
 pub struct ServiceState {
+    pub io_threadpool: Arc<ThreadPool>,
     pub symbolication: Addr<SymbolicationActor>,
 }
 
@@ -126,7 +127,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
 
     let symbolication = SymbolicationActor::new(symcaches, cpu_threadpool.clone()).start();
 
-    let state = ServiceState { symbolication };
+    let state = ServiceState { io_threadpool, symbolication };
 
     fn get_app(state: ServiceState) -> ServiceApp {
         let mut app = App::with_state(state)
@@ -134,9 +135,10 @@ fn run_server(config: Config) -> Result<(), CliError> {
             .middleware(ErrorHandlers)
             .middleware(sentry_actix::SentryMiddleware::new());
 
-        app = endpoints::symbolicate::register(app);
         app = endpoints::healthcheck::register(app);
+        app = endpoints::minidump::register(app);
         app = endpoints::requests::register(app);
+        app = endpoints::symbolicate::register(app);
         app
     }
 

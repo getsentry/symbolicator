@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Duration;
@@ -520,5 +521,22 @@ impl Handler<GetSymbolicationStatus> for SymbolicationActor {
         } else {
             Box::new(Ok(None).into_future().into_actor(self))
         }
+    }
+}
+
+pub struct MinidumpRequest {
+    pub file: File,
+    pub sources: Vec<SourceConfig>
+}
+
+impl Message for MinidumpRequest {
+    type Result = Result<SymbolicationResponse, SymbolicationError>;
+}
+
+impl Handler<MinidumpRequest> for SymbolicationActor {
+    type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
+
+    fn handle(&mut self, _request: MinidumpRequest, _ctx: &mut Self::Context) -> Self::Result {
+        unimplemented!();
     }
 }
