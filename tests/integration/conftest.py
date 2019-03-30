@@ -1,4 +1,5 @@
 import subprocess
+import uuid
 import time
 import socket
 import os
@@ -6,10 +7,15 @@ import json
 import pytest
 import requests
 import threading
+import boto3
 
 from pytest_localserver.http import WSGIServer
 
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
+
+AWS_ACCESS_KEY_ID = os.environ.get("SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.environ.get("SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY")
+AWS_REGION_NAME = "us-east-1"
 
 session = requests.session()
 
@@ -151,3 +157,30 @@ def hitcounter(request):
     request.addfinalizer(server.stop)
     rv = HitCounter(url=server.url, hits=hits)
     return rv
+
+
+@pytest.fixture
+def s3():
+    if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
+        pytest.skip("No AWS credentials")
+    return boto3.resource(
+        "s3",
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    )
+
+
+@pytest.fixture
+def s3_bucket_config(s3):
+    bucket_name = f"symbolicator-test-{uuid.uuid4()}"
+    bucket_response = s3.create_bucket(Bucket=bucket_name)
+
+    yield {
+        "type": "s3",
+        "bucket": bucket_name,
+        "access_key": AWS_ACCESS_KEY_ID,
+        "secret_key": AWS_SECRET_ACCESS_KEY,
+        "region": AWS_REGION_NAME,
+    }
+
+    s3.Bucket(bucket_name).objects.all().delete()
