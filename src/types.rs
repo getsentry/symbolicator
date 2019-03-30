@@ -49,8 +49,22 @@ pub struct HttpSourceConfig {
     pub is_public: bool,
 }
 
+fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // For safety reason we only want to parse the default AWS regions so that
+    // non AWS services cannot be accessed.
+    use serde::de::Error as _;
+    let region = String::deserialize(deserializer)?;
+    region
+        .parse()
+        .map_err(|e| D::Error::custom(format!("region: {}", e)))
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceKey {
+    #[serde(deserialize_with = "deserialize_region")]
     pub region: rusoto_core::Region,
     pub access_key: String,
     pub secret_key: String,

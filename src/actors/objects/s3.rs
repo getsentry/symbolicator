@@ -86,9 +86,18 @@ pub fn download_from_source(
     }
 
     let key = match get_directory_path(source.layout, filetype, object_id) {
-        Some(x) => format!("{}/{}", source.prefix.trim_end_matches(&['/'][..]), x),
+        Some(x) => {
+            let prefix = source.prefix.trim_matches(&['/'][..]);
+            if prefix.is_empty() {
+                x
+            } else {
+                format!("{}/{}", prefix, x)
+            }
+        }
         None => return Box::new(Ok(None).into_future()),
     };
+
+    log::debug!("fetching from s3: {} (from {})", &key, source.bucket);
 
     let bucket = source.bucket.clone();
     let response = get_s3_client(&source.source_key)
