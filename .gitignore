@@ -6,5 +6,5 @@ config
 .venv
 *.pyc
 __pycache__
-objects/
-symcaches/
+/objects/
+/symcaches/
