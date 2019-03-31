@@ -173,7 +173,7 @@ def s3():
 @pytest.fixture
 def s3_bucket_config(s3):
     bucket_name = f"symbolicator-test-{uuid.uuid4()}"
-    bucket_response = s3.create_bucket(Bucket=bucket_name)
+    s3.create_bucket(Bucket=bucket_name)
 
     yield {
         "type": "s3",
