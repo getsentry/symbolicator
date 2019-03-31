@@ -167,8 +167,11 @@ pub fn get_directory_path(
         }
         (Symstore, MachDebug) => {
             // Mach debug files (Microsoft Symbol Server)
-            let code_id = identifier.code_id.as_ref()?;
-            Some(format!("_.dwarf/mach-uuid-sym-{}/_.dwarf", code_id))
+            let debug_id = identifier.debug_id.as_ref()?.uuid();
+            Some(format!(
+                "_.dwarf/mach-uuid-sym-{}/_.dwarf",
+                debug_id.to_simple_ref()
+            ))
         }
         (Native, MachDebug) => {
             // Mach debug files (LLDB format = "native")
@@ -177,9 +180,14 @@ pub fn get_directory_path(
         }
         (Symstore, MachCode) => {
             // Mach code files (Microsoft Symbol Server)
-            let code_id = identifier.code_id.as_ref()?;
             let code_name = identifier.code_name.as_ref()?;
-            Some(format!("{}/mach-uuid-{}/{}", code_name, code_id, code_name))
+            let debug_id = identifier.debug_id.as_ref()?.uuid();
+            Some(format!(
+                "{}/mach-uuid-{}/{}",
+                code_name,
+                debug_id.to_simple_ref(),
+                code_name
+            ))
         }
         (Native, MachCode) => {
             // Mach code files (LLDB format = "native")

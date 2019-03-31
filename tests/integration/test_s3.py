@@ -1,11 +1,17 @@
+import uuid
+
+
+debug_id = uuid.UUID("502fc0a5-1ec1-3e47-9998-684fa139dca7")
+
+
 MACHO_HELLO_DATA = {
     "modules": [
         {
             "type": "macho",
             "arch": "x86_64",
-            "code_id": "502FC0A5-1EC1-3E47-9998-684FA139DCA7",
+            "code_id": str(debug_id).upper(),
             # TODO: Why Necessary?
-            "debug_id": "502FC0A5-1EC1-3E47-9998-684FA139DCA7",
+            "debug_id": str(debug_id),
             "image_vmaddr": "0x0000000100000000",
             "image_size": 4096,
             "image_addr": "0x0000000100000000",
@@ -27,9 +33,9 @@ MACHO_SUCCESS = {
         {
             "arch": "x86_64",
             "code_file": None,
-            "code_id": "502FC0A5-1EC1-3E47-9998-684FA139DCA7",
+            "code_id": str(code_id).upper(),
             "debug_file": None,
-            "debug_id": "502FC0A5-1EC1-3E47-9998-684FA139DCA7",
+            "debug_id": str(code_id),
             "image_addr": "0x100000000",
             "image_size": 4096,
             "status": "found",
@@ -61,7 +67,7 @@ MACHO_SUCCESS = {
 
 
 def test_s3(symbolicator, hitcounter, s3_bucket_config, s3):
-    uuid = "502FC0A5-1EC1-3E47-9998-684FA139DCA7"
+    uuid = debug_id.hex
     s3.meta.client.put_object(
         Body=open("tests/fixtures/hello.dsym", "rb"),
         Bucket=s3_bucket_config["bucket"],
