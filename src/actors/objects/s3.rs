@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix::Addr;
 use failure::Fail;
@@ -15,8 +16,23 @@ use crate::actors::objects::{
 use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope, SourceConfig};
 
 lazy_static::lazy_static! {
+    static ref AWS_HTTP_CLIENT: rusoto_core::HttpClient = rusoto_core::HttpClient::new().unwrap();
     static ref S3_CLIENTS: Mutex<lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>> =
         Mutex::new(lru::LruCache::new(100));
+}
+
+struct SharedHttpClient;
+
+impl rusoto_core::DispatchSignedRequest for SharedHttpClient {
+    type Future = rusoto_core::request::HttpClientFuture;
+
+    fn dispatch(
+        &self,
+        request: rusoto_core::signature::SignedRequest,
+        timeout: Option<Duration>,
+    ) -> Self::Future {
+        AWS_HTTP_CLIENT.dispatch(request, timeout)
+    }
 }
 
 fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
@@ -25,7 +41,7 @@ fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
         client.clone()
     } else {
         let s3 = Arc::new(rusoto_s3::S3Client::new_with(
-            rusoto_core::HttpClient::new().expect("failed to create request dispatcher"),
+            SharedHttpClient,
             rusoto_credential::StaticProvider::new_minimal(
                 key.access_key.clone(),
                 key.secret_key.clone(),
