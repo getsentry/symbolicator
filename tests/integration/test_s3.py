@@ -10,7 +10,6 @@ MACHO_HELLO_DATA = {
             "type": "macho",
             "arch": "x86_64",
             "code_id": str(debug_id).upper(),
-            # TODO: Why Necessary?
             "debug_id": str(debug_id),
             "image_vmaddr": "0x0000000100000000",
             "image_size": 4096,
@@ -33,9 +32,9 @@ MACHO_SUCCESS = {
         {
             "arch": "x86_64",
             "code_file": None,
-            "code_id": str(code_id).upper(),
+            "code_id": str(debug_id).upper(),
             "debug_file": None,
-            "debug_id": str(code_id),
+            "debug_id": str(debug_id),
             "image_addr": "0x100000000",
             "image_size": 4096,
             "status": "found",
