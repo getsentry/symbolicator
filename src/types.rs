@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::sync::Arc;
 
 use actix::Message;
@@ -432,17 +432,17 @@ impl<T: fmt::Display> fmt::Display for ArcFail<T> {
 #[serde(rename_all = "lowercase")]
 pub enum FileType {
     /// Windows/PDB code files
-    PE,
+    Pe,
     /// Windows/PDB debug files
-    PDB,
+    Pdb,
     /// Macos/Mach debug files
     MachDebug,
     /// Macos/Mach code files
     MachCode,
     /// Linux/ELF debug files
-    ELFDebug,
+    ElfDebug,
     /// Linux/ELF code files
-    ELFCode,
+    ElfCode,
     /// Breakpad files (this is the reason we have a flat enum for what at first sight could've
     /// been two enums)
     Breakpad,
@@ -452,19 +452,19 @@ impl FileType {
     #[inline]
     pub fn all() -> &'static [Self] {
         use FileType::*;
-        &[PDB, MachDebug, ELFDebug, PE, MachCode, ELFCode, Breakpad]
+        &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
     }
 
     #[inline]
     pub fn debug_types() -> &'static [Self] {
         use FileType::*;
-        &[PDB, MachDebug, ELFDebug]
+        &[Pdb, MachDebug, ElfDebug]
     }
 
     #[inline]
     pub fn code_types() -> &'static [Self] {
         use FileType::*;
-        &[PE, MachCode, ELFCode]
+        &[Pe, MachCode, ElfCode]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.
@@ -473,8 +473,8 @@ impl FileType {
         use FileType::*;
         match &ty.0[..] {
             "macho" => &[MachDebug, MachCode, Breakpad],
-            "pe" => &[PDB, PE, Breakpad],
-            "elf" => &[ELFDebug, ELFCode, Breakpad],
+            "pe" => &[Pdb, Pe, Breakpad],
+            "elf" => &[ElfDebug, ElfCode, Breakpad],
             _ => Self::all(),
         }
     }
@@ -494,15 +494,14 @@ pub enum DirectoryLayout {
 
 impl AsRef<str> for FileType {
     fn as_ref(&self) -> &str {
-        use FileType::*;
         match *self {
-            PE => "pe",
-            PDB => "pdb",
-            MachDebug => "mach-debug",
-            MachCode => "mach-code",
-            ELFDebug => "elf-debug",
-            ELFCode => "elf-code",
-            Breakpad => "breakpad",
+            FileType::Pe => "pe",
+            FileType::Pdb => "pdb",
+            FileType::MachDebug => "mach-debug",
+            FileType::MachCode => "mach-code",
+            FileType::ElfDebug => "elf-debug",
+            FileType::ElfCode => "elf-code",
+            FileType::Breakpad => "breakpad",
         }
     }
 }
@@ -512,8 +511,8 @@ impl AsRef<str> for FileType {
 pub struct ObjectId {
     pub debug_id: Option<DebugId>,
     pub code_id: Option<CodeId>,
-    pub debug_name: Option<String>,
-    pub code_name: Option<String>,
+    pub debug_file: Option<String>,
+    pub code_file: Option<String>,
 }
 
 impl ObjectId {
@@ -524,7 +523,7 @@ impl ObjectId {
         }
         rv.push_str("_");
         if let Some(ref code_id) = self.code_id {
-            rv.push_str(code_id.as_str());
+            write!(rv, "{}", code_id).ok();
         }
 
         rv
