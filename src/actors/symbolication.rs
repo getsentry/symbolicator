@@ -462,11 +462,11 @@ fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
     ObjectId {
         debug_id: object_info.debug_id.parse().ok(),
         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
-        debug_name: object_info
+        debug_file: object_info
             .debug_file
             .as_ref()
             .map(|x| split_path(x).1.to_owned()),
-        code_name: object_info
+        code_file: object_info
             .code_file
             .as_ref()
             .map(|x| split_path(x).1.to_owned()),

@@ -1,131 +1,171 @@
+use std::fmt::Write;
+
+use symbolic::common::Uuid;
+
 use crate::types::{DirectoryLayout, FileType, ObjectId};
 
+fn get_gdb_path(identifier: &ObjectId) -> Option<String> {
+    let code_id = identifier.code_id.as_ref()?;
+    let code_id = code_id.as_slice();
+    if code_id.is_empty() {
+        // this is just a panic guard. It is not meant to validate the GNU build id
+        return None;
+    }
+
+    let mut path = String::with_capacity(code_id.len() * 2 + 1);
+    write!(path, "{:02x}/", code_id[0]).ok()?;
+    for byte in &code_id[1..] {
+        write!(path, "{:02x}", byte).ok()?;
+    }
+
+    Some(path)
+}
+
+fn get_mach_uuid(identifier: &ObjectId) -> Option<Uuid> {
+    if let Some(ref code_id) = identifier.code_id {
+        Uuid::from_slice(code_id.as_slice()).ok()
+    } else if let Some(ref debug_id) = identifier.debug_id {
+        Some(debug_id.uuid())
+    } else {
+        None
+    }
+}
+
+fn get_lldb_path(identifier: &ObjectId) -> Option<String> {
+    let uuid = get_mach_uuid(identifier)?;
+    let slice = uuid.as_bytes();
+
+    // Format the UUID as "xxxx/xxxx/xxxx/xxxx/xxxx/xxxxxxxxxxxx"
+    let mut path = String::with_capacity(37);
+    for (i, byte) in slice.iter().enumerate() {
+        write!(path, "{:02x}", byte).ok()?;
+        if i % 2 == 1 && i <= 9 {
+            path.push('/');
+        }
+    }
+
+    Some(path)
+}
+
+fn get_pdb_symstore_path(identifier: &ObjectId) -> Option<String> {
+    let debug_file = identifier.debug_file.as_ref()?;
+    let debug_id = identifier.debug_id.as_ref()?;
+
+    // XXX: Calling `breakpad` here is kinda wrong. We really only want to have no hyphens.
+    Some(format!(
+        "{}/{}/{}",
+        debug_file,
+        debug_id.breakpad(),
+        debug_file
+    ))
+}
+
+fn get_pe_symstore_path(identifier: &ObjectId) -> Option<String> {
+    let code_file = identifier.code_file.as_ref()?;
+    let code_id = identifier.code_id.as_ref()?;
+
+    Some(format!("{}/{}/{}", code_file, code_id, code_file))
+}
+
+fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    match filetype {
+        // ELF follows GDB "Build ID Method" conventions.
+        // See: https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
+        FileType::ElfCode => get_gdb_path(identifier),
+        FileType::ElfDebug => {
+            let mut path = get_gdb_path(identifier)?;
+            path.push_str(".debug");
+            Some(path)
+        }
+
+        // MachO follows LLDB "File Mapped UUID Directories" conventions
+        // See: http://lldb.llvm.org/symbols.html
+        FileType::MachCode => {
+            let mut path = get_lldb_path(identifier)?;
+            path.push_str(".app");
+            Some(path)
+        }
+        FileType::MachDebug => get_lldb_path(identifier),
+
+        // PDB and PE follows the "Symbol Server" protocol
+        // See: https://docs.microsoft.com/en-us/windows/desktop/debug/using-symsrv
+        FileType::Pdb => get_pdb_symstore_path(identifier),
+        FileType::Pe => get_pe_symstore_path(identifier),
+
+        // Breakpad has its own layout similar to Microsoft Symbol Server
+        // See: https://github.com/google/breakpad/blob/79ba6a494fb2097b39f76fe6a4b4b4f407e32a02/src/processor/simple_symbol_supplier.cc
+        FileType::Breakpad => {
+            let debug_file = identifier.debug_file.as_ref()?;
+            let debug_id = identifier.debug_id.as_ref()?;
+
+            let new_debug_file = if debug_file.ends_with(".exe")
+                || debug_file.ends_with(".dll")
+                || debug_file.ends_with(".pdb")
+            {
+                &debug_file[..debug_file.len() - 4]
+            } else {
+                &debug_file[..]
+            };
+
+            Some(format!(
+                "{}.sym/{}/{}",
+                new_debug_file,
+                debug_id.breakpad(),
+                debug_file
+            ))
+        }
+    }
+}
+
+fn get_symstore_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    match filetype {
+        FileType::ElfCode => {
+            let code_id = identifier.code_id.as_ref()?;
+            let code_file = identifier.code_file.as_ref()?;
+            Some(format!(
+                "{}/elf-buildid-{}/{}",
+                code_file, code_id, code_file
+            ))
+        }
+        FileType::ElfDebug => {
+            let code_id = identifier.code_id.as_ref()?;
+            Some(format!("_.debug/elf-buildid-sym-{}/_.debug", code_id))
+        }
+
+        FileType::MachCode => {
+            let code_file = identifier.code_file.as_ref()?;
+            let uuid = get_mach_uuid(identifier)?;
+            Some(format!(
+                "{}/mach-uuid-{}/{}",
+                code_file,
+                uuid.to_simple_ref(),
+                code_file
+            ))
+        }
+        FileType::MachDebug => {
+            let uuid = get_mach_uuid(identifier)?;
+            Some(format!(
+                "_.dwarf/mach-uuid-sym-{}/_.dwarf",
+                uuid.to_simple_ref()
+            ))
+        }
+
+        FileType::Pdb => get_pdb_symstore_path(identifier),
+        FileType::Pe => get_pe_symstore_path(identifier),
+
+        // Microsoft SymbolServer does not specify Breakpad.
+        FileType::Breakpad => None,
+    }
+}
+
+/// Determines the path for an object file in the given layout.
 pub fn get_directory_path(
     directory_layout: DirectoryLayout,
     filetype: FileType,
     identifier: &ObjectId,
 ) -> Option<String> {
-    use DirectoryLayout::*;
-    use FileType::*;
-
-    match (directory_layout, filetype) {
-        (_, PDB) => {
-            // PDB (Microsoft Symbol Server)
-            let debug_name = identifier.debug_name.as_ref()?;
-            let debug_id = identifier.debug_id.as_ref()?;
-            // XXX: Calling `breakpad` here is kinda wrong. We really only want to have no hyphens.
-            Some(format!(
-                "{}/{}/{}",
-                debug_name,
-                debug_id.breakpad(),
-                debug_name
-            ))
-        }
-        (_, PE) => {
-            // PE (Microsoft Symbol Server)
-            let code_name = identifier.code_name.as_ref()?;
-            let code_id = identifier.code_id.as_ref()?;
-            Some(format!("{}/{}/{}", code_name, code_id, code_name))
-        }
-        (Symstore, ELFDebug) => {
-            // ELF debug files (Microsoft Symbol Server)
-            let code_id = identifier.code_id.as_ref()?;
-            Some(format!("_.debug/elf-buildid-sym-{}/_.debug", code_id))
-        }
-        (Native, ELFDebug) => {
-            // ELF debug files (GDB format = "native")
-            let code_id = identifier.code_id.as_ref()?;
-            Some(format!("{}.debug", chunk_gdb(code_id.as_str())?))
-        }
-        (Symstore, ELFCode) => {
-            // ELF code files (Microsoft Symbol Server)
-            let code_id = identifier.code_id.as_ref()?;
-            let code_name = identifier.code_name.as_ref()?;
-            Some(format!(
-                "{}/elf-buildid-{}/{}",
-                code_name, code_id, code_name
-            ))
-        }
-        (Native, ELFCode) => {
-            // ELF code files (GDB format = "native")
-            let code_id = identifier.code_id.as_ref()?;
-            chunk_gdb(code_id.as_str())
-        }
-        (Symstore, MachDebug) => {
-            // Mach debug files (Microsoft Symbol Server)
-            let debug_id = identifier.debug_id.as_ref()?.uuid();
-            Some(format!(
-                "_.dwarf/mach-uuid-sym-{}/_.dwarf",
-                debug_id.to_simple_ref()
-            ))
-        }
-        (Native, MachDebug) => {
-            // Mach debug files (LLDB format = "native")
-            let code_id = identifier.code_id.as_ref()?;
-            chunk_lldb(code_id.as_str())
-        }
-        (Symstore, MachCode) => {
-            // Mach code files (Microsoft Symbol Server)
-            let code_name = identifier.code_name.as_ref()?;
-            let debug_id = identifier.debug_id.as_ref()?.uuid();
-            Some(format!(
-                "{}/mach-uuid-{}/{}",
-                code_name,
-                debug_id.to_simple_ref(),
-                code_name
-            ))
-        }
-        (Native, MachCode) => {
-            // Mach code files (LLDB format = "native")
-            let code_id = identifier.code_id.as_ref()?;
-            Some(format!("{}.app", chunk_lldb(code_id.as_str())?))
-        }
-        (_, Breakpad) => {
-            // Breakpad
-            let debug_name = identifier.debug_name.as_ref()?;
-            let debug_id = identifier.debug_id.as_ref()?;
-
-            let new_debug_name = if debug_name.ends_with(".exe")
-                || debug_name.ends_with(".dll")
-                || debug_name.ends_with(".pdb")
-            {
-                &debug_name[..debug_name.len() - 4]
-            } else {
-                &debug_name[..]
-            };
-
-            Some(format!(
-                "{}.sym/{}/{}",
-                new_debug_name,
-                debug_id.breakpad(),
-                debug_name
-            ))
-        }
-    }
-}
-
-fn chunk_gdb(code_id: &str) -> Option<String> {
-    // this is just a panic guard. It is not meant to validate the GNU build id
-    if code_id.len() > 2 {
-        Some(format!("{}/{}", &code_id[..2], &code_id[2..]))
-    } else {
-        None
-    }
-}
-
-fn chunk_lldb(code_id: &str) -> Option<String> {
-    // this is just a panic guard. It is not meant to validate the UUID
-    if code_id.len() > 20 {
-        Some(format!(
-            "{}/{}/{}/{}/{}/{}",
-            &code_id[0..4],
-            &code_id[4..8],
-            &code_id[8..12],
-            &code_id[12..16],
-            &code_id[16..20],
-            &code_id[20..]
-        ))
-    } else {
-        None
+    match directory_layout {
+        DirectoryLayout::Native => get_native_path(filetype, identifier),
+        DirectoryLayout::Symstore => get_symstore_path(filetype, identifier),
     }
 }
