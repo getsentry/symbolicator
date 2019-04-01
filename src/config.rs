@@ -1,5 +1,5 @@
-use std::fs::File;
-use std::io;
+use std::fs;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use failure::Fail;
@@ -41,11 +41,33 @@ pub struct Config {
     pub sentry_dsn: Option<String>,
 }
 
+/// Checks if we are running in docker
+fn is_docker() -> bool {
+    if fs::metadata("/.dockerenv").is_ok() {
+        return true;
+    }
+    if let Ok(mut f) = fs::File::open("/proc/self/cgroup") {
+        let mut s = String::new();
+        if f.read_to_string(&mut s).is_ok() && s.find("/docker").is_some() {
+            return true;
+        }
+    }
+    false
+}
+
 impl Default for Config {
     fn default() -> Self {
+        // Our docker images (and therefore `sentry devservices`) rely on this being 0.0.0.0 in
+        // Docker.
+        let bind = if is_docker() {
+            "0.0.0.0:3021".to_owned()
+        } else {
+            "127.0.0.1:3021".to_owned()
+        };
+
         Config {
             cache_dir: None,
-            bind: "127.0.0.1:3021".to_owned(),
+            bind,
             metrics: Metrics::default(),
             sentry_dsn: None,
         }
@@ -55,7 +77,7 @@ impl Default for Config {
 impl Config {
     pub fn get(path: Option<&Path>) -> Result<Self, ConfigError> {
         Ok(match path {
-            Some(path) => serde_yaml::from_reader(File::open(path)?)?,
+            Some(path) => serde_yaml::from_reader(fs::File::open(path)?)?,
             None => Config::default(),
         })
     }
