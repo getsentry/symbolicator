@@ -43,7 +43,7 @@ issues (assuming a POSIX filesystem).
 
 ## Resource usage
 
-`symbolicator` spawns at least two threads per core: One for downloading from
+`symbolicator` spawns at least two threads per core: one for downloading from
 external sources and one for symbolication. Requests are both CPU and IO
 intensive. It is expected that the service is still IO bound.
 
