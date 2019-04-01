@@ -19,6 +19,7 @@ use crate::futures::measure_task;
 use crate::types::{FileType, ObjectId, Scope, SourceConfig};
 
 mod http;
+mod paths;
 mod s3;
 mod sentry;
 

@@ -9,9 +9,9 @@ use rusoto_s3::S3;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
-use crate::actors::objects::http::get_directory_path;
 use crate::actors::objects::{
-    DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
+    paths::get_directory_path, DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind,
+    PrioritizedDownloads,
 };
 use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope, SourceConfig};
 
