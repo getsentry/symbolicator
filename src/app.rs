@@ -17,7 +17,7 @@ use crate::actors::{
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
 use crate::metrics;
-use crate::middlewares::Metrics;
+use crate::middlewares::{ErrorHandlers, Metrics};
 
 #[derive(Fail, Debug, derive_more::From)]
 pub enum CliError {
@@ -112,6 +112,7 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
     fn get_app(state: ServiceState) -> ServiceApp {
         let mut app = App::with_state(state)
             .middleware(Metrics)
+            .middleware(ErrorHandlers)
             .middleware(sentry_actix::SentryMiddleware::new());
 
         app = endpoints::symbolicate::register(app);

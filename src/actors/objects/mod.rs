@@ -19,6 +19,7 @@ use crate::futures::measure_task;
 use crate::types::{FileType, ObjectId, Scope, SourceConfig};
 
 mod http;
+mod s3;
 mod sentry;
 
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -80,7 +81,7 @@ impl CacheItemRequest for FetchFile {
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
             cache_key: match self.file_id {
-                FileId::Http {
+                FileId::External {
                     ref object_id,
                     filetype,
                     ..
@@ -167,7 +168,7 @@ impl ObjectFile {
 
         if let Some(ref request) = self.request {
             let object_id = match request.file_id {
-                FileId::Http { ref object_id, .. } => object_id,
+                FileId::External { ref object_id, .. } => object_id,
                 FileId::Sentry { ref object_id, .. } => object_id,
             };
 
@@ -298,7 +299,7 @@ type DownloadStream = Box<dyn Stream<Item = Bytes, Error = ObjectError>>;
 
 #[derive(Debug, Clone)]
 pub enum FileId {
-    Http {
+    External {
         filetype: FileType,
         object_id: ObjectId,
     },
@@ -323,6 +324,9 @@ fn prepare_downloads(
         SourceConfig::Http(ref source) => {
             http::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
         }
+        SourceConfig::S3(ref source) => {
+            s3::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
+        }
     }
 }
 
@@ -333,5 +337,6 @@ fn download_from_source(
     match *source {
         SourceConfig::Sentry(ref x) => sentry::download_from_source(x, file_id),
         SourceConfig::Http(ref x) => http::download_from_source(x, file_id),
+        SourceConfig::S3(ref x) => s3::download_from_source(x, file_id),
     }
 }

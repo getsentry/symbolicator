@@ -43,7 +43,7 @@ symbolic::common::derive_failure!(
 );
 
 pub fn prepare_downloads(
-    source: &SentrySourceConfig,
+    source: &Arc<SentrySourceConfig>,
     scope: Scope,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,

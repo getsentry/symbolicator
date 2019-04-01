@@ -17,8 +17,9 @@ pub struct Signal(pub u32);
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
-    Sentry(SentrySourceConfig),
-    Http(HttpSourceConfig),
+    Sentry(Arc<SentrySourceConfig>),
+    Http(Arc<HttpSourceConfig>),
+    S3(Arc<S3SourceConfig>),
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -48,10 +49,65 @@ pub struct HttpSourceConfig {
     pub is_public: bool,
 }
 
+fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // For safety reason we only want to parse the default AWS regions so that
+    // non AWS services cannot be accessed.
+    use serde::de::Error as _;
+    let region = String::deserialize(deserializer)?;
+    region
+        .parse()
+        .map_err(|e| D::Error::custom(format!("region: {}", e)))
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct S3SourceKey {
+    #[serde(deserialize_with = "deserialize_region")]
+    pub region: rusoto_core::Region,
+    pub access_key: String,
+    pub secret_key: String,
+}
+
+impl PartialEq for S3SourceKey {
+    fn eq(&self, other: &S3SourceKey) -> bool {
+        self.access_key == other.access_key
+            && self.secret_key == other.secret_key
+            && self.region == other.region
+    }
+}
+
+impl Eq for S3SourceKey {}
+
+impl std::hash::Hash for S3SourceKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.access_key.hash(state);
+        self.secret_key.hash(state);
+        self.region.name().hash(state);
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct S3SourceConfig {
+    pub id: String,
+    pub bucket: String,
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(flatten)]
+    pub source_key: Arc<S3SourceKey>,
+
+    pub layout: DirectoryLayout,
+
+    #[serde(default = "FileType::all_vec")]
+    pub filetypes: Vec<FileType>,
+}
+
 impl SourceConfig {
     pub fn is_public(&self) -> bool {
         match *self {
             SourceConfig::Http(ref x) => x.is_public,
+            SourceConfig::S3(_) => false,
             SourceConfig::Sentry(_) => false,
         }
     }
@@ -59,6 +115,7 @@ impl SourceConfig {
     pub fn id(&self) -> &str {
         match *self {
             SourceConfig::Http(ref x) => &x.id,
+            SourceConfig::S3(ref x) => &x.id,
             SourceConfig::Sentry(ref x) => &x.id,
         }
     }

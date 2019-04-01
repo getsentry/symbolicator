@@ -18,7 +18,7 @@ use crate::types::{
 };
 
 pub fn prepare_downloads(
-    source: &HttpSourceConfig,
+    source: &Arc<HttpSourceConfig>,
     scope: Scope,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
@@ -31,7 +31,7 @@ pub fn prepare_downloads(
         requests.push(FetchFile {
             source: SourceConfig::Http(source.clone()),
             scope: scope.clone(),
-            file_id: FileId::Http {
+            file_id: FileId::External {
                 filetype,
                 object_id: object_id.clone(),
             },
@@ -54,7 +54,7 @@ pub fn download_from_source(
     file_id: &FileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let (object_id, filetype) = match file_id {
-        FileId::Http {
+        FileId::External {
             object_id,
             filetype,
         } => (object_id, *filetype),
@@ -114,7 +114,7 @@ pub fn download_from_source(
     Box::new(response)
 }
 
-fn get_directory_path(
+pub fn get_directory_path(
     directory_layout: DirectoryLayout,
     filetype: FileType,
     identifier: &ObjectId,
@@ -167,8 +167,11 @@ fn get_directory_path(
         }
         (Symstore, MachDebug) => {
             // Mach debug files (Microsoft Symbol Server)
-            let code_id = identifier.code_id.as_ref()?;
-            Some(format!("_.dwarf/mach-uuid-sym-{}/_.dwarf", code_id))
+            let debug_id = identifier.debug_id.as_ref()?.uuid();
+            Some(format!(
+                "_.dwarf/mach-uuid-sym-{}/_.dwarf",
+                debug_id.to_simple_ref()
+            ))
         }
         (Native, MachDebug) => {
             // Mach debug files (LLDB format = "native")
@@ -177,9 +180,14 @@ fn get_directory_path(
         }
         (Symstore, MachCode) => {
             // Mach code files (Microsoft Symbol Server)
-            let code_id = identifier.code_id.as_ref()?;
             let code_name = identifier.code_name.as_ref()?;
-            Some(format!("{}/mach-uuid-{}/{}", code_name, code_id, code_name))
+            let debug_id = identifier.debug_id.as_ref()?.uuid();
+            Some(format!(
+                "{}/mach-uuid-{}/{}",
+                code_name,
+                debug_id.to_simple_ref(),
+                code_name
+            ))
         }
         (Native, MachCode) => {
             // Mach code files (LLDB format = "native")
