@@ -65,6 +65,7 @@ pub struct ServiceState {
 
 pub type ServiceApp = App<ServiceState>;
 
+/// CLI entrypoint: Parses argv and loads config file.
 pub fn run_main() -> Result<(), CliError> {
     env_logger::init();
     let cli = Cli::from_args();
@@ -81,7 +82,8 @@ pub fn run_main() -> Result<(), CliError> {
     Ok(())
 }
 
-pub fn run_server(config: Config) -> Result<(), CliError> {
+/// Starts all actors and HTTP server based on loaded config.
+fn run_server(config: Config) -> Result<(), CliError> {
     if let Some(ref statsd) = config.metrics.statsd {
         metrics::configure_statsd(&config.metrics.prefix, statsd);
     }
@@ -91,19 +93,26 @@ pub fn run_server(config: Config) -> Result<(), CliError> {
     let cpu_threadpool = Arc::new(ThreadPool::new());
     let io_threadpool = Arc::new(ThreadPool::new());
 
-    let download_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
-    if let Some(ref download_cache_path) = download_cache_path {
-        fs::create_dir_all(download_cache_path)?;
+    let objects_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
+    if let Some(ref objects_cache_path) = objects_cache_path {
+        fs::create_dir_all(objects_cache_path)?;
     }
-    let download_cache = CacheActor::new(download_cache_path).start();
-    let objects = ObjectsActor::new(download_cache, io_threadpool.clone()).start();
+    let objects = ObjectsActor::new(
+        CacheActor::new("objects", objects_cache_path).start(),
+        io_threadpool.clone(),
+    )
+    .start();
 
     let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
     if let Some(ref symcache_path) = symcache_path {
         fs::create_dir_all(symcache_path)?;
     }
-    let symcache_cache = CacheActor::new(symcache_path).start();
-    let symcaches = SymCacheActor::new(symcache_cache, objects, cpu_threadpool.clone()).start();
+    let symcaches = SymCacheActor::new(
+        CacheActor::new("symcaches", symcache_path).start(),
+        objects,
+        cpu_threadpool.clone(),
+    )
+    .start();
 
     let symbolication = SymbolicationActor::new(symcaches, cpu_threadpool.clone()).start();
 

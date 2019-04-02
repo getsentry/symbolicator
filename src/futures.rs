@@ -3,14 +3,11 @@ use std::time::{Duration, Instant};
 use futures::future::{self, Either, Future};
 use tokio::prelude::FutureExt;
 
-pub fn measure_task<T, E, F>(
+pub fn measure_task<T, E>(
     task_name: &'static str,
-    timeout: Option<(Duration, F)>,
+    timeout: Option<(Duration, E)>,
     fut: impl Future<Item = T, Error = E>,
-) -> impl Future<Item = T, Error = E>
-where
-    F: FnOnce() -> E,
-{
+) -> impl Future<Item = T, Error = E> {
     let creation_time = Instant::now();
 
     future::lazy(move || {
@@ -21,7 +18,7 @@ where
             Either::A(fut.timeout(timeout).map_err(move |e| {
                 e.into_inner().unwrap_or_else(|| {
                     metric!(counter(&format!("{}.timeout", task_name)) += 1);
-                    timeout_e()
+                    timeout_e
                 })
             }))
         } else {

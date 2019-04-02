@@ -125,11 +125,6 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             } == {
                 "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__pdb": 846_848,
                 "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__pe": 0,
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__breakpad": 0,
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__elf-code": 0,
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__elf-debug": 0,
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__mach-code": 0,
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__mach-debug": 0,
             }
 
             symcache, = (
