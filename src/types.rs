@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Write};
 use std::sync::Arc;
 
-use actix::Message;
 use failure::{Backtrace, Fail};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
@@ -291,114 +290,6 @@ pub struct ObjectInfo {
 /// The type of an object file.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ObjectType(String);
-
-/// A request for symbolication of multiple stack traces.
-pub struct SymbolicationRequest {
-    /// An optional timeout, after which the request will yield a result.
-    ///
-    /// If this timeout is not set, symbolication will continue until a result is ready (which is
-    /// either an error or success). If this timeout is set and no result is ready, a `pending`
-    /// status is returned.
-    pub timeout: Option<u64>,
-
-    /// The scope of this request which determines access to cached files.
-    pub scope: Scope,
-
-    /// The signal thrown on certain operating systems.
-    ///
-    ///  Signal handlers sometimes mess with the runtime stack. This is used to determine whether
-    /// the top frame should be fixed or not.
-    pub signal: Option<Signal>,
-
-    /// A list of external sources to load debug files.
-    pub sources: Vec<SourceConfig>,
-
-    /// A list of threads containing stack traces.
-    pub stacktraces: Vec<RawStacktrace>,
-
-    /// A list of images that were loaded into the process.
-    ///
-    /// This list must cover the instruction addresses of the frames in `threads`. If a frame is not
-    /// covered by any image, the frame cannot be symbolicated as it is not clear which debug file
-    /// to load.
-    pub modules: Vec<ObjectInfo>,
-}
-
-impl SymbolicationRequest {
-    /// Creates a new symbolication request.
-    pub fn new(body: SymbolicationRequestBody, params: SymbolicationRequestQueryParams) -> Self {
-        SymbolicationRequest {
-            signal: body.signal,
-            sources: body.sources,
-            stacktraces: body.stacktraces,
-            modules: body.modules,
-            timeout: params.timeout,
-            scope: params.scope,
-        }
-    }
-}
-
-/// Query parameters of the symbolication request.
-#[derive(Deserialize)]
-pub struct SymbolicationRequestQueryParams {
-    #[serde(default)]
-    pub timeout: Option<u64>,
-    #[serde(default)]
-    pub scope: Scope,
-}
-
-/// JSON body of the symbolication request.
-#[derive(Deserialize)]
-pub struct SymbolicationRequestBody {
-    #[serde(default)]
-    pub signal: Option<Signal>,
-    #[serde(default)]
-    pub sources: Vec<SourceConfig>,
-    #[serde(default)]
-    pub stacktraces: Vec<RawStacktrace>,
-    #[serde(default)]
-    pub modules: Vec<ObjectInfo>,
-}
-
-/// Status poll request.
-pub struct PollSymbolicationRequest {
-    pub request_id: RequestId,
-    pub timeout: Option<u64>,
-}
-
-impl PollSymbolicationRequest {
-    /// Creates a new symbolication request.
-    pub fn new(
-        path: PollSymbolicationRequestPath,
-        query: PollSymbolicationRequestQueryParams,
-    ) -> Self {
-        PollSymbolicationRequest {
-            request_id: path.request_id,
-            timeout: query.timeout,
-        }
-    }
-}
-
-/// Path parameters of the symbolication poll request.
-#[derive(Deserialize)]
-pub struct PollSymbolicationRequestPath {
-    pub request_id: RequestId,
-}
-
-/// Query parameters of the symbolication poll request.
-#[derive(Deserialize)]
-pub struct PollSymbolicationRequestQueryParams {
-    #[serde(default)]
-    pub timeout: Option<u64>,
-}
-
-impl Message for SymbolicationRequest {
-    type Result = Result<SymbolicationResponse, SymbolicationError>;
-}
-
-impl Message for PollSymbolicationRequest {
-    type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
-}
 
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Serialize)]

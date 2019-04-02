@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix::{
-    fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, ResponseActFuture,
+    fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, Message,
+    ResponseActFuture,
 };
 use failure::Fail;
 use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
@@ -20,9 +21,8 @@ use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, 
 use crate::futures::measure_task;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
-    PollSymbolicationRequest, RawFrame, RawStacktrace, RequestId, Signal, SymbolicatedFrame,
-    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationRequest,
-    SymbolicationResponse,
+    RawFrame, RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
+    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationResponse,
 };
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -102,7 +102,7 @@ impl SymbolicationActor {
 
     fn do_symbolicate(
         &mut self,
-        request: SymbolicationRequest,
+        request: SymbolicateStacktraces,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let signal = request.signal;
         let stacktraces = request.stacktraces.clone();
@@ -147,6 +147,21 @@ impl SymbolicationActor {
     }
 }
 
+fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
+    ObjectId {
+        debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
+        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
+        debug_file: object_info
+            .debug_file
+            .as_ref()
+            .map(|x| split_path(x).1.to_owned()),
+        code_file: object_info
+            .code_file
+            .as_ref()
+            .map(|x| split_path(x).1.to_owned()),
+    }
+}
+
 struct ObjectLookup {
     inner: Vec<(ObjectInfo, Option<Arc<SymCacheFile>>, DebugFileStatus)>,
 }
@@ -185,7 +200,7 @@ impl ObjectLookup {
     fn fetch_objects(
         self,
         symcache_actor: Addr<SymCacheActor>,
-        request: SymbolicationRequest,
+        request: SymbolicateStacktraces,
     ) -> impl Future<Item = Self, Error = SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
         let sources = request.sources;
@@ -403,31 +418,46 @@ fn symbolize_thread(
     stacktrace
 }
 
-impl Handler<PollSymbolicationRequest> for SymbolicationActor {
-    type Result = ResponseActFuture<Self, Option<SymbolicationResponse>, SymbolicationError>;
+/// A request for symbolication of multiple stack traces.
+pub struct SymbolicateStacktraces {
+    /// An optional timeout, after which the request will yield a result.
+    ///
+    /// If this timeout is not set, symbolication will continue until a result is ready (which is
+    /// either an error or success). If this timeout is set and no result is ready, a `pending`
+    /// status is returned.
+    pub timeout: Option<u64>,
 
-    fn handle(
-        &mut self,
-        request: PollSymbolicationRequest,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
-        let request_id = request.request_id;
+    /// The scope of this request which determines access to cached files.
+    pub scope: Scope,
 
-        if let Some(channel) = self.requests.get(&request_id) {
-            Box::new(
-                self.wrap_response_channel(request_id, request.timeout, channel.clone())
-                    .map(|x, _, _| Some(x)),
-            )
-        } else {
-            Box::new(Ok(None).into_future().into_actor(self))
-        }
-    }
+    /// The signal thrown on certain operating systems.
+    ///
+    ///  Signal handlers sometimes mess with the runtime stack. This is used to determine whether
+    /// the top frame should be fixed or not.
+    pub signal: Option<Signal>,
+
+    /// A list of external sources to load debug files.
+    pub sources: Vec<SourceConfig>,
+
+    /// A list of threads containing stack traces.
+    pub stacktraces: Vec<RawStacktrace>,
+
+    /// A list of images that were loaded into the process.
+    ///
+    /// This list must cover the instruction addresses of the frames in `threads`. If a frame is not
+    /// covered by any image, the frame cannot be symbolicated as it is not clear which debug file
+    /// to load.
+    pub modules: Vec<ObjectInfo>,
 }
 
-impl Handler<SymbolicationRequest> for SymbolicationActor {
+impl Message for SymbolicateStacktraces {
+    type Result = Result<SymbolicationResponse, SymbolicationError>;
+}
+
+impl Handler<SymbolicateStacktraces> for SymbolicationActor {
     type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
 
-    fn handle(&mut self, request: SymbolicationRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, request: SymbolicateStacktraces, ctx: &mut Self::Context) -> Self::Result {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.contains_key(&request_id) {
@@ -458,17 +488,35 @@ impl Handler<SymbolicationRequest> for SymbolicationActor {
     }
 }
 
-fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
-    ObjectId {
-        debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
-        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
-        debug_file: object_info
-            .debug_file
-            .as_ref()
-            .map(|x| split_path(x).1.to_owned()),
-        code_file: object_info
-            .code_file
-            .as_ref()
-            .map(|x| split_path(x).1.to_owned()),
+/// Status poll request.
+pub struct GetSymbolicationStatus {
+    /// The identifier of the symbolication task.
+    pub request_id: RequestId,
+    /// A timeout for how long the symbolication task should be waited for.
+    pub timeout: Option<u64>,
+}
+
+impl Message for GetSymbolicationStatus {
+    type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
+}
+
+impl Handler<GetSymbolicationStatus> for SymbolicationActor {
+    type Result = ResponseActFuture<Self, Option<SymbolicationResponse>, SymbolicationError>;
+
+    fn handle(
+        &mut self,
+        request: GetSymbolicationStatus,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let request_id = request.request_id;
+
+        if let Some(channel) = self.requests.get(&request_id) {
+            Box::new(
+                self.wrap_response_channel(request_id, request.timeout, channel.clone())
+                    .map(|x, _, _| Some(x)),
+            )
+        } else {
+            Box::new(Ok(None).into_future().into_actor(self))
+        }
     }
 }
