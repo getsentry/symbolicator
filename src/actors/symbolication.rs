@@ -322,8 +322,8 @@ fn symbolize_thread(
         let crashing_frame = i == 0;
 
         let ip_reg = if crashing_frame {
-            object_info
-                .arch
+            symcache
+                .arch()
                 .ip_register_name()
                 .and_then(|ip_reg_name| registers.get(ip_reg_name))
                 .map(|x| x.0)
@@ -333,7 +333,7 @@ fn symbolize_thread(
 
         let instruction_info = InstructionInfo {
             addr: frame.instruction_addr.0,
-            arch: object_info.arch,
+            arch: symcache.arch(),
             signal: signal.map(|x| x.0),
             crashing_frame,
             ip_reg,

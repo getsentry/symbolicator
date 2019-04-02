@@ -8,7 +8,6 @@ MACHO_HELLO_DATA = {
     "modules": [
         {
             "type": "macho",
-            "arch": "x86_64",
             "code_id": str(debug_id).upper(),
             "debug_id": str(debug_id),
             "image_vmaddr": "0x0000000100000000",
@@ -30,7 +29,6 @@ MACHO_HELLO_DATA = {
 MACHO_SUCCESS = {
     "modules": [
         {
-            "arch": "x86_64",
             "code_file": None,
             "code_id": str(debug_id).upper(),
             "debug_file": None,

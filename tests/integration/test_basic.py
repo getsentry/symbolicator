@@ -13,7 +13,6 @@ WINDOWS_DATA = {
     "modules": [
         {
             "type": "symbolic",
-            "arch": "x86",
             "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
             "code_id": None,
             "code_file": "C:\\Windows\\System32\\kernel32.dll",

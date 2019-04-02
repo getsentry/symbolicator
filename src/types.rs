@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use failure::{Backtrace, Fail};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use symbolic::common::{Arch, CodeId, DebugId, Language};
+use symbolic::common::{CodeId, DebugId, Language};
 use url::Url;
 
 /// Symbolication request identifier.
@@ -260,10 +260,6 @@ pub struct ObjectInfo {
     /// Platform image file type (container format).
     #[serde(rename = "type")]
     pub ty: ObjectType,
-
-    /// CPU architecture of the image.
-    #[serde(default)]
-    pub arch: Arch,
 
     /// Identifier of the code file.
     pub code_id: Option<String>,
