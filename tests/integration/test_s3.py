@@ -17,7 +17,7 @@ MACHO_HELLO_DATA = {
             "code_name": "Foo.app/Contents/Foo",
         }
     ],
-    "threads": [
+    "stacktraces": [
         {
             "registers": {},
             "frames": [

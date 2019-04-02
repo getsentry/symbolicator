@@ -4,7 +4,7 @@ import threading
 
 WINDOWS_DATA = {
     "signal": None,
-    "threads": [
+    "stacktraces": [
         {
             "registers": {"eip": "0x0000000001509530"},
             "frames": [{"instruction_addr": "0x749e8630"}],
