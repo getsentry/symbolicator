@@ -89,7 +89,7 @@ impl CacheItemRequest for FetchFile {
                 } => format!(
                     "{}.{}.{}",
                     self.source.id(),
-                    object_id.get_cache_key(),
+                    object_id.cache_key(),
                     filetype.as_ref()
                 ),
                 FileId::Sentry { ref sentry_id, .. } => {

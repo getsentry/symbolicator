@@ -5,19 +5,19 @@ use futures::Future;
 
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
-    ResumedSymbolicationRequest, ResumedSymbolicationRequestPath,
-    ResumedSymbolicationRequestQueryParams, SymbolicationError, SymbolicationErrorKind,
+    PollSymbolicationRequest, PollSymbolicationRequestPath, PollSymbolicationRequestQueryParams,
+    SymbolicationError, SymbolicationErrorKind,
 };
 
 fn resume_request(
     state: State<ServiceState>,
-    path: Path<ResumedSymbolicationRequestPath>,
-    query: Query<ResumedSymbolicationRequestQueryParams>,
+    path: Path<PollSymbolicationRequestPath>,
+    query: Query<PollSymbolicationRequestQueryParams>,
 ) -> ResponseFuture<HttpResponse, Error> {
     Box::new(
         state
             .symbolication
-            .send(ResumedSymbolicationRequest::new(
+            .send(PollSymbolicationRequest::new(
                 path.into_inner(),
                 query.into_inner(),
             ))

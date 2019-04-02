@@ -8,47 +8,78 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use url::Url;
 
+/// Symbolication request identifier.
 #[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RequestId(pub String);
 
+/// OS-specific crash signal value.
+// TODO(markus): Also accept POSIX signal name as defined in signal.h
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Signal(pub u32);
 
+/// Determines the layout of an external source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DirectoryLayout {
+    /// Uses conventions of native debuggers.
+    Native,
+    /// Uses Microsoft symbol server conventions.
+    Symstore,
+}
+
+/// Configuration for an external source.
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
+    /// Sentry debug files endpoint.
     Sentry(Arc<SentrySourceConfig>),
+    /// Http server implementing the Microsoft Symbol Server protocol.
     Http(Arc<HttpSourceConfig>),
+    /// Amazon S3 bucket containing symbols in a directory hierarchy.
     S3(Arc<S3SourceConfig>),
 }
 
+/// Configuration for the Sentry-internal debug files endpoint.
 #[derive(Deserialize, Clone, Debug)]
 pub struct SentrySourceConfig {
+    /// Unique source identifier.
     pub id: String,
+
+    /// Absolute URL of the endpoint.
     #[serde(with = "url_serde")]
     pub url: Url,
 
+    /// Bearer authorization token.
     pub token: String,
 }
 
+/// Configuration for symbol server HTTP endpoints.
 #[derive(Deserialize, Clone, Debug)]
 pub struct HttpSourceConfig {
+    /// Unique source identifier.
     pub id: String,
+
+    /// Absolute URL of the symbol server.
     #[serde(with = "url_serde")]
     pub url: Url,
 
+    /// Directory layout of this symbol server.
     pub layout: DirectoryLayout,
 
+    /// Additional headers to be sent to the symbol server with every request.
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
 
+    /// File types that are supported by this server.
     #[serde(default = "FileType::all_vec")]
     pub filetypes: Vec<FileType>,
 
+    /// Whether debug files are shared across scopes.
     #[serde(default)]
     pub is_public: bool,
 }
 
+/// Deserializes an S3 region string.
 fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
 where
     D: Deserializer<'de>,
@@ -62,11 +93,17 @@ where
         .map_err(|e| D::Error::custom(format!("region: {}", e)))
 }
 
+/// Amazon S3 authorization information.
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceKey {
+    /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
     pub region: rusoto_core::Region,
+
+    /// S3 authorization key.
     pub access_key: String,
+
+    /// S3 secret key.
     pub secret_key: String,
 }
 
@@ -88,30 +125,37 @@ impl std::hash::Hash for S3SourceKey {
     }
 }
 
+/// Configuration for S3 symbol buckets.
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceConfig {
+    /// Unique source identifier.
     pub id: String,
+
+    /// Name of the bucket in the S3 account.
     pub bucket: String,
+
+    /// A path from the root of the bucket where files are located.
     #[serde(default)]
     pub prefix: String,
+
+    /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
     pub source_key: Arc<S3SourceKey>,
 
+    /// Directory layout of this symbol server.
     pub layout: DirectoryLayout,
 
+    /// File types that are supported by this server.
     #[serde(default = "FileType::all_vec")]
     pub filetypes: Vec<FileType>,
+
+    /// Whether debug files are shared across scopes.
+    #[serde(default)]
+    pub is_public: bool,
 }
 
 impl SourceConfig {
-    pub fn is_public(&self) -> bool {
-        match *self {
-            SourceConfig::Http(ref x) => x.is_public,
-            SourceConfig::S3(_) => false,
-            SourceConfig::Sentry(_) => false,
-        }
-    }
-
+    /// The unique identifier of this source.
     pub fn id(&self) -> &str {
         match *self {
             SourceConfig::Http(ref x) => &x.id,
@@ -119,8 +163,22 @@ impl SourceConfig {
             SourceConfig::Sentry(ref x) => &x.id,
         }
     }
+
+    /// Determines whether debug files from this bucket may be shared.
+    pub fn is_public(&self) -> bool {
+        match *self {
+            SourceConfig::Http(ref x) => x.is_public,
+            SourceConfig::S3(ref x) => x.is_public,
+            SourceConfig::Sentry(_) => false,
+        }
+    }
 }
 
+/// The scope of a source or debug file.
+///
+/// Based on scopes, access to debug files that have been cached is determined. If a file comes from
+/// a public source, it can be used for any symbolication request. Otherwise, the symbolication
+/// request must match the scope of a file.
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(untagged)]
 pub enum Scope {
@@ -132,8 +190,8 @@ pub enum Scope {
 impl AsRef<str> for Scope {
     fn as_ref(&self) -> &str {
         match *self {
-            Scope::Scoped(ref s) => &s,
             Scope::Global => "global",
+            Scope::Scoped(ref s) => &s,
         }
     }
 }
@@ -144,66 +202,7 @@ impl Default for Scope {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct RawFrame {
-    pub instruction_addr: HexValue,
-}
-
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FrameStatus {
-    Symbolicated,
-    MissingSymbol,
-    UnknownImage,
-    MissingDebugFile,
-    MalformedDebugFile,
-}
-
-/// See semaphore's Frame for docs
-#[derive(Debug, Clone, Serialize)]
-pub struct SymbolicatedFrame {
-    pub instruction_addr: HexValue,
-    pub package: Option<String>,
-    pub lang: Option<Language>,
-    pub symbol: Option<String>,
-    pub function: Option<String>,
-    pub filename: Option<String>,
-    pub abs_path: Option<String>,
-    pub lineno: Option<u32>,
-    pub sym_addr: Option<HexValue>,
-
-    pub original_index: Option<usize>,
-
-    pub status: FrameStatus,
-}
-
-/// See semaphore's DebugImage for docs
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ObjectInfo {
-    #[serde(rename = "type")]
-    pub ty: ObjectType,
-
-    #[serde(default)]
-    pub arch: Arch,
-
-    pub debug_id: String,
-    pub code_id: Option<String>,
-
-    #[serde(default)]
-    pub debug_file: Option<String>,
-
-    #[serde(default)]
-    pub code_file: Option<String>,
-
-    pub image_addr: HexValue,
-
-    #[serde(default)]
-    pub image_size: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct ObjectType(String);
-
+/// A number that is either a hexadecimal or a number.
 #[derive(Clone, Debug, Copy)]
 pub struct HexValue(pub u64);
 
@@ -212,6 +211,7 @@ impl<'de> Deserialize<'de> for HexValue {
     where
         D: Deserializer<'de>,
     {
+        // TODO(markus): Support numbers here, copy hex_metrastructure! from general
         let string: &str = Deserialize::deserialize(deserializer)?;
         if string.starts_with("0x") || string.starts_with("0X") {
             if let Ok(x) = u64::from_str_radix(&string[2..], 16) {
@@ -241,37 +241,104 @@ impl Serialize for HexValue {
     }
 }
 
+/// An unsymbolicated frame from a symbolication request.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RawFrame {
+    /// The absolute instruction address of this frame.
+    pub instruction_addr: HexValue,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RawStacktrace {
+    #[serde(default)]
+    pub registers: BTreeMap<String, HexValue>,
+    pub frames: Vec<RawFrame>,
+}
+
+/// Specification of an image loaded into the process.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ObjectInfo {
+    /// Platform image file type (container format).
+    #[serde(rename = "type")]
+    pub ty: ObjectType,
+
+    /// CPU architecture of the image.
+    #[serde(default)]
+    pub arch: Arch,
+
+    /// Identifier of the code file.
+    pub code_id: Option<String>,
+
+    /// Name of the code file.
+    #[serde(default)]
+    pub code_file: Option<String>,
+
+    /// Identifier of the debug file.
+    pub debug_id: Option<String>,
+
+    /// Name of the debug file.
+    #[serde(default)]
+    pub debug_file: Option<String>,
+
+    /// Absolute address at which the image was mounted into virtual memory.
+    pub image_addr: HexValue,
+
+    /// Size of the image in virtual memory.
+    #[serde(default)]
+    pub image_size: Option<u64>,
+}
+
+/// The type of an object file.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ObjectType(String);
+
+/// A request for symbolication of multiple stack traces.
 pub struct SymbolicationRequest {
+    /// An optional timeout, after which the request will yield a result.
+    ///
+    /// If this timeout is not set, symbolication will continue until a result is ready (which is
+    /// either an error or success). If this timeout is set and no result is ready, a `pending`
+    /// status is returned.
     pub timeout: Option<u64>,
+
+    /// The scope of this request which determines access to cached files.
     pub scope: Scope,
+
+    /// The signal thrown on certain operating systems.
+    ///
+    ///  Signal handlers sometimes mess with the runtime stack. This is used to determine whether
+    /// the top frame should be fixed or not.
     pub signal: Option<Signal>,
+
+    /// A list of external sources to load debug files.
     pub sources: Vec<SourceConfig>,
-    pub threads: Vec<RawStacktrace>,
+
+    /// A list of threads containing stack traces.
+    pub stacktraces: Vec<RawStacktrace>,
+
+    /// A list of images that were loaded into the process.
+    ///
+    /// This list must cover the instruction addresses of the frames in `threads`. If a frame is not
+    /// covered by any image, the frame cannot be symbolicated as it is not clear which debug file
+    /// to load.
     pub modules: Vec<ObjectInfo>,
 }
 
 impl SymbolicationRequest {
+    /// Creates a new symbolication request.
     pub fn new(body: SymbolicationRequestBody, params: SymbolicationRequestQueryParams) -> Self {
-        let SymbolicationRequestBody {
-            signal,
-            sources,
-            threads,
-            modules,
-        } = body;
-
-        let SymbolicationRequestQueryParams { timeout, scope } = params;
-
         SymbolicationRequest {
-            signal,
-            sources,
-            threads,
-            modules,
-            timeout,
-            scope,
+            signal: body.signal,
+            sources: body.sources,
+            stacktraces: body.stacktraces,
+            modules: body.modules,
+            timeout: params.timeout,
+            scope: params.scope,
         }
     }
 }
 
+/// Query parameters of the symbolication request.
 #[derive(Deserialize)]
 pub struct SymbolicationRequestQueryParams {
     #[serde(default)]
@@ -280,6 +347,7 @@ pub struct SymbolicationRequestQueryParams {
     pub scope: Scope,
 }
 
+/// JSON body of the symbolication request.
 #[derive(Deserialize)]
 pub struct SymbolicationRequestBody {
     #[serde(default)]
@@ -287,39 +355,39 @@ pub struct SymbolicationRequestBody {
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
     #[serde(default)]
-    pub threads: Vec<RawStacktrace>,
+    pub stacktraces: Vec<RawStacktrace>,
     #[serde(default)]
     pub modules: Vec<ObjectInfo>,
 }
 
-pub struct ResumedSymbolicationRequest {
+/// Status poll request.
+pub struct PollSymbolicationRequest {
     pub request_id: RequestId,
     pub timeout: Option<u64>,
 }
 
-impl ResumedSymbolicationRequest {
+impl PollSymbolicationRequest {
+    /// Creates a new symbolication request.
     pub fn new(
-        path: ResumedSymbolicationRequestPath,
-        query: ResumedSymbolicationRequestQueryParams,
+        path: PollSymbolicationRequestPath,
+        query: PollSymbolicationRequestQueryParams,
     ) -> Self {
-        let ResumedSymbolicationRequestPath { request_id } = path;
-
-        let ResumedSymbolicationRequestQueryParams { timeout } = query;
-
-        ResumedSymbolicationRequest {
-            request_id,
-            timeout,
+        PollSymbolicationRequest {
+            request_id: path.request_id,
+            timeout: query.timeout,
         }
     }
 }
 
+/// Path parameters of the symbolication poll request.
 #[derive(Deserialize)]
-pub struct ResumedSymbolicationRequestPath {
+pub struct PollSymbolicationRequestPath {
     pub request_id: RequestId,
 }
 
+/// Query parameters of the symbolication poll request.
 #[derive(Deserialize)]
-pub struct ResumedSymbolicationRequestQueryParams {
+pub struct PollSymbolicationRequestQueryParams {
     #[serde(default)]
     pub timeout: Option<u64>,
 }
@@ -328,52 +396,117 @@ impl Message for SymbolicationRequest {
     type Result = Result<SymbolicationResponse, SymbolicationError>;
 }
 
-impl Message for ResumedSymbolicationRequest {
+impl Message for PollSymbolicationRequest {
     type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct RawStacktrace {
-    pub registers: BTreeMap<String, HexValue>,
-    pub frames: Vec<RawFrame>,
+/// Information on the symbolication status of this frame.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameStatus {
+    /// The frame was symbolicated successfully.
+    Symbolicated,
+    /// The symbol (i.e. function) was not found within the debug file.
+    MissingSymbol,
+    /// No debug image is specified for the address of the frame.
+    UnknownImage,
+    /// The debug file could not be retrieved from any of the sources.
+    MissingDebugFile,
+    /// The retrieved debug file could not be processed.
+    MalformedDebugFile,
 }
 
+/// A potentially symbolicated frame in the symbolication response.
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolicatedFrame {
+    /// Symbolication status of this frame.
+    pub status: FrameStatus,
+    /// The index of this frame in the request.
+    ///
+    /// This is relevant for two reasons:
+    ///  1. Frames might disappear if the symbolicator determines them as a false-positive from
+    ///     stackwalking without CFI.
+    ///  2. Frames might expand to multiple inline frames at the same instruction address. However,
+    ///     this might occur within recursion, so the instruction address is not a good
+    pub original_index: Option<usize>,
+    /// The instruction address as given in the request.
+    pub instruction_addr: HexValue,
+
+    /// The path to the image this frame is located in.
+    pub package: Option<String>,
+    /// The language of the symbol (function) this frame is located in.
+    pub lang: Option<Language>,
+    /// The mangled name of the function this frame is located in.
+    pub symbol: Option<String>,
+    /// Start address of the function this frame is located in (lower or equal to instruction_addr).
+    pub sym_addr: Option<HexValue>,
+    /// The demangled function name.
+    pub function: Option<String>,
+    /// Source file path relative to the compilation directory.
+    pub filename: Option<String>,
+    /// Absolute source file path.
+    pub abs_path: Option<String>,
+    /// The line number within the source file, starting at 1 for the first line.
+    pub lineno: Option<u32>,
+}
+
+/// A symbolicated stacktrace.
+///
+/// Frames in this request may or may not be symbolicated. The status field contains information on
+/// the individual success for each frame.
 #[derive(Debug, Clone, Serialize)]
 pub struct SymbolicatedStacktrace {
+    /// Frames of this stack trace.
     pub frames: Vec<SymbolicatedFrame>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
-pub enum SymbolicationResponse {
-    Pending {
-        request_id: RequestId,
-        retry_after: usize,
-    },
-    Completed {
-        signal: Option<Signal>,
-        stacktraces: Vec<SymbolicatedStacktrace>,
-        modules: Vec<FetchedDebugFile>,
-    },
-}
-
+/// Information on a debug information file.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DebugFileStatus {
+    /// The debug information file was found and successfully processed.
     Found,
+    /// The debug image was not referenced in the stack trace and not further handled.
     Unused,
+    /// The file could not be found in any of the specified sources.
     MissingDebugFile,
+    /// The debug file failed to process.
     MalformedDebugFile,
+    /// The debug file could not be downloaded.
     FetchingFailed,
+    /// The file exceeds the internal download limit.
     TooLarge,
+    /// An internal error while handling this image.
     Other,
 }
 
+/// Enhanced information on an in
 #[derive(Debug, Clone, Serialize)]
 pub struct FetchedDebugFile {
     pub status: DebugFileStatus,
     #[serde(flatten)]
     pub object_info: ObjectInfo,
+}
+
+/// The response of a symbolication request or poll request.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SymbolicationResponse {
+    /// Symbolication is still running.
+    Pending {
+        /// The id with which further updates can be polled.
+        request_id: RequestId,
+        /// An indication when the next poll would be suitable.
+        retry_after: usize,
+    },
+    Completed {
+        /// The signal that caused this crash.
+        signal: Option<Signal>,
+        /// The threads containing symbolicated stack frames.
+        stacktraces: Vec<SymbolicatedStacktrace>,
+        /// A list of images, extended with status information.
+        modules: Vec<FetchedDebugFile>,
+    },
 }
 
 #[derive(Debug, Fail)]
@@ -449,22 +582,11 @@ pub enum FileType {
 }
 
 impl FileType {
+    /// Lists all available file types.
     #[inline]
     pub fn all() -> &'static [Self] {
         use FileType::*;
         &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
-    }
-
-    #[inline]
-    pub fn debug_types() -> &'static [Self] {
-        use FileType::*;
-        &[Pdb, MachDebug, ElfDebug]
-    }
-
-    #[inline]
-    pub fn code_types() -> &'static [Self] {
-        use FileType::*;
-        &[Pe, MachCode, ElfCode]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.
@@ -480,16 +602,9 @@ impl FileType {
     }
 
     #[inline]
-    pub fn all_vec() -> Vec<Self> {
+    fn all_vec() -> Vec<Self> {
         Self::all().to_vec()
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DirectoryLayout {
-    Native,
-    Symstore,
 }
 
 impl AsRef<str> for FileType {
@@ -509,14 +624,22 @@ impl AsRef<str> for FileType {
 /// Information to find a Object in external sources and also internal cache.
 #[derive(Debug, Clone)]
 pub struct ObjectId {
-    pub debug_id: Option<DebugId>,
+    /// Identifier of the code file.
     pub code_id: Option<CodeId>,
-    pub debug_file: Option<String>,
+
+    /// Path to the code file (executable or library).
     pub code_file: Option<String>,
+
+    /// Identifier of the debug file.
+    pub debug_id: Option<DebugId>,
+
+    /// Path to the debug file.
+    pub debug_file: Option<String>,
 }
 
 impl ObjectId {
-    pub fn get_cache_key(&self) -> String {
+    /// Returns the cache key for this object.
+    pub fn cache_key(&self) -> String {
         let mut rv = String::new();
         if let Some(ref debug_id) = self.debug_id {
             rv.push_str(&debug_id.to_string());

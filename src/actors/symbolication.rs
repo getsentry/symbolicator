@@ -20,7 +20,7 @@ use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, 
 use crate::futures::measure_task;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
-    RawFrame, RawStacktrace, RequestId, ResumedSymbolicationRequest, Signal, SymbolicatedFrame,
+    PollSymbolicationRequest, RawFrame, RawStacktrace, RequestId, Signal, SymbolicatedFrame,
     SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationRequest,
     SymbolicationResponse,
 };
@@ -105,7 +105,7 @@ impl SymbolicationActor {
         request: SymbolicationRequest,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let signal = request.signal;
-        let threads = request.threads.clone();
+        let stacktraces = request.stacktraces.clone();
 
         let object_lookup: ObjectLookup = request.modules.iter().cloned().collect();
 
@@ -115,7 +115,7 @@ impl SymbolicationActor {
             .fetch_objects(self.symcaches.clone(), request)
             .and_then(move |object_lookup| {
                 threadpool.spawn_handle(future::lazy(move || {
-                    let stacktraces = threads
+                    let stacktraces = stacktraces
                         .into_iter()
                         .map(|thread| symbolize_thread(thread, &object_lookup, signal))
                         .collect();
@@ -189,7 +189,7 @@ impl ObjectLookup {
     ) -> impl Future<Item = Self, Error = SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
         let sources = request.sources;
-        let stacktraces = request.threads;
+        let stacktraces = request.stacktraces;
         let scope = request.scope.clone();
 
         for stacktrace in stacktraces {
@@ -403,12 +403,12 @@ fn symbolize_thread(
     stacktrace
 }
 
-impl Handler<ResumedSymbolicationRequest> for SymbolicationActor {
+impl Handler<PollSymbolicationRequest> for SymbolicationActor {
     type Result = ResponseActFuture<Self, Option<SymbolicationResponse>, SymbolicationError>;
 
     fn handle(
         &mut self,
-        request: ResumedSymbolicationRequest,
+        request: PollSymbolicationRequest,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
         let request_id = request.request_id;
@@ -460,7 +460,7 @@ impl Handler<SymbolicationRequest> for SymbolicationActor {
 
 fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
     ObjectId {
-        debug_id: object_info.debug_id.parse().ok(),
+        debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
         debug_file: object_info
             .debug_file
