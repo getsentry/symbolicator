@@ -1,13 +1,20 @@
 # Symbolicator
 
-A symbolication service for native stacktraces and minidumps with symbol server
-support.
+A symbolication service for native stacktraces and
+[minidumps](https://docs.sentry.io/platforms/minidump/) with [symbol
+server](https://en.wikipedia.org/wiki/Microsoft_Symbol_Server)
+support.  It's a flexible frontend for parts of the
+[symbolic](https://github.com/getsentry/symbolic) library.
 
 ## Setup
 
+Symblicator can be configured to work as a standalone system or to fit into
+a Sentry installation.  The latter requires a recent git version of Sentry
+to work and is not yet documented for general use.
+
 ### Config
 
-Write this to a file (config.yml):
+Write this to a file (`config.yml`):
 
 ```yaml
 cache_dir: /tmp/symbolicator
