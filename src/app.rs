@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -16,6 +15,7 @@ use crate::actors::{
 };
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
+use crate::logging;
 use crate::metrics;
 use crate::middlewares::{ErrorHandlers, Metrics};
 
@@ -65,14 +65,24 @@ pub struct ServiceState {
 
 pub type ServiceApp = App<ServiceState>;
 
-/// CLI entrypoint: Parses argv and loads config file.
-pub fn run_main() -> Result<(), CliError> {
-    env_logger::init();
+/// CLI entrypoint
+pub fn main() -> ! {
+    match execute() {
+        Ok(()) => std::process::exit(0),
+        Err(error) => {
+            logging::ensure_log_error(&error);
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Runs the main application.
+fn execute() -> Result<(), CliError> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config())?;
 
     let _sentry = sentry::init(config.sentry_dsn.as_ref().map(|x| &**x));
-    env::set_var("RUST_BACKTRACE", "1");
+    logging::init_logging(&config);
     sentry::integrations::panic::register_panic_handler();
 
     match cli.command {
@@ -135,7 +145,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
         .unwrap()
         .start();
 
-    println!("Started http server: {}", config.bind);
+    log::info!("Started http server: {}", config.bind);
     let _ = sys.run();
     Ok(())
 }

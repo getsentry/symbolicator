@@ -11,6 +11,7 @@ mod config;
 mod endpoints;
 mod futures;
 mod http;
+mod logging;
 mod middlewares;
 mod types;
 
