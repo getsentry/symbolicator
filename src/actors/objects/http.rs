@@ -72,6 +72,7 @@ pub fn download_from_source(
         None => return Box::new(Ok(None).into_future()),
     };
 
+    log::debug!("Fetching debug file from {}", download_url);
     let response = http::follow_redirects(
         {
             let mut builder = client::get(&download_url);
@@ -88,7 +89,7 @@ pub fn download_from_source(
     .then(move |result| match result {
         Ok(response) => {
             if response.status().is_success() {
-                log::info!("Success hitting {}", download_url);
+                log::trace!("Success hitting {}", download_url);
                 Ok(Some(Box::new(
                     response
                         .payload()
@@ -96,7 +97,7 @@ pub fn download_from_source(
                 )
                     as Box<dyn Stream<Item = _, Error = _>>))
             } else {
-                log::debug!(
+                log::trace!(
                     "Unexpected status code from {}: {}",
                     download_url,
                     response.status()

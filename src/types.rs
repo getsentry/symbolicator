@@ -201,6 +201,15 @@ impl Default for Scope {
     }
 }
 
+impl fmt::Display for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Scope::Global => f.write_str("global"),
+            Scope::Scoped(ref scope) => f.write_str(&scope),
+        }
+    }
+}
+
 /// A number that is either a hexadecimal or a number.
 #[derive(Clone, Debug, Copy)]
 pub struct HexValue(pub u64);

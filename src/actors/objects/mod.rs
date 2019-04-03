@@ -113,9 +113,12 @@ impl CacheItemRequest for FetchFile {
             request_scope
         };
 
+        let mut cache_key = self.get_cache_key();
+        cache_key.scope = final_scope.clone();
+
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
-                log::debug!("Found file");
+                log::info!("Resolved debug file for {}", cache_key);
                 let file = fs::File::create(&path)
                     .map_err(|e| ObjectError::from(e.context(ObjectErrorKind::Io)))
                     .into_future();
@@ -130,7 +133,7 @@ impl CacheItemRequest for FetchFile {
 
                 Either::A(result.map(|_| final_scope))
             } else {
-                log::debug!("No file found");
+                log::debug!("No debug file found for {}", cache_key);
                 Either::B(Ok(final_scope).into_future())
             }
         });

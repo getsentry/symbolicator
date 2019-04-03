@@ -66,6 +66,7 @@ pub fn prepare_downloads(
         url
     };
 
+    log::debug!("Fetching list of Sentry debug files from {}", index_url);
     let index_request = client::get(&index_url)
         .header("User-Agent", USER_AGENT)
         .header("Authorization", format!("Bearer {}", source.token))
@@ -75,13 +76,14 @@ pub fn prepare_downloads(
         .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
         .and_then(move |response| {
             if response.status().is_success() {
-                log::info!("Success fetching index from Sentry");
+                log::debug!("Success fetching index from Sentry");
                 Either::A(
                     response
                         .json::<Vec<FileEntry>>()
                         .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
                 )
             } else {
+                log::debug!("Sentry returned status code {}", response.status());
                 Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
             }
         });
@@ -125,6 +127,7 @@ pub fn download_from_source(
         url
     };
 
+    log::debug!("Fetching debug file from {}", download_url);
     let response = client::get(&download_url)
         .header("User-Agent", USER_AGENT)
         .header("Authorization", format!("Bearer {}", source.token))

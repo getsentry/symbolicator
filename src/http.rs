@@ -47,14 +47,14 @@ pub fn follow_redirects(
                 };
                 let same_host = target_uri.origin() == base.origin();
 
-                log::debug!("Following redirect: {:?}", &target_uri);
+                log::trace!("Following redirect: {:?}", &target_uri);
                 let mut builder = ClientRequest::get(&target_uri);
                 for (k, v) in headers_bak {
                     if let Some(k) = k {
                         if k == "host" || (!same_host && (k == "authorization" || k == "cookie")) {
-                            log::debug!("Dropping header: {:?}: {:?}", k, v);
+                            log::trace!("Dropping header: {:?}: {:?}", k, v);
                         } else {
-                            log::debug!("Preserving header: {:?}: {:?}", k, v);
+                            log::trace!("Preserving header: {:?}: {:?}", k, v);
                             builder.header(k, v);
                         }
                     }

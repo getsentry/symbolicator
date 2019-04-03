@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -58,6 +59,12 @@ impl<T: CacheItemRequest> Actor for CacheActor<T> {
 pub struct CacheKey {
     pub cache_key: String,
     pub scope: Scope,
+}
+
+impl fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} (scope {})", self.cache_key, self.scope)
+    }
 }
 
 pub trait CacheItemRequest: 'static + Send {
