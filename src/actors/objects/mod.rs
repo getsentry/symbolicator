@@ -174,7 +174,18 @@ impl ObjectFile {
             };
 
             if let Some(ref debug_id) = object_id.debug_id {
-                if parsed.debug_id() != *debug_id {
+                let parsed_id = parsed.debug_id();
+
+                // Microsoft symbol server sometimes stores updated files with a more recent
+                // (=higher) age, but resolves it for requests with lower ages as well. Thus, we
+                // need to check whether the parsed debug file fullfills the *miniumum* age bound.
+                // For example:
+                // `4A236F6A0B3941D1966B41A4FC77738C2` is reported as
+                // `4A236F6A0B3941D1966B41A4FC77738C4` from the server.
+                //                                  ^
+                if parsed_id.uuid() != debug_id.uuid() || parsed_id.appendix() < debug_id.appendix()
+                {
+                    metric!(counter("object.debug_id_mismatch") += 1);
                     log::debug!(
                         "debug id mismatch. got {}, expected {}",
                         parsed.debug_id(),
@@ -187,6 +198,7 @@ impl ObjectFile {
             if let Some(ref code_id) = object_id.code_id {
                 if let Some(ref object_code_id) = parsed.code_id() {
                     if object_code_id != code_id {
+                        metric!(counter("object.code_id_mismatch") += 1);
                         log::debug!(
                             "code id mismatch. got {}, expected {}",
                             object_code_id,
