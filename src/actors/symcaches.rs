@@ -7,7 +7,8 @@ use std::time::Duration;
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use failure::{Fail, ResultExt};
 use futures::Future;
-use symbolic::{common::ByteView, symcache};
+use symbolic::common::{Arch, ByteView};
+use symbolic::symcache::{SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
@@ -77,10 +78,11 @@ pub struct SymCacheFile {
     inner: Option<ByteView<'static>>,
     scope: Scope,
     request: FetchSymCacheInternal,
+    arch: Arch,
 }
 
 impl SymCacheFile {
-    pub fn parse(&self) -> Result<Option<symcache::SymCache<'_>>, SymCacheError> {
+    pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
         let bytes = match self.inner {
             Some(ref x) => x,
             None => return Ok(None),
@@ -91,8 +93,13 @@ impl SymCacheFile {
         }
 
         Ok(Some(
-            symcache::SymCache::parse(bytes).context(SymCacheErrorKind::Parsing)?,
+            SymCache::parse(bytes).context(SymCacheErrorKind::Parsing)?,
         ))
+    }
+
+    /// Returns the architecture of this symcache.
+    pub fn arch(&self) -> Arch {
+        self.arch
     }
 }
 
@@ -143,7 +150,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                         BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
                     match object.parse() {
                         Ok(Some(object)) => {
-                            let _file = symcache::SymCacheWriter::write_object(&object, file)
+                            SymCacheWriter::write_object(&object, file)
                                 .context(SymCacheErrorKind::Io)?;
                         }
                         Ok(None) => (),
@@ -166,10 +173,16 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+        // TODO: Figure out if this double-parsing could be avoided
+        let arch = SymCache::parse(&data)
+            .map(|cache| cache.arch())
+            .unwrap_or_default();
+
         Ok(SymCacheFile {
             request: self,
             scope,
             inner: if !data.is_empty() { Some(data) } else { None },
+            arch,
         })
     }
 }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use failure::{Backtrace, Fail};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use symbolic::common::{CodeId, DebugId, Language};
+use symbolic::common::{Arch, CodeId, DebugId, Language};
 use url::Url;
 
 /// Symbolication request identifier.
@@ -370,7 +370,11 @@ pub enum DebugFileStatus {
 /// Enhanced information on an in
 #[derive(Debug, Clone, Serialize)]
 pub struct FetchedDebugFile {
+    /// Status for handling this debug file.
     pub status: DebugFileStatus,
+    /// Actual architecture of this debug file.
+    pub arch: Arch,
+    /// More information on the object file.
     #[serde(flatten)]
     pub object_info: ObjectInfo,
 }

@@ -123,8 +123,9 @@ impl SymbolicationActor {
                     let modules = object_lookup
                         .inner
                         .into_iter()
-                        .map(|(object_info, _, status)| FetchedDebugFile {
+                        .map(|(object_info, cache, status)| FetchedDebugFile {
                             status,
+                            arch: cache.as_ref().map(|c| c.arch()).unwrap_or_default(),
                             object_info,
                         })
                         .collect();
