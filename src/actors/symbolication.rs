@@ -8,23 +8,27 @@ use actix::{
     fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, Message,
     ResponseActFuture,
 };
-use failure::Fail;
+use failure::{Fail, ResultExt};
 use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
-use symbolic::common::{split_path, InstructionInfo, Language};
+use symbolic::common::{split_path, InstructionInfo, Language, ByteView};
+use symbolic::minidump;
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
+
 use sentry::integrations::failure::capture_fail;
 
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
+use crate::actors::cficaches::{FetchCfiCache, CfiCacheActor, CfiCacheErrorKind, CfiCacheFile};
 use crate::futures::measure_task;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
     RawFrame, RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
-    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationResponse,
+    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationResponse, ObjectType,
 };
+
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
@@ -113,7 +117,7 @@ impl SymbolicationActor {
         let threadpool = self.threadpool.clone();
 
         let result = object_lookup
-            .fetch_objects(self.symcaches.clone(), request)
+            .fetch_symcaches(self.symcaches.clone(), request)
             .and_then(move |object_lookup| {
                 threadpool.spawn_handle(future::lazy(move || {
                     let stacktraces = stacktraces
@@ -148,6 +152,20 @@ impl SymbolicationActor {
             result,
         )
     }
+
+    fn do_minidump_processing(&mut self, request: ProcessMinidump) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+        let state = self.threadpool.spawn_handle(future::lazy(move || {
+            let byteview = ByteView::from_file(request.file).context(SymbolicationErrorKind::Minidump)?;
+            let state = minidump::processor::ProcessState::from_minidump(&byteview, None)
+                .context(SymbolicationErrorKind::Minidump)?;
+
+            state.modules().into_iter()
+                .map(object_info_from_minidump_module);
+            Ok(())
+        }));
+
+        state.and_then(|_| Ok(loop {}))
+    }
 }
 
 fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
@@ -162,6 +180,19 @@ fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
             .code_file
             .as_ref()
             .map(|x| split_path(x).1.to_owned()),
+    }
+}
+
+fn object_info_from_minidump_module(module: &minidump::processor::CodeModule) -> ObjectInfo {
+    // TODO: should we also add `module.id()` somewhere?
+    ObjectInfo {
+        ty: ObjectType("unknown".to_owned()),  // TODO: read from system info?
+        code_id: Some(module.code_identifier()),
+        code_file: Some(split_path(&module.code_file()).1.to_owned()),
+        debug_id: Some(module.debug_identifier()),
+        debug_file: Some(split_path(&module.debug_file()).1.to_owned()),
+        image_addr: HexValue(module.base_address()),
+        image_size: if module.size() != 0 { Some(module.size()) } else { None },
     }
 }
 
@@ -200,7 +231,7 @@ impl ObjectLookup {
             });
     }
 
-    fn fetch_objects(
+    fn fetch_symcaches(
         self,
         symcache_actor: Addr<SymCacheActor>,
         request: SymbolicateStacktraces,
@@ -212,7 +243,7 @@ impl ObjectLookup {
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
-                if let Some((i, ..)) = self.lookup_object(frame.instruction_addr.0) {
+                if let Some((i, ..)) = self.lookup_symcache(frame.instruction_addr.0) {
                     referenced_objects.insert(i);
                 }
             }
@@ -285,7 +316,7 @@ impl ObjectLookup {
         })
     }
 
-    fn lookup_object(
+    fn lookup_symcache(
         &self,
         addr: u64,
     ) -> Option<(usize, &ObjectInfo, Option<&SymCacheFile>, DebugFileStatus)> {
@@ -310,7 +341,7 @@ fn symbolize_thread(
     let mut stacktrace = SymbolicatedStacktrace { frames: vec![] };
 
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-        let (object_info, symcache) = match caches.lookup_object(frame.instruction_addr.0) {
+        let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
             Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
             Some((_, _, None, _)) => return Err(FrameStatus::MissingDebugFile),
             None => return Err(FrameStatus::UnknownImage),
@@ -540,7 +571,31 @@ impl Message for ProcessMinidump {
 impl Handler<ProcessMinidump> for SymbolicationActor {
     type Result = Result<RequestId, SymbolicationError>;
 
-    fn handle(&mut self, _request: ProcessMinidump, _ctx: &mut Self::Context) -> Self::Result {
-        unimplemented!();
+    fn handle(&mut self, request: ProcessMinidump, ctx: &mut Self::Context) -> Self::Result {
+        let request_id = loop {
+            let request_id = RequestId(uuid::Uuid::new_v4().to_string());
+            if !self.requests.contains_key(&request_id) {
+                break request_id;
+            }
+        };
+
+        let (tx, rx) = oneshot::channel();
+
+        ctx.spawn(
+            self.do_minidump_processing(request)
+            .then(move |result| {
+                tx.send(match result {
+                    Ok(x) => Ok(Arc::new(x)),
+                    Err(e) => Err(Arc::new(e)),
+                })
+                .map_err(|_| ())
+            })
+            .into_actor(self)
+        );
+
+        let channel = rx.shared();
+        self.requests.insert(request_id.clone(), channel);
+
+        Ok(request_id)
     }
 }

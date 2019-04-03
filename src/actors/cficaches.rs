@@ -135,6 +135,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
+                // TODO: Prefer files with unwind info
             })
             .map_err(|e| e.context(CfiCacheErrorKind::Mailbox).into())
             .and_then(move |result| {

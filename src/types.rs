@@ -294,7 +294,7 @@ pub struct ObjectInfo {
 
 /// The type of an object file.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct ObjectType(String);
+pub struct ObjectType(pub String);
 
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -431,6 +431,9 @@ pub enum SymbolicationErrorKind {
 
     #[fail(display = "symbolication took too long")]
     Timeout,
+
+    #[fail(display = "failed to process minidump")]
+    Minidump,
 }
 
 symbolic::common::derive_failure!(
