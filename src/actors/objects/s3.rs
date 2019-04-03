@@ -13,6 +13,7 @@ use crate::actors::objects::{
     paths::get_directory_path, DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind,
     PrioritizedDownloads,
 };
+use crate::futures::measure_task;
 use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope, SourceConfig};
 
 lazy_static::lazy_static! {
@@ -144,5 +145,5 @@ pub fn download_from_source(
             }
         });
 
-    Box::new(response)
+    Box::new(measure_task("downloads.s3", None, response))
 }

@@ -13,6 +13,7 @@ use crate::actors::objects::{
     DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
     USER_AGENT,
 };
+use crate::futures::measure_task;
 use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig, SourceConfig};
 
 #[derive(Debug, Fail, Clone, Copy)]
@@ -65,26 +66,30 @@ pub fn prepare_downloads(
         url
     };
 
+    let index_request = client::get(&index_url)
+        .header("User-Agent", USER_AGENT)
+        .header("Authorization", format!("Bearer {}", source.token))
+        .finish()
+        .unwrap()
+        .send()
+        .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
+        .and_then(move |response| {
+            if response.status().is_success() {
+                log::info!("Success fetching index from Sentry");
+                Either::A(
+                    response
+                        .json::<Vec<FileEntry>>()
+                        .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
+                )
+            } else {
+                Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
+            }
+        });
+
+    let index_request = measure_task("downloads.sentry.index", None, index_request);
+
     Box::new(
-        client::get(&index_url)
-            .header("User-Agent", USER_AGENT)
-            .header("Authorization", format!("Bearer {}", source.token))
-            .finish()
-            .unwrap()
-            .send()
-            .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
-            .and_then(move |response| {
-                if response.status().is_success() {
-                    log::info!("Success fetching index from Sentry");
-                    Either::A(
-                        response
-                            .json::<Vec<FileEntry>>()
-                            .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
-                    )
-                } else {
-                    Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
-                }
-            })
+        index_request
             .and_then(clone!(source, object_id, |entries| future::join_all(
                 entries.into_iter().map(move |api_response| cache
                     .send(ComputeMemoized(FetchFile {
@@ -151,5 +156,5 @@ pub fn download_from_source(
             }
         });
 
-    Box::new(response)
+    Box::new(measure_task("downloads.sentry", None, response))
 }

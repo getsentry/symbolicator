@@ -1,3 +1,6 @@
+/// Same as `try` but to be used in functions that return `Box<Future>` instead of `Result`.
+///
+/// Useful when calling synchronous (but cheap enough) functions in async code.
 #[macro_export]
 macro_rules! tryf {
     ($e:expr) => {
@@ -11,16 +14,8 @@ macro_rules! tryf {
     };
 }
 
-#[macro_export]
-macro_rules! tryfa {
-    ($e:expr) => {
-        match $e {
-            Ok(value) => value,
-            Err(e) => return Box::new(::actix::fut::result(Err(::std::convert::From::from(e)))),
-        }
-    };
-}
-
+/// Declare a closure that clone specific values before moving them into their bodies. Mainly
+/// useful when using combinator functions such as `Future::and_then` or `Future::map`.
 #[macro_export]
 macro_rules! clone {
     (@param _) => ( _ );

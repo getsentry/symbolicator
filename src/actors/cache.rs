@@ -17,16 +17,33 @@ use crate::types::Scope;
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
 
+/// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
+/// it:
+///
+/// - Object files
+/// - Symcaches
+/// - CFI caches (soon)
+///
+/// Handles a single message `ComputeMemoized` that transparently performs cache lookups,
+/// downloads and cache stores via the `CacheItemRequest` trait and associated types.
+///
+/// Internally deduplicates concurrent cache lookups (in-memory).
 #[derive(Clone)]
 pub struct CacheActor<T: CacheItemRequest> {
+    /// Cache identifier used for metric names.
+    name: &'static str,
+
+    /// Directory to use for storing cache items. Assumed to exist.
     cache_dir: Option<PathBuf>,
 
+    /// Used for deduplicating cache lookups.
     current_computations: BTreeMap<CacheKey, ComputationChannel<T::Item, T::Error>>,
 }
 
 impl<T: CacheItemRequest> CacheActor<T> {
-    pub fn new<P: AsRef<Path>>(cache_dir: Option<P>) -> Self {
+    pub fn new<P: AsRef<Path>>(name: &'static str, cache_dir: Option<P>) -> Self {
         CacheActor {
+            name,
             cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
             current_computations: BTreeMap::new(),
         }
@@ -66,10 +83,15 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
     fn handle(&mut self, request: ComputeMemoized<T>, ctx: &mut Self::Context) -> Self::Result {
         let key = request.0.get_cache_key();
+        let name = self.name;
 
         let channel = if let Some(channel) = self.current_computations.get(&key) {
+            // A concurrent cache lookup was deduplicated.
+            metric!(counter(&format!("caches.{}.channel.hit", self.name)) += 1);
             channel.clone()
         } else {
+            // A concurrent cache lookup is considered new. This does not imply a full cache miss.
+            metric!(counter(&format!("caches.{}.channel.miss", self.name)) += 1);
             let cache_dir = self.cache_dir.clone();
 
             let (tx, rx) = oneshot::channel();
@@ -86,14 +108,26 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
                     if let Some(ref path) = path {
                         if path.exists() {
+                            // A file was found and we're about to mmap it. This is also reported
+                            // for "negative cache hits": When we cached the 404 response from a
+                            // server as empty file.
+                            metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
                             let _ =
                                 tryf!(OpenOptions::new().append(true).truncate(false).open(&path));
                             let byteview = tryf!(ByteView::open(path));
+                            metric!(
+                                time_raw(&format!("caches.{}.file.hit.size", name)) =
+                                    byteview.len() as u64
+                            );
                             let item = tryf!(request.0.load(scope.clone(), byteview));
                             return Box::new(Ok(item).into_future());
                         }
                     }
                 }
+
+                // A file was not found. If this spikes, it's possible that the filesystem cache
+                // just got pruned.
+                metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
                 // XXX: Unsure if we need SyncArbiter here
                 Box::new(request.0.compute(file.path()).and_then(move |new_scope| {

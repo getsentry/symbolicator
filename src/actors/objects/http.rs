@@ -12,6 +12,7 @@ use crate::actors::objects::{
     paths::get_directory_path, DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind,
     PrioritizedDownloads, USER_AGENT,
 };
+use crate::futures::measure_task;
 use crate::http;
 use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope, SourceConfig};
 
@@ -26,6 +27,10 @@ pub fn prepare_downloads(
     let mut requests = vec![];
 
     for &filetype in filetypes {
+        if !source.filetypes.contains(&filetype) {
+            continue;
+        }
+
         requests.push(FetchFile {
             source: SourceConfig::Http(source.clone()),
             scope: scope.clone(),
@@ -58,10 +63,6 @@ pub fn download_from_source(
         } => (object_id, *filetype),
         _ => unreachable!(), // XXX(markus): fugly
     };
-
-    if !source.filetypes.contains(&filetype) {
-        return Box::new(Ok(None).into_future());
-    }
 
     // XXX: Probably should send an error if the URL turns out to be invalid
     let download_url = match get_directory_path(source.layout, filetype, object_id)
@@ -109,5 +110,5 @@ pub fn download_from_source(
         }
     });
 
-    Box::new(response)
+    Box::new(measure_task("downloads.http", None, response))
 }
