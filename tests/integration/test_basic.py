@@ -44,7 +44,7 @@ SUCCESS_WINDOWS = {
             ]
         }
     ],
-    "modules": [dict(status="found", **WINDOWS_DATA["modules"][0])],
+    "modules": [dict(status="found", arch="x86", **WINDOWS_DATA["modules"][0])],
     "status": "completed",
 }
 
@@ -71,7 +71,7 @@ def _make_unsuccessful_result(status):
                 ]
             }
         ],
-        "modules": [dict(status=status, **WINDOWS_DATA["modules"][0])],
+        "modules": [dict(status=status, arch="unknown", **WINDOWS_DATA["modules"][0])],
         "status": "completed",
     }
 
