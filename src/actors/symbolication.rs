@@ -519,20 +519,20 @@ impl Handler<GetSymbolicationStatus> for SymbolicationActor {
     }
 }
 
-pub struct MinidumpRequest {
+pub struct ProcessMinidump {
     pub scope: Scope,
     pub file: File,
     pub sources: Vec<SourceConfig>,
 }
 
-impl Message for MinidumpRequest {
+impl Message for ProcessMinidump {
     type Result = Result<RequestId, SymbolicationError>;
 }
 
-impl Handler<MinidumpRequest> for SymbolicationActor {
+impl Handler<ProcessMinidump> for SymbolicationActor {
     type Result = Result<RequestId, SymbolicationError>;
 
-    fn handle(&mut self, _request: MinidumpRequest, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _request: ProcessMinidump, _ctx: &mut Self::Context) -> Self::Result {
         unimplemented!();
     }
 }

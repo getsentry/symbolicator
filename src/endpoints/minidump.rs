@@ -16,7 +16,7 @@ use futures::{
 };
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::symbolication::{GetSymbolicationStatus, MinidumpRequest};
+use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::types::{
@@ -130,7 +130,7 @@ fn process_minidump(
             Ok((file_opt, sources_opt))
         })
         .and_then(|collect_state| match collect_state {
-            (Some(file), Some(sources)) => Ok(MinidumpRequest {
+            (Some(file), Some(sources)) => Ok(ProcessMinidump {
                 file,
                 sources,
                 scope,
