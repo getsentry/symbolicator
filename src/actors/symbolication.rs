@@ -112,7 +112,7 @@ impl SymbolicationActor {
         let signal = request.signal;
         let stacktraces = request.stacktraces.clone();
 
-        let object_lookup: ObjectLookup = request.modules.iter().cloned().collect();
+        let object_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
 
         let threadpool = self.threadpool.clone();
 
@@ -153,7 +153,7 @@ impl SymbolicationActor {
         )
     }
 
-    fn do_minidump_processing(&mut self, request: ProcessMinidump) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+    fn do_process_minidump(&mut self, request: ProcessMinidump) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let state = self.threadpool.spawn_handle(future::lazy(move || {
             let byteview = ByteView::from_file(request.file).context(SymbolicationErrorKind::Minidump)?;
             let state = minidump::processor::ProcessState::from_minidump(&byteview, None)
@@ -196,16 +196,16 @@ fn object_info_from_minidump_module(module: &minidump::processor::CodeModule) ->
     }
 }
 
-struct ObjectLookup {
+struct SymCacheLookup {
     inner: Vec<(ObjectInfo, Option<Arc<SymCacheFile>>, DebugFileStatus)>,
 }
 
-impl FromIterator<ObjectInfo> for ObjectLookup {
+impl FromIterator<ObjectInfo> for SymCacheLookup {
     fn from_iter<T>(iter: T) -> Self
     where
         T: IntoIterator<Item = ObjectInfo>,
     {
-        let mut rv = ObjectLookup {
+        let mut rv = SymCacheLookup {
             inner: iter
                 .into_iter()
                 .map(|x| (x, None, DebugFileStatus::Unused))
@@ -216,7 +216,7 @@ impl FromIterator<ObjectInfo> for ObjectLookup {
     }
 }
 
-impl ObjectLookup {
+impl SymCacheLookup {
     fn sort(&mut self) {
         self.inner.sort_by_key(|(info, _, _)| info.image_addr.0);
 
@@ -311,7 +311,7 @@ impl ObjectLookup {
                     )
                 }),
         )
-        .map(|results| ObjectLookup {
+        .map(|results| SymCacheLookup {
             inner: results.into_iter().collect(),
         })
     }
@@ -333,7 +333,7 @@ impl ObjectLookup {
 
 fn symbolize_thread(
     thread: RawStacktrace,
-    caches: &ObjectLookup,
+    caches: &SymCacheLookup,
     signal: Option<Signal>,
 ) -> SymbolicatedStacktrace {
     let registers = thread.registers;
@@ -582,7 +582,7 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
         let (tx, rx) = oneshot::channel();
 
         ctx.spawn(
-            self.do_minidump_processing(request)
+            self.do_process_minidump(request)
             .then(move |result| {
                 tx.send(match result {
                     Ok(x) => Ok(Arc::new(x)),
