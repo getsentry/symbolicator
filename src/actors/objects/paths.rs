@@ -38,7 +38,7 @@ fn get_lldb_path(identifier: &ObjectId) -> Option<String> {
     // Format the UUID as "xxxx/xxxx/xxxx/xxxx/xxxx/xxxxxxxxxxxx"
     let mut path = String::with_capacity(37);
     for (i, byte) in slice.iter().enumerate() {
-        write!(path, "{:02x}", byte).ok()?;
+        write!(path, "{:02X}", byte).ok()?;
         if i % 2 == 1 && i <= 9 {
             path.push('/');
         }
