@@ -519,9 +519,17 @@ impl Handler<GetSymbolicationStatus> for SymbolicationActor {
     }
 }
 
+/// A request for a minidump to be stackwalked and symbolicated. Internally this will basically be
+/// converted into a `SymbolicateStacktraces`
 pub struct ProcessMinidump {
+    /// The scope of this request which determines access to cached files.
     pub scope: Scope,
+
+    /// Handle to minidump file. The message handler should not worry about resource cleanup: The
+    /// inode does not have a hardlink, so closing the file should clean up the tempfile.
     pub file: File,
+
+    /// A list of external sources to load debug files.
     pub sources: Vec<SourceConfig>,
 }
 
