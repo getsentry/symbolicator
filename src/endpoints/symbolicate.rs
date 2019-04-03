@@ -4,7 +4,7 @@ use failure::{Error, Fail};
 use futures::Future;
 use serde::Deserialize;
 
-use crate::actors::symbolication::SymbolicateStacktraces;
+use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
     ObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
@@ -13,7 +13,7 @@ use crate::types::{
 
 /// Query parameters of the symbolication request.
 #[derive(Deserialize)]
-struct SymbolicationRequestQueryParams {
+pub struct SymbolicationRequestQueryParams {
     #[serde(default)]
     pub timeout: Option<u64>,
     #[serde(default)]
@@ -46,20 +46,34 @@ fn symbolicate_frames(
         sources: body.sources,
         stacktraces: body.stacktraces,
         modules: body.modules,
-        timeout: params.timeout,
         scope: params.scope,
     };
 
-    let future = state
+    let request_id = state
         .symbolication
         .send(message)
         .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
         .map_err(SymbolicationError::from)
+        .flatten();
+
+    let timeout = params.timeout;
+    let response = request_id
+        .and_then(move |request_id| {
+            state
+                .symbolication
+                .send(GetSymbolicationStatus {
+                    request_id,
+                    timeout,
+                })
+                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
+                .map_err(SymbolicationError::from)
+        })
         .flatten()
+        .and_then(|response_opt| response_opt.ok_or(SymbolicationErrorKind::Mailbox.into()))
         .map(Json)
         .map_err(Error::from);
 
-    Box::new(future)
+    Box::new(response)
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {

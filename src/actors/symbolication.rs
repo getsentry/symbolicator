@@ -423,13 +423,6 @@ fn symbolize_thread(
 
 /// A request for symbolication of multiple stack traces.
 pub struct SymbolicateStacktraces {
-    /// An optional timeout, after which the request will yield a result.
-    ///
-    /// If this timeout is not set, symbolication will continue until a result is ready (which is
-    /// either an error or success). If this timeout is set and no result is ready, a `pending`
-    /// status is returned.
-    pub timeout: Option<u64>,
-
     /// The scope of this request which determines access to cached files.
     pub scope: Scope,
 
@@ -454,11 +447,11 @@ pub struct SymbolicateStacktraces {
 }
 
 impl Message for SymbolicateStacktraces {
-    type Result = Result<SymbolicationResponse, SymbolicationError>;
+    type Result = Result<RequestId, SymbolicationError>;
 }
 
 impl Handler<SymbolicateStacktraces> for SymbolicationActor {
-    type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
+    type Result = Result<RequestId, SymbolicationError>;
 
     fn handle(&mut self, request: SymbolicateStacktraces, ctx: &mut Self::Context) -> Self::Result {
         let request_id = loop {
@@ -467,8 +460,6 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
                 break request_id;
             }
         };
-
-        let timeout = request.timeout;
 
         let (tx, rx) = oneshot::channel();
 
@@ -485,9 +476,9 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
         );
 
         let channel = rx.shared();
-        self.requests.insert(request_id.clone(), channel.clone());
+        self.requests.insert(request_id.clone(), channel);
 
-        Box::new(self.wrap_response_channel(request_id, timeout, channel))
+        Ok(request_id)
     }
 }
 
@@ -495,7 +486,11 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
 pub struct GetSymbolicationStatus {
     /// The identifier of the symbolication task.
     pub request_id: RequestId,
-    /// A timeout for how long the symbolication task should be waited for.
+    /// An optional timeout, after which the request will yield a result.
+    ///
+    /// If this timeout is not set, symbolication will continue until a result is ready (which is
+    /// either an error or success). If this timeout is set and no result is ready, a `pending`
+    /// status is returned.
     pub timeout: Option<u64>,
 }
 
@@ -525,16 +520,17 @@ impl Handler<GetSymbolicationStatus> for SymbolicationActor {
 }
 
 pub struct MinidumpRequest {
+    pub scope: Scope,
     pub file: File,
-    pub sources: Vec<SourceConfig>
+    pub sources: Vec<SourceConfig>,
 }
 
 impl Message for MinidumpRequest {
-    type Result = Result<SymbolicationResponse, SymbolicationError>;
+    type Result = Result<RequestId, SymbolicationError>;
 }
 
 impl Handler<MinidumpRequest> for SymbolicationActor {
-    type Result = ResponseActFuture<Self, SymbolicationResponse, SymbolicationError>;
+    type Result = Result<RequestId, SymbolicationError>;
 
     fn handle(&mut self, _request: MinidumpRequest, _ctx: &mut Self::Context) -> Self::Result {
         unimplemented!();

@@ -127,7 +127,10 @@ fn run_server(config: Config) -> Result<(), CliError> {
 
     let symbolication = SymbolicationActor::new(symcaches, cpu_threadpool.clone()).start();
 
-    let state = ServiceState { io_threadpool, symbolication };
+    let state = ServiceState {
+        io_threadpool,
+        symbolication,
+    };
 
     fn get_app(state: ServiceState) -> ServiceApp {
         let mut app = App::with_state(state)
