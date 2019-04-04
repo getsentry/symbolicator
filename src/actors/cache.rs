@@ -103,7 +103,13 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
             let (tx, rx) = oneshot::channel();
 
-            let file = NamedTempFile::new().map_err(T::Error::from).into_future();
+            let file = if let Some(ref dir) = self.cache_dir {
+                NamedTempFile::new_in(dir)
+            } else {
+                NamedTempFile::new()
+            }
+            .map_err(T::Error::from)
+            .into_future();
 
             let result = file.and_then(clone!(key, |file| {
                 for &scope in &[&key.scope, &Scope::Global] {
