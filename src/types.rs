@@ -414,6 +414,9 @@ pub enum SymbolicationErrorKind {
     #[fail(display = "failed sending message to symcache actor")]
     Mailbox,
 
+    #[fail(display = "failed to get cficache")]
+    CfiCache,
+
     #[fail(display = "failed to get symcache")]
     SymCache,
 

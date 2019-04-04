@@ -11,7 +11,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::{
     cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
-    symcaches::SymCacheActor,
+    symcaches::SymCacheActor, cficaches::CfiCacheActor,
 };
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
@@ -120,12 +120,23 @@ fn run_server(config: Config) -> Result<(), CliError> {
     }
     let symcaches = SymCacheActor::new(
         CacheActor::new("symcaches", symcache_path).start(),
+        objects.clone(),
+        cpu_threadpool.clone(),
+    )
+    .start();
+
+    let cficache_path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
+    if let Some(ref cficache_path) = cficache_path {
+        fs::create_dir_all(cficache_path)?;
+    }
+    let cficaches = CfiCacheActor::new(
+        CacheActor::new("cficaches", cficache_path).start(),
         objects,
         cpu_threadpool.clone(),
     )
     .start();
 
-    let symbolication = SymbolicationActor::new(symcaches, cpu_threadpool.clone()).start();
+    let symbolication = SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();
 
     let state = ServiceState {
         io_threadpool,

@@ -9,10 +9,10 @@ use actix::{
     ResponseActFuture,
 };
 use failure::{Fail, ResultExt};
-use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
+use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError, join_all};
 use futures::sync::oneshot;
 use symbolic::common::{split_path, InstructionInfo, Language, ByteView};
-use symbolic::minidump;
+use symbolic::minidump::processor::{CodeModule, ProcessState, FrameInfoMap};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
@@ -23,6 +23,7 @@ use sentry::integrations::failure::capture_fail;
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::actors::cficaches::{FetchCfiCache, CfiCacheActor, CfiCacheErrorKind, CfiCacheFile};
 use crate::futures::measure_task;
+use crate::logging::LogError;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
     RawFrame, RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
@@ -36,6 +37,7 @@ type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>
 
 pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
+    cficaches: Addr<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
     requests: BTreeMap<RequestId, ComputationChannel<SymbolicationResponse, SymbolicationError>>,
 }
@@ -45,11 +47,12 @@ impl Actor for SymbolicationActor {
 }
 
 impl SymbolicationActor {
-    pub fn new(symcaches: Addr<SymCacheActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(symcaches: Addr<SymCacheActor>, cficaches: Addr<CfiCacheActor>, threadpool: Arc<ThreadPool>) -> Self {
         let requests = BTreeMap::new();
 
         SymbolicationActor {
             symcaches,
+            cficaches,
             threadpool,
             requests,
         }
@@ -154,17 +157,83 @@ impl SymbolicationActor {
     }
 
     fn do_process_minidump(&mut self, request: ProcessMinidump) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let state = self.threadpool.spawn_handle(future::lazy(move || {
-            let byteview = ByteView::from_file(request.file).context(SymbolicationErrorKind::Minidump)?;
-            let state = minidump::processor::ProcessState::from_minidump(&byteview, None)
+        let ProcessMinidump { file, scope, sources }  =request;
+
+        let byteview = tryf!(ByteView::read(file).context(SymbolicationErrorKind::Minidump));
+
+        let object_infos = self.threadpool.spawn_handle(future::lazy(move || {
+            // XXX: Use ByteView::from_file
+            let state = ProcessState::from_minidump(&byteview, None)
                 .context(SymbolicationErrorKind::Minidump)?;
 
-            state.modules().into_iter()
-                .map(object_info_from_minidump_module);
-            Ok(())
+            Ok((
+                byteview,
+                state.referenced_modules().into_iter()
+                .filter_map(|code_module| Some((
+                    code_module.id()?,
+                    object_info_from_minidump_module(code_module))
+                ))
+                .collect::<Vec<_>>()
+            ))
         }));
 
-        state.and_then(|_| Ok(loop {}))
+        let cficaches = self.cficaches.clone();
+
+        let cfi_requests = object_infos.and_then(|(byteview, object_infos)| {
+            join_all(object_infos.into_iter().map(move |(code_module_id, object_info)| {
+                cficaches.send(FetchCfiCache {
+                    object_type: object_info.ty.clone(),
+                    identifier: object_id_from_object_info(&object_info),
+                    sources: sources.clone(),
+                    scope: scope.clone()
+                })
+                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
+                .map_err(SymbolicationError::from)
+                .map(move |result| (object_info, code_module_id, result))
+            }))
+            .map(move |cfi_requests| (byteview, cfi_requests))
+        });
+
+        let symbolicator_request = cfi_requests.and_then(|(byteview, cfi_requests)| {
+            self.threadpool.spawn_handle(future::lazy(move || {
+                let mut frame_info_map = FrameInfoMap::new();
+                let mut modules = vec![];
+
+                for (object_info, code_module_id, result) in &cfi_requests {
+                    // XXX: Errors while fetching objects will be added when symbolizing anyway.
+                    // Not sure if we're missing any important errors when skipping over broken CFI
+                    // caches here.
+                    let cache_file = match result {
+                        Ok(x) => x,
+                        Err(e) => {
+                            log::info!("Error while fetching CFI cache: {}", LogError(&ArcFail(e.clone())));
+                            continue;
+                        }
+                    };
+
+                    modules.push(object_info.clone());
+
+                    let cfi_cache = match cache_file.parse() {
+                        Ok(Some(x)) => x,
+                        Ok(None) => continue,
+                        Err(e) => {
+                            log::warn!("Error while parsing CFI cache: {}", LogError(&e));
+                            continue;
+                        }
+                    };
+
+                    frame_info_map.insert(code_module_id.clone(), cfi_cache);
+                }
+
+                let process_state = ProcessState::from_minidump(&byteview, Some(&frame_info_map)).context(SymbolicationErrorKind::Minidump)?;
+                Ok(SymbolicateStacktraces {
+                    modules: vec![],
+                    scope: 
+                })
+            }))
+        });
+
+        Box::new(symbolicator_request.and_then(|_| Ok(loop {})))
     }
 }
 
@@ -183,7 +252,7 @@ fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
     }
 }
 
-fn object_info_from_minidump_module(module: &minidump::processor::CodeModule) -> ObjectInfo {
+fn object_info_from_minidump_module(module: &CodeModule) -> ObjectInfo {
     // TODO: should we also add `module.id()` somewhere?
     ObjectInfo {
         ty: ObjectType("unknown".to_owned()),  // TODO: read from system info?
