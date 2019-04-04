@@ -28,7 +28,22 @@ pub enum CliError {
     CacheIo(#[fail(cause)] io::Error),
 }
 
+fn get_crate_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+fn get_long_crate_version() -> &'static str {
+    concat!(
+        "version: ",
+        env!("CARGO_PKG_VERSION"),
+        "\ngit commit: ",
+        env!("SYMBOLICATOR_GIT_VERSION")
+    )
+}
+
 #[derive(StructOpt)]
+#[structopt(raw(version = "get_crate_version()"))]
+#[structopt(raw(long_version = "get_long_crate_version()"))]
 struct Cli {
     /// Path to your configuration file.
     #[structopt(
