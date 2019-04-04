@@ -2083,7 +2083,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "6.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#b5101bf233c83f7df18f87c01036d9e7e0a47b3e"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#22359c2c3b41f594d57439f142af84153b49a80d"
 dependencies = [
  "symbolic-common 6.0.5 (git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi)",
  "symbolic-debuginfo 6.0.5 (git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi)",
@@ -2094,7 +2094,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "6.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#b5101bf233c83f7df18f87c01036d9e7e0a47b3e"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#22359c2c3b41f594d57439f142af84153b49a80d"
 dependencies = [
  "debugid 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2107,7 +2107,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "6.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#b5101bf233c83f7df18f87c01036d9e7e0a47b3e"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#22359c2c3b41f594d57439f142af84153b49a80d"
 dependencies = [
  "dmsort 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2127,7 +2127,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "6.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#b5101bf233c83f7df18f87c01036d9e7e0a47b3e"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#22359c2c3b41f594d57439f142af84153b49a80d"
 dependencies = [
  "cc 1.0.34 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2140,7 +2140,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "6.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#b5101bf233c83f7df18f87c01036d9e7e0a47b3e"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/pdb-cfi#22359c2c3b41f594d57439f142af84153b49a80d"
 dependencies = [
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
