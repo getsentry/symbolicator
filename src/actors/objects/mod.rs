@@ -132,7 +132,7 @@ impl CacheItemRequest for FetchFile {
                     })
                     .map(|file| {
                         if let Ok(metadata) = file.metadata() {
-                            metric!(gauge("fetch_object.size") = metadata.len());
+                            metric!(gauge("objects.size") = metadata.len());
                         }
 
                         final_scope
@@ -146,7 +146,7 @@ impl CacheItemRequest for FetchFile {
         });
 
         Box::new(measure_task(
-            "fetch_object",
+            "objects",
             Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
             result,
         ))
