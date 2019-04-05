@@ -119,19 +119,29 @@ impl CacheItemRequest for FetchFile {
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
                 log::info!("Resolved debug file for {}", cache_key);
-                let file = fs::File::create(&path)
-                    .map_err(|e| ObjectError::from(e.context(ObjectErrorKind::Io)))
-                    .into_future();
 
-                let result = file.and_then(|file| {
-                    payload.fold(file, move |mut file, chunk| {
-                        threadpool.spawn_handle(future::lazy(move || {
-                            file.write_all(&chunk).map(|_| file)
-                        }))
+                let future = fs::File::create(&path)
+                    .map_err(|e| e.context(ObjectErrorKind::Io).into())
+                    .into_future()
+                    .and_then(|file| {
+                        payload.fold(file, move |mut file, chunk| {
+                            threadpool.spawn_handle(future::lazy(move || {
+                                file.write_all(&chunk).map(|_| file)
+                            }))
+                        })
                     })
-                });
+                    .and_then(|file| {
+                        // Ensure that both meta data and file contents are available to the
+                        // subsequent reads of the file metadata and reads from other threads.
+                        file.sync_all().context(ObjectErrorKind::Io)?;
 
-                Either::A(result.map(|_| final_scope))
+                        let metadata = file.metadata().context(ObjectErrorKind::Io)?;
+                        metric!(time_raw("objects.size") = metadata.len());
+
+                        Ok(final_scope)
+                    });
+
+                Either::A(future)
             } else {
                 log::debug!("No debug file found for {}", cache_key);
                 Either::B(Ok(final_scope).into_future())
@@ -139,7 +149,7 @@ impl CacheItemRequest for FetchFile {
         });
 
         Box::new(measure_task(
-            "fetch_object",
+            "objects",
             Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
             result,
         ))
