@@ -155,9 +155,10 @@ impl CacheItemRequest for FetchSymCacheInternal {
                                 .context(SymCacheErrorKind::Io)?;
 
                             let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-                            if let Ok(metadata) = file.metadata() {
-                                metric!(gauge("symcaches.size") = metadata.len());
-                            }
+                            file.sync_all().context(SymCacheErrorKind::Io)?;
+
+                            let metadata = file.metadata().context(SymCacheErrorKind::Io)?;
+                            metric!(gauge("symcaches.size") = metadata.len());
                         }
                         Ok(None) => (),
                         Err(err) => {
@@ -165,6 +166,9 @@ impl CacheItemRequest for FetchSymCacheInternal {
                             writer
                                 .write_all(b"malformed")
                                 .context(SymCacheErrorKind::Io)?;
+
+                            let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
+                            file.sync_all().context(SymCacheErrorKind::Io)?;
                         }
                     };
 

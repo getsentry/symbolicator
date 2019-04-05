@@ -130,12 +130,15 @@ impl CacheItemRequest for FetchFile {
                             }))
                         })
                     })
-                    .map(|file| {
-                        if let Ok(metadata) = file.metadata() {
-                            metric!(gauge("objects.size") = metadata.len());
-                        }
+                    .and_then(|file| {
+                        // Ensure that both meta data and file contents are available to the
+                        // subsequent reads of the file metadata and reads from other threads.
+                        file.sync_all().context(ObjectErrorKind::Io)?;
 
-                        final_scope
+                        let metadata = file.metadata().context(ObjectErrorKind::Io)?;
+                        metric!(gauge("objects.size") = metadata.len());
+
+                        Ok(final_scope)
                     });
 
                 Either::A(future)
