@@ -158,7 +158,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                             file.sync_all().context(SymCacheErrorKind::Io)?;
 
                             let metadata = file.metadata().context(SymCacheErrorKind::Io)?;
-                            metric!(gauge("symcaches.size") = metadata.len());
+                            metric!(time_raw("symcaches.size") = metadata.len());
                         }
                         Ok(None) => (),
                         Err(err) => {

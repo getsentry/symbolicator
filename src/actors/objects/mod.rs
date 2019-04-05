@@ -136,7 +136,7 @@ impl CacheItemRequest for FetchFile {
                         file.sync_all().context(ObjectErrorKind::Io)?;
 
                         let metadata = file.metadata().context(ObjectErrorKind::Io)?;
-                        metric!(gauge("objects.size") = metadata.len());
+                        metric!(time_raw("objects.size") = metadata.len());
 
                         Ok(final_scope)
                     });
