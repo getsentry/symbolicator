@@ -200,9 +200,8 @@ impl SymbolicationActor {
                 let mut modules = vec![];
 
                 for (object_info, code_module_id, result) in &cfi_requests {
-                    // XXX: Errors while fetching objects will be added when symbolizing anyway.
-                    // Not sure if we're missing any important errors when skipping over broken CFI
-                    // caches here.
+                    // XXX: We should actually build a list of FetchedDebugFile instead of
+                    // discarding errors.
                     let cache_file = match result {
                         Ok(x) => x,
                         Err(e) => {
