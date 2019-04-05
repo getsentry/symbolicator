@@ -146,17 +146,24 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .and_then(move |result| {
                 threadpool.spawn_handle(futures::lazy(move || {
                     let object = result.context(SymCacheErrorKind::Fetching)?;
-                    let mut file =
-                        BufWriter::new(File::create(&path).context(SymCacheErrorKind::Io)?);
+                    let file = File::create(&path).context(SymCacheErrorKind::Io)?;
+                    let mut writer = BufWriter::new(file);
+
                     match object.parse() {
                         Ok(Some(object)) => {
-                            SymCacheWriter::write_object(&object, file)
+                            SymCacheWriter::write_object(&object, &mut writer)
                                 .context(SymCacheErrorKind::Io)?;
+
+                            let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
+                            if let Ok(metadata) = file.metadata() {
+                                metric!(gauge("symcaches.size") = metadata.len());
+                            }
                         }
                         Ok(None) => (),
                         Err(err) => {
                             log::warn!("Could not parse object: {}", err);
-                            file.write_all(b"malformed")
+                            writer
+                                .write_all(b"malformed")
                                 .context(SymCacheErrorKind::Io)?;
                         }
                     };
@@ -166,7 +173,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             });
 
         Box::new(measure_task(
-            "fetch_symcache",
+            "symcaches",
             Some((Duration::from_secs(1200), SymCacheErrorKind::Timeout.into())),
             result,
         ))
