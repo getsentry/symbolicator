@@ -1,3 +1,4 @@
+//! A library version of the symbolicator.
 #![warn(missing_docs)]
 
 #[macro_use]

@@ -1,3 +1,21 @@
 {
-    "editor.formatOnSave": true
+  // Formatting
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
+  "editor.tabSize": 4,
+  "editor.rulers": [100],
+  "files.autoSave": "onWindowChange",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // Rust configuration
+  "rust-client.channel": "stable",
+  "rust.clippy_preference": "on",
+  "rust.cfg_test": true,
+  "rust.rustfmt_path": "rustfmt",
+  "rust-client.rlsPath": "rls",
+
+  // Python configuration
+  "python.pythonPath": "${workspaceFolder}/.venv/bin/python"
 }

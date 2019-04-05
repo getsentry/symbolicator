@@ -1,3 +1,4 @@
+//! Exposes the command line application.
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -19,16 +20,34 @@ use crate::logging;
 use crate::metrics;
 use crate::middlewares::{ErrorHandlers, Metrics};
 
+/// An enum representing a CLI error.
 #[derive(Fail, Debug, derive_more::From)]
 pub enum CliError {
+    /// Indicates a config parsing error.
     #[fail(display = "Failed loading config: {}", _0)]
     ConfigParsing(#[fail(cause)] ConfigError),
 
+    /// Indicates an IO error accessing the cache.
     #[fail(display = "Failed loading cache dirs: {}", _0)]
     CacheIo(#[fail(cause)] io::Error),
 }
 
+fn get_crate_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+fn get_long_crate_version() -> &'static str {
+    concat!(
+        "version: ",
+        env!("CARGO_PKG_VERSION"),
+        "\ngit commit: ",
+        env!("SYMBOLICATOR_GIT_VERSION")
+    )
+}
+
 #[derive(StructOpt)]
+#[structopt(raw(version = "get_crate_version()"))]
+#[structopt(raw(long_version = "get_long_crate_version()"))]
 struct Cli {
     /// Path to your configuration file.
     #[structopt(
@@ -58,12 +77,16 @@ enum Command {
     Run,
 }
 
+/// The shared state for the service.
 #[derive(Clone)]
 pub struct ServiceState {
+    /// Thread pool instance reserved for IO-intensive tasks.
     pub io_threadpool: Arc<ThreadPool>,
+    /// The address of the symbolication actor.
     pub symbolication: Addr<SymbolicationActor>,
 }
 
+/// Typedef for the application type.
 pub type ServiceApp = App<ServiceState>;
 
 /// CLI entrypoint
