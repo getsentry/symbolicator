@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::iter::FromIterator;
+use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,9 +13,9 @@ use failure::{Fail, ResultExt};
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{ByteView, InstructionInfo, Language, split_path};
+use symbolic::common::{split_path, ByteView, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
-use symbolic::minidump::processor::{CodeModule, ProcessState, FrameInfoMap, RegVal};
+use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
@@ -184,6 +185,8 @@ impl SymbolicationActor {
         let byteview = tryf!(ByteView::read(file).context(SymbolicationErrorKind::Minidump));
 
         let object_infos = self.threadpool.spawn_handle(future::lazy(move || {
+            log::info!("Minidump size: {}", byteview.len());
+            metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
             // XXX: Use ByteView::from_file
             let state = ProcessState::from_minidump(&byteview, None)
                 .context(SymbolicationErrorKind::Minidump)?;

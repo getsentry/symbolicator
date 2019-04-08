@@ -14,7 +14,6 @@ WINDOWS_DATA = {
         {
             "type": "symbolic",
             "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
-            "code_id": None,
             "code_file": "C:\\Windows\\System32\\kernel32.dll",
             "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
             "image_addr": "0x749d0000",
@@ -24,7 +23,6 @@ WINDOWS_DATA = {
 }
 
 SUCCESS_WINDOWS = {
-    "signal": None,
     "stacktraces": [
         {
             "frames": [
@@ -32,10 +30,7 @@ SUCCESS_WINDOWS = {
                     "status": "symbolicated",
                     "original_index": 0,
                     "instruction_addr": "0x749e8630",
-                    "filename": None,
-                    "lang": None,
                     "lineno": 0,
-                    "abs_path": None,
                     "package": "C:\\Windows\\System32\\kernel32.dll",
                     "function": "@BaseThreadInitThunk@12",
                     "symbol": "@BaseThreadInitThunk@12",
@@ -51,7 +46,6 @@ SUCCESS_WINDOWS = {
 
 def _make_unsuccessful_result(status):
     return {
-        "signal": None,
         "stacktraces": [
             {
                 "frames": [
@@ -59,14 +53,6 @@ def _make_unsuccessful_result(status):
                         "status": status,
                         "original_index": 0,
                         "instruction_addr": "0x749e8630",
-                        "abs_path": None,
-                        "filename": None,
-                        "function": None,
-                        "lang": None,
-                        "lineno": None,
-                        "package": None,
-                        "sym_addr": None,
-                        "symbol": None,
                     }
                 ]
             }

@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Write;
+use std::io::{self, Seek, SeekFrom, Write};
 use std::sync::Arc;
 use tempfile;
 
@@ -52,15 +52,22 @@ fn read_minidump(
     tempfile::tempfile()
         .into_future()
         .map_err(Error::from)
-        .and_then(move |file| {
-            field
+        .and_then(clone!(threadpool, |file| field.map_err(Error::from).fold(
+            file,
+            move |mut file, chunk| threadpool
+                .spawn_handle(future::lazy(move || -> Result<_, io::Error> {
+                    file.write_all(&chunk)?;
+                    Ok(file)
+                }))
                 .map_err(Error::from)
-                .fold(file, move |mut file, chunk| {
-                    threadpool
-                        .spawn_handle(future::lazy(move || file.write_all(&chunk).map(|_| file)))
-                        .map_err(Error::from)
-                })
-        })
+        )))
+        .and_then(clone!(threadpool, |mut file| threadpool
+            .spawn_handle(future::lazy(move || -> Result<_, io::Error> {
+                file.sync_all()?;
+                file.seek(SeekFrom::Start(0))?;
+                Ok(file)
+            }))
+            .map_err(Error::from)))
         .map(MultipartItem::MinidumpFile)
 }
 

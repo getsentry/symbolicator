@@ -8,3 +8,4 @@ config
 __pycache__
 /objects/
 /symcaches/
+/cficaches/

@@ -26,4 +26,4 @@ def test_basic(symbolicator, hitcounter):
         )
         response.raise_for_status()
 
-        assert response.json == {}
+    assert response.json == {}
