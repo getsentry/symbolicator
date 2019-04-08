@@ -409,35 +409,15 @@ pub enum SymbolicationResponse {
     },
 }
 
+/// Errors during symbolication
 #[derive(Debug, Fail)]
-pub enum SymbolicationErrorKind {
+pub enum SymbolicationError {
     #[fail(display = "failed sending message to symcache actor")]
     Mailbox,
-
-    #[fail(display = "failed to get symcache")]
-    SymCache,
-
-    #[fail(display = "failed to parse symcache during symbolication")]
-    Parse,
-
-    #[fail(display = "no debug file found for address")]
-    SymCacheNotFound,
-
-    #[fail(display = "no symbol found in debug file")]
-    NotFound,
-
-    #[fail(display = "failed to look into cache")]
-    Caching,
 
     #[fail(display = "symbolication took too long")]
     Timeout,
 }
-
-symbolic::common::derive_failure!(
-    SymbolicationError,
-    SymbolicationErrorKind,
-    doc = "Errors during symbolication"
-);
 
 /// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot
 /// contribute a blanket impl upstream because it would conflict with at least this blanket impl

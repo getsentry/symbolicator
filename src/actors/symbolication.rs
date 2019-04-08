@@ -7,7 +7,6 @@ use actix::{
     fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, Message,
     ResponseActFuture,
 };
-use failure::Fail;
 use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use sentry::integrations::failure::capture_fail;
@@ -22,7 +21,7 @@ use crate::futures::measure_task;
 use crate::types::{
     ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
     RawFrame, RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
-    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationResponse,
+    SymbolicatedStacktrace, SymbolicationError, SymbolicationResponse,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -67,7 +66,10 @@ impl SymbolicationActor {
             })
             .and_then(|result| (*result).clone())
             .map(|x| (*x).clone())
-            .map_err(|e| ArcFail(e).context(SymbolicationErrorKind::Mailbox).into());
+            .map_err(|e| {
+                capture_fail(&ArcFail(e));
+                SymbolicationError::Mailbox
+            });
 
         if let Some(timeout) = timeout {
             Box::new(
@@ -147,7 +149,7 @@ impl SymbolicationActor {
             "symbolicate",
             Some((
                 Duration::from_secs(3600),
-                SymbolicationErrorKind::Timeout.into(),
+                SymbolicationError::Timeout.into(),
             )),
             result,
         )
@@ -241,7 +243,7 @@ impl ObjectLookup {
                                 sources: sources.clone(),
                                 scope: scope.clone(),
                             })
-                            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
+                            .map_err(|_| SymbolicationError::Mailbox)
                             .and_then(move |result| {
                                 let symcache = match result {
                                     Ok(x) => x,

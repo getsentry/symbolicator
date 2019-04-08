@@ -1,6 +1,6 @@
 use actix::ResponseFuture;
 use actix_web::{http::Method, Json, Query, State};
-use failure::{Error, Fail};
+use failure::Error;
 use futures::Future;
 use serde::Deserialize;
 
@@ -8,7 +8,7 @@ use crate::actors::symbolication::SymbolicateStacktraces;
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
     ObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
-    SymbolicationErrorKind, SymbolicationResponse,
+    SymbolicationResponse,
 };
 
 /// Query parameters of the symbolication request.
@@ -53,8 +53,7 @@ fn symbolicate_frames(
     let future = state
         .symbolication
         .send(message)
-        .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-        .map_err(SymbolicationError::from)
+        .map_err(|_| SymbolicationError::Mailbox)
         .flatten()
         .map(Json)
         .map_err(Error::from);
