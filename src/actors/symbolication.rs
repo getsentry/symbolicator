@@ -244,45 +244,38 @@ impl ObjectLookup {
                                 scope: scope.clone(),
                             })
                             .map_err(|_| SymbolicationError::Mailbox)
-                            .and_then(move |result| {
-                                let symcache = match result {
-                                    Ok(x) => x,
-                                    Err(e) => {
+                            .and_then(|result| {
+                                result
+                                    .and_then(|symcache| {
+                                        match symcache.parse()? {
+                                            Some(_) => Ok((Some(symcache), DebugFileStatus::Found)),
+                                            None => Ok((Some(symcache), DebugFileStatus::MissingDebugFile))
+                                        }
+                                    })
+                                    .or_else(|e| {
                                         let status = match e.kind() {
                                             SymCacheErrorKind::Fetching => {
                                                 DebugFileStatus::FetchingFailed
                                             }
-                                            SymCacheErrorKind::Timeout => {
-                                                // Timeouts of object downloads are caught by
-                                                // FetchingFailed
-                                                DebugFileStatus::TooLarge
+
+                                            // Timeouts of object downloads are caught by
+                                            // FetchingFailed
+                                            SymCacheErrorKind::Timeout => DebugFileStatus::TooLarge,
+
+                                            SymCacheErrorKind::ObjectParsing => {
+                                                DebugFileStatus::MalformedDebugFile
                                             }
+
                                             _ => {
                                                 capture_fail(&ArcFail(e));
                                                 DebugFileStatus::Other
                                             }
                                         };
 
-                                        return Ok((object_info, None, status));
-                                    }
-                                };
-
-                                let status = match symcache.parse() {
-                                    Ok(Some(_)) => DebugFileStatus::Found,
-                                    Ok(None) => DebugFileStatus::MissingDebugFile,
-                                    Err(e) => match e.kind() {
-                                        SymCacheErrorKind::ObjectParsing => {
-                                            DebugFileStatus::MalformedDebugFile
-                                        }
-                                        _ => {
-                                            capture_fail(&e);
-                                            DebugFileStatus::Other
-                                        }
-                                    },
-                                };
-
-                                Ok((object_info, Some(symcache), status))
-                            }),
+                                        Ok((None, status))
+                                    })
+                            })
+                            .map(move |(symcache, status)| (object_info, symcache, status)),
                     )
                 }),
         )
@@ -318,6 +311,7 @@ fn symbolize_thread(
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
         let (object_info, symcache) = match caches.lookup_object(frame.instruction_addr.0) {
             Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
+            Some((_, _, None, DebugFileStatus::MalformedDebugFile)) => return Err(FrameStatus::MalformedDebugFile),
             Some((_, _, None, _)) => return Err(FrameStatus::MissingDebugFile),
             None => return Err(FrameStatus::UnknownImage),
         };
