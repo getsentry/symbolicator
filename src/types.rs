@@ -462,7 +462,7 @@ impl<T: fmt::Display> fmt::Display for ArcFail<T> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum FileType {
     /// Windows/PDB code files
     Pe,
@@ -512,10 +512,10 @@ impl AsRef<str> for FileType {
         match *self {
             FileType::Pe => "pe",
             FileType::Pdb => "pdb",
-            FileType::MachDebug => "mach-debug",
-            FileType::MachCode => "mach-code",
-            FileType::ElfDebug => "elf-debug",
-            FileType::ElfCode => "elf-code",
+            FileType::MachDebug => "mach_debug",
+            FileType::MachCode => "mach_code",
+            FileType::ElfDebug => "elf_debug",
+            FileType::ElfCode => "elf_code",
             FileType::Breakpad => "breakpad",
         }
     }
