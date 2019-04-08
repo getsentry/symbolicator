@@ -9,27 +9,26 @@ use actix::{
     ResponseActFuture,
 };
 use failure::{Fail, ResultExt};
-use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError, join_all};
+use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
-use symbolic::common::{split_path, InstructionInfo, Language, ByteView};
-use symbolic::minidump::processor::{CodeModule, ProcessState, FrameInfoMap};
+use symbolic::common::{split_path, ByteView, InstructionInfo, Language};
+use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
-
 use sentry::integrations::failure::capture_fail;
 
+use crate::actors::cficaches::{CfiCacheActor, FetchCfiCache};
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
-use crate::actors::cficaches::{FetchCfiCache, CfiCacheActor, CfiCacheErrorKind, CfiCacheFile};
 use crate::futures::measure_task;
 use crate::logging::LogError;
 use crate::types::{
-    ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
-    RawFrame, RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
-    SymbolicatedStacktrace, SymbolicationError, SymbolicationErrorKind, SymbolicationResponse, ObjectType,
+    ArcFail, CompletedSymbolicationResponse, DebugFileStatus, FetchedDebugFile, FrameStatus,
+    HexValue, ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
+    SourceConfig, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
+    SymbolicationErrorKind, SymbolicationResponse, SystemInfo,
 };
-
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
@@ -47,7 +46,11 @@ impl Actor for SymbolicationActor {
 }
 
 impl SymbolicationActor {
-    pub fn new(symcaches: Addr<SymCacheActor>, cficaches: Addr<CfiCacheActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(
+        symcaches: Addr<SymCacheActor>,
+        cficaches: Addr<CfiCacheActor>,
+        threadpool: Arc<ThreadPool>,
+    ) -> Self {
         let requests = BTreeMap::new();
 
         SymbolicationActor {
@@ -108,20 +111,24 @@ impl SymbolicationActor {
         }
     }
 
-    fn do_symbolicate(
-        &mut self,
-        request: SymbolicateStacktraces,
-    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let signal = request.signal;
-        let stacktraces = request.stacktraces.clone();
-
-        let object_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-
+    fn do_symbolicate<T: Send + 'static>(
+        &self,
+        future: impl Future<Item = (SymbolicateStacktraces, T), Error = SymbolicationError>,
+    ) -> impl Future<Item = (SymbolicationResponse, T), Error = SymbolicationError> {
         let threadpool = self.threadpool.clone();
+        let symcaches = self.symcaches.clone();
 
-        let result = object_lookup
-            .fetch_symcaches(self.symcaches.clone(), request)
-            .and_then(move |object_lookup| {
+        let result = future
+            .and_then(move |(request, state)| {
+                let signal = request.signal;
+
+                let stacktraces = request.stacktraces.clone();
+                let object_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
+                object_lookup
+                    .fetch_symcaches(symcaches, request)
+                    .map(move |object_lookup| (state, signal, stacktraces, object_lookup))
+            })
+            .and_then(move |(state, signal, stacktraces, object_lookup)| {
                 threadpool.spawn_handle(future::lazy(move || {
                     let stacktraces = stacktraces
                         .into_iter()
@@ -138,11 +145,14 @@ impl SymbolicationActor {
                         })
                         .collect();
 
-                    Ok(SymbolicationResponse::Completed {
-                        signal,
-                        modules,
-                        stacktraces,
-                    })
+                    Ok((
+                        SymbolicationResponse::Completed(CompletedSymbolicationResponse {
+                            stacktraces,
+                            modules,
+                            ..Default::default()
+                        }),
+                        state,
+                    ))
                 }))
             });
 
@@ -156,8 +166,15 @@ impl SymbolicationActor {
         )
     }
 
-    fn do_process_minidump(&mut self, request: ProcessMinidump) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let ProcessMinidump { file, scope, sources }  =request;
+    fn do_process_minidump(
+        &mut self,
+        request: ProcessMinidump,
+    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+        let ProcessMinidump {
+            file,
+            scope,
+            sources,
+        } = request;
 
         let byteview = tryf!(ByteView::read(file).context(SymbolicationErrorKind::Minidump));
 
@@ -166,73 +183,189 @@ impl SymbolicationActor {
             let state = ProcessState::from_minidump(&byteview, None)
                 .context(SymbolicationErrorKind::Minidump)?;
 
+            let os_name = state.system_info().os_name();
+
             Ok((
                 byteview,
-                state.referenced_modules().into_iter()
-                .filter_map(|code_module| Some((
-                    code_module.id()?,
-                    object_info_from_minidump_module(code_module))
-                ))
-                .collect::<Vec<_>>()
+                state
+                    .referenced_modules()
+                    .into_iter()
+                    .filter_map(|code_module| {
+                        Some((
+                            code_module.id()?,
+                            object_info_from_minidump_module(&os_name, code_module),
+                        ))
+                    })
+                    .collect::<Vec<_>>(),
             ))
         }));
 
-        let cficaches = self.cficaches.clone();
+        let cficaches = &self.cficaches;
 
-        let cfi_requests = object_infos.and_then(|(byteview, object_infos)| {
-            join_all(object_infos.into_iter().map(move |(code_module_id, object_info)| {
-                cficaches.send(FetchCfiCache {
-                    object_type: object_info.ty.clone(),
-                    identifier: object_id_from_object_info(&object_info),
-                    sources: sources.clone(),
-                    scope: scope.clone()
-                })
-                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-                .map_err(SymbolicationError::from)
-                .map(move |result| (object_info, code_module_id, result))
-            }))
+        let cfi_requests = object_infos.and_then(clone!(cficaches, scope, sources, |(
+            byteview,
+            object_infos,
+        )| {
+            join_all(
+                object_infos
+                    .into_iter()
+                    .map(move |(code_module_id, object_info)| {
+                        cficaches
+                            .send(FetchCfiCache {
+                                object_type: object_info.ty.clone(),
+                                identifier: object_id_from_object_info(&object_info),
+                                sources: sources.clone(),
+                                scope: scope.clone(),
+                            })
+                            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
+                            .map_err(SymbolicationError::from)
+                            .map(move |result| (object_info, code_module_id, result))
+                    }),
+            )
             .map(move |cfi_requests| (byteview, cfi_requests))
-        });
+        }));
 
-        let symbolicator_request = cfi_requests.and_then(|(byteview, cfi_requests)| {
-            self.threadpool.spawn_handle(future::lazy(move || {
-                let mut frame_info_map = FrameInfoMap::new();
-                let mut modules = vec![];
+        let threadpool = &self.threadpool;
 
-                for (object_info, code_module_id, result) in &cfi_requests {
-                    // XXX: We should actually build a list of FetchedDebugFile instead of
-                    // discarding errors.
-                    let cache_file = match result {
-                        Ok(x) => x,
-                        Err(e) => {
-                            log::info!("Error while fetching CFI cache: {}", LogError(&ArcFail(e.clone())));
-                            continue;
-                        }
+        let symbolication_request =
+            cfi_requests.and_then(clone!(threadpool, scope, sources, |(
+                byteview,
+                cfi_requests,
+            )| {
+                threadpool.spawn_handle(future::lazy(move || {
+                    let mut frame_info_map = FrameInfoMap::new();
+                    let mut modules = vec![];
+
+                    for (object_info, code_module_id, result) in &cfi_requests {
+                        // XXX: We should actually build a list of FetchedDebugFile instead of
+                        // discarding errors.
+                        let cache_file = match result {
+                            Ok(x) => x,
+                            Err(e) => {
+                                log::info!(
+                                    "Error while fetching CFI cache: {}",
+                                    LogError(&ArcFail(e.clone()))
+                                );
+                                continue;
+                            }
+                        };
+
+                        modules.push(object_info.clone());
+
+                        let cfi_cache = match cache_file.parse() {
+                            Ok(Some(x)) => x,
+                            Ok(None) => continue,
+                            Err(e) => {
+                                log::warn!("Error while parsing CFI cache: {}", LogError(&e));
+                                continue;
+                            }
+                        };
+
+                        frame_info_map.insert(code_module_id.clone(), cfi_cache);
+                    }
+
+                    let process_state =
+                        ProcessState::from_minidump(&byteview, Some(&frame_info_map))
+                            .context(SymbolicationErrorKind::Minidump)?;
+
+                    let minidump_system_info = process_state.system_info();
+                    let os_name = minidump_system_info.os_name();
+                    let os_version = minidump_system_info.os_version();
+                    let os_build = minidump_system_info.os_build();
+                    let cpu_arch = minidump_system_info.cpu_arch();
+
+                    // This type only exists because ProcessState is not Send
+                    let minidump_state = MinidumpState {
+                        system_info: SystemInfo {
+                            os_name,
+                            os_version,
+                            os_build,
+                            cpu_arch,
+                        },
+                        crashed: process_state.crashed(),
+                        crash_reason: process_state.crash_reason(),
+                        assertion: process_state.assertion(),
                     };
 
-                    modules.push(object_info.clone());
+                    let stacktraces = process_state
+                        .threads()
+                        .into_iter()
+                        .map(|thread| {
+                            let frames = thread.frames();
+                            RawStacktrace {
+                                registers: frames
+                                    .get(0)
+                                    .map(|frame| {
+                                        symbolic_registers_to_protocol_registers(
+                                            frame.registers(cpu_arch),
+                                        )
+                                    })
+                                    .unwrap_or_default(),
+                                frames: frames
+                                    .iter()
+                                    .map(|frame| RawFrame {
+                                        instruction_addr: HexValue(frame.return_address(cpu_arch)),
+                                        package: frame.module().map(|module| module.code_file()),
+                                    })
+                                    .collect(),
+                            }
+                        })
+                        .collect();
 
-                    let cfi_cache = match cache_file.parse() {
-                        Ok(Some(x)) => x,
-                        Ok(None) => continue,
-                        Err(e) => {
-                            log::warn!("Error while parsing CFI cache: {}", LogError(&e));
-                            continue;
-                        }
-                    };
+                    Ok((
+                        SymbolicateStacktraces {
+                            modules,
+                            scope,
+                            sources,
+                            signal: None,
+                            stacktraces,
+                        },
+                        minidump_state,
+                    ))
+                }))
+            }));
 
-                    frame_info_map.insert(code_module_id.clone(), cfi_cache);
+        // Workaround for too large type names.
+        let symbolication_request =
+            Box::new(symbolication_request) as Box<dyn Future<Item = _, Error = _>>;
+
+        let symbolication_request = measure_task(
+            "minidump_stackwalk",
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into(),
+            )),
+            symbolication_request,
+        );
+
+        let symbolication_response = self.do_symbolicate(symbolication_request).and_then(
+            |(mut response, minidump_state): (_, MinidumpState)| {
+                if let SymbolicationResponse::Completed(ref mut response) = response {
+                    let MinidumpState {
+                        system_info,
+                        crashed,
+                        crash_reason,
+                        assertion,
+                    } = minidump_state;
+                    response.system_info = Some(system_info);
+                    response.crashed = Some(crashed);
+                    response.crash_reason = Some(crash_reason);
+                    response.assertion = Some(assertion);
                 }
+                Ok(response)
+            },
+        );
 
-                let process_state = ProcessState::from_minidump(&byteview, Some(&frame_info_map)).context(SymbolicationErrorKind::Minidump)?;
-                Ok(SymbolicateStacktraces {
-                    modules: vec![],
-                    scope: 
-                })
-            }))
-        });
+        let symbolication_response = measure_task(
+            "minidump_full_process",
+            Some((
+                Duration::from_secs(4200),
+                SymbolicationErrorKind::Timeout.into(),
+            )),
+            symbolication_response,
+        );
 
-        Box::new(symbolicator_request.and_then(|_| Ok(loop {})))
+        Box::new(symbolication_response)
     }
 }
 
@@ -251,16 +384,29 @@ fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
     }
 }
 
-fn object_info_from_minidump_module(module: &CodeModule) -> ObjectInfo {
+fn get_image_type_from_minidump(minidump_os_name: &str) -> &'static str {
+    match minidump_os_name {
+        "Windows" | "Windows NT" => "pe",
+        "iOS" | "Mac OS X" => "macho",
+        "Linux" | "Solaris" | "Android" => "elf",
+        _ => "unknown",
+    }
+}
+
+fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule) -> ObjectInfo {
     // TODO: should we also add `module.id()` somewhere?
     ObjectInfo {
-        ty: ObjectType("unknown".to_owned()),  // TODO: read from system info?
+        ty: ObjectType(get_image_type_from_minidump(minidump_os_name).to_owned()),
         code_id: Some(module.code_identifier()),
         code_file: Some(split_path(&module.code_file()).1.to_owned()),
         debug_id: Some(module.debug_identifier()),
         debug_file: Some(split_path(&module.debug_file()).1.to_owned()),
         image_addr: HexValue(module.base_address()),
-        image_size: if module.size() != 0 { Some(module.size()) } else { None },
+        image_size: if module.size() != 0 {
+            Some(module.size())
+        } else {
+            None
+        },
     }
 }
 
@@ -406,7 +552,10 @@ fn symbolize_thread(
 ) -> SymbolicatedStacktrace {
     let registers = thread.registers;
 
-    let mut stacktrace = SymbolicatedStacktrace { frames: vec![] };
+    let mut stacktrace = SymbolicatedStacktrace {
+        frames: vec![],
+        ..Default::default()
+    };
 
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
         let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
@@ -563,10 +712,10 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
         let (tx, rx) = oneshot::channel();
 
         ctx.spawn(
-            self.do_symbolicate(request)
+            self.do_symbolicate(Ok((request, ())).into_future())
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => Ok(Arc::new(x)),
+                        Ok((x, _)) => Ok(Arc::new(x)),
                         Err(e) => Err(Arc::new(e)),
                     })
                     .map_err(|_| ())
@@ -632,6 +781,13 @@ pub struct ProcessMinidump {
     pub sources: Vec<SourceConfig>,
 }
 
+struct MinidumpState {
+    system_info: SystemInfo,
+    crashed: bool,
+    crash_reason: String,
+    assertion: String,
+}
+
 impl Message for ProcessMinidump {
     type Result = Result<RequestId, SymbolicationError>;
 }
@@ -651,14 +807,14 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
 
         ctx.spawn(
             self.do_process_minidump(request)
-            .then(move |result| {
-                tx.send(match result {
-                    Ok(x) => Ok(Arc::new(x)),
-                    Err(e) => Err(Arc::new(e)),
+                .then(move |result| {
+                    tx.send(match result {
+                        Ok(x) => Ok(Arc::new(x)),
+                        Err(e) => Err(Arc::new(e)),
+                    })
+                    .map_err(|_| ())
                 })
-                .map_err(|_| ())
-            })
-            .into_actor(self)
+                .into_actor(self),
         );
 
         let channel = rx.shared();
@@ -666,4 +822,20 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
 
         Ok(request_id)
     }
+}
+
+fn symbolic_registers_to_protocol_registers(
+    x: BTreeMap<&'_ str, RegVal>,
+) -> BTreeMap<String, HexValue> {
+    x.into_iter()
+        .map(|(k, v)| {
+            (
+                k.to_owned(),
+                HexValue(match v {
+                    RegVal::U32(x) => x as u64,
+                    RegVal::U64(x) => x,
+                }),
+            )
+        })
+        .collect()
 }

@@ -30,7 +30,7 @@ parking_lot = "0.7.1"
 tokio = "0.1.18"
 uuid = "0.7.4"
 #symbolic = { git = "https://github.com/getsentry/symbolic", branch = "feat/pdb-cfi", features = ["symcache", "common-serde", "minidump"] }
-symbolic = { path = "../symbolic/", features = ["symcache", "common-serde", "minidump"] }
+symbolic = { path = "../symbolic/", features = ["symcache", "common-serde", "minidump", "minidump-serde"] }
 sentry = "0.15.2"
 sentry-actix = "0.15.2"
 rusoto_s3 = "0.37.0"

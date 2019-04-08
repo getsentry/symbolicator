@@ -11,8 +11,8 @@ use structopt::StructOpt;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::{
-    cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
-    symcaches::SymCacheActor, cficaches::CfiCacheActor,
+    cache::CacheActor, cficaches::CfiCacheActor, objects::ObjectsActor,
+    symbolication::SymbolicationActor, symcaches::SymCacheActor,
 };
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
@@ -159,7 +159,8 @@ fn run_server(config: Config) -> Result<(), CliError> {
     )
     .start();
 
-    let symbolication = SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();
+    let symbolication =
+        SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();
 
     let state = ServiceState {
         io_threadpool,

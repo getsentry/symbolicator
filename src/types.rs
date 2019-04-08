@@ -254,6 +254,8 @@ impl Serialize for HexValue {
 pub struct RawFrame {
     /// The absolute instruction address of this frame.
     pub instruction_addr: HexValue,
+    #[serde(default)]
+    pub package: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -350,8 +352,18 @@ pub struct SymbolicatedFrame {
 ///
 /// Frames in this request may or may not be symbolicated. The status field contains information on
 /// the individual success for each frame.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct SymbolicatedStacktrace {
+    /// ID of thread that had this stacktrace. Returned when a minidump was processed.
+    pub thread_id: Option<u64>,
+
+    /// Whether that thread was the crashing one.
+    pub is_crashed_thread: Option<bool>,
+
+    /// Registers, only relevant when returning a processed minidump.
+    #[serde(default)]
+    pub registers: BTreeMap<String, HexValue>,
+
     /// Frames of this stack trace.
     pub frames: Vec<SymbolicatedFrame>,
 }
@@ -399,14 +411,51 @@ pub enum SymbolicationResponse {
         /// An indication when the next poll would be suitable.
         retry_after: usize,
     },
-    Completed {
-        /// The signal that caused this crash.
-        signal: Option<Signal>,
-        /// The threads containing symbolicated stack frames.
-        stacktraces: Vec<SymbolicatedStacktrace>,
-        /// A list of images, extended with status information.
-        modules: Vec<FetchedDebugFile>,
-    },
+    Completed(CompletedSymbolicationResponse),
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct CompletedSymbolicationResponse {
+    /// The signal that caused this crash.
+    pub signal: Option<Signal>,
+
+    /// Information about the operating system.
+    pub system_info: Option<SystemInfo>,
+
+    /// True if the process crashed, false if the dump was produced outside of an exception
+    /// handler. Only set for minidumps.
+    pub crashed: Option<bool>,
+
+    /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
+    /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
+    /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
+    pub crash_reason: Option<String>,
+
+    /// If there was an assertion that was hit, a textual representation of that assertion,
+    /// possibly including the file and line at which it occurred.
+    pub assertion: Option<String>,
+
+    /// The threads containing symbolicated stack frames.
+    pub stacktraces: Vec<SymbolicatedStacktrace>,
+
+    /// A list of images, extended with status information.
+    pub modules: Vec<FetchedDebugFile>,
+}
+
+/// Information about the operating system.
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemInfo {
+    /// Name of operating system
+    pub os_name: String,
+
+    /// Version of operating system
+    pub os_version: String,
+
+    /// Internal build number
+    pub os_build: String,
+
+    /// OS architecture
+    pub cpu_arch: Arch,
 }
 
 #[derive(Debug, Fail)]

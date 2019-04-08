@@ -18,18 +18,10 @@ macro_rules! tryf {
 /// useful when using combinator functions such as `Future::and_then` or `Future::map`.
 #[macro_export]
 macro_rules! clone {
-    (@param _) => ( _ );
-    (@param $x:ident) => ( $x );
-    ($($n:ident),+ , || $body:expr) => (
+    ($($n:ident),+ , |$($p:pat),*| $body:expr) => (
         {
             $( let $n = $n.clone(); )+
-            move || $body
-        }
-    );
-    ($($n:ident),+ , |$($p:tt),+| $body:expr) => (
-        {
-            $( let $n = $n.clone(); )+
-            move |$(clone!(@param $p),)+| $body
+            move |$($p),*| $body
         }
     );
 }
