@@ -11,13 +11,13 @@ use actix::{
 use failure::{Fail, ResultExt};
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
-use symbolic::common::{split_path, ByteView, InstructionInfo, Language};
-use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
+use sentry::integrations::failure::capture_fail;
+use symbolic::common::{ByteView, InstructionInfo, Language, split_path};
+use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
+use symbolic::minidump::processor::{CodeModule, ProcessState, FrameInfoMap, RegVal};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
-
-use sentry::integrations::failure::capture_fail;
 
 use crate::actors::cficaches::{CfiCacheActor, FetchCfiCache};
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
@@ -28,6 +28,11 @@ use crate::types::{
     HexValue, ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
     SourceConfig, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
     SymbolicationErrorKind, SymbolicationResponse, SystemInfo,
+};
+
+const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
+    with_arguments: true,
+    format: DemangleFormat::Short,
 };
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -616,7 +621,12 @@ fn symbolize_thread(
                     None
                 },
                 package: object_info.code_file.clone(),
-                function: Some(line_info.function_name().to_string()), // TODO: demangle
+                function: Some(
+                    line_info
+                        .function_name()
+                        .try_demangle(DEMANGLE_OPTIONS)
+                        .into_owned(),
+                ),
                 filename: if !filename.is_empty() {
                     Some(filename)
                 } else {
