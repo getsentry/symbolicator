@@ -184,3 +184,4 @@ def s3_bucket_config(s3):
     }
 
     s3.Bucket(bucket_name).objects.all().delete()
+    s3.Bucket(bucket_name).delete()
