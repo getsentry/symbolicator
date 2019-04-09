@@ -10,11 +10,11 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-    USER_AGENT,
+    DownloadStream, FetchFile, FetchFileRequest, ObjectError, ObjectErrorKind,
+    PrioritizedDownloads, SentryFileId, USER_AGENT,
 };
 use crate::futures::measure_task;
-use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig, SourceConfig};
+use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig};
 
 #[derive(Debug, Fail, Clone, Copy)]
 pub enum SentryErrorKind {
@@ -95,12 +95,14 @@ pub fn prepare_downloads(
             .and_then(clone!(source, object_id, |entries| future::join_all(
                 entries.into_iter().map(move |api_response| cache
                     .send(ComputeMemoized(FetchFile {
-                        source: SourceConfig::Sentry(source.clone()),
                         scope: scope.clone(),
-                        file_id: FileId::Sentry {
-                            sentry_id: api_response.id,
-                            object_id: object_id.clone(),
-                        },
+                        request: FetchFileRequest::Sentry(
+                            source.clone(),
+                            SentryFileId {
+                                sentry_id: api_response.id,
+                                object_id: object_id.clone(),
+                            }
+                        ),
                         threadpool: threadpool.clone(),
                     }))
                     .map_err(|e| e.context(SentryErrorKind::Mailbox).into())
@@ -114,16 +116,11 @@ pub fn prepare_downloads(
 
 pub fn download_from_source(
     source: &SentrySourceConfig,
-    file_id: &FileId,
+    file_id: &SentryFileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let sentry_id = match file_id {
-        FileId::Sentry { sentry_id, .. } => sentry_id,
-        _ => unreachable!(), // XXX(markus): fugly
-    };
-
     let download_url = {
         let mut url = source.url.clone();
-        url.query_pairs_mut().append_pair("id", sentry_id);
+        url.query_pairs_mut().append_pair("id", &file_id.sentry_id);
         url
     };
 

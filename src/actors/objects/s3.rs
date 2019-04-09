@@ -10,11 +10,11 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind,
-    PrioritizedDownloads,
+    paths::get_directory_path, DownloadStream, ExternalFileId, FetchFile, FetchFileRequest,
+    ObjectError, ObjectErrorKind, PrioritizedDownloads,
 };
 use crate::futures::measure_task;
-use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope, SourceConfig};
+use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope};
 
 lazy_static::lazy_static! {
     static ref AWS_HTTP_CLIENT: rusoto_core::HttpClient = rusoto_core::HttpClient::new().unwrap();
@@ -66,12 +66,14 @@ pub fn prepare_downloads(
 
     for &filetype in filetypes {
         requests.push(FetchFile {
-            source: SourceConfig::S3(source.clone()),
             scope: scope.clone(),
-            file_id: FileId::External {
-                filetype,
-                object_id: object_id.clone(),
-            },
+            request: FetchFileRequest::S3(
+                source.clone(),
+                ExternalFileId {
+                    filetype,
+                    object_id: object_id.clone(),
+                },
+            ),
             threadpool: threadpool.clone(),
         });
     }
@@ -88,21 +90,18 @@ pub fn prepare_downloads(
 
 pub fn download_from_source(
     source: &S3SourceConfig,
-    file_id: &FileId,
+    file_id: &ExternalFileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let (object_id, filetype) = match file_id {
-        FileId::External {
-            object_id,
-            filetype,
-        } => (object_id, *filetype),
-        _ => unreachable!(), // XXX(markus): fugly
-    };
+    let ExternalFileId {
+        object_id,
+        filetype,
+    } = file_id;
 
     if !source.filetypes.contains(&filetype) {
         return Box::new(Ok(None).into_future());
     }
 
-    let key = match get_directory_path(source.layout, filetype, object_id) {
+    let key = match get_directory_path(source.layout, *filetype, object_id) {
         Some(x) => {
             let prefix = source.prefix.trim_matches(&['/'][..]);
             if prefix.is_empty() {

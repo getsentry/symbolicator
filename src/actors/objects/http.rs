@@ -9,12 +9,12 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadStream, FetchFile, FileId, ObjectError, ObjectErrorKind,
-    PrioritizedDownloads, USER_AGENT,
+    paths::get_directory_path, DownloadStream, ExternalFileId, FetchFile, FetchFileRequest,
+    ObjectError, ObjectErrorKind, PrioritizedDownloads, USER_AGENT,
 };
 use crate::futures::measure_task;
 use crate::http;
-use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope, SourceConfig};
+use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope};
 
 pub fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
@@ -32,12 +32,14 @@ pub fn prepare_downloads(
         }
 
         requests.push(FetchFile {
-            source: SourceConfig::Http(source.clone()),
             scope: scope.clone(),
-            file_id: FileId::External {
-                filetype,
-                object_id: object_id.clone(),
-            },
+            request: FetchFileRequest::Http(
+                source.clone(),
+                ExternalFileId {
+                    filetype,
+                    object_id: object_id.clone(),
+                },
+            ),
             threadpool: threadpool.clone(),
         });
     }
@@ -54,18 +56,15 @@ pub fn prepare_downloads(
 
 pub fn download_from_source(
     source: &HttpSourceConfig,
-    file_id: &FileId,
+    file_id: &ExternalFileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let (object_id, filetype) = match file_id {
-        FileId::External {
-            object_id,
-            filetype,
-        } => (object_id, *filetype),
-        _ => unreachable!(), // XXX(markus): fugly
-    };
+    let ExternalFileId {
+        object_id,
+        filetype,
+    } = file_id;
 
     // XXX: Probably should send an error if the URL turns out to be invalid
-    let download_url = match get_directory_path(source.layout, filetype, object_id)
+    let download_url = match get_directory_path(source.layout, *filetype, object_id)
         .and_then(|x| source.url.join(&x).ok())
     {
         Some(x) => x,

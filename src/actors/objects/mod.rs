@@ -16,7 +16,9 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey};
 use crate::futures::measure_task;
-use crate::types::{FileType, ObjectId, Scope, SourceConfig};
+use crate::types::{
+    FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
+};
 
 mod http;
 mod paths;
@@ -70,9 +72,45 @@ impl From<io::Error> for ObjectError {
 #[derive(Debug, Clone)]
 pub struct FetchFile {
     scope: Scope,
-    file_id: FileId,
-    source: SourceConfig,
+    request: FetchFileRequest,
     threadpool: Arc<ThreadPool>,
+}
+
+#[derive(Debug, Clone)]
+enum FetchFileRequest {
+    Sentry(Arc<SentrySourceConfig>, SentryFileId),
+    S3(Arc<S3SourceConfig>, ExternalFileId),
+    Http(Arc<HttpSourceConfig>, ExternalFileId),
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalFileId {
+    filetype: FileType,
+    object_id: ObjectId,
+}
+
+#[derive(Debug, Clone)]
+pub struct SentryFileId {
+    sentry_id: String,
+    object_id: ObjectId,
+}
+
+impl FetchFileRequest {
+    fn source(&self) -> SourceConfig {
+        match *self {
+            FetchFileRequest::Sentry(ref x, _) => SourceConfig::Sentry(x.clone()),
+            FetchFileRequest::S3(ref x, _) => SourceConfig::S3(x.clone()),
+            FetchFileRequest::Http(ref x, _) => SourceConfig::Http(x.clone()),
+        }
+    }
+
+    fn object_id(&self) -> &ObjectId {
+        match *self {
+            FetchFileRequest::Sentry(_, ref id) => &id.object_id,
+            FetchFileRequest::S3(_, ref id) => &id.object_id,
+            FetchFileRequest::Http(_, ref id) => &id.object_id,
+        }
+    }
 }
 
 impl CacheItemRequest for FetchFile {
@@ -81,19 +119,21 @@ impl CacheItemRequest for FetchFile {
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: match self.file_id {
-                FileId::External {
-                    ref object_id,
-                    filetype,
-                    ..
-                } => format!(
+            cache_key: match self.request {
+                FetchFileRequest::Http(ref source, ref file_id) => format!(
                     "{}.{}.{}",
-                    self.source.id(),
-                    object_id.cache_key(),
-                    filetype.as_ref()
+                    source.id,
+                    file_id.object_id.cache_key(),
+                    file_id.filetype.as_ref()
                 ),
-                FileId::Sentry { ref sentry_id, .. } => {
-                    format!("{}.{}.sentryinternal", self.source.id(), sentry_id)
+                FetchFileRequest::S3(ref source, ref file_id) => format!(
+                    "{}.{}.{}",
+                    source.id,
+                    file_id.object_id.cache_key(),
+                    file_id.filetype.as_ref()
+                ),
+                FetchFileRequest::Sentry(ref source, ref file_id) => {
+                    format!("{}.{}.sentryinternal", source.id, file_id.sentry_id)
                 }
             },
             scope: self.scope.clone(),
@@ -101,13 +141,12 @@ impl CacheItemRequest for FetchFile {
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
-        let request = download_from_source(&self.source, &self.file_id);
+        let request = download_from_source(&self.request);
         let path = path.to_owned();
-        let source = self.source.clone();
         let request_scope = self.scope.clone();
         let threadpool = self.threadpool.clone();
 
-        let final_scope = if source.is_public() {
+        let final_scope = if self.request.source().is_public() {
             Scope::Global
         } else {
             request_scope
@@ -181,10 +220,7 @@ impl ObjectFile {
         let parsed = Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
 
         if let Some(ref request) = self.request {
-            let object_id = match request.file_id {
-                FileId::External { ref object_id, .. } => object_id,
-                FileId::Sentry { ref object_id, .. } => object_id,
-            };
+            let object_id = request.request.object_id();
 
             if let Some(ref debug_id) = object_id.debug_id {
                 let parsed_id = parsed.debug_id();
@@ -323,18 +359,6 @@ impl Handler<FetchObject> for ObjectsActor {
 type PrioritizedDownloads = Vec<Result<Arc<ObjectFile>, ObjectError>>;
 type DownloadStream = Box<dyn Stream<Item = Bytes, Error = ObjectError>>;
 
-#[derive(Debug, Clone)]
-pub enum FileId {
-    External {
-        filetype: FileType,
-        object_id: ObjectId,
-    },
-    Sentry {
-        object_id: ObjectId,
-        sentry_id: String,
-    },
-}
-
 fn prepare_downloads(
     source: &SourceConfig,
     scope: Scope,
@@ -357,12 +381,15 @@ fn prepare_downloads(
 }
 
 fn download_from_source(
-    source: &SourceConfig,
-    file_id: &FileId,
+    request: &FetchFileRequest,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    match *source {
-        SourceConfig::Sentry(ref x) => sentry::download_from_source(x, file_id),
-        SourceConfig::Http(ref x) => http::download_from_source(x, file_id),
-        SourceConfig::S3(ref x) => s3::download_from_source(x, file_id),
+    match *request {
+        FetchFileRequest::Sentry(ref source, ref file_id) => {
+            sentry::download_from_source(source, file_id)
+        }
+        FetchFileRequest::Http(ref source, ref file_id) => {
+            http::download_from_source(source, file_id)
+        }
+        FetchFileRequest::S3(ref source, ref file_id) => s3::download_from_source(source, file_id),
     }
 }
