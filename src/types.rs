@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Write};
 use std::sync::Arc;
 
+use crate::hex::HexValue;
+
 use failure::{Backtrace, Fail};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use url::Url;
 
@@ -207,45 +209,6 @@ impl fmt::Display for Scope {
             Scope::Global => f.write_str("global"),
             Scope::Scoped(ref scope) => f.write_str(&scope),
         }
-    }
-}
-
-/// A number that is either a hexadecimal or a number.
-#[derive(Clone, Debug, Copy)]
-pub struct HexValue(pub u64);
-
-impl<'de> Deserialize<'de> for HexValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // TODO(markus): Support numbers here, copy hex_metrastructure! from general
-        let string: &str = Deserialize::deserialize(deserializer)?;
-        if string.starts_with("0x") || string.starts_with("0X") {
-            if let Ok(x) = u64::from_str_radix(&string[2..], 16) {
-                return Ok(HexValue(x));
-            }
-        }
-
-        Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(string),
-            &"a hex string starting with 0x",
-        ))
-    }
-}
-
-impl<'d> fmt::Display for HexValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#x}", self.0)
-    }
-}
-
-impl Serialize for HexValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.to_string().serialize(serializer)
     }
 }
 

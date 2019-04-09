@@ -14,7 +14,7 @@ failure = "0.1.5"
 serde = { version = "1.0.89", features = ["derive", "rc"] }
 futures = "0.1.25"
 bytes = "0.4.12"
-url = { version = "1.7.2", features = ["serde"] }
+url = { version = "1.7.2" }
 derive_more = "0.14.0"
 url_serde = "0.2.0"
 log = { version = "0.4.6", features = ["serde"] }

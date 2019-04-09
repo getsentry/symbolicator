@@ -18,9 +18,10 @@ use uuid;
 
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::futures::measure_task;
+use crate::hex::HexValue;
 use crate::types::{
-    ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, HexValue, ObjectId, ObjectInfo,
-    RawFrame, RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
+    ArcFail, DebugFileStatus, FetchedDebugFile, FrameStatus, ObjectId, ObjectInfo, RawFrame,
+    RawStacktrace, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame,
     SymbolicatedStacktrace, SymbolicationError, SymbolicationResponse,
 };
 

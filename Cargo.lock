@@ -1946,11 +1946,6 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "0.8.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "serde"
 version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
@@ -2696,7 +2691,6 @@ dependencies = [
  "idna 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "matches 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "percent-encoding 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 0.8.23 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3085,7 +3079,6 @@ dependencies = [
 "checksum sentry 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)" = "00dc2223b4c6de017ea99ce854c35019f92d2775e4b734b39342ff6cb35aced5"
 "checksum sentry-actix 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)" = "4ec56552d48bd3228236ce9bbee1421325c7ec38f854b8c3d5c1d29da5f51ab9"
 "checksum sentry-types 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b23e3d9c8c6e4a1523f24df6753c4088bfe16c44a73c8881c1d23c70f28ae280"
-"checksum serde 0.8.23 (registry+https://github.com/rust-lang/crates.io-index)" = "9dad3f759919b92c3068c696c15c3d17238234498bbdcc80f2c469606f948ac8"
 "checksum serde 1.0.90 (registry+https://github.com/rust-lang/crates.io-index)" = "aa5f7c20820475babd2c077c3ab5f8c77a31c15e16ea38687b4c02d3e48680f4"
 "checksum serde_derive 1.0.90 (registry+https://github.com/rust-lang/crates.io-index)" = "58fc82bec244f168b23d1963b45c8bf5726e9a15a9d146a067f9081aeed2de79"
 "checksum serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)" = "5a23aa71d4a4d43fdbfaac00eff68ba8a06a51759a89ac3304323e800c4dd40d"
