@@ -246,10 +246,10 @@ impl ObjectLookup {
                             .map_err(|_| SymbolicationError::Mailbox)
                             .and_then(|result| {
                                 result
-                                    .and_then(|symcache| {
-                                        match symcache.parse()? {
-                                            Some(_) => Ok((Some(symcache), DebugFileStatus::Found)),
-                                            None => Ok((Some(symcache), DebugFileStatus::MissingDebugFile))
+                                    .and_then(|symcache| match symcache.parse()? {
+                                        Some(_) => Ok((Some(symcache), DebugFileStatus::Found)),
+                                        None => {
+                                            Ok((Some(symcache), DebugFileStatus::MissingDebugFile))
                                         }
                                     })
                                     .or_else(|e| {
@@ -311,7 +311,9 @@ fn symbolize_thread(
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
         let (object_info, symcache) = match caches.lookup_object(frame.instruction_addr.0) {
             Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
-            Some((_, _, None, DebugFileStatus::MalformedDebugFile)) => return Err(FrameStatus::MalformedDebugFile),
+            Some((_, _, None, DebugFileStatus::MalformedDebugFile)) => {
+                return Err(FrameStatus::MalformedDebugFile);
+            }
             Some((_, _, None, _)) => return Err(FrameStatus::MissingDebugFile),
             None => return Err(FrameStatus::UnknownImage),
         };
@@ -380,7 +382,11 @@ fn symbolize_thread(
                 status: FrameStatus::Symbolicated,
                 symbol: Some(line_info.symbol().to_string()),
                 package: object_info.code_file.clone(),
-                abs_path: if !abs_path.is_empty() { Some(abs_path) } else { None },
+                abs_path: if !abs_path.is_empty() {
+                    Some(abs_path)
+                } else {
+                    None
+                },
                 function: Some(
                     line_info
                         .function_name()
