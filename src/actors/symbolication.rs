@@ -10,7 +10,7 @@ use actix::{
 use futures::future::{self, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{split_path, InstructionInfo, Language};
+use symbolic::common::{join_path, split_path, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
@@ -356,18 +356,31 @@ fn symbolize_thread(
                 Err(_) => return Err(FrameStatus::MalformedDebugFile),
             };
 
-            let abs_path = line_info.path();
-            let filename = line_info.filename().to_string(); // TODO: Relative path to compilation_dir
+            // The logic for filename and abs_path intentionally diverges from how symbolic is used
+            // inside of Sentry right now.
+            let (filename, abs_path) = {
+                let comp_dir = line_info.compilation_dir();
+                let rel_path = line_info.path();
+                let abs_path = join_path(&comp_dir, &rel_path);
+
+                if abs_path == rel_path {
+                    // rel_path is absolute and therefore not usable for `filename`. Use the
+                    // basename as filename.
+                    (line_info.filename().to_owned(), abs_path.to_owned())
+                } else {
+                    // rel_path is relative (probably to the compilation dir) and therefore useful
+                    // as filename for Sentry.
+                    (rel_path.to_owned(), abs_path.to_owned())
+                }
+            };
+
             let lang = line_info.language();
+
             rv.push(SymbolicatedFrame {
                 status: FrameStatus::Symbolicated,
                 symbol: Some(line_info.symbol().to_string()),
-                abs_path: if !abs_path.is_empty() {
-                    Some(abs_path)
-                } else {
-                    None
-                },
                 package: object_info.code_file.clone(),
+                abs_path: if !abs_path.is_empty() { Some(abs_path) } else { None },
                 function: Some(
                     line_info
                         .function_name()
