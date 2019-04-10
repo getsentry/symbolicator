@@ -440,9 +440,10 @@ impl SymCacheLookup {
         // some.
         self.inner
             .dedup_by(|(ref info2, _, _), (ref mut info1, _, _)| {
-                info1
-                    .image_size
-                    .get_or_insert(info2.image_addr.0 - info1.image_addr.0);
+                // If this underflows we didn't sort properly.
+                let size = info2.image_addr.0 - info1.image_addr.0;
+                info1.image_size.get_or_insert(size);
+
                 false
             });
     }
@@ -530,8 +531,21 @@ impl SymCacheLookup {
         addr: u64,
     ) -> Option<(usize, &ObjectInfo, Option<&SymCacheFile>, DebugFileStatus)> {
         for (i, (info, cache, status)) in self.inner.iter().enumerate() {
-            // When `size` is None, this must be the last item.
-            if info.image_addr.0 <= addr && addr <= info.image_addr.0 + info.image_size? {
+            let addr_smaller_than_end = if let Some(size) = info.image_size {
+                if let Some(end) = info.image_addr.0.checked_add(size) {
+                    addr < end
+                } else {
+                    // Image end addr is larger than u64::max, therefore addr (also u64) is smaller
+                    // for sure.
+                    true
+                }
+            } else {
+                // The `size` is None (last image in array) and so we can't ensure it is within the
+                // range.
+                continue;
+            };
+
+            if info.image_addr.0 <= addr && addr_smaller_than_end {
                 return Some((i, info, cache.as_ref().map(|x| &**x), *status));
             }
         }
@@ -589,7 +603,18 @@ fn symbolize_thread(
         };
         let caller_address = instruction_info.caller_address();
 
-        let line_infos = match symcache.lookup(caller_address - object_info.image_addr.0) {
+        let relative_addr = match caller_address.checked_sub(object_info.image_addr.0) {
+            Some(x) => x,
+            None => {
+                log::warn!(
+                    "Underflow when trying to subtract image start addr from caller address"
+                );
+                metric!(counter("relative_addr.underflow") += 1);
+                return Err(FrameStatus::MissingSymbol);
+            }
+        };
+
+        let line_infos = match symcache.lookup(relative_addr) {
             Ok(x) => x,
             Err(_) => return Err(FrameStatus::MalformedDebugFile),
         };
