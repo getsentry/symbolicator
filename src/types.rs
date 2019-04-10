@@ -64,20 +64,12 @@ pub struct HttpSourceConfig {
     #[serde(with = "url_serde")]
     pub url: Url,
 
-    /// Directory layout of this symbol server.
-    pub layout: DirectoryLayout,
-
     /// Additional headers to be sent to the symbol server with every request.
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
 
-    /// File types that are supported by this server.
-    #[serde(default = "FileType::all_vec")]
-    pub filetypes: Vec<FileType>,
-
-    /// Whether debug files are shared across scopes.
-    #[serde(default)]
-    pub is_public: bool,
+    #[serde(flatten)]
+    pub files: ExternalSourceConfigBase,
 }
 
 /// Deserializes an S3 region string.
@@ -143,6 +135,13 @@ pub struct S3SourceConfig {
     #[serde(flatten)]
     pub source_key: Arc<S3SourceKey>,
 
+    #[serde(flatten)]
+    pub files: ExternalSourceConfigBase,
+}
+
+/// Common parameters for external buckets configured by users.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ExternalSourceConfigBase {
     /// Directory layout of this symbol server.
     pub layout: DirectoryLayout,
 
@@ -168,8 +167,8 @@ impl SourceConfig {
     /// Determines whether debug files from this bucket may be shared.
     pub fn is_public(&self) -> bool {
         match *self {
-            SourceConfig::Http(ref x) => x.is_public,
-            SourceConfig::S3(ref x) => x.is_public,
+            SourceConfig::Http(ref x) => x.files.is_public,
+            SourceConfig::S3(ref x) => x.files.is_public,
             SourceConfig::Sentry(_) => false,
         }
     }

@@ -27,11 +27,11 @@ pub fn prepare_downloads(
     let mut requests = vec![];
 
     for &filetype in filetypes {
-        if !source.filetypes.contains(&filetype) {
+        if !source.files.filetypes.contains(&filetype) {
             continue;
         }
 
-        let download_path = match get_directory_path(source.layout, filetype, object_id) {
+        let download_path = match get_directory_path(source.files.layout, filetype, object_id) {
             Some(x) => DownloadPath(x),
             None => continue,
         };
