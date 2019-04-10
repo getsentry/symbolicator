@@ -78,37 +78,31 @@ pub struct FetchFile {
 
 #[derive(Debug, Clone)]
 enum FetchFileRequest {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId),
-    S3(Arc<S3SourceConfig>, ExternalFileId),
-    Http(Arc<HttpSourceConfig>, ExternalFileId),
+    Sentry(Arc<SentrySourceConfig>, SentryFileId, ObjectId),
+    S3(Arc<S3SourceConfig>, DownloadPath, ObjectId),
+    Http(Arc<HttpSourceConfig>, DownloadPath, ObjectId),
 }
 
 #[derive(Debug, Clone)]
-pub struct ExternalFileId {
-    filetype: FileType,
-    object_id: ObjectId,
-}
+pub struct DownloadPath(String);
 
 #[derive(Debug, Clone)]
-pub struct SentryFileId {
-    sentry_id: String,
-    object_id: ObjectId,
-}
+pub struct SentryFileId(String);
 
 impl FetchFileRequest {
     fn source(&self) -> SourceConfig {
         match *self {
-            FetchFileRequest::Sentry(ref x, _) => SourceConfig::Sentry(x.clone()),
-            FetchFileRequest::S3(ref x, _) => SourceConfig::S3(x.clone()),
-            FetchFileRequest::Http(ref x, _) => SourceConfig::Http(x.clone()),
+            FetchFileRequest::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
+            FetchFileRequest::S3(ref x, ..) => SourceConfig::S3(x.clone()),
+            FetchFileRequest::Http(ref x, ..) => SourceConfig::Http(x.clone()),
         }
     }
 
     fn object_id(&self) -> &ObjectId {
         match *self {
-            FetchFileRequest::Sentry(_, ref id) => &id.object_id,
-            FetchFileRequest::S3(_, ref id) => &id.object_id,
-            FetchFileRequest::Http(_, ref id) => &id.object_id,
+            FetchFileRequest::Sentry(_, _, ref id) => id,
+            FetchFileRequest::S3(_, _, ref id) => id,
+            FetchFileRequest::Http(_, _, ref id) => id,
         }
     }
 }
@@ -120,20 +114,14 @@ impl CacheItemRequest for FetchFile {
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
             cache_key: match self.request {
-                FetchFileRequest::Http(ref source, ref file_id) => format!(
-                    "{}.{}.{}",
-                    source.id,
-                    file_id.object_id.cache_key(),
-                    file_id.filetype.as_ref()
-                ),
-                FetchFileRequest::S3(ref source, ref file_id) => format!(
-                    "{}.{}.{}",
-                    source.id,
-                    file_id.object_id.cache_key(),
-                    file_id.filetype.as_ref()
-                ),
-                FetchFileRequest::Sentry(ref source, ref file_id) => {
-                    format!("{}.{}.sentryinternal", source.id, file_id.sentry_id)
+                FetchFileRequest::Http(ref source, ref path, _) => {
+                    format!("{}.{}", source.id, path.0)
+                }
+                FetchFileRequest::S3(ref source, ref path, _) => {
+                    format!("{}.{}", source.id, path.0)
+                }
+                FetchFileRequest::Sentry(ref source, ref file_id, _) => {
+                    format!("{}.{}.sentryinternal", source.id, file_id.0)
                 }
             },
             scope: self.scope.clone(),
@@ -384,12 +372,14 @@ fn download_from_source(
     request: &FetchFileRequest,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *request {
-        FetchFileRequest::Sentry(ref source, ref file_id) => {
+        FetchFileRequest::Sentry(ref source, ref file_id, _) => {
             sentry::download_from_source(source, file_id)
         }
-        FetchFileRequest::Http(ref source, ref file_id) => {
+        FetchFileRequest::Http(ref source, ref file_id, _) => {
             http::download_from_source(source, file_id)
         }
-        FetchFileRequest::S3(ref source, ref file_id) => s3::download_from_source(source, file_id),
+        FetchFileRequest::S3(ref source, ref file_id, _) => {
+            s3::download_from_source(source, file_id)
+        }
     }
 }

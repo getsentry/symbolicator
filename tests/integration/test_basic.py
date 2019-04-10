@@ -122,8 +122,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
                 o.basename: o.size()
                 for o in cache_dir_param.join("objects").join(stored_in_scope).listdir()
             } == {
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__pdb": 846_848,
-                "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1__pe": 0,
+                "microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb": 846848
             }
 
             symcache, = (

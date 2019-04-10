@@ -9,7 +9,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadStream, ExternalFileId, FetchFile, FetchFileRequest,
+    paths::get_directory_path, DownloadPath, DownloadStream, FetchFile, FetchFileRequest,
     ObjectError, ObjectErrorKind, PrioritizedDownloads, USER_AGENT,
 };
 use crate::futures::measure_task;
@@ -31,15 +31,14 @@ pub fn prepare_downloads(
             continue;
         }
 
+        let download_path = match get_directory_path(source.layout, filetype, object_id) {
+            Some(x) => DownloadPath(x),
+            None => continue,
+        };
+
         requests.push(FetchFile {
             scope: scope.clone(),
-            request: FetchFileRequest::Http(
-                source.clone(),
-                ExternalFileId {
-                    filetype,
-                    object_id: object_id.clone(),
-                },
-            ),
+            request: FetchFileRequest::Http(source.clone(), download_path, object_id.clone()),
             threadpool: threadpool.clone(),
         });
     }
@@ -56,19 +55,12 @@ pub fn prepare_downloads(
 
 pub fn download_from_source(
     source: &HttpSourceConfig,
-    file_id: &ExternalFileId,
+    download_path: &DownloadPath,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let ExternalFileId {
-        object_id,
-        filetype,
-    } = file_id;
-
     // XXX: Probably should send an error if the URL turns out to be invalid
-    let download_url = match get_directory_path(source.layout, *filetype, object_id)
-        .and_then(|x| source.url.join(&x).ok())
-    {
-        Some(x) => x,
-        None => return Box::new(Ok(None).into_future()),
+    let download_url = match source.url.join(&download_path.0) {
+        Ok(x) => x,
+        Err(_) => return Box::new(Ok(None).into_future()),
     };
 
     log::debug!("Fetching debug file from {}", download_url);

@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use actix::Addr;
 use failure::Fail;
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{future, Future, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadStream, ExternalFileId, FetchFile, FetchFileRequest,
+    paths::get_directory_path, DownloadPath, DownloadStream, FetchFile, FetchFileRequest,
     ObjectError, ObjectErrorKind, PrioritizedDownloads,
 };
 use crate::futures::measure_task;
@@ -65,15 +65,18 @@ pub fn prepare_downloads(
     let mut requests = vec![];
 
     for &filetype in filetypes {
+        if !source.filetypes.contains(&filetype) {
+            continue;
+        }
+
+        let download_path = match get_directory_path(source.layout, filetype, object_id) {
+            Some(x) => DownloadPath(x),
+            None => continue,
+        };
+
         requests.push(FetchFile {
             scope: scope.clone(),
-            request: FetchFileRequest::S3(
-                source.clone(),
-                ExternalFileId {
-                    filetype,
-                    object_id: object_id.clone(),
-                },
-            ),
+            request: FetchFileRequest::S3(source.clone(), download_path, object_id.clone()),
             threadpool: threadpool.clone(),
         });
     }
@@ -90,27 +93,15 @@ pub fn prepare_downloads(
 
 pub fn download_from_source(
     source: &S3SourceConfig,
-    file_id: &ExternalFileId,
+    download_path: &DownloadPath,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let ExternalFileId {
-        object_id,
-        filetype,
-    } = file_id;
-
-    if !source.filetypes.contains(&filetype) {
-        return Box::new(Ok(None).into_future());
-    }
-
-    let key = match get_directory_path(source.layout, *filetype, object_id) {
-        Some(x) => {
-            let prefix = source.prefix.trim_matches(&['/'][..]);
-            if prefix.is_empty() {
-                x
-            } else {
-                format!("{}/{}", prefix, x)
-            }
+    let key = {
+        let prefix = source.prefix.trim_matches(&['/'][..]);
+        if prefix.is_empty() {
+            download_path.0.clone()
+        } else {
+            format!("{}/{}", prefix, download_path.0)
         }
-        None => return Box::new(Ok(None).into_future()),
     };
 
     log::debug!("fetching from s3: {} (from {})", &key, source.bucket);
@@ -127,7 +118,7 @@ pub fn download_from_source(
                 let body_read = match result.body.take() {
                     Some(body) => body.into_async_read(),
                     None => {
-                        log::warn!("Empty response from s3:{}{}", bucket, key);
+                        log::warn!("Empty response from s3:{}{}", bucket, &key);
                         return Ok(None);
                     }
                 };
@@ -139,7 +130,7 @@ pub fn download_from_source(
                     as Box<dyn Stream<Item = _, Error = _>>))
             }
             Err(err) => {
-                log::warn!("Skipping response from s3:{}{}: {}", bucket, key, err);
+                log::warn!("Skipping response from s3:{}{}: {}", bucket, &key, err);
                 Ok(None)
             }
         });

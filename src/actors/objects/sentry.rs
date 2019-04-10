@@ -98,10 +98,8 @@ pub fn prepare_downloads(
                         scope: scope.clone(),
                         request: FetchFileRequest::Sentry(
                             source.clone(),
-                            SentryFileId {
-                                sentry_id: api_response.id,
-                                object_id: object_id.clone(),
-                            }
+                            SentryFileId(api_response.id),
+                            object_id.clone(),
                         ),
                         threadpool: threadpool.clone(),
                     }))
@@ -120,7 +118,7 @@ pub fn download_from_source(
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let download_url = {
         let mut url = source.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.sentry_id);
+        url.query_pairs_mut().append_pair("id", &file_id.0);
         url
     };
 
