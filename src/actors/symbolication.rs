@@ -150,7 +150,7 @@ impl SymbolicationActor {
             "symbolicate",
             Some((
                 Duration::from_secs(3600),
-                SymbolicationError::Timeout.into(),
+                SymbolicationError::Timeout,
             )),
             result,
         )
