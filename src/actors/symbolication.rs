@@ -9,11 +9,11 @@ use actix::{
     fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, Message,
     ResponseActFuture,
 };
-use failure::{Fail, ResultExt};
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{split_path, ByteView, InstructionInfo, Language};
+use symbolic::common::{join_path, split_path, ByteView, InstructionInfo, Language};
+
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
 use tokio::prelude::FutureExt;
@@ -23,12 +23,13 @@ use uuid;
 use crate::actors::cficaches::{CfiCacheActor, FetchCfiCache};
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::futures::measure_task;
+use crate::hex::HexValue;
 use crate::logging::LogError;
 use crate::types::{
     ArcFail, CompletedSymbolicationResponse, DebugFileStatus, FetchedDebugFile, FrameStatus,
-    HexValue, ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
+    ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
     SourceConfig, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
-    SymbolicationErrorKind, SymbolicationResponse, SystemInfo,
+    SymbolicationResponse, SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -79,7 +80,10 @@ impl SymbolicationActor {
             })
             .and_then(|result| (*result).clone())
             .map(|x| (*x).clone())
-            .map_err(|e| ArcFail(e).context(SymbolicationErrorKind::Mailbox).into());
+            .map_err(|e| {
+                capture_fail(&ArcFail(e));
+                SymbolicationError::Mailbox
+            });
 
         if let Some(timeout) = timeout {
             Box::new(
@@ -164,10 +168,7 @@ impl SymbolicationActor {
 
         measure_task(
             "symbolicate",
-            Some((
-                Duration::from_secs(3600),
-                SymbolicationErrorKind::Timeout.into(),
-            )),
+            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
             result,
         )
     }
@@ -182,14 +183,14 @@ impl SymbolicationActor {
             sources,
         } = request;
 
-        let byteview = tryf!(ByteView::read(file).context(SymbolicationErrorKind::Minidump));
+        let byteview = tryf!(ByteView::read(file).map_err(|_| SymbolicationError::Minidump));
 
         let object_infos = self.threadpool.spawn_handle(future::lazy(move || {
             log::info!("Minidump size: {}", byteview.len());
             metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
             // XXX: Use ByteView::from_file
             let state = ProcessState::from_minidump(&byteview, None)
-                .context(SymbolicationErrorKind::Minidump)?;
+                .map_err(|_| SymbolicationError::Minidump)?;
 
             let os_name = state.system_info().os_name();
 
@@ -225,8 +226,7 @@ impl SymbolicationActor {
                                 sources: sources.clone(),
                                 scope: scope.clone(),
                             })
-                            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-                            .map_err(SymbolicationError::from)
+                            .map_err(|_| SymbolicationError::Mailbox)
                             .map(move |result| (object_info, code_module_id, result))
                     }),
             )
@@ -274,7 +274,7 @@ impl SymbolicationActor {
 
                     let process_state =
                         ProcessState::from_minidump(&byteview, Some(&frame_info_map))
-                            .context(SymbolicationErrorKind::Minidump)?;
+                            .map_err(|_| SymbolicationError::Minidump)?;
 
                     let minidump_system_info = process_state.system_info();
                     let os_name = minidump_system_info.os_name();
@@ -339,10 +339,7 @@ impl SymbolicationActor {
 
         let symbolication_request = measure_task(
             "minidump_stackwalk",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into(),
-            )),
+            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             symbolication_request,
         );
 
@@ -366,10 +363,7 @@ impl SymbolicationActor {
 
         let symbolication_response = measure_task(
             "minidump_full_process",
-            Some((
-                Duration::from_secs(4200),
-                SymbolicationErrorKind::Timeout.into(),
-            )),
+            Some((Duration::from_secs(4200), SymbolicationError::Timeout)),
             symbolication_response,
         );
 
@@ -490,46 +484,39 @@ impl SymCacheLookup {
                                 sources: sources.clone(),
                                 scope: scope.clone(),
                             })
-                            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox).into())
-                            .and_then(move |result| {
-                                let symcache = match result {
-                                    Ok(x) => x,
-                                    Err(e) => {
+                            .map_err(|_| SymbolicationError::Mailbox)
+                            .and_then(|result| {
+                                result
+                                    .and_then(|symcache| match symcache.parse()? {
+                                        Some(_) => Ok((Some(symcache), DebugFileStatus::Found)),
+                                        None => {
+                                            Ok((Some(symcache), DebugFileStatus::MissingDebugFile))
+                                        }
+                                    })
+                                    .or_else(|e| {
                                         let status = match e.kind() {
                                             SymCacheErrorKind::Fetching => {
                                                 DebugFileStatus::FetchingFailed
                                             }
-                                            SymCacheErrorKind::Timeout => {
-                                                // Timeouts of object downloads are caught by
-                                                // FetchingFailed
-                                                DebugFileStatus::TooLarge
+
+                                            // Timeouts of object downloads are caught by
+                                            // FetchingFailed
+                                            SymCacheErrorKind::Timeout => DebugFileStatus::TooLarge,
+
+                                            SymCacheErrorKind::ObjectParsing => {
+                                                DebugFileStatus::MalformedDebugFile
                                             }
+
                                             _ => {
                                                 capture_fail(&ArcFail(e));
                                                 DebugFileStatus::Other
                                             }
                                         };
 
-                                        return Ok((object_info, None, status));
-                                    }
-                                };
-
-                                let status = match symcache.parse() {
-                                    Ok(Some(_)) => DebugFileStatus::Found,
-                                    Ok(None) => DebugFileStatus::MissingDebugFile,
-                                    Err(e) => match e.kind() {
-                                        SymCacheErrorKind::ObjectParsing => {
-                                            DebugFileStatus::MalformedDebugFile
-                                        }
-                                        _ => {
-                                            capture_fail(&e);
-                                            DebugFileStatus::Other
-                                        }
-                                    },
-                                };
-
-                                Ok((object_info, Some(symcache), status))
-                            }),
+                                        Ok((None, status))
+                                    })
+                            })
+                            .map(move |(symcache, status)| (object_info, symcache, status)),
                     )
                 }),
         )
@@ -568,6 +555,9 @@ fn symbolize_thread(
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
         let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
             Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
+            Some((_, _, None, DebugFileStatus::MalformedDebugFile)) => {
+                return Err(FrameStatus::MalformedDebugFile);
+            }
             Some((_, _, None, _)) => return Err(FrameStatus::MissingDebugFile),
             None => return Err(FrameStatus::UnknownImage),
         };
@@ -612,18 +602,35 @@ fn symbolize_thread(
                 Err(_) => return Err(FrameStatus::MalformedDebugFile),
             };
 
-            let abs_path = line_info.path();
-            let filename = line_info.filename().to_string(); // TODO: Relative path to compilation_dir
+            // The logic for filename and abs_path intentionally diverges from how symbolic is used
+            // inside of Sentry right now.
+            let (filename, abs_path) = {
+                let comp_dir = line_info.compilation_dir();
+                let rel_path = line_info.path();
+                let abs_path = join_path(&comp_dir, &rel_path);
+
+                if abs_path == rel_path {
+                    // rel_path is absolute and therefore not usable for `filename`. Use the
+                    // basename as filename.
+                    (line_info.filename().to_owned(), abs_path.to_owned())
+                } else {
+                    // rel_path is relative (probably to the compilation dir) and therefore useful
+                    // as filename for Sentry.
+                    (rel_path.to_owned(), abs_path.to_owned())
+                }
+            };
+
             let lang = line_info.language();
+
             rv.push(SymbolicatedFrame {
                 status: FrameStatus::Symbolicated,
                 symbol: Some(line_info.symbol().to_string()),
+                package: object_info.code_file.clone(),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
                 } else {
                     None
                 },
-                package: object_info.code_file.clone(),
                 function: Some(
                     line_info
                         .function_name()

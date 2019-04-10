@@ -9,7 +9,6 @@ use actix_web::{
     State,
 };
 use bytes::BytesMut;
-use failure::Fail;
 use futures::{
     future::{self, IntoFuture},
     Future, Stream,
@@ -19,9 +18,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::types::{
-    SourceConfig, SymbolicationError, SymbolicationErrorKind, SymbolicationResponse,
-};
+use crate::types::{SourceConfig, SymbolicationError, SymbolicationResponse};
 
 enum MultipartItem {
     MinidumpFile(fs::File),
@@ -149,8 +146,7 @@ fn process_minidump(
 
     let request_id = request.and_then(clone!(symbolication, |request| symbolication
         .send(request)
-        .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-        .map_err(SymbolicationError::from)
+        .map_err(|_| SymbolicationError::Mailbox)
         .map_err(error::ErrorInternalServerError)
         .and_then(|result| Ok(result.map_err(error::ErrorInternalServerError)?))));
 
@@ -160,15 +156,13 @@ fn process_minidump(
                 request_id,
                 timeout
             })
-            .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-            .map_err(SymbolicationError::from)
+            .map_err(|_| SymbolicationError::Mailbox)
             .map_err(error::ErrorInternalServerError)
             .and_then(|result| Ok(
                 result.map_err(error::ErrorInternalServerError)?
             ))))
         .and_then(|response_opt| {
-            response_opt
-                .ok_or_else(|| error::ErrorInternalServerError(SymbolicationErrorKind::Mailbox))
+            response_opt.ok_or_else(|| error::ErrorInternalServerError(SymbolicationError::Mailbox))
         })
         .map(Json)
         .map_err(Error::from);

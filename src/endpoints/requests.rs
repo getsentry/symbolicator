@@ -1,12 +1,12 @@
 use actix::ResponseFuture;
 use actix_web::{http::Method, HttpResponse, Path, Query, State};
-use failure::{Error, Fail};
+use failure::Error;
 use futures::Future;
 use serde::Deserialize;
 
 use crate::actors::symbolication::GetSymbolicationStatus;
 use crate::app::{ServiceApp, ServiceState};
-use crate::types::{RequestId, SymbolicationError, SymbolicationErrorKind};
+use crate::types::{RequestId, SymbolicationError};
 
 /// Path parameters of the symbolication poll request.
 #[derive(Deserialize)]
@@ -37,8 +37,7 @@ fn poll_request(
     let future = state
         .symbolication
         .send(message)
-        .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-        .map_err(SymbolicationError::from)
+        .map_err(|_| SymbolicationError::Mailbox)
         .flatten()
         .map(|response_opt| match response_opt {
             Some(response) => HttpResponse::Ok().json(response),

@@ -1,6 +1,6 @@
 use actix::ResponseFuture;
 use actix_web::{http::Method, Json, Query, State};
-use failure::{Error, Fail};
+use failure::Error;
 use futures::Future;
 use serde::Deserialize;
 
@@ -8,7 +8,7 @@ use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktrace
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
     ObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
-    SymbolicationErrorKind, SymbolicationResponse,
+    SymbolicationResponse,
 };
 
 /// Query parameters of the symbolication request.
@@ -52,8 +52,7 @@ fn symbolicate_frames(
     let request_id = state
         .symbolication
         .send(message)
-        .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-        .map_err(SymbolicationError::from)
+        .map_err(|_| SymbolicationError::Mailbox)
         .flatten();
 
     let timeout = params.timeout;
@@ -65,11 +64,10 @@ fn symbolicate_frames(
                     request_id,
                     timeout,
                 })
-                .map_err(|e| e.context(SymbolicationErrorKind::Mailbox))
-                .map_err(SymbolicationError::from)
+                .map_err(|_| SymbolicationError::Mailbox)
         })
         .flatten()
-        .and_then(|response_opt| response_opt.ok_or(SymbolicationErrorKind::Mailbox.into()))
+        .and_then(|response_opt| response_opt.ok_or(SymbolicationError::Mailbox))
         .map(Json)
         .map_err(Error::from);
 

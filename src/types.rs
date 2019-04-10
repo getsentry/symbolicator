@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Write};
 use std::sync::Arc;
 
+use crate::hex::HexValue;
+
 use failure::{Backtrace, Fail};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use url::Url;
 
@@ -211,45 +213,6 @@ impl fmt::Display for Scope {
             Scope::Global => f.write_str("global"),
             Scope::Scoped(ref scope) => f.write_str(&scope),
         }
-    }
-}
-
-/// A number that is either a hexadecimal or a number.
-#[derive(Clone, Debug, Copy, Eq, PartialEq)]
-pub struct HexValue(pub u64);
-
-impl<'de> Deserialize<'de> for HexValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // TODO(markus): Support numbers here, copy hex_metrastructure! from general
-        let string: &str = Deserialize::deserialize(deserializer)?;
-        if string.starts_with("0x") || string.starts_with("0X") {
-            if let Ok(x) = u64::from_str_radix(&string[2..], 16) {
-                return Ok(HexValue(x));
-            }
-        }
-
-        Err(serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(string),
-            &"a hex string starting with 0x",
-        ))
-    }
-}
-
-impl<'d> fmt::Display for HexValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#x}", self.0)
-    }
-}
-
-impl Serialize for HexValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.to_string().serialize(serializer)
     }
 }
 
@@ -483,28 +446,11 @@ pub struct SystemInfo {
     pub cpu_arch: Arch,
 }
 
+/// Errors during symbolication
 #[derive(Debug, Fail)]
-pub enum SymbolicationErrorKind {
+pub enum SymbolicationError {
     #[fail(display = "failed sending message to symcache actor")]
     Mailbox,
-
-    #[fail(display = "failed to get cficache")]
-    CfiCache,
-
-    #[fail(display = "failed to get symcache")]
-    SymCache,
-
-    #[fail(display = "failed to parse symcache during symbolication")]
-    Parse,
-
-    #[fail(display = "no debug file found for address")]
-    SymCacheNotFound,
-
-    #[fail(display = "no symbol found in debug file")]
-    NotFound,
-
-    #[fail(display = "failed to look into cache")]
-    Caching,
 
     #[fail(display = "symbolication took too long")]
     Timeout,
@@ -515,12 +461,6 @@ pub enum SymbolicationErrorKind {
     #[fail(display = "failed to process minidump")]
     Minidump,
 }
-
-symbolic::common::derive_failure!(
-    SymbolicationError,
-    SymbolicationErrorKind,
-    doc = "Errors during symbolication"
-);
 
 /// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot
 /// contribute a blanket impl upstream because it would conflict with at least this blanket impl
@@ -545,7 +485,7 @@ impl<T: fmt::Display> fmt::Display for ArcFail<T> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum FileType {
     /// Windows/PDB code files
     Pe,
@@ -595,10 +535,10 @@ impl AsRef<str> for FileType {
         match *self {
             FileType::Pe => "pe",
             FileType::Pdb => "pdb",
-            FileType::MachDebug => "mach-debug",
-            FileType::MachCode => "mach-code",
-            FileType::ElfDebug => "elf-debug",
-            FileType::ElfCode => "elf-code",
+            FileType::MachDebug => "mach_debug",
+            FileType::MachCode => "mach_code",
+            FileType::ElfDebug => "elf_debug",
+            FileType::ElfCode => "elf_code",
             FileType::Breakpad => "breakpad",
         }
     }
