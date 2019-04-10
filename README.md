@@ -1,3 +1,8 @@
+<p align="center">
+    <img src="img/logo.png" width="350">
+    <br />
+</p>
+
 # Symbolicator
 
 A symbolication service for native stacktraces and
