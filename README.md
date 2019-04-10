@@ -3,8 +3,6 @@
     <br />
 </p>
 
-# Symbolicator
-
 A symbolication service for native stacktraces and
 [minidumps](https://docs.sentry.io/platforms/minidump/) with [symbol
 server](https://en.wikipedia.org/wiki/Microsoft_Symbol_Server)
