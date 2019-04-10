@@ -139,7 +139,7 @@ pub struct S3SourceConfig {
     pub files: ExternalSourceConfigBase,
 }
 
-/// Common parameters for external buckets configured by users.
+/// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug)]
 pub struct ExternalSourceConfigBase {
     /// Directory layout of this symbol server.
@@ -149,9 +149,30 @@ pub struct ExternalSourceConfigBase {
     #[serde(default = "FileType::all_vec")]
     pub filetypes: Vec<FileType>,
 
+    /// Overwrite filename casing convention of `self.layout`. This is useful in the case of
+    /// DirectoryLayout::Symstore, where servers are supposed to handle requests
+    /// case-insensitively, but practically don't (in the case of S3 buckets it's not possible),
+    /// making this aspect not well-specified.
+    #[serde(default)]
+    pub casing: FilenameCasing,
+
     /// Whether debug files are shared across scopes.
     #[serde(default)]
     pub is_public: bool,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum FilenameCasing {
+    Default,
+    UpperCase,
+    LowerCase,
+}
+
+impl Default for FilenameCasing {
+    fn default() -> Self {
+        FilenameCasing::Default
+    }
 }
 
 impl SourceConfig {

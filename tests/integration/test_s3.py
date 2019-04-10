@@ -1,4 +1,5 @@
 import uuid
+import pytest
 
 
 debug_id = uuid.UUID("502fc0a5-1ec1-3e47-9998-684fa139dca7")
@@ -64,16 +65,23 @@ MACHO_SUCCESS = {
 }
 
 
-def test_s3(symbolicator, hitcounter, s3_bucket_config, s3):
+@pytest.mark.parametrize("casing", ["default", "lower_case", "upper_case"])
+def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
     uuid = debug_id.hex
+    key = f"_.dwarf/mach-uuid-sym-{uuid}/_.dwarf"
+    if casing == "lower_case":
+        key = key.lower()
+    elif casing == "upper_case":
+        key = key.upper()
+
     s3.meta.client.put_object(
         Body=open("tests/fixtures/hello.dsym", "rb"),
         Bucket=s3_bucket_config["bucket"],
-        Key=f"_.dwarf/mach-uuid-sym-{uuid}/_.dwarf",
+        Key=key,
     )
 
     input = dict(
-        sources=[dict(id="s3", layout="symstore", **s3_bucket_config)],
+        sources=[dict(id="s3", layout="symstore", casing=casing, **s3_bucket_config)],
         **MACHO_HELLO_DATA,
     )
 
