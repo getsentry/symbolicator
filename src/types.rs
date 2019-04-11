@@ -185,6 +185,14 @@ impl SourceConfig {
         }
     }
 
+    pub fn type_name(&self) -> &'static str {
+        match *self {
+            SourceConfig::Sentry(..) => "sentry",
+            SourceConfig::S3(..) => "sentry",
+            SourceConfig::Http(..) => "sentry",
+        }
+    }
+
     /// Determines whether debug files from this bucket may be shared.
     pub fn is_public(&self) -> bool {
         match *self {

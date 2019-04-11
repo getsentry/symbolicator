@@ -15,7 +15,6 @@ use symbolic::debuginfo::Object;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey};
-use crate::futures::measure_task;
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
@@ -175,10 +174,13 @@ impl CacheItemRequest for FetchFile {
             }
         });
 
-        Box::new(measure_task(
+        let type_name = self.request.source().type_name();
+
+        Box::new(future_metrics!(
             "objects",
             Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
             result,
+            "source_type" => type_name,
         ))
     }
 

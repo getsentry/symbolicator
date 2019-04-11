@@ -62,11 +62,7 @@ where
 #[macro_export]
 macro_rules! metric {
     // counters
-    (counter($id:expr) += $value:expr) => {{
-        use $crate::metrics::_pred::*;
-        $crate::metrics::with_client(|client| { client.count($id, $value).ok(); })
-    }};
-    (counter($id:expr) += $value:expr, $($k:expr => $v:expr),*) => {{
+    (counter($id:expr) += $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::_pred::*;
         $crate::metrics::with_client(|client| {
             client.count_with_tags($id, $value)
@@ -74,11 +70,7 @@ macro_rules! metric {
                 .send();
         })
     }};
-    (counter($id:expr) -= $value:expr) => {{
-        use $crate::metrics::_pred::*;
-        $crate::metrics::with_client(|client| { client.count($id, -$value).ok(); })
-    }};
-    (counter($id:expr) -= $value:expr, $($k:expr => $v:expr),*) => {{
+    (counter($id:expr) -= $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::_pred::*;
         $crate::metrics::with_client(|client| {
             client.count_with_tags($id, -$value)
@@ -88,11 +80,7 @@ macro_rules! metric {
     }};
 
     // gauges
-    (gauge($id:expr) = $value:expr) => {{
-        use $crate::metrics::_pred::*;
-        $crate::metrics::with_client(|client| { client.gauge($id, $value).ok(); })
-    }};
-    (gauge($id:expr) = $value:expr, $($k:expr => $v:expr),*) => {{
+    (gauge($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::_pred::*;
         $crate::metrics::with_client(|client| {
             client.gauge_with_tags($id, $value)
@@ -102,11 +90,7 @@ macro_rules! metric {
     }};
 
     // timers
-    (timer($id:expr) = $value:expr) => {{
-        use $crate::metrics::_pred::*;
-        $crate::metrics::with_client(|client| { client.time_duration($id, $value).ok(); })
-    }};
-    (timer($id:expr) = $value:expr, $($k:expr => $v:expr),*) => {{
+    (timer($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::_pred::*;
         $crate::metrics::with_client(|client| {
             client.time_duration_with_tags($id, $value)
@@ -114,16 +98,7 @@ macro_rules! metric {
                 .send();
         })
     }};
-    (timer($id:expr), $block:block) => {{
-        use $crate::metrics::_pred::*;
-        let now = Instant::now();
-        let rv = {$block};
-        $crate::metrics::with_client(|client| {
-            client.time_duration($id, now.elapsed()).ok();
-        });
-        rv
-    }};
-    (timer($id:expr), $block:block, $($k:expr => $v:expr)*) => {{
+    (timer($id:expr), $block:block $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::_pred::*;
         let now = Instant::now();
         let rv = {$block};
@@ -136,8 +111,64 @@ macro_rules! metric {
     }};
 
     // we use statsd timers to send things such as filesizes as well.
-    (time_raw($id:expr) = $value:expr) => {{
+    (time_raw($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::_pred::*;
-        $crate::metrics::with_client(|client| { client.time($id, $value).ok(); })
+        $crate::metrics::with_client(|client| {
+            client.time_with_tags($id, $value)
+                $(.with_tag($k, $v))*
+                .send();
+        })
+    }};
+
+}
+
+macro_rules! future_metrics {
+    // Collect generic metrics about a future
+    ($task_name:expr, $timeout:expr, $future:expr $(, $k:expr => $v:expr)* $(,)?) => {{
+        use std::time::Instant;
+        use futures::future::{self, Either};
+        use tokio::prelude::FutureExt;
+
+        let creation_time = Instant::now();
+
+        future::lazy(move || {
+            metric!(
+                timer("futures.wait_time") = creation_time.elapsed(),
+                "task_name" => $task_name,
+                $($k => $v,)*
+            );
+            let start_time = Instant::now();
+
+            let fut = $future;
+
+            let fut = if let Some((timeout, timeout_e)) = $timeout {
+                Either::A(fut.timeout(timeout).map_err(move |e| {
+                    e.into_inner().unwrap_or_else(|| {
+                        metric!(
+                            timer("futures.done") = start_time.elapsed(),
+                            "task_name" => $task_name,
+                            "status" => "timeout",
+                            $($k => $v,)*
+                        );
+                        timeout_e
+                    })
+                }))
+            } else {
+                Either::B(fut)
+            };
+
+            fut.then(move |result| {
+                metric!(
+                    timer("futures.done") = start_time.elapsed(),
+                    "task_name" => $task_name,
+                    "status" => match result {
+                        Ok(_) => "ok",
+                        Err(_) => "err",
+                    },
+                    $($k => $v,)*
+                );
+                result
+            })
+        })
     }};
 }
