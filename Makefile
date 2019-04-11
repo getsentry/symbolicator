@@ -32,7 +32,8 @@ style: style-rust style-python
 .PHONY: style
 
 style-python: .venv/bin/python
-	@echo TODO
+	.venv/bin/pip install -U black
+	.venv/bin/black --check tests
 .PHONY: style-python
 
 style-rust:
