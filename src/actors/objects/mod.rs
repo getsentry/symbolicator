@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,10 +8,10 @@ use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
-use futures::future::{self, Either};
-use futures::{Future, IntoFuture, Stream};
+use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
+use tempfile::tempfile_in;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey};
@@ -30,6 +30,9 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 pub enum ObjectErrorKind {
     #[fail(display = "failed to download")]
     Io,
+
+    #[fail(display = "unable to get directory for tempfiles")]
+    NoTempDir,
 
     #[fail(display = "failed sending message to actor")]
     Mailbox,
@@ -146,31 +149,84 @@ impl CacheItemRequest for FetchFile {
             if let Some(payload) = payload {
                 log::info!("Resolved debug file for {}", cache_key);
 
-                let future = fs::File::create(&path)
-                    .map_err(|e| e.context(ObjectErrorKind::Io).into())
-                    .into_future()
-                    .and_then(|file| {
-                        payload.fold(file, move |mut file, chunk| {
-                            threadpool.spawn_handle(future::lazy(move || {
-                                file.write_all(&chunk).map(|_| file)
-                            }))
-                        })
-                    })
-                    .and_then(|file| {
-                        // Ensure that both meta data and file contents are available to the
-                        // subsequent reads of the file metadata and reads from other threads.
-                        file.sync_all().context(ObjectErrorKind::Io)?;
+                let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir));
+                let download_file = tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
 
-                        let metadata = file.metadata().context(ObjectErrorKind::Io)?;
-                        metric!(time_raw("objects.size") = metadata.len());
+                let future = payload
+                    .fold(
+                        download_file,
+                        clone!(threadpool, |mut file, chunk| threadpool.spawn_handle(
+                            future::lazy(move || file.write_all(&chunk).map(|_| file))
+                        )),
+                    )
+                    .and_then(clone!(threadpool, |mut download_file| {
+                        threadpool.spawn_handle(future::lazy(move || {
+                            // Ensure that both meta data and file contents are available to the
+                            // subsequent reads of the file metadata and reads from other threads.
+                            download_file.sync_all().context(ObjectErrorKind::Io)?;
 
-                        Ok(final_scope)
-                    });
+                            let metadata = download_file.metadata().context(ObjectErrorKind::Io)?;
+                            metric!(time_raw("objects.size") = metadata.len());
 
-                Either::A(future)
+                            download_file
+                                .seek(SeekFrom::Start(0))
+                                .context(ObjectErrorKind::Io)?;
+                            let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
+                            download_file
+                                .read_exact(&mut magic_bytes)
+                                .context(ObjectErrorKind::Io)?;
+                            download_file
+                                .seek(SeekFrom::Start(0))
+                                .context(ObjectErrorKind::Io)?;
+
+                            let mut persist_file =
+                                fs::File::create(&path).context(ObjectErrorKind::Io)?;
+
+                            // For a comprehensive list also refer to
+                            // https://en.wikipedia.org/wiki/List_of_file_signatures
+                            //
+                            // XXX: The decoders in the flate2 crate also support being used as a
+                            // wrapper around a Write. Only zstd doesn't. If we can get this into
+                            // zstd we could save one tempfile and especially avoid the io::copy
+                            // for downloads that were not compressed.
+                            match magic_bytes {
+                                // Magic bytes for zstd
+                                // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
+                                [0x28, 0xb5, 0x2f, 0xfd] => {
+                                    zstd::stream::copy_decode(download_file, persist_file)
+                                        .context(ObjectErrorKind::Parsing)?;
+                                }
+                                // Magic bytes for gzip
+                                // https://tools.ietf.org/html/rfc1952#section-2.3.1
+                                [0x1f, 0x8b, _, _] => {
+                                    // We assume MultiGzDecoder accepts a strict superset of input
+                                    // values compared to GzDecoder.
+                                    let mut reader =
+                                        flate2::read::MultiGzDecoder::new(download_file);
+                                    io::copy(&mut reader, &mut persist_file)
+                                        .context(ObjectErrorKind::Io)?;
+                                }
+                                // Magic bytes for zlib
+                                [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
+                                    let mut reader = flate2::read::ZlibDecoder::new(download_file);
+                                    io::copy(&mut reader, &mut persist_file)
+                                        .context(ObjectErrorKind::Io)?;
+                                }
+                                // Probably not compressed
+                                _ => {
+                                    io::copy(&mut download_file, &mut persist_file)
+                                        .context(ObjectErrorKind::Io)?;
+                                }
+                            }
+
+                            Ok(final_scope)
+                        }))
+                    }));
+
+                Box::new(future) as Box<dyn Future<Item = _, Error = _>>
             } else {
                 log::debug!("No debug file found for {}", cache_key);
-                Either::B(Ok(final_scope).into_future())
+                Box::new(Ok(final_scope).into_future()) as Box<dyn Future<Item = _, Error = _>>
             }
         });
 
