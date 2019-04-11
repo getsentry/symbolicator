@@ -295,7 +295,7 @@ impl SymbolicationActor {
 
                     let stacktraces = process_state
                         .threads()
-                        .into_iter()
+                        .iter()
                         .map(|thread| {
                             let frames = thread.frames();
                             RawStacktrace {
@@ -303,7 +303,7 @@ impl SymbolicationActor {
                                     .get(0)
                                     .map(|frame| {
                                         symbolic_registers_to_protocol_registers(
-                                            frame.registers(cpu_arch),
+                                            &frame.registers(cpu_arch),
                                         )
                                     })
                                     .unwrap_or_default(),
@@ -867,14 +867,14 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
 }
 
 fn symbolic_registers_to_protocol_registers(
-    x: BTreeMap<&'_ str, RegVal>,
+    x: &BTreeMap<&'_ str, RegVal>,
 ) -> BTreeMap<String, HexValue> {
-    x.into_iter()
-        .map(|(k, v)| {
+    x.iter()
+        .map(|(&k, &v)| {
             (
                 k.to_owned(),
                 HexValue(match v {
-                    RegVal::U32(x) => x as u64,
+                    RegVal::U32(x) => x.into(),
                     RegVal::U64(x) => x,
                 }),
             )

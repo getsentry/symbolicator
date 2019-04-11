@@ -125,9 +125,7 @@ fn process_minidump(
                 (MultipartItem::MinidumpFile(file), None, _) => file_opt = Some(file),
                 (MultipartItem::Sources(sources), _, None) => sources_opt = Some(sources),
                 _ => {
-                    return Err(Error::from(error::ErrorBadRequest(
-                        "missing formdata fields",
-                    )));
+                    return Err(error::ErrorBadRequest("missing formdata fields"));
                 }
             }
 
@@ -139,9 +137,7 @@ fn process_minidump(
                 sources,
                 scope,
             }),
-            _ => Err(Error::from(error::ErrorBadRequest(
-                "missing formdata fields",
-            ))),
+            _ => Err(error::ErrorBadRequest("missing formdata fields")),
         });
 
     let request_id = request.and_then(clone!(symbolication, |request| symbolication
