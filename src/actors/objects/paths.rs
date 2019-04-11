@@ -171,8 +171,8 @@ pub fn get_directory_path(
     };
 
     match casing {
-        FilenameCasing::LowerCase => path.make_ascii_lowercase(),
-        FilenameCasing::UpperCase => path.make_ascii_uppercase(),
+        FilenameCasing::Lowercase => path.make_ascii_lowercase(),
+        FilenameCasing::Uppercase => path.make_ascii_uppercase(),
         FilenameCasing::Default => (),
     };
 

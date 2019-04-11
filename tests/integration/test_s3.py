@@ -65,13 +65,13 @@ MACHO_SUCCESS = {
 }
 
 
-@pytest.mark.parametrize("casing", ["default", "lower_case", "upper_case"])
+@pytest.mark.parametrize("casing", ["default", "lowercase", "uppercase"])
 def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
     uuid = debug_id.hex
     key = f"_.dwarf/mach-uuid-sym-{uuid}/_.dwarf"
-    if casing == "lower_case":
+    if casing == "lowercase":
         key = key.lower()
-    elif casing == "upper_case":
+    elif casing == "uppercase":
         key = key.upper()
 
     s3.meta.client.put_object(

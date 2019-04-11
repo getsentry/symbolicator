@@ -165,8 +165,8 @@ pub struct ExternalSourceConfigBase {
 #[serde(rename_all = "snake_case")]
 pub enum FilenameCasing {
     Default,
-    UpperCase,
-    LowerCase,
+    Uppercase,
+    Lowercase,
 }
 
 impl Default for FilenameCasing {
