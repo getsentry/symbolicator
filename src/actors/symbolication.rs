@@ -22,7 +22,6 @@ use uuid;
 
 use crate::actors::cficaches::{CfiCacheActor, FetchCfiCache};
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
-use crate::futures::measure_task;
 use crate::hex::HexValue;
 use crate::logging::LogError;
 use crate::types::{
@@ -166,10 +165,10 @@ impl SymbolicationActor {
                 }))
             });
 
-        measure_task(
+        future_metrics!(
             "symbolicate",
             Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
-            result,
+            result
         )
     }
 

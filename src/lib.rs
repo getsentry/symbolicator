@@ -10,7 +10,6 @@ mod metrics;
 mod actors;
 mod config;
 mod endpoints;
-mod futures;
 mod hex;
 mod http;
 mod logging;

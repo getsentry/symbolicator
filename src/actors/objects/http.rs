@@ -12,7 +12,6 @@ use crate::actors::objects::{
     paths::get_directory_path, DownloadPath, DownloadStream, FetchFile, FetchFileRequest,
     ObjectError, ObjectErrorKind, PrioritizedDownloads, USER_AGENT,
 };
-use crate::futures::measure_task;
 use crate::http;
 use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope};
 
@@ -27,11 +26,16 @@ pub fn prepare_downloads(
     let mut requests = vec![];
 
     for &filetype in filetypes {
-        if !source.filetypes.contains(&filetype) {
+        if !source.files.filetypes.contains(&filetype) {
             continue;
         }
 
-        let download_path = match get_directory_path(source.layout, filetype, object_id) {
+        let download_path = match get_directory_path(
+            source.files.layout,
+            filetype,
+            source.files.casing,
+            object_id,
+        ) {
             Some(x) => DownloadPath(x),
             None => continue,
         };
@@ -102,5 +106,5 @@ pub fn download_from_source(
         }
     });
 
-    Box::new(measure_task("downloads.http", None, response))
+    Box::new(response)
 }

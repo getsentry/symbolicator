@@ -1,4 +1,7 @@
-# Symbolicator
+<p align="center">
+    <img src="artwork/logo.png" width="520">
+    <br />
+</p>
 
 A symbolication service for native stacktraces and
 [minidumps](https://docs.sentry.io/platforms/minidump/) with [symbol
@@ -8,7 +11,7 @@ support.  It's a flexible frontend for parts of the
 
 ## Setup
 
-Symblicator can be configured to work as a standalone system or to fit into
+Symbolicator can be configured to work as a standalone system or to fit into
 a Sentry installation.  The latter requires a recent git version of Sentry
 to work and is not yet documented for general use.
 

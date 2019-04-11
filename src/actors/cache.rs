@@ -129,8 +129,8 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                                 tryf!(OpenOptions::new().append(true).truncate(false).open(&path));
                             let byteview = tryf!(ByteView::open(path));
                             metric!(
-                                time_raw(&format!("caches.{}.file.hit.size", name)) =
-                                    byteview.len() as u64
+                                time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                                "hit" => "true"
                             );
                             let item = tryf!(request.0.load(scope.clone(), byteview));
                             return Box::new(Ok(item).into_future());
@@ -149,9 +149,15 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                         &new_scope,
                         &key.cache_key
                     ));
-                    let item = tryf!(request
-                        .0
-                        .load(new_scope, tryf!(ByteView::open(file.path()))));
+
+                    let byteview = tryf!(ByteView::open(file.path()));
+
+                    metric!(
+                        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                        "hit" => "false"
+                    );
+
+                    let item = tryf!(request.0.load(new_scope, byteview));
 
                     if let Some(ref cache_path) = new_cache_path {
                         tryf!(file.persist(cache_path).map_err(|x| x.error));

@@ -13,7 +13,6 @@ use crate::actors::objects::{
     DownloadStream, FetchFile, FetchFileRequest, ObjectError, ObjectErrorKind,
     PrioritizedDownloads, SentryFileId, USER_AGENT,
 };
-use crate::futures::measure_task;
 use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig};
 
 #[derive(Debug, Fail, Clone, Copy)]
@@ -88,7 +87,7 @@ pub fn prepare_downloads(
             }
         });
 
-    let index_request = measure_task("downloads.sentry.index", None, index_request);
+    let index_request = future_metrics!("downloads.sentry.index", None, index_request);
 
     Box::new(
         index_request
@@ -154,5 +153,5 @@ pub fn download_from_source(
             }
         });
 
-    Box::new(measure_task("downloads.sentry", None, response))
+    Box::new(response)
 }

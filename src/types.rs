@@ -68,20 +68,12 @@ pub struct HttpSourceConfig {
     #[serde(with = "url_serde")]
     pub url: Url,
 
-    /// Directory layout of this symbol server.
-    pub layout: DirectoryLayout,
-
     /// Additional headers to be sent to the symbol server with every request.
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
 
-    /// File types that are supported by this server.
-    #[serde(default = "FileType::all_vec")]
-    pub filetypes: Vec<FileType>,
-
-    /// Whether debug files are shared across scopes.
-    #[serde(default)]
-    pub is_public: bool,
+    #[serde(flatten)]
+    pub files: ExternalSourceConfigBase,
 }
 
 /// Deserializes an S3 region string.
@@ -147,6 +139,13 @@ pub struct S3SourceConfig {
     #[serde(flatten)]
     pub source_key: Arc<S3SourceKey>,
 
+    #[serde(flatten)]
+    pub files: ExternalSourceConfigBase,
+}
+
+/// Common parameters for external filesystem-like buckets configured by users.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ExternalSourceConfigBase {
     /// Directory layout of this symbol server.
     pub layout: DirectoryLayout,
 
@@ -154,9 +153,30 @@ pub struct S3SourceConfig {
     #[serde(default = "FileType::all_vec")]
     pub filetypes: Vec<FileType>,
 
+    /// Overwrite filename casing convention of `self.layout`. This is useful in the case of
+    /// DirectoryLayout::Symstore, where servers are supposed to handle requests
+    /// case-insensitively, but practically don't (in the case of S3 buckets it's not possible),
+    /// making this aspect not well-specified.
+    #[serde(default)]
+    pub casing: FilenameCasing,
+
     /// Whether debug files are shared across scopes.
     #[serde(default)]
     pub is_public: bool,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum FilenameCasing {
+    Default,
+    Uppercase,
+    Lowercase,
+}
+
+impl Default for FilenameCasing {
+    fn default() -> Self {
+        FilenameCasing::Default
+    }
 }
 
 impl SourceConfig {
@@ -169,11 +189,19 @@ impl SourceConfig {
         }
     }
 
+    pub fn type_name(&self) -> &'static str {
+        match *self {
+            SourceConfig::Sentry(..) => "sentry",
+            SourceConfig::S3(..) => "sentry",
+            SourceConfig::Http(..) => "sentry",
+        }
+    }
+
     /// Determines whether debug files from this bucket may be shared.
     pub fn is_public(&self) -> bool {
         match *self {
-            SourceConfig::Http(ref x) => x.is_public,
-            SourceConfig::S3(ref x) => x.is_public,
+            SourceConfig::Http(ref x) => x.files.is_public,
+            SourceConfig::S3(ref x) => x.files.is_public,
             SourceConfig::Sentry(_) => false,
         }
     }

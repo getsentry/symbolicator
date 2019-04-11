@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use symbolic::common::Uuid;
 
-use crate::types::{DirectoryLayout, FileType, ObjectId};
+use crate::types::{DirectoryLayout, FileType, FilenameCasing, ObjectId};
 
 fn get_gdb_path(identifier: &ObjectId) -> Option<String> {
     let code_id = identifier.code_id.as_ref()?;
@@ -162,10 +162,19 @@ fn get_symstore_path(filetype: FileType, identifier: &ObjectId) -> Option<String
 pub fn get_directory_path(
     directory_layout: DirectoryLayout,
     filetype: FileType,
+    casing: FilenameCasing,
     identifier: &ObjectId,
 ) -> Option<String> {
-    match directory_layout {
-        DirectoryLayout::Native => get_native_path(filetype, identifier),
-        DirectoryLayout::Symstore => get_symstore_path(filetype, identifier),
-    }
+    let mut path = match directory_layout {
+        DirectoryLayout::Native => get_native_path(filetype, identifier)?,
+        DirectoryLayout::Symstore => get_symstore_path(filetype, identifier)?,
+    };
+
+    match casing {
+        FilenameCasing::Lowercase => path.make_ascii_lowercase(),
+        FilenameCasing::Uppercase => path.make_ascii_uppercase(),
+        FilenameCasing::Default => (),
+    };
+
+    Some(path)
 }

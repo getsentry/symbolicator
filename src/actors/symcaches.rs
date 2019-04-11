@@ -13,7 +13,6 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
 use crate::actors::objects::{FetchObject, ObjectsActor};
-use crate::futures::measure_task;
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -170,10 +169,13 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 }))
             });
 
-        Box::new(measure_task(
+        let num_sources = self.request.sources.len();
+
+        Box::new(future_metrics!(
             "symcaches",
             Some((Duration::from_secs(1200), SymCacheErrorKind::Timeout.into())),
             result,
+            "num_sources" => &num_sources.to_string()
         ))
     }
 
