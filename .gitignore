@@ -1,11 +1,14 @@
+# Rust
 /target
 **/*.rs.bk
-lol*
-cachefile-*
-config
+
+# Python
 .venv
 *.pyc
 __pycache__
-/objects/
-/symcaches/
-/cficaches/
+
+# Local testing
+/local.yml
+/cache/objects/
+/cache/symcaches/
+/cache/cficaches/

@@ -4,6 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix::fut::{ActorFuture, WrapFuture};
 use actix::{Actor, AsyncContext, Context, Handler, Message, ResponseActFuture};
@@ -119,23 +120,24 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                         &key.cache_key
                     ));
 
-                    if let Some(ref path) = path {
-                        if path.exists() {
-                            // A file was found and we're about to mmap it. This is also reported
-                            // for "negative cache hits": When we cached the 404 response from a
-                            // server as empty file.
-                            metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-                            let _ =
-                                tryf!(OpenOptions::new().append(true).truncate(false).open(&path));
-                            let byteview = tryf!(ByteView::open(path));
-                            metric!(
-                                time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                                "hit" => "true"
-                            );
-                            let item = tryf!(request.0.load(scope.clone(), byteview));
-                            return Box::new(Ok(item).into_future());
+                    let path = match path {
+                        Some(x) => x,
+                        None => continue,
+                    };
+
+                    let byteview = match check_cache_hit(name, &path) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            if e.kind() == io::ErrorKind::NotFound {
+                                continue;
+                            } else {
+                                tryf!(Err(e))
+                            }
                         }
-                    }
+                    };
+
+                    let item = tryf!(request.0.load(scope.clone(), byteview));
+                    return Box::new(Ok(item).into_future());
                 }
 
                 // A file was not found. If this spikes, it's possible that the filesystem cache
@@ -217,4 +219,38 @@ fn get_scope_path(
 
 fn safe_path_segment(s: &str) -> String {
     s.replace(".", "_").replace("/", "_")
+}
+
+fn check_cache_hit(name: &'static str, path: &Path) -> io::Result<ByteView<'static>> {
+    let metadata = path.metadata()?;
+
+    // A file was found and we're about to mmap it. This is also reported
+    // for "negative cache hits": When we cached the 404 response from a
+    // server as empty file.
+    metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+
+    if metadata
+        .modified()?
+        .elapsed()
+        .map(|elapsed| elapsed > Duration::from_secs(3600))
+        .unwrap_or(true)
+    {
+        // We use mtime to keep track of "cache last used", because filesystem is usually mounted
+        // with `noatime` and therefore atime is nonsense.
+        //
+        // Since we're about to use the cache, let's touch the file. We don't touch the file if it
+        // was touched in the last hour to avoid too many disk writes.
+        OpenOptions::new()
+            .append(true)
+            .truncate(false)
+            .open(&path)?;
+    }
+
+    let byteview = ByteView::open(path)?;
+    metric!(
+        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+        "hit" => "true"
+    );
+
+    Ok(byteview)
 }

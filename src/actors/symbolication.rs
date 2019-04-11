@@ -682,10 +682,16 @@ fn symbolize_thread(
         }
 
         if rv.is_empty() {
-            Err(FrameStatus::MissingSymbol)
-        } else {
-            Ok(rv)
+            rv.push(SymbolicatedFrame {
+                status: FrameStatus::MissingSymbol,
+                original_index: Some(i),
+                instruction_addr: frame.instruction_addr,
+                package: object_info.code_file.clone(),
+                ..Default::default()
+            });
         }
+
+        Ok(rv)
     };
 
     for (i, frame) in thread.frames.into_iter().enumerate() {
@@ -696,14 +702,7 @@ fn symbolize_thread(
                     status,
                     original_index: Some(i),
                     instruction_addr: frame.instruction_addr,
-                    package: None,
-                    lang: None,
-                    symbol: None,
-                    function: None,
-                    filename: None,
-                    abs_path: None,
-                    lineno: None,
-                    sym_addr: None,
+                    ..Default::default()
                 });
             }
         }

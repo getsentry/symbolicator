@@ -314,8 +314,14 @@ pub enum FrameStatus {
     MalformedDebugFile,
 }
 
+impl Default for FrameStatus {
+    fn default() -> Self {
+        FrameStatus::Symbolicated
+    }
+}
+
 /// A potentially symbolicated frame in the symbolication response.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct SymbolicatedFrame {
     /// Symbolication status of this frame.
     pub status: FrameStatus,
