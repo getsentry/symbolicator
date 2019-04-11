@@ -335,7 +335,7 @@ impl SymbolicationActor {
         let symbolication_request =
             Box::new(symbolication_request) as Box<dyn Future<Item = _, Error = _>>;
 
-        let symbolication_request = measure_task(
+        let symbolication_request = future_metrics!(
             "minidump_stackwalk",
             Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             symbolication_request,
@@ -359,7 +359,7 @@ impl SymbolicationActor {
             },
         );
 
-        let symbolication_response = measure_task(
+        let symbolication_response = future_metrics!(
             "minidump_full_process",
             Some((Duration::from_secs(4200), SymbolicationError::Timeout)),
             symbolication_response,
