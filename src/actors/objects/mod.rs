@@ -333,9 +333,16 @@ impl Actor for ObjectsActor {
 #[derive(Debug, Clone)]
 pub struct FetchObject {
     pub filetypes: &'static [FileType],
+    pub purpose: ObjectPurpose,
     pub scope: Scope,
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ObjectPurpose {
+    Unwind,
+    Debug,
 }
 
 impl Message for FetchObject {
@@ -351,6 +358,7 @@ impl Handler<FetchObject> for ObjectsActor {
             scope,
             identifier,
             sources,
+            purpose,
         } = request;
 
         let prepare_futures: Vec<_> = sources
@@ -375,13 +383,15 @@ impl Handler<FetchObject> for ObjectsActor {
                     .enumerate()
                     .min_by_key(|(ref i, response)| {
                         (
-                            // Prefer object files with debug info over object files without
+                            // Prefer object files with debug/unwind info over object files without
                             // Prefer files that contain an object over unparseable files
-                            match response
-                                .as_ref()
-                                .ok()
-                                .and_then(|o| Some(o.parse().ok()??.has_debug_info()))
-                            {
+                            match response.as_ref().ok().and_then(|o| {
+                                let object = o.parse().ok()??;
+                                match purpose {
+                                    ObjectPurpose::Unwind => Some(object.has_unwind_info()),
+                                    ObjectPurpose::Debug => Some(object.has_debug_info()),
+                                }
+                            }) {
                                 Some(true) => 0,
                                 Some(false) => 1,
                                 None => 2,

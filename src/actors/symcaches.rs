@@ -12,7 +12,7 @@ use symbolic::symcache::{SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
-use crate::actors::objects::{FetchObject, ObjectsActor};
+use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -134,6 +134,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
+                purpose: ObjectPurpose::Debug,
             })
             .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
             .and_then(move |result| {

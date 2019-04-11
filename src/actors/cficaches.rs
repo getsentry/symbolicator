@@ -11,7 +11,7 @@ use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
-use crate::actors::objects::{FetchObject, ObjectsActor};
+use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -128,7 +128,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
-                // TODO: Prefer files with unwind info
+                purpose: ObjectPurpose::Unwind,
             })
             .map_err(|e| e.context(CfiCacheErrorKind::Mailbox).into())
             .and_then(move |result| {
