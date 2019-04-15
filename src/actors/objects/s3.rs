@@ -2,10 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix::Addr;
+use bytes::BytesMut;
 use failure::Fail;
 use futures::{future, Future, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
+use tokio::codec::{BytesCodec, FramedRead};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
@@ -126,12 +128,12 @@ pub fn download_from_source(
                         return Ok(None);
                     }
                 };
-                Ok(Some(Box::new(
-                    tokio::codec::FramedRead::new(body_read, tokio::codec::BytesCodec::new())
-                        .map(|value| value.freeze())
-                        .map_err(|_err| ObjectError::from(ObjectErrorKind::Io)),
-                )
-                    as Box<dyn Stream<Item = _, Error = _>>))
+
+                let bytes = FramedRead::new(body_read, BytesCodec::new())
+                    .map(BytesMut::freeze)
+                    .map_err(|_err| ObjectError::from(ObjectErrorKind::Io));
+
+                Ok(Some(Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>))
             }
             Err(err) => {
                 log::warn!("Skipping response from s3:{}{}: {}", bucket, &key, err);
