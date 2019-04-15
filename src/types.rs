@@ -372,9 +372,13 @@ pub struct SymbolicatedStacktrace {
     #[serde(skip_serializing_if = "is_default")]
     pub thread_id: Option<u64>,
 
-    /// Whether that thread was the crashing one.
+    /// If a dump was produced as a result of a crash, this will point to the thread that crashed.
+    /// If the dump was produced by user code without crashing, and the dump contains extended
+    /// Breakpad information, this will point to the thread that requested the dump.
+    ///
+    /// Currently only `Some` for minidumps.
     #[serde(skip_serializing_if = "is_default")]
-    pub is_crashed_thread: Option<bool>,
+    pub is_requesting: Option<bool>,
 
     /// Registers, only relevant when returning a processed minidump.
     #[serde(default)]

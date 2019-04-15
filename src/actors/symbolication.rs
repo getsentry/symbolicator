@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::TryInto;
 use std::fs::File;
 use std::iter::FromIterator;
 use std::panic;
@@ -288,6 +289,7 @@ impl SymbolicationActor {
                             os_build,
                             cpu_arch,
                         },
+                        requesting_thread_index: process_state.requesting_thread().try_into().ok(),
                         crashed: process_state.crashed(),
                         crash_reason: process_state.crash_reason(),
                         assertion: process_state.assertion(),
@@ -345,15 +347,22 @@ impl SymbolicationActor {
             |(mut response, minidump_state): (_, MinidumpState)| {
                 if let SymbolicationResponse::Completed(ref mut response) = response {
                     let MinidumpState {
+                        requesting_thread_index,
                         system_info,
                         crashed,
                         crash_reason,
                         assertion,
                     } = minidump_state;
+
                     response.system_info = Some(system_info);
                     response.crashed = Some(crashed);
                     response.crash_reason = Some(crash_reason);
                     response.assertion = Some(assertion);
+                    if let Some(stacktrace) =
+                        requesting_thread_index.and_then(|i| response.stacktraces.get_mut(i))
+                    {
+                        stacktrace.is_requesting = Some(true);
+                    }
                 }
                 Ok(response)
             },
@@ -828,6 +837,7 @@ struct MinidumpState {
     crashed: bool,
     crash_reason: String,
     assertion: String,
+    requesting_thread_index: Option<usize>,
 }
 
 impl Message for ProcessMinidump {
