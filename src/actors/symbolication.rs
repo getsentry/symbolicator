@@ -45,7 +45,8 @@ pub struct SymbolicationActor {
     symcaches: Addr<SymCacheActor>,
     cficaches: Addr<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests: BTreeMap<RequestId, ComputationChannel<SymbolicationResponse, SymbolicationError>>,
+    requests:
+        BTreeMap<RequestId, ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>>,
 }
 
 impl Actor for SymbolicationActor {
@@ -72,7 +73,7 @@ impl SymbolicationActor {
         &self,
         request_id: RequestId,
         timeout: Option<u64>,
-        channel: ComputationChannel<SymbolicationResponse, SymbolicationError>,
+        channel: ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>,
     ) -> ResponseActFuture<Self, SymbolicationResponse, SymbolicationError> {
         let rv = channel
             .map_err(|_: SharedError<oneshot::Canceled>| {
@@ -93,7 +94,7 @@ impl SymbolicationActor {
                         match result {
                             Ok(x) => {
                                 slf.requests.remove(&request_id);
-                                Ok(x)
+                                Ok(SymbolicationResponse::Completed(x))
                             }
                             Err(e) => {
                                 if let Some(inner) = e.into_inner() {
@@ -116,7 +117,10 @@ impl SymbolicationActor {
         } else {
             Box::new(rv.into_actor(self).then(move |result, slf, _ctx| {
                 slf.requests.remove(&request_id);
-                result.into_future().into_actor(slf)
+                result
+                    .map(SymbolicationResponse::Completed)
+                    .into_future()
+                    .into_actor(slf)
             }))
         }
     }
@@ -124,7 +128,7 @@ impl SymbolicationActor {
     fn do_symbolicate(
         &self,
         request: SymbolicateStacktraces,
-    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
         let signal = request.signal;
         let stacktraces = request.stacktraces.clone();
 
@@ -151,14 +155,12 @@ impl SymbolicationActor {
                         })
                         .collect();
 
-                    Ok(SymbolicationResponse::Completed(
-                        CompletedSymbolicationResponse {
-                            signal,
-                            modules,
-                            stacktraces,
-                            ..Default::default()
-                        },
-                    ))
+                    Ok(CompletedSymbolicationResponse {
+                        signal,
+                        modules,
+                        stacktraces,
+                        ..Default::default()
+                    })
                 }))
             });
 
@@ -344,7 +346,7 @@ impl SymbolicationActor {
     fn do_process_minidump(
         &self,
         request: ProcessMinidump,
-    ) -> impl ActorFuture<Item = SymbolicationResponse, Error = SymbolicationError, Actor = Self>
+    ) -> impl ActorFuture<Item = CompletedSymbolicationResponse, Error = SymbolicationError, Actor = Self>
     {
         let symbolication_request = self.do_stackwalk_minidump(request);
 
@@ -353,24 +355,22 @@ impl SymbolicationActor {
                 slf.do_symbolicate(request)
                     .into_actor(slf)
                     .and_then(|mut response, slf, _ctx| {
-                        if let SymbolicationResponse::Completed(ref mut response) = response {
-                            let MinidumpState {
-                                requesting_thread_index,
-                                system_info,
-                                crashed,
-                                crash_reason,
-                                assertion,
-                            } = minidump_state;
+                        let MinidumpState {
+                            requesting_thread_index,
+                            system_info,
+                            crashed,
+                            crash_reason,
+                            assertion,
+                        } = minidump_state;
 
-                            response.system_info = Some(system_info);
-                            response.crashed = Some(crashed);
-                            response.crash_reason = Some(crash_reason);
-                            response.assertion = Some(assertion);
-                            if let Some(stacktrace) = requesting_thread_index
-                                .and_then(|i| response.stacktraces.get_mut(i))
-                            {
-                                stacktrace.is_requesting = Some(true);
-                            }
+                        response.system_info = Some(system_info);
+                        response.crashed = Some(crashed);
+                        response.crash_reason = Some(crash_reason);
+                        response.assertion = Some(assertion);
+                        if let Some(stacktrace) =
+                            requesting_thread_index.and_then(|i| response.stacktraces.get_mut(i))
+                        {
+                            stacktrace.is_requesting = Some(true);
                         }
                         Ok(response).into_future().into_actor(slf)
                     })
