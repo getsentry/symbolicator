@@ -332,10 +332,6 @@ impl SymbolicationActor {
                 }))
             }));
 
-        // Workaround for too large type names.
-        let symbolication_request =
-            Box::new(symbolication_request) as Box<dyn Future<Item = _, Error = _>>;
-
         Box::new(future_metrics!(
             "minidump_stackwalk",
             Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
