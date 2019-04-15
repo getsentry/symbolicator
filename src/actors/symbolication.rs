@@ -311,7 +311,7 @@ impl SymbolicationActor {
                                     .iter()
                                     .map(|frame| RawFrame {
                                         instruction_addr: HexValue(frame.return_address(cpu_arch)),
-                                        package: frame.module().map(|module| module.code_file()),
+                                        package: frame.module().map(CodeModule::code_file),
                                     })
                                     .collect(),
                             }

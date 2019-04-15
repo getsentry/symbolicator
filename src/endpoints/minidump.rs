@@ -4,10 +4,10 @@ use std::sync::Arc;
 use tempfile;
 
 use actix::ResponseFuture;
-use actix_web::{
-    dev::Payload, error, http::Method, multipart, Error, HttpMessage, HttpRequest, Json, Query,
-    State,
-};
+use actix_web::dev::Payload;
+use actix_web::http::header::ContentDisposition;
+use actix_web::http::Method;
+use actix_web::{error, multipart, Error, HttpMessage, HttpRequest, Json, Query, State};
 use bytes::BytesMut;
 use futures::{
     future::{self, IntoFuture},
@@ -77,7 +77,7 @@ fn handle_multipart_item(
             match field
                 .content_disposition()
                 .as_ref()
-                .and_then(|x| x.get_name())
+                .and_then(ContentDisposition::get_name)
             {
                 Some("sources") => Box::new(read_sources_json(field).into_stream()),
                 Some("upload_file_minidump") => {
