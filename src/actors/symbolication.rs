@@ -121,24 +121,20 @@ impl SymbolicationActor {
         }
     }
 
-    fn do_symbolicate<T: Send + 'static>(
+    fn do_symbolicate(
         &self,
-        future: impl Future<Item = (SymbolicateStacktraces, T), Error = SymbolicationError>,
-    ) -> impl Future<Item = (SymbolicationResponse, T), Error = SymbolicationError> {
+        request: SymbolicateStacktraces,
+    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+        let signal = request.signal;
+        let stacktraces = request.stacktraces.clone();
+
+        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
+
         let threadpool = self.threadpool.clone();
-        let symcaches = self.symcaches.clone();
 
-        let result = future
-            .and_then(move |(request, state)| {
-                let signal = request.signal;
-
-                let stacktraces = request.stacktraces.clone();
-                let object_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-                object_lookup
-                    .fetch_symcaches(symcaches, request)
-                    .map(move |object_lookup| (state, signal, stacktraces, object_lookup))
-            })
-            .and_then(move |(state, signal, stacktraces, object_lookup)| {
+        let result = symcache_lookup
+            .fetch_symcaches(self.symcaches.clone(), request)
+            .and_then(move |object_lookup| {
                 threadpool.spawn_handle(future::lazy(move || {
                     let stacktraces = stacktraces
                         .into_iter()
@@ -155,13 +151,13 @@ impl SymbolicationActor {
                         })
                         .collect();
 
-                    Ok((
-                        SymbolicationResponse::Completed(CompletedSymbolicationResponse {
-                            stacktraces,
+                    Ok(SymbolicationResponse::Completed(
+                        CompletedSymbolicationResponse {
+                            signal,
                             modules,
+                            stacktraces,
                             ..Default::default()
-                        }),
-                        state,
+                        },
                     ))
                 }))
             });
@@ -173,10 +169,11 @@ impl SymbolicationActor {
         )
     }
 
-    fn do_process_minidump(
-        &mut self,
+    fn do_stackwalk_minidump(
+        &self,
         request: ProcessMinidump,
-    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+    ) -> impl Future<Item = (SymbolicateStacktraces, MinidumpState), Error = SymbolicationError>
+    {
         let ProcessMinidump {
             file,
             scope,
@@ -337,44 +334,50 @@ impl SymbolicationActor {
         let symbolication_request =
             Box::new(symbolication_request) as Box<dyn Future<Item = _, Error = _>>;
 
-        let symbolication_request = future_metrics!(
+        Box::new(future_metrics!(
             "minidump_stackwalk",
             Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             symbolication_request,
-        );
+        ))
+    }
 
-        let symbolication_response = self.do_symbolicate(symbolication_request).and_then(
-            |(mut response, minidump_state): (_, MinidumpState)| {
-                if let SymbolicationResponse::Completed(ref mut response) = response {
-                    let MinidumpState {
-                        requesting_thread_index,
-                        system_info,
-                        crashed,
-                        crash_reason,
-                        assertion,
-                    } = minidump_state;
+    fn do_process_minidump(
+        &self,
+        request: ProcessMinidump,
+    ) -> impl ActorFuture<Item = SymbolicationResponse, Error = SymbolicationError, Actor = Self>
+    {
+        let symbolication_request = self.do_stackwalk_minidump(request);
 
-                    response.system_info = Some(system_info);
-                    response.crashed = Some(crashed);
-                    response.crash_reason = Some(crash_reason);
-                    response.assertion = Some(assertion);
-                    if let Some(stacktrace) =
-                        requesting_thread_index.and_then(|i| response.stacktraces.get_mut(i))
-                    {
-                        stacktrace.is_requesting = Some(true);
-                    }
-                }
-                Ok(response)
+        let result = symbolication_request.into_actor(self).and_then(
+            |(request, minidump_state), slf, _ctx| {
+                slf.do_symbolicate(request)
+                    .into_actor(slf)
+                    .and_then(|mut response, slf, _ctx| {
+                        if let SymbolicationResponse::Completed(ref mut response) = response {
+                            let MinidumpState {
+                                requesting_thread_index,
+                                system_info,
+                                crashed,
+                                crash_reason,
+                                assertion,
+                            } = minidump_state;
+
+                            response.system_info = Some(system_info);
+                            response.crashed = Some(crashed);
+                            response.crash_reason = Some(crash_reason);
+                            response.assertion = Some(assertion);
+                            if let Some(stacktrace) = requesting_thread_index
+                                .and_then(|i| response.stacktraces.get_mut(i))
+                            {
+                                stacktrace.is_requesting = Some(true);
+                            }
+                        }
+                        Ok(response).into_future().into_actor(slf)
+                    })
             },
         );
 
-        let symbolication_response = future_metrics!(
-            "minidump_full_process",
-            Some((Duration::from_secs(4200), SymbolicationError::Timeout)),
-            symbolication_response,
-        );
-
-        Box::new(symbolication_response)
+        Box::new(result)
     }
 }
 
@@ -763,10 +766,10 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
         let (tx, rx) = oneshot::channel();
 
         ctx.spawn(
-            self.do_symbolicate(Ok((request, ())).into_future())
+            self.do_symbolicate(request)
                 .then(move |result| {
                     tx.send(match result {
-                        Ok((x, _)) => Ok(Arc::new(x)),
+                        Ok(x) => Ok(Arc::new(x)),
                         Err(e) => Err(Arc::new(e)),
                     })
                     .map_err(|_| ())
@@ -859,14 +862,15 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
 
         ctx.spawn(
             self.do_process_minidump(request)
-                .then(move |result| {
+                .then(move |result, slf, _ctx| {
                     tx.send(match result {
                         Ok(x) => Ok(Arc::new(x)),
                         Err(e) => Err(Arc::new(e)),
                     })
                     .map_err(|_| ())
-                })
-                .into_actor(self),
+                    .into_future()
+                    .into_actor(slf)
+                }),
         );
 
         let channel = rx.shared();
