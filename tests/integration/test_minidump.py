@@ -104,7 +104,8 @@ MINIDUMP_SUCCESS = {
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
                 },
-            ]
+            ],
+            "is_requesting": True,
         },
         {
             "frames": [
@@ -158,7 +159,8 @@ MINIDUMP_SUCCESS = {
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
                 },
-            ]
+            ],
+            "is_requesting": False,
         },
         {
             "frames": [
@@ -212,7 +214,8 @@ MINIDUMP_SUCCESS = {
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
                 },
-            ]
+            ],
+            "is_requesting": False,
         },
         {
             "frames": [
@@ -231,7 +234,8 @@ MINIDUMP_SUCCESS = {
                     "original_index": 1,
                     "instruction_addr": "0x76e75dc0",
                 },
-            ]
+            ],
+            "is_requesting": False,
         },
     ],
     "modules": [

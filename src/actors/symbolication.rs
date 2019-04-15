@@ -192,19 +192,21 @@ impl SymbolicationActor {
 
             let os_name = state.system_info().os_name();
 
-            Ok((
-                byteview,
-                state
-                    .referenced_modules()
-                    .into_iter()
-                    .filter_map(|code_module| {
-                        Some((
-                            code_module.id()?,
-                            object_info_from_minidump_module(&os_name, code_module),
-                        ))
-                    })
-                    .collect::<Vec<_>>(),
-            ))
+            let referenced_modules = state.referenced_modules();
+
+            let object_infos: Vec<_> = state
+                .referenced_modules()
+                .into_iter()
+                .filter_map(|code_module| {
+                    Some((
+                        code_module.id()?,
+                        referenced_modules.contains(code_module),
+                        object_info_from_minidump_module(&os_name, code_module),
+                    ))
+                })
+                .collect();
+
+            Ok((byteview, object_infos))
         }));
 
         let cficaches = &self.cficaches;
@@ -213,21 +215,25 @@ impl SymbolicationActor {
             byteview,
             object_infos,
         )| {
-            join_all(
-                object_infos
-                    .into_iter()
-                    .map(move |(code_module_id, object_info)| {
-                        cficaches
-                            .send(FetchCfiCache {
-                                object_type: object_info.ty.clone(),
-                                identifier: object_id_from_object_info(&object_info),
-                                sources: sources.clone(),
-                                scope: scope.clone(),
-                            })
-                            .map_err(|_| SymbolicationError::Mailbox)
-                            .map(move |result| (object_info, code_module_id, result))
-                    }),
-            )
+            join_all(object_infos.into_iter().map(
+                move |(code_module_id, is_referenced, object_info)| {
+                    if is_referenced {
+                        Either::A(
+                            cficaches
+                                .send(FetchCfiCache {
+                                    object_type: object_info.ty.clone(),
+                                    identifier: object_id_from_object_info(&object_info),
+                                    sources: sources.clone(),
+                                    scope: scope.clone(),
+                                })
+                                .map_err(|_| SymbolicationError::Mailbox)
+                                .map(move |result| (object_info, code_module_id, Some(result))),
+                        )
+                    } else {
+                        Either::B(Ok((object_info, code_module_id, None)).into_future())
+                    }
+                },
+            ))
             .map(move |cfi_requests| (byteview, cfi_requests))
         }));
 
@@ -245,6 +251,13 @@ impl SymbolicationActor {
                     for (object_info, code_module_id, result) in &cfi_requests {
                         // XXX: We should actually build a list of FetchedDebugFile instead of
                         // discarding errors.
+                        modules.push(object_info.clone());
+
+                        let result = match result {
+                            Some(x) => x,
+                            None => continue,
+                        };
+
                         let cache_file = match result {
                             Ok(x) => x,
                             Err(e) => {
@@ -255,8 +268,6 @@ impl SymbolicationActor {
                                 continue;
                             }
                         };
-
-                        modules.push(object_info.clone());
 
                         let cfi_cache = match cache_file.parse() {
                             Ok(Some(x)) => x,
@@ -363,11 +374,11 @@ impl SymbolicationActor {
                         response.crashed = Some(crashed);
                         response.crash_reason = Some(crash_reason);
                         response.assertion = Some(assertion);
-                        if let Some(stacktrace) =
-                            requesting_thread_index.and_then(|i| response.stacktraces.get_mut(i))
-                        {
-                            stacktrace.is_requesting = Some(true);
+
+                        for (i, mut stacktrace) in response.stacktraces.iter_mut().enumerate() {
+                            stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
                         }
+
                         Ok(response).into_future().into_actor(slf)
                     })
             },
