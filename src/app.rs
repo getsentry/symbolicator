@@ -11,8 +11,8 @@ use structopt::StructOpt;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::{
-    cache::CacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
-    symcaches::SymCacheActor,
+    cache::CacheActor, cficaches::CfiCacheActor, objects::ObjectsActor,
+    symbolication::SymbolicationActor, symcaches::SymCacheActor,
 };
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
@@ -80,6 +80,8 @@ enum Command {
 /// The shared state for the service.
 #[derive(Clone)]
 pub struct ServiceState {
+    /// Thread pool instance reserved for IO-intensive tasks.
+    pub io_threadpool: Arc<ThreadPool>,
     /// The address of the symbolication actor.
     pub symbolication: Addr<SymbolicationActor>,
 }
@@ -141,14 +143,29 @@ fn run_server(config: Config) -> Result<(), CliError> {
     }
     let symcaches = SymCacheActor::new(
         CacheActor::new("symcaches", symcache_path).start(),
+        objects.clone(),
+        cpu_threadpool.clone(),
+    )
+    .start();
+
+    let cficache_path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
+    if let Some(ref cficache_path) = cficache_path {
+        fs::create_dir_all(cficache_path)?;
+    }
+    let cficaches = CfiCacheActor::new(
+        CacheActor::new("cficaches", cficache_path).start(),
         objects,
         cpu_threadpool.clone(),
     )
     .start();
 
-    let symbolication = SymbolicationActor::new(symcaches, cpu_threadpool.clone()).start();
+    let symbolication =
+        SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();
 
-    let state = ServiceState { symbolication };
+    let state = ServiceState {
+        io_threadpool,
+        symbolication,
+    };
 
     fn get_app(state: ServiceState) -> ServiceApp {
         let mut app = App::with_state(state)
@@ -156,9 +173,10 @@ fn run_server(config: Config) -> Result<(), CliError> {
             .middleware(ErrorHandlers)
             .middleware(sentry_actix::SentryMiddleware::new());
 
-        app = endpoints::symbolicate::register(app);
         app = endpoints::healthcheck::register(app);
+        app = endpoints::minidump::register(app);
         app = endpoints::requests::register(app);
+        app = endpoints::symbolicate::register(app);
         app
     }
 

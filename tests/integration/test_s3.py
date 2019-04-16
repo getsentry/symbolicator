@@ -31,9 +31,7 @@ MACHO_SUCCESS = {
     "modules": [
         {
             "arch": "x86_64",
-            "code_file": None,
             "code_id": str(debug_id).upper(),
-            "debug_file": None,
             "debug_id": str(debug_id),
             "image_addr": "0x100000000",
             "image_size": 4096,
@@ -41,7 +39,6 @@ MACHO_SUCCESS = {
             "type": "macho",
         }
     ],
-    "signal": None,
     "stacktraces": [
         {
             "frames": [
@@ -53,7 +50,6 @@ MACHO_SUCCESS = {
                     "lang": "c",
                     "lineno": 1,
                     "original_index": 0,
-                    "package": None,
                     "status": "symbolicated",
                     "sym_addr": "0x100000fa0",
                     "symbol": "main",

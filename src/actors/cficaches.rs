@@ -7,8 +7,7 @@ use std::time::Duration;
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use failure::{Fail, ResultExt};
 use futures::Future;
-use symbolic::common::{Arch, ByteView};
-use symbolic::symcache::{SymCache, SymCacheWriter};
+use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
@@ -16,7 +15,7 @@ use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
-pub enum SymCacheErrorKind {
+pub enum CfiCacheErrorKind {
     #[fail(display = "failed to download")]
     Io,
 
@@ -37,34 +36,34 @@ pub enum SymCacheErrorKind {
 }
 
 symbolic::common::derive_failure!(
-    SymCacheError,
-    SymCacheErrorKind,
+    CfiCacheError,
+    CfiCacheErrorKind,
     doc = "Errors happening while generating a symcache"
 );
 
-impl From<io::Error> for SymCacheError {
+impl From<io::Error> for CfiCacheError {
     fn from(e: io::Error) -> Self {
-        e.context(SymCacheErrorKind::Io).into()
+        e.context(CfiCacheErrorKind::Io).into()
     }
 }
 
-pub struct SymCacheActor {
-    symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
+pub struct CfiCacheActor {
+    symcaches: Addr<CacheActor<FetchCfiCacheInternal>>,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
 
-impl Actor for SymCacheActor {
+impl Actor for CfiCacheActor {
     type Context = Context<Self>;
 }
 
-impl SymCacheActor {
+impl CfiCacheActor {
     pub fn new(
-        symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
+        symcaches: Addr<CacheActor<FetchCfiCacheInternal>>,
         objects: Addr<ObjectsActor>,
         threadpool: Arc<ThreadPool>,
     ) -> Self {
-        SymCacheActor {
+        CfiCacheActor {
             symcaches,
             objects,
             threadpool,
@@ -73,45 +72,40 @@ impl SymCacheActor {
 }
 
 #[derive(Clone)]
-pub struct SymCacheFile {
+pub struct CfiCacheFile {
     inner: Option<ByteView<'static>>,
     scope: Scope,
-    request: FetchSymCacheInternal,
-    arch: Arch,
+    request: FetchCfiCacheInternal,
 }
 
-impl SymCacheFile {
-    pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
+impl CfiCacheFile {
+    pub fn parse(&self) -> Result<Option<minidump::cfi::CfiCache<'_>>, CfiCacheError> {
         let bytes = match self.inner {
             Some(ref x) => x,
             None => return Ok(None),
         };
 
         if &bytes[..] == b"malformed" {
-            return Err(SymCacheErrorKind::ObjectParsing.into());
+            return Err(CfiCacheErrorKind::ObjectParsing.into());
         }
 
         Ok(Some(
-            SymCache::parse(bytes).context(SymCacheErrorKind::Parsing)?,
+            minidump::cfi::CfiCache::from_bytes(bytes.clone())
+                .context(CfiCacheErrorKind::Parsing)?,
         ))
-    }
-
-    /// Returns the architecture of this symcache.
-    pub fn arch(&self) -> Arch {
-        self.arch
     }
 }
 
 #[derive(Clone)]
-pub struct FetchSymCacheInternal {
-    request: FetchSymCache,
+pub struct FetchCfiCacheInternal {
+    request: FetchCfiCache,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
 
-impl CacheItemRequest for FetchSymCacheInternal {
-    type Item = SymCacheFile;
-    type Error = SymCacheError;
+impl CacheItemRequest for FetchCfiCacheInternal {
+    type Item = CfiCacheFile;
+    type Error = CfiCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
@@ -134,35 +128,26 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
-                purpose: ObjectPurpose::Debug,
+                purpose: ObjectPurpose::Unwind,
             })
-            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
+            .map_err(|e| e.context(CfiCacheErrorKind::Mailbox).into())
             .and_then(move |result| {
                 threadpool.spawn_handle(futures::lazy(move || {
-                    let object = result.context(SymCacheErrorKind::Fetching)?;
-                    let file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                    let mut writer = BufWriter::new(file);
-
+                    let object = result.context(CfiCacheErrorKind::Fetching)?;
+                    let mut file =
+                        BufWriter::new(File::create(&path).context(CfiCacheErrorKind::Io)?);
                     match object.parse() {
                         Ok(Some(object)) => {
-                            SymCacheWriter::write_object(&object, &mut writer)
-                                .context(SymCacheErrorKind::Io)?;
-
-                            let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-                            file.sync_all().context(SymCacheErrorKind::Io)?;
-
-                            let metadata = file.metadata().context(SymCacheErrorKind::Io)?;
-                            metric!(time_raw("symcaches.size") = metadata.len());
+                            minidump::cfi::CfiCache::from_object(&object)
+                                .context(CfiCacheErrorKind::Parsing)?
+                                .write_to(file)
+                                .context(CfiCacheErrorKind::Io)?;
                         }
                         Ok(None) => (),
                         Err(err) => {
                             log::warn!("Could not parse object: {}", err);
-                            writer
-                                .write_all(b"malformed")
-                                .context(SymCacheErrorKind::Io)?;
-
-                            let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-                            file.sync_all().context(SymCacheErrorKind::Io)?;
+                            file.write_all(b"malformed")
+                                .context(CfiCacheErrorKind::Io)?;
                         }
                     };
 
@@ -173,53 +158,47 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let num_sources = self.request.sources.len();
 
         Box::new(future_metrics!(
-            "symcaches",
-            Some((Duration::from_secs(1200), SymCacheErrorKind::Timeout.into())),
+            "cficaches",
+            Some((Duration::from_secs(1200), CfiCacheErrorKind::Timeout.into())),
             result,
             "num_sources" => &num_sources.to_string()
         ))
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
-        // TODO: Figure out if this double-parsing could be avoided
-        let arch = SymCache::parse(&data)
-            .map(|cache| cache.arch())
-            .unwrap_or_default();
-
-        Ok(SymCacheFile {
+        Ok(CfiCacheFile {
             request: self,
             scope,
             inner: if !data.is_empty() { Some(data) } else { None },
-            arch,
         })
     }
 }
 
 /// Information for fetching the symbols for this symcache
 #[derive(Debug, Clone)]
-pub struct FetchSymCache {
+pub struct FetchCfiCache {
     pub object_type: ObjectType,
     pub identifier: ObjectId,
     pub sources: Vec<SourceConfig>,
     pub scope: Scope,
 }
 
-impl Message for FetchSymCache {
-    type Result = Result<Arc<SymCacheFile>, Arc<SymCacheError>>;
+impl Message for FetchCfiCache {
+    type Result = Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>;
 }
 
-impl Handler<FetchSymCache> for SymCacheActor {
-    type Result = ResponseFuture<Arc<SymCacheFile>, Arc<SymCacheError>>;
+impl Handler<FetchCfiCache> for CfiCacheActor {
+    type Result = ResponseFuture<Arc<CfiCacheFile>, Arc<CfiCacheError>>;
 
-    fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, request: FetchCfiCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.symcaches
-                .send(ComputeMemoized(FetchSymCacheInternal {
+                .send(ComputeMemoized(FetchCfiCacheInternal {
                     request,
                     objects: self.objects.clone(),
                     threadpool: self.threadpool.clone(),
                 }))
-                .map_err(|e| Arc::new(e.context(SymCacheErrorKind::Mailbox).into()))
+                .map_err(|e| Arc::new(e.context(CfiCacheErrorKind::Mailbox).into()))
                 .and_then(|response| Ok(response?)),
         )
     }
