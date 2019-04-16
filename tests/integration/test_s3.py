@@ -83,7 +83,9 @@ def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
     input = dict(
         sources=[
             dict(
-                id="s3", layout={"type": "symstore", "casing": casing}, **s3_bucket_config
+                id="s3",
+                layout={"type": "symstore", "casing": casing},
+                **s3_bucket_config,
             )
         ],
         **MACHO_HELLO_DATA,
