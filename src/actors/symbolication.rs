@@ -195,7 +195,7 @@ impl SymbolicationActor {
             let referenced_modules = state.referenced_modules();
 
             let object_infos: Vec<_> = state
-                .referenced_modules()
+                .modules()
                 .into_iter()
                 .filter_map(|code_module| {
                     Some((
