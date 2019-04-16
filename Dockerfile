@@ -3,7 +3,7 @@ FROM rust:slim-stretch AS symbolicator-build
 WORKDIR /work
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config \
+    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git \
     && rm -rf /var/lib/apt/lists/*
 
 # Build only dependencies to speed up subsequent builds
@@ -12,7 +12,7 @@ RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
     && cargo build --release --locked
 
-ADD src src/
+COPY . .
 RUN cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
@@ -38,7 +38,7 @@ EXPOSE 3021
 
 COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
 # Smoke test
-RUN symbolicator --help
+RUN symbolicator --version && symbolicator --help
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]

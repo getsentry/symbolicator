@@ -1,3 +1,6 @@
-target/
-Dockerfile
-.dockerignore
+*
+!.git/
+!src/
+!build.rs
+!Cargo.*
+!docker-entrypoint.sh
