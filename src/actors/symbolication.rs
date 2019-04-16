@@ -184,7 +184,7 @@ impl SymbolicationActor {
 
         let byteview = tryf!(ByteView::map_file(file).map_err(|_| SymbolicationError::Minidump));
 
-        let object_infos = self.threadpool.spawn_handle(future::lazy(move || {
+        let cfi_to_fetch = self.threadpool.spawn_handle(future::lazy(move || {
             log::info!("Minidump size: {}", byteview.len());
             metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
             let state = ProcessState::from_minidump(&byteview, None)
@@ -192,48 +192,41 @@ impl SymbolicationActor {
 
             let os_name = state.system_info().os_name();
 
-            let referenced_modules = state.referenced_modules();
-
-            let object_infos: Vec<_> = state
-                .modules()
+            let cfi_to_fetch: Vec<_> = state
+                .referenced_modules()
                 .into_iter()
                 .filter_map(|code_module| {
                     Some((
                         code_module.id()?,
-                        referenced_modules.contains(code_module),
                         object_info_from_minidump_module(&os_name, code_module),
                     ))
                 })
                 .collect();
 
-            Ok((byteview, object_infos))
+            Ok((byteview, cfi_to_fetch))
         }));
 
         let cficaches = &self.cficaches;
 
-        let cfi_requests = object_infos.and_then(clone!(cficaches, scope, sources, |(
+        let cfi_requests = cfi_to_fetch.and_then(clone!(cficaches, scope, sources, |(
             byteview,
             object_infos,
         )| {
-            join_all(object_infos.into_iter().map(
-                move |(code_module_id, is_referenced, object_info)| {
-                    if is_referenced {
-                        Either::A(
-                            cficaches
-                                .send(FetchCfiCache {
-                                    object_type: object_info.ty.clone(),
-                                    identifier: object_id_from_object_info(&object_info),
-                                    sources: sources.clone(),
-                                    scope: scope.clone(),
-                                })
-                                .map_err(|_| SymbolicationError::Mailbox)
-                                .map(move |result| (object_info, code_module_id, Some(result))),
-                        )
-                    } else {
-                        Either::B(Ok((object_info, code_module_id, None)).into_future())
-                    }
-                },
-            ))
+            join_all(
+                object_infos
+                    .into_iter()
+                    .map(move |(code_module_id, object_info)| {
+                        cficaches
+                            .send(FetchCfiCache {
+                                object_type: object_info.ty.clone(),
+                                identifier: object_id_from_object_info(&object_info),
+                                sources: sources.clone(),
+                                scope: scope.clone(),
+                            })
+                            .map_err(|_| SymbolicationError::Mailbox)
+                            .map(move |result| (code_module_id, result))
+                    }),
+            )
             .map(move |cfi_requests| (byteview, cfi_requests))
         }));
 
@@ -246,17 +239,10 @@ impl SymbolicationActor {
             )| {
                 threadpool.spawn_handle(future::lazy(move || {
                     let mut frame_info_map = FrameInfoMap::new();
-                    let mut modules = vec![];
 
-                    for (object_info, code_module_id, result) in &cfi_requests {
+                    for (code_module_id, result) in &cfi_requests {
                         // XXX: We should actually build a list of FetchedDebugFile instead of
                         // discarding errors.
-                        modules.push(object_info.clone());
-
-                        let result = match result {
-                            Some(x) => x,
-                            None => continue,
-                        };
 
                         let cache_file = match result {
                             Ok(x) => x,
@@ -290,6 +276,12 @@ impl SymbolicationActor {
                     let os_version = minidump_system_info.os_version();
                     let os_build = minidump_system_info.os_build();
                     let cpu_arch = minidump_system_info.cpu_arch();
+
+                    let modules = process_state
+                        .modules()
+                        .into_iter()
+                        .map(|code_module| object_info_from_minidump_module(&os_name, code_module))
+                        .collect();
 
                     // This type only exists because ProcessState is not Send
                     let minidump_state = MinidumpState {
