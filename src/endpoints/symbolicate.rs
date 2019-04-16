@@ -76,6 +76,9 @@ fn symbolicate_frames(
 
 pub fn register(app: ServiceApp) -> ServiceApp {
     app.resource("/symbolicate", |r| {
-        r.method(Method::POST).with(symbolicate_frames);
+        r.method(Method::POST)
+            .with_config(symbolicate_frames, |(_state, _params, body)| {
+                body.limit(5_000_000);
+            });
     })
 }
