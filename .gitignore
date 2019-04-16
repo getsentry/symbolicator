@@ -11,3 +11,4 @@ __pycache__
 /local.yml
 /cache/objects/
 /cache/symcaches/
+/cache/cficaches/

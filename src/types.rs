@@ -9,13 +9,17 @@ use serde::{Deserialize, Deserializer, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use url::Url;
 
+fn is_default<T: Default + PartialEq>(x: &T) -> bool {
+    x == &Default::default()
+}
+
 /// Symbolication request identifier.
 #[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RequestId(pub String);
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Signal(pub u32);
 
 /// Determines the layout of an external source.
@@ -245,6 +249,8 @@ impl fmt::Display for Scope {
 pub struct RawFrame {
     /// The absolute instruction address of this frame.
     pub instruction_addr: HexValue,
+    #[serde(default)]
+    pub package: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -262,17 +268,21 @@ pub struct ObjectInfo {
     pub ty: ObjectType,
 
     /// Identifier of the code file.
+    #[serde(skip_serializing_if = "is_default")]
     pub code_id: Option<String>,
 
     /// Name of the code file.
     #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub code_file: Option<String>,
 
     /// Identifier of the debug file.
+    #[serde(skip_serializing_if = "is_default")]
     pub debug_id: Option<String>,
 
     /// Name of the debug file.
     #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub debug_file: Option<String>,
 
     /// Absolute address at which the image was mounted into virtual memory.
@@ -280,12 +290,13 @@ pub struct ObjectInfo {
 
     /// Size of the image in virtual memory.
     #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
     pub image_size: Option<u64>,
 }
 
 /// The type of an object file.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct ObjectType(String);
+pub struct ObjectType(pub String);
 
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -326,20 +337,28 @@ pub struct SymbolicatedFrame {
     pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
+    #[serde(skip_serializing_if = "is_default")]
     pub package: Option<String>,
     /// The language of the symbol (function) this frame is located in.
+    #[serde(skip_serializing_if = "is_default")]
     pub lang: Option<Language>,
     /// The mangled name of the function this frame is located in.
+    #[serde(skip_serializing_if = "is_default")]
     pub symbol: Option<String>,
     /// Start address of the function this frame is located in (lower or equal to instruction_addr).
+    #[serde(skip_serializing_if = "is_default")]
     pub sym_addr: Option<HexValue>,
     /// The demangled function name.
+    #[serde(skip_serializing_if = "is_default")]
     pub function: Option<String>,
     /// Source file path relative to the compilation directory.
+    #[serde(skip_serializing_if = "is_default")]
     pub filename: Option<String>,
     /// Absolute source file path.
+    #[serde(skip_serializing_if = "is_default")]
     pub abs_path: Option<String>,
     /// The line number within the source file, starting at 1 for the first line.
+    #[serde(skip_serializing_if = "is_default")]
     pub lineno: Option<u32>,
 }
 
@@ -347,8 +366,25 @@ pub struct SymbolicatedFrame {
 ///
 /// Frames in this request may or may not be symbolicated. The status field contains information on
 /// the individual success for each frame.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct SymbolicatedStacktrace {
+    /// ID of thread that had this stacktrace. Returned when a minidump was processed.
+    #[serde(skip_serializing_if = "is_default")]
+    pub thread_id: Option<u64>,
+
+    /// If a dump was produced as a result of a crash, this will point to the thread that crashed.
+    /// If the dump was produced by user code without crashing, and the dump contains extended
+    /// Breakpad information, this will point to the thread that requested the dump.
+    ///
+    /// Currently only `Some` for minidumps.
+    #[serde(skip_serializing_if = "is_default")]
+    pub is_requesting: Option<bool>,
+
+    /// Registers, only relevant when returning a processed minidump.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
+    pub registers: BTreeMap<String, HexValue>,
+
     /// Frames of this stack trace.
     pub frames: Vec<SymbolicatedFrame>,
 }
@@ -396,14 +432,56 @@ pub enum SymbolicationResponse {
         /// An indication when the next poll would be suitable.
         retry_after: usize,
     },
-    Completed {
-        /// The signal that caused this crash.
-        signal: Option<Signal>,
-        /// The threads containing symbolicated stack frames.
-        stacktraces: Vec<SymbolicatedStacktrace>,
-        /// A list of images, extended with status information.
-        modules: Vec<FetchedDebugFile>,
-    },
+    Completed(CompletedSymbolicationResponse),
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct CompletedSymbolicationResponse {
+    /// The signal that caused this crash.
+    #[serde(skip_serializing_if = "is_default")]
+    pub signal: Option<Signal>,
+
+    /// Information about the operating system.
+    #[serde(skip_serializing_if = "is_default")]
+    pub system_info: Option<SystemInfo>,
+
+    /// True if the process crashed, false if the dump was produced outside of an exception
+    /// handler. Only set for minidumps.
+    #[serde(skip_serializing_if = "is_default")]
+    pub crashed: Option<bool>,
+
+    /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
+    /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
+    /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
+    #[serde(skip_serializing_if = "is_default")]
+    pub crash_reason: Option<String>,
+
+    /// If there was an assertion that was hit, a textual representation of that assertion,
+    /// possibly including the file and line at which it occurred.
+    #[serde(skip_serializing_if = "is_default")]
+    pub assertion: Option<String>,
+
+    /// The threads containing symbolicated stack frames.
+    pub stacktraces: Vec<SymbolicatedStacktrace>,
+
+    /// A list of images, extended with status information.
+    pub modules: Vec<FetchedDebugFile>,
+}
+
+/// Information about the operating system.
+#[derive(Debug, Clone, Serialize, Eq, PartialEq)]
+pub struct SystemInfo {
+    /// Name of operating system
+    pub os_name: String,
+
+    /// Version of operating system
+    pub os_version: String,
+
+    /// Internal build number
+    pub os_build: String,
+
+    /// OS architecture
+    pub cpu_arch: Arch,
 }
 
 /// Errors during symbolication
@@ -414,6 +492,12 @@ pub enum SymbolicationError {
 
     #[fail(display = "symbolication took too long")]
     Timeout,
+
+    #[fail(display = "server panicked (see system log)")]
+    Panic,
+
+    #[fail(display = "failed to process minidump")]
+    Minidump,
 }
 
 /// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot
