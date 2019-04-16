@@ -30,12 +30,7 @@ pub fn prepare_downloads(
             continue;
         }
 
-        let download_path = match get_directory_path(
-            source.files.layout,
-            filetype,
-            source.files.casing,
-            object_id,
-        ) {
+        let download_path = match get_directory_path(source.files.layout, filetype, object_id) {
             Some(x) => DownloadPath(x),
             None => continue,
         };
