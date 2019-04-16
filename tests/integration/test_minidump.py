@@ -450,7 +450,7 @@ def test_basic(symbolicator, hitcounter):
                         {
                             "type": "http",
                             "id": "microsoft",
-                            "layout": "symstore",
+                            "layout": {"type": "symstore"},
                             "filetypes": ["pdb", "pe"],
                             "url": f"{hitcounter.url}/msdl/",
                             "is_public": True,

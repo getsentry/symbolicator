@@ -82,7 +82,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             {
                 "type": "http",
                 "id": "microsoft",
-                "layout": "symstore",
+                "layout": {"type": "symstore"},
                 "filetypes": ["pdb", "pe"],
                 "url": f"{hitcounter.url}/msdl/",
                 "is_public": is_public,
@@ -151,7 +151,7 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
                 "type": "http",
                 "id": "microsoft",
                 "filetypes": ["pdb", "pe"],
-                "layout": "symstore",
+                "layout": {"type": "symstore"},
                 "url": f"{hitcounter.url}/msdl/",
                 "is_public": is_public,
             }
@@ -190,7 +190,7 @@ def test_sources_without_filetypes(symbolicator, hitcounter):
                 "type": "http",
                 "id": "microsoft",
                 "filetypes": [],
-                "layout": "symstore",
+                "layout": {"type": "symstore"},
                 "url": f"{hitcounter.url}/msdl/",
             }
         ],
@@ -227,7 +227,7 @@ def test_timeouts(symbolicator, hitcounter):
                         "type": "http",
                         "id": "microsoft",
                         "filetypes": ["pdb", "pe"],
-                        "layout": "symstore",
+                        "layout": {"type": "symstore"},
                         "url": f"{hitcounter.url}/msdl/",
                     }
                 ],
@@ -264,7 +264,7 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode):
             {
                 "type": "http",
                 "id": "broken",
-                "layout": "symstore",
+                "layout": {"type": "symstore"},
                 "url": f"{hitcounter.url}/respond_statuscode/{statuscode}/",
             }
         ],
@@ -287,7 +287,7 @@ def test_malformed_objects(symbolicator, hitcounter):
             {
                 "type": "http",
                 "id": "broken",
-                "layout": "symstore",
+                "layout": {"type": "symstore"},
                 "url": f"{hitcounter.url}/garbage_data/",
             }
         ],

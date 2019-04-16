@@ -22,16 +22,6 @@ pub struct RequestId(pub String);
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Signal(pub u32);
 
-/// Determines the layout of an external source.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DirectoryLayout {
-    /// Uses conventions of native debuggers.
-    Native,
-    /// Uses Microsoft symbol server conventions.
-    Symstore,
-}
-
 /// Configuration for an external source.
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -146,12 +136,24 @@ pub struct S3SourceConfig {
 /// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug)]
 pub struct ExternalSourceConfigBase {
-    /// Directory layout of this symbol server.
-    pub layout: DirectoryLayout,
-
     /// File types that are supported by this server.
     #[serde(default = "FileType::all_vec")]
     pub filetypes: Vec<FileType>,
+
+    /// How files are laid out in this storage.
+    pub layout: DirectoryLayout,
+
+    /// Whether debug files are shared across scopes.
+    #[serde(default)]
+    pub is_public: bool,
+}
+
+/// Determines how files are named in an external source.
+#[derive(Deserialize, Clone, Copy, Debug)]
+pub struct DirectoryLayout {
+    /// Directory layout of this symbol server.
+    #[serde(rename = "type")]
+    pub ty: DirectoryLayoutType,
 
     /// Overwrite filename casing convention of `self.layout`. This is useful in the case of
     /// DirectoryLayout::Symstore, where servers are supposed to handle requests
@@ -159,10 +161,16 @@ pub struct ExternalSourceConfigBase {
     /// making this aspect not well-specified.
     #[serde(default)]
     pub casing: FilenameCasing,
+}
 
-    /// Whether debug files are shared across scopes.
-    #[serde(default)]
-    pub is_public: bool,
+/// Known conventions for `DirectoryLayout`
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectoryLayoutType {
+    /// Uses conventions of native debuggers.
+    Native,
+    /// Uses Microsoft symbol server conventions.
+    Symstore,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug)]
