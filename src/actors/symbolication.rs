@@ -82,7 +82,7 @@ impl SymbolicationActor {
             .and_then(|result| (*result).clone())
             .map(|x| (*x).clone())
             .map_err(|e| {
-                capture_fail(&ArcFail(e));
+                capture_fail(&*e);
                 SymbolicationError::Mailbox
             });
 
@@ -518,7 +518,7 @@ impl SymCacheLookup {
                                             }
 
                                             _ => {
-                                                capture_fail(&ArcFail(e));
+                                                capture_fail(&*e);
                                                 DebugFileStatus::Other
                                             }
                                         };
