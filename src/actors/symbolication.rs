@@ -185,7 +185,7 @@ impl SymbolicationActor {
         let byteview = tryf!(ByteView::map_file(file).map_err(|_| SymbolicationError::Minidump));
 
         let cfi_to_fetch = self.threadpool.spawn_handle(future::lazy(move || {
-            log::info!("Minidump size: {}", byteview.len());
+            log::debug!("Minidump size: {}", byteview.len());
             metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
             let state = ProcessState::from_minidump(&byteview, None)
                 .map_err(|_| SymbolicationError::Minidump)?;
