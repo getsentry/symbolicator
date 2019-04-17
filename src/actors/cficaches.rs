@@ -25,20 +25,20 @@ pub enum CfiCacheErrorKind {
     #[fail(display = "failed sending message to objects actor")]
     Mailbox,
 
-    #[fail(display = "failed to parse symcache")]
+    #[fail(display = "failed to parse cficache")]
     Parsing,
 
     #[fail(display = "failed to parse object")]
     ObjectParsing,
 
-    #[fail(display = "symcache building took too long")]
+    #[fail(display = "cficache building took too long")]
     Timeout,
 }
 
 symbolic::common::derive_failure!(
     CfiCacheError,
     CfiCacheErrorKind,
-    doc = "Errors happening while generating a symcache"
+    doc = "Errors happening while generating a cficache"
 );
 
 impl From<io::Error> for CfiCacheError {
@@ -48,7 +48,7 @@ impl From<io::Error> for CfiCacheError {
 }
 
 pub struct CfiCacheActor {
-    symcaches: Addr<CacheActor<FetchCfiCacheInternal>>,
+    cficaches: Addr<CacheActor<FetchCfiCacheInternal>>,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
@@ -59,12 +59,12 @@ impl Actor for CfiCacheActor {
 
 impl CfiCacheActor {
     pub fn new(
-        symcaches: Addr<CacheActor<FetchCfiCacheInternal>>,
+        cficaches: Addr<CacheActor<FetchCfiCacheInternal>>,
         objects: Addr<ObjectsActor>,
         threadpool: Arc<ThreadPool>,
     ) -> Self {
         CfiCacheActor {
-            symcaches,
+            cficaches,
             objects,
             threadpool,
         }
@@ -174,7 +174,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     }
 }
 
-/// Information for fetching the symbols for this symcache
+/// Information for fetching the symbols for this cficache
 #[derive(Debug, Clone)]
 pub struct FetchCfiCache {
     pub object_type: ObjectType,
@@ -192,7 +192,7 @@ impl Handler<FetchCfiCache> for CfiCacheActor {
 
     fn handle(&mut self, request: FetchCfiCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
-            self.symcaches
+            self.cficaches
                 .send(ComputeMemoized(FetchCfiCacheInternal {
                     request,
                     objects: self.objects.clone(),
