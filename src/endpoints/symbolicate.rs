@@ -67,7 +67,7 @@ fn symbolicate_frames(
                         request_id,
                         timeout,
                     }
-                    .sentry_hub_new_from_current(),
+                    .sentry_hub_current(),
                 )
                 .map_err(|_| SymbolicationError::Mailbox)
         })
@@ -76,7 +76,7 @@ fn symbolicate_frames(
         .map(Json)
         .map_err(Error::from);
 
-    Box::new(response)
+    Box::new(response.sentry_hub_new_from_current())
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {

@@ -886,17 +886,19 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
 
         let (tx, rx) = oneshot::channel();
 
-        ctx.spawn(self.do_process_minidump(request).sentry_hub_current().then(
-            move |result, slf, _ctx| {
-                tx.send(match result {
-                    Ok(x) => Ok(Arc::new(x)),
-                    Err(e) => Err(Arc::new(e)),
-                })
-                .map_err(|_| ())
-                .into_future()
-                .into_actor(slf)
-            },
-        ));
+        ctx.spawn(
+            self.do_process_minidump(request)
+                .sentry_hub_new_from_current()
+                .then(move |result, slf, _ctx| {
+                    tx.send(match result {
+                        Ok(x) => Ok(Arc::new(x)),
+                        Err(e) => Err(Arc::new(e)),
+                    })
+                    .map_err(|_| ())
+                    .into_future()
+                    .into_actor(slf)
+                }),
+        );
 
         let channel = rx.shared();
         self.requests.insert(request_id.clone(), channel);
