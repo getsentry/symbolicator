@@ -11,9 +11,10 @@ use tokio::codec::{BytesCodec, FramedRead};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
+use crate::actors::objects::paths::prepare_download_paths;
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest,
-    ObjectError, ObjectErrorKind, PrioritizedDownloads,
+    DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
+    PrioritizedDownloads,
 };
 use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope};
 
@@ -63,25 +64,19 @@ pub fn prepare_downloads(
     threadpool: Arc<ThreadPool>,
     cache: Addr<CacheActor<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
-    let mut requests = vec![];
-
-    for &filetype in filetypes {
-        if !source.files.filetypes.contains(&filetype) {
-            continue;
-        }
-
-        let download_path = match get_directory_path(source.files.layout, filetype, object_id) {
-            Some(x) => DownloadPath(x),
-            None => continue,
-        };
-
-        requests.push(FetchFileRequest {
-            scope: scope.clone(),
-            request: FetchFileInner::S3(source.clone(), download_path),
-            object_id: object_id.clone(),
-            threadpool: threadpool.clone(),
-        });
-    }
+    let requests: Vec<_> = prepare_download_paths(
+        filetypes.iter().cloned(),
+        &source.files.filters,
+        source.files.layout,
+        object_id,
+    )
+    .map(|download_path| FetchFileRequest {
+        scope: scope.clone(),
+        request: FetchFileInner::S3(source.clone(), download_path),
+        object_id: object_id.clone(),
+        threadpool: threadpool.clone(),
+    })
+    .collect();
 
     Box::new(future::join_all(requests.into_iter().map(move |request| {
         cache

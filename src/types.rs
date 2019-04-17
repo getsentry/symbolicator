@@ -6,7 +6,7 @@ use crate::hex::HexValue;
 
 use failure::{Backtrace, Fail};
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolic::common::{Arch, CodeId, DebugId, Language};
+use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use url::Url;
 
 fn is_default<T: Default + PartialEq>(x: &T) -> bool {
@@ -136,9 +136,9 @@ pub struct S3SourceConfig {
 /// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug)]
 pub struct ExternalSourceConfigBase {
-    /// File types that are supported by this server.
-    #[serde(default = "FileType::all_vec")]
-    pub filetypes: Vec<FileType>,
+    /// Influence whether this source will be selected
+    #[serde(default)]
+    pub filters: SourceFilters,
 
     /// How files are laid out in this storage.
     pub layout: DirectoryLayout,
@@ -146,6 +146,24 @@ pub struct ExternalSourceConfigBase {
     /// Whether debug files are shared across scopes.
     #[serde(default)]
     pub is_public: bool,
+}
+
+/// Common attributes to make the symbolicator skip/consider sources by certain criteria.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct SourceFilters {
+    /// File types that are supported by this server.
+    pub filetypes: Vec<FileType>,
+
+    /// When nonempty, a list of prefixes to fuzzy-match filepaths against. The source is then only
+    /// used if one of the path prefixes matches.
+    ///
+    /// "Fuzzy" in this context means that (ascii) casing is ignored, `\` is treated as equal
+    /// to `/` and consecutive slashes are treated as single slash.
+    ///
+    /// If a debug image does not contain any path information it will be treated like an image
+    /// whose path doesn't match any prefix.
+    pub path_prefixes: Vec<String>,
 }
 
 /// Determines how files are named in an external source.
@@ -569,11 +587,6 @@ impl FileType {
             _ => Self::all(),
         }
     }
-
-    #[inline]
-    fn all_vec() -> Vec<Self> {
-        Self::all().to_vec()
-    }
 }
 
 impl AsRef<str> for FileType {
@@ -619,5 +632,13 @@ impl ObjectId {
         }
 
         rv
+    }
+
+    pub fn code_file_basename(&self) -> Option<&str> {
+        Some(split_path(self.code_file.as_ref()?).1)
+    }
+
+    pub fn debug_file_basename(&self) -> Option<&str> {
+        Some(split_path(self.debug_file.as_ref()?).1)
     }
 }

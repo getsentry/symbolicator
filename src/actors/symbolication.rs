@@ -13,7 +13,7 @@ use actix::{
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{join_path, split_path, ByteView, InstructionInfo, Language};
+use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
 
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
@@ -384,14 +384,8 @@ fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
     ObjectId {
         debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
-        debug_file: object_info
-            .debug_file
-            .as_ref()
-            .map(|x| split_path(x).1.to_owned()),
-        code_file: object_info
-            .code_file
-            .as_ref()
-            .map(|x| split_path(x).1.to_owned()),
+        debug_file: object_info.debug_file.clone(),
+        code_file: object_info.code_file.clone(),
     }
 }
 
@@ -409,9 +403,9 @@ fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule)
     ObjectInfo {
         ty: ObjectType(get_image_type_from_minidump(minidump_os_name).to_owned()),
         code_id: Some(module.code_identifier()),
-        code_file: Some(split_path(&module.code_file()).1.to_owned()),
+        code_file: Some(module.code_file()),
         debug_id: Some(module.debug_identifier()),
-        debug_file: Some(split_path(&module.debug_file()).1.to_owned()),
+        debug_file: Some(module.debug_file()),
         image_addr: HexValue(module.base_address()),
         image_size: if module.size() != 0 {
             Some(module.size())

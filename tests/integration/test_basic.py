@@ -83,7 +83,10 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
                 "type": "http",
                 "id": "microsoft",
                 "layout": {"type": "symstore"},
-                "filetypes": ["pdb", "pe"],
+                "filters": {
+                    "filetypes": ["pdb", "pe"],
+                    "path_prefixes": ["c:/windows"],
+                },
                 "url": f"{hitcounter.url}/msdl/",
                 "is_public": is_public,
             }
@@ -150,7 +153,7 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
             {
                 "type": "http",
                 "id": "microsoft",
-                "filetypes": ["pdb", "pe"],
+                "filters": {"filetypes": ["pdb", "pe"]},
                 "layout": {"type": "symstore"},
                 "url": f"{hitcounter.url}/msdl/",
                 "is_public": is_public,
@@ -183,13 +186,13 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
     }
 
 
-def test_sources_without_filetypes(symbolicator, hitcounter):
+def test_sources_filetypes(symbolicator, hitcounter):
     input = dict(
         sources=[
             {
                 "type": "http",
                 "id": "microsoft",
-                "filetypes": [],
+                "filters": {"filetypes": ["elf_code"]},
                 "layout": {"type": "symstore"},
                 "url": f"{hitcounter.url}/msdl/",
             }
@@ -226,7 +229,7 @@ def test_timeouts(symbolicator, hitcounter):
                     {
                         "type": "http",
                         "id": "microsoft",
-                        "filetypes": ["pdb", "pe"],
+                        "filters": {"filetypes": ["pdb", "pe"]},
                         "layout": {"type": "symstore"},
                         "url": f"{hitcounter.url}/msdl/",
                     }
