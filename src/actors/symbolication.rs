@@ -21,12 +21,14 @@ use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
-use crate::actors::cficaches::{CfiCacheActor, FetchCfiCache};
-use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
+use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheErrorKind, FetchCfiCache};
+use crate::actors::symcaches::{
+    FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
+};
 use crate::hex::HexValue;
 use crate::logging::LogError;
 use crate::types::{
-    ArcFail, CompletedSymbolicationResponse, DebugFileStatus, FetchedDebugFile, FrameStatus,
+    ArcFail, CompletedSymbolicationResponse, FetchedObjectFile, FrameStatus, ObjectFileStatus,
     ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
     SourceConfig, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
     SymbolicationResponse, SystemInfo,
@@ -148,8 +150,9 @@ impl SymbolicationActor {
                     let modules = object_lookup
                         .inner
                         .into_iter()
-                        .map(|(object_info, cache, status)| FetchedDebugFile {
-                            status,
+                        .map(|(object_info, cache, debug_status)| FetchedObjectFile {
+                            debug_status,
+                            unwind_status: None,
                             arch: cache.as_ref().map(|c| c.arch()).unwrap_or_default(),
                             object_info,
                         })
@@ -239,9 +242,10 @@ impl SymbolicationActor {
             )| {
                 threadpool.spawn_handle(future::lazy(move || {
                     let mut frame_info_map = FrameInfoMap::new();
+                    let mut unwind_statuses = BTreeMap::new();
 
                     for (code_module_id, result) in &cfi_requests {
-                        // XXX: We should actually build a list of FetchedDebugFile instead of
+                        // XXX: We should actually build a list of FetchedObjectFile instead of
                         // discarding errors.
 
                         let cache_file = match result {
@@ -251,19 +255,28 @@ impl SymbolicationActor {
                                     "Error while fetching CFI cache: {}",
                                     LogError(&ArcFail(e.clone()))
                                 );
+                                unwind_statuses
+                                    .insert(code_module_id, cficache_error_to_status(&e));
                                 continue;
                             }
                         };
 
                         let cfi_cache = match cache_file.parse() {
                             Ok(Some(x)) => x,
-                            Ok(None) => continue,
+                            Ok(None) => {
+                                unwind_statuses
+                                    .insert(code_module_id, ObjectFileStatus::MissingFile);
+                                continue;
+                            }
                             Err(e) => {
                                 log::warn!("Error while parsing CFI cache: {}", LogError(&e));
+                                unwind_statuses
+                                    .insert(code_module_id, cficache_error_to_status(&e));
                                 continue;
                             }
                         };
 
+                        unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
                         frame_info_map.insert(code_module_id.clone(), cfi_cache);
                     }
 
@@ -277,10 +290,21 @@ impl SymbolicationActor {
                     let os_build = minidump_system_info.os_build();
                     let cpu_arch = minidump_system_info.cpu_arch();
 
+                    let mut unwind_statuses_by_module_index = vec![];
+
                     let modules = process_state
                         .modules()
                         .into_iter()
-                        .map(|code_module| object_info_from_minidump_module(&os_name, code_module))
+                        .map(|code_module| {
+                            unwind_statuses_by_module_index.push(
+                                code_module
+                                    .id()
+                                    .and_then(|id| Some(*unwind_statuses.get(&id)?))
+                                    .unwrap_or(ObjectFileStatus::Unused),
+                            );
+
+                            object_info_from_minidump_module(&os_name, code_module)
+                        })
                         .collect();
 
                     // This type only exists because ProcessState is not Send
@@ -295,6 +319,7 @@ impl SymbolicationActor {
                         crashed: process_state.crashed(),
                         crash_reason: process_state.crash_reason(),
                         assertion: process_state.assertion(),
+                        unwind_statuses_by_module_index,
                     };
 
                     let stacktraces = process_state
@@ -360,6 +385,7 @@ impl SymbolicationActor {
                             crashed,
                             crash_reason,
                             assertion,
+                            unwind_statuses_by_module_index,
                         } = minidump_state;
 
                         response.system_info = Some(system_info);
@@ -369,6 +395,14 @@ impl SymbolicationActor {
 
                         for (i, mut stacktrace) in response.stacktraces.iter_mut().enumerate() {
                             stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
+                        }
+
+                        for (mut module, unwind_status) in response
+                            .modules
+                            .iter_mut()
+                            .zip(unwind_statuses_by_module_index)
+                        {
+                            module.unwind_status = Some(unwind_status);
                         }
 
                         Ok(response).into_future().into_actor(slf)
@@ -422,7 +456,7 @@ fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule)
 }
 
 struct SymCacheLookup {
-    inner: Vec<(ObjectInfo, Option<Arc<SymCacheFile>>, DebugFileStatus)>,
+    inner: Vec<(ObjectInfo, Option<Arc<SymCacheFile>>, ObjectFileStatus)>,
 }
 
 impl FromIterator<ObjectInfo> for SymCacheLookup {
@@ -433,7 +467,7 @@ impl FromIterator<ObjectInfo> for SymCacheLookup {
         let mut rv = SymCacheLookup {
             inner: iter
                 .into_iter()
-                .map(|x| (x, None, DebugFileStatus::Unused))
+                .map(|x| (x, None, ObjectFileStatus::Unused))
                 .collect(),
         };
         rv.sort();
@@ -482,7 +516,7 @@ impl SymCacheLookup {
                 .map(move |(i, (object_info, _, _))| {
                     if !referenced_objects.contains(&i) {
                         return Either::B(
-                            Ok((object_info, None, DebugFileStatus::Unused)).into_future(),
+                            Ok((object_info, None, ObjectFileStatus::Unused)).into_future(),
                         );
                     }
 
@@ -498,33 +532,10 @@ impl SymCacheLookup {
                             .and_then(|result| {
                                 result
                                     .and_then(|symcache| match symcache.parse()? {
-                                        Some(_) => Ok((Some(symcache), DebugFileStatus::Found)),
-                                        None => {
-                                            Ok((Some(symcache), DebugFileStatus::MissingDebugFile))
-                                        }
+                                        Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
+                                        None => Ok((Some(symcache), ObjectFileStatus::MissingFile)),
                                     })
-                                    .or_else(|e| {
-                                        let status = match e.kind() {
-                                            SymCacheErrorKind::Fetching => {
-                                                DebugFileStatus::FetchingFailed
-                                            }
-
-                                            // Timeouts of object downloads are caught by
-                                            // FetchingFailed
-                                            SymCacheErrorKind::Timeout => DebugFileStatus::TooLarge,
-
-                                            SymCacheErrorKind::ObjectParsing => {
-                                                DebugFileStatus::MalformedDebugFile
-                                            }
-
-                                            _ => {
-                                                capture_fail(&*e);
-                                                DebugFileStatus::Other
-                                            }
-                                        };
-
-                                        Ok((None, status))
-                                    })
+                                    .or_else(|e| Ok((None, symcache_error_to_status(&e))))
                             })
                             .map(move |(symcache, status)| (object_info, symcache, status)),
                     )
@@ -538,7 +549,7 @@ impl SymCacheLookup {
     fn lookup_symcache(
         &self,
         addr: u64,
-    ) -> Option<(usize, &ObjectInfo, Option<&SymCacheFile>, DebugFileStatus)> {
+    ) -> Option<(usize, &ObjectInfo, Option<&SymCacheFile>, ObjectFileStatus)> {
         for (i, (info, cache, status)) in self.inner.iter().enumerate() {
             let addr_smaller_than_end = if let Some(size) = info.image_size {
                 if let Some(end) = info.image_addr.0.checked_add(size) {
@@ -578,17 +589,17 @@ fn symbolize_thread(
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
         let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
             Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
-            Some((_, _, None, DebugFileStatus::MalformedDebugFile)) => {
-                return Err(FrameStatus::MalformedDebugFile);
+            Some((_, _, None, ObjectFileStatus::MalformedFile)) => {
+                return Err(FrameStatus::MalformedFile);
             }
-            Some((_, _, None, _)) => return Err(FrameStatus::MissingDebugFile),
+            Some((_, _, None, _)) => return Err(FrameStatus::MissingFile),
             None => return Err(FrameStatus::UnknownImage),
         };
 
         let symcache = match symcache.parse() {
             Ok(Some(x)) => x,
-            Ok(None) => return Err(FrameStatus::MissingDebugFile),
-            Err(_) => return Err(FrameStatus::MalformedDebugFile),
+            Ok(None) => return Err(FrameStatus::MissingFile),
+            Err(_) => return Err(FrameStatus::MalformedFile),
         };
 
         let crashing_frame = i == 0;
@@ -625,7 +636,7 @@ fn symbolize_thread(
 
         let line_infos = match symcache.lookup(relative_addr) {
             Ok(x) => x,
-            Err(_) => return Err(FrameStatus::MalformedDebugFile),
+            Err(_) => return Err(FrameStatus::MalformedFile),
         };
 
         let mut rv = vec![];
@@ -633,7 +644,7 @@ fn symbolize_thread(
         for line_info in line_infos {
             let line_info = match line_info {
                 Ok(x) => x,
-                Err(_) => return Err(FrameStatus::MalformedDebugFile),
+                Err(_) => return Err(FrameStatus::MalformedFile),
             };
 
             // The logic for filename and abs_path intentionally diverges from how symbolic is used
@@ -840,6 +851,7 @@ struct MinidumpState {
     crash_reason: String,
     assertion: String,
     requesting_thread_index: Option<usize>,
+    unwind_statuses_by_module_index: Vec<ObjectFileStatus>,
 }
 
 impl Message for ProcessMinidump {
@@ -893,4 +905,31 @@ fn symbolic_registers_to_protocol_registers(
             )
         })
         .collect()
+}
+
+fn cficache_error_to_status(e: &CfiCacheError) -> ObjectFileStatus {
+    match e.kind() {
+        CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+        // nb: Timeouts during download are caught by Fetching
+        CfiCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
+        CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::MalformedFile,
+
+        _ => {
+            capture_fail(e);
+            ObjectFileStatus::Other
+        }
+    }
+}
+
+fn symcache_error_to_status(e: &SymCacheError) -> ObjectFileStatus {
+    match e.kind() {
+        SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+        // nb: Timeouts during download are caught by Fetching
+        SymCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
+        SymCacheErrorKind::ObjectParsing => ObjectFileStatus::MalformedFile,
+        _ => {
+            capture_fail(e);
+            ObjectFileStatus::Other
+        }
+    }
 }

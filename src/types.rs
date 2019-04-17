@@ -277,6 +277,7 @@ pub struct ObjectInfo {
 
     /// Identifier of the code file.
     #[serde(skip_serializing_if = "is_default")]
+    #[serde(default)]
     pub code_id: Option<String>,
 
     /// Name of the code file.
@@ -317,9 +318,9 @@ pub enum FrameStatus {
     /// No debug image is specified for the address of the frame.
     UnknownImage,
     /// The debug file could not be retrieved from any of the sources.
-    MissingDebugFile,
+    MissingFile,
     /// The retrieved debug file could not be processed.
-    MalformedDebugFile,
+    MalformedFile,
 }
 
 impl Default for FrameStatus {
@@ -398,18 +399,18 @@ pub struct SymbolicatedStacktrace {
 }
 
 /// Information on a debug information file.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum DebugFileStatus {
-    /// The debug information file was found and successfully processed.
+pub enum ObjectFileStatus {
+    /// The file was found and successfully processed.
     Found,
-    /// The debug image was not referenced in the stack trace and not further handled.
+    /// The image was not referenced in the stack trace and not further handled.
     Unused,
     /// The file could not be found in any of the specified sources.
-    MissingDebugFile,
-    /// The debug file failed to process.
-    MalformedDebugFile,
-    /// The debug file could not be downloaded.
+    MissingFile,
+    /// The file failed to process.
+    MalformedFile,
+    /// The file could not be downloaded.
     FetchingFailed,
     /// The file exceeds the internal download limit.
     TooLarge,
@@ -419,9 +420,12 @@ pub enum DebugFileStatus {
 
 /// Enhanced information on an in
 #[derive(Debug, Clone, Serialize)]
-pub struct FetchedDebugFile {
-    /// Status for handling this debug file.
-    pub status: DebugFileStatus,
+pub struct FetchedObjectFile {
+    /// Status for fetching the file with debug info.
+    pub debug_status: ObjectFileStatus,
+    /// Status for fetching the file with unwind info (for minidump stackwalking).
+    #[serde(skip_serializing_if = "is_default", default)]
+    pub unwind_status: Option<ObjectFileStatus>,
     /// Actual architecture of this debug file.
     pub arch: Arch,
     /// More information on the object file.
@@ -473,7 +477,7 @@ pub struct CompletedSymbolicationResponse {
     pub stacktraces: Vec<SymbolicatedStacktrace>,
 
     /// A list of images, extended with status information.
-    pub modules: Vec<FetchedDebugFile>,
+    pub modules: Vec<FetchedObjectFile>,
 }
 
 /// Information about the operating system.
