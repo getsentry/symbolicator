@@ -4,14 +4,15 @@ use std::path::{Path, PathBuf};
 
 use failure::Fail;
 use log::LevelFilter;
+use sentry::internals::Dsn;
 use serde::Deserialize;
 
 #[derive(Debug, Fail, derive_more::From)]
 pub enum ConfigError {
-    #[fail(display = "Failed to open file: {}", _0)]
+    #[fail(display = "Failed to open file")]
     Io(#[fail(cause)] io::Error),
 
-    #[fail(display = "Failed to parse YAML: {}", _0)]
+    #[fail(display = "Failed to parse YAML")]
     Parsing(#[fail(cause)] serde_yaml::Error),
 }
 
@@ -86,7 +87,7 @@ pub struct Config {
     pub metrics: Metrics,
 
     /// DSN to report internal errors to
-    pub sentry_dsn: Option<String>,
+    pub sentry_dsn: Option<Dsn>,
 }
 
 /// Checks if we are running in docker.

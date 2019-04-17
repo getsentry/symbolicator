@@ -24,11 +24,11 @@ use crate::middlewares::{ErrorHandlers, Metrics};
 #[derive(Fail, Debug, derive_more::From)]
 pub enum CliError {
     /// Indicates a config parsing error.
-    #[fail(display = "Failed loading config: {}", _0)]
+    #[fail(display = "Failed loading config")]
     ConfigParsing(#[fail(cause)] ConfigError),
 
     /// Indicates an IO error accessing the cache.
-    #[fail(display = "Failed loading cache dirs: {}", _0)]
+    #[fail(display = "Failed loading cache dirs")]
     CacheIo(#[fail(cause)] io::Error),
 }
 
@@ -105,7 +105,7 @@ fn execute() -> Result<(), CliError> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config())?;
 
-    let _sentry = sentry::init(config.sentry_dsn.as_ref().map(|x| &**x));
+    let _sentry = sentry::init(config.sentry_dsn.clone());
     logging::init_logging(&config);
     sentry::integrations::panic::register_panic_handler();
 
