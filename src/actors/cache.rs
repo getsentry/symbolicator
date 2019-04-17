@@ -203,6 +203,8 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
     }
 }
 
+handle_sentry_actix_message!(<T: CacheItemRequest>, CacheActor<T>, ComputeMemoized<T>);
+
 fn get_scope_path(
     cache_dir: Option<&Path>,
     scope: &Scope,

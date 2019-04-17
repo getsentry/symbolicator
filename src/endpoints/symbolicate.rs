@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
 use crate::app::{ServiceApp, ServiceState};
+use crate::sentry::SentryFutureExt;
 use crate::types::{
     ObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
     SymbolicationResponse,
@@ -47,7 +48,8 @@ fn symbolicate_frames(
         stacktraces: body.stacktraces,
         modules: body.modules,
         scope: params.scope,
-    };
+    }
+    .sentry_hub_new_from_current();
 
     let request_id = state
         .symbolication
@@ -60,10 +62,13 @@ fn symbolicate_frames(
         .and_then(move |request_id| {
             state
                 .symbolication
-                .send(GetSymbolicationStatus {
-                    request_id,
-                    timeout,
-                })
+                .send(
+                    GetSymbolicationStatus {
+                        request_id,
+                        timeout,
+                    }
+                    .sentry_hub_new_from_current(),
+                )
                 .map_err(|_| SymbolicationError::Mailbox)
         })
         .flatten()

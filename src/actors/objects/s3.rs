@@ -15,6 +15,7 @@ use crate::actors::objects::{
     paths::get_directory_path, DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest,
     ObjectError, ObjectErrorKind, PrioritizedDownloads,
 };
+use crate::sentry::SentryFutureExt;
 use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope};
 
 lazy_static::lazy_static! {
@@ -85,7 +86,7 @@ pub fn prepare_downloads(
 
     Box::new(future::join_all(requests.into_iter().map(move |request| {
         cache
-            .send(ComputeMemoized(request))
+            .send(ComputeMemoized(request).sentry_hub_new_from_current())
             .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
             .and_then(move |response| {
                 Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into()))

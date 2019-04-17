@@ -7,6 +7,9 @@ mod macros;
 #[macro_use]
 mod metrics;
 
+#[macro_use]
+mod sentry;
+
 mod actors;
 mod config;
 mod endpoints;

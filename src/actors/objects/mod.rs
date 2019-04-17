@@ -411,6 +411,8 @@ impl Handler<FetchObject> for ObjectsActor {
     }
 }
 
+handle_sentry_actix_message!(ObjectsActor, FetchObject);
+
 type PrioritizedDownloads = Vec<Result<Arc<ObjectFile>, ObjectError>>;
 type DownloadStream = Box<dyn Stream<Item = Bytes, Error = ObjectError>>;
 

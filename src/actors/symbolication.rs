@@ -25,6 +25,7 @@ use crate::actors::cficaches::{CfiCacheActor, FetchCfiCache};
 use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheErrorKind, SymCacheFile};
 use crate::hex::HexValue;
 use crate::logging::LogError;
+use crate::sentry::SentryFutureExt;
 use crate::types::{
     ArcFail, CompletedSymbolicationResponse, DebugFileStatus, FetchedDebugFile, FrameStatus,
     ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
@@ -139,29 +140,32 @@ impl SymbolicationActor {
         let result = symcache_lookup
             .fetch_symcaches(self.symcaches.clone(), request)
             .and_then(move |object_lookup| {
-                threadpool.spawn_handle(future::lazy(move || {
-                    let stacktraces = stacktraces
-                        .into_iter()
-                        .map(|thread| symbolize_thread(thread, &object_lookup, signal))
-                        .collect();
+                threadpool.spawn_handle(
+                    future::lazy(move || {
+                        let stacktraces = stacktraces
+                            .into_iter()
+                            .map(|thread| symbolize_thread(thread, &object_lookup, signal))
+                            .collect();
 
-                    let modules = object_lookup
-                        .inner
-                        .into_iter()
-                        .map(|(object_info, cache, status)| FetchedDebugFile {
-                            status,
-                            arch: cache.as_ref().map(|c| c.arch()).unwrap_or_default(),
-                            object_info,
+                        let modules = object_lookup
+                            .inner
+                            .into_iter()
+                            .map(|(object_info, cache, status)| FetchedDebugFile {
+                                status,
+                                arch: cache.as_ref().map(|c| c.arch()).unwrap_or_default(),
+                                object_info,
+                            })
+                            .collect();
+
+                        Ok(CompletedSymbolicationResponse {
+                            signal,
+                            modules,
+                            stacktraces,
+                            ..Default::default()
                         })
-                        .collect();
-
-                    Ok(CompletedSymbolicationResponse {
-                        signal,
-                        modules,
-                        stacktraces,
-                        ..Default::default()
                     })
-                }))
+                    .sentry_hub_current(),
+                )
             });
 
         future_metrics!(
@@ -184,27 +188,30 @@ impl SymbolicationActor {
 
         let byteview = tryf!(ByteView::map_file(file).map_err(|_| SymbolicationError::Minidump));
 
-        let cfi_to_fetch = self.threadpool.spawn_handle(future::lazy(move || {
-            log::info!("Minidump size: {}", byteview.len());
-            metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
-            let state = ProcessState::from_minidump(&byteview, None)
-                .map_err(|_| SymbolicationError::Minidump)?;
+        let cfi_to_fetch = self.threadpool.spawn_handle(
+            future::lazy(move || {
+                log::info!("Minidump size: {}", byteview.len());
+                metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
+                let state = ProcessState::from_minidump(&byteview, None)
+                    .map_err(|_| SymbolicationError::Minidump)?;
 
-            let os_name = state.system_info().os_name();
+                let os_name = state.system_info().os_name();
 
-            let cfi_to_fetch: Vec<_> = state
-                .referenced_modules()
-                .into_iter()
-                .filter_map(|code_module| {
-                    Some((
-                        code_module.id()?,
-                        object_info_from_minidump_module(&os_name, code_module),
-                    ))
-                })
-                .collect();
+                let cfi_to_fetch: Vec<_> = state
+                    .referenced_modules()
+                    .into_iter()
+                    .filter_map(|code_module| {
+                        Some((
+                            code_module.id()?,
+                            object_info_from_minidump_module(&os_name, code_module),
+                        ))
+                    })
+                    .collect();
 
-            Ok((byteview, cfi_to_fetch))
-        }));
+                Ok((byteview, cfi_to_fetch))
+            })
+            .sentry_hub_current(),
+        );
 
         let cficaches = &self.cficaches;
 
@@ -217,14 +224,19 @@ impl SymbolicationActor {
                     .into_iter()
                     .map(move |(code_module_id, object_info)| {
                         cficaches
-                            .send(FetchCfiCache {
-                                object_type: object_info.ty.clone(),
-                                identifier: object_id_from_object_info(&object_info),
-                                sources: sources.clone(),
-                                scope: scope.clone(),
-                            })
+                            .send(
+                                FetchCfiCache {
+                                    object_type: object_info.ty.clone(),
+                                    identifier: object_id_from_object_info(&object_info),
+                                    sources: sources.clone(),
+                                    scope: scope.clone(),
+                                }
+                                .sentry_hub_new_from_current(),
+                            )
                             .map_err(|_| SymbolicationError::Mailbox)
                             .map(move |result| (code_module_id, result))
+                            // Clone hub because of join_all
+                            .sentry_hub_new_from_current()
                     }),
             )
             .map(move |cfi_requests| (byteview, cfi_requests))
@@ -237,102 +249,112 @@ impl SymbolicationActor {
                 byteview,
                 cfi_requests,
             )| {
-                threadpool.spawn_handle(future::lazy(move || {
-                    let mut frame_info_map = FrameInfoMap::new();
+                threadpool.spawn_handle(
+                    future::lazy(move || {
+                        let mut frame_info_map = FrameInfoMap::new();
 
-                    for (code_module_id, result) in &cfi_requests {
-                        // XXX: We should actually build a list of FetchedDebugFile instead of
-                        // discarding errors.
+                        for (code_module_id, result) in &cfi_requests {
+                            // XXX: We should actually build a list of FetchedDebugFile instead of
+                            // discarding errors.
 
-                        let cache_file = match result {
-                            Ok(x) => x,
-                            Err(e) => {
-                                log::info!(
-                                    "Error while fetching CFI cache: {}",
-                                    LogError(&ArcFail(e.clone()))
-                                );
-                                continue;
-                            }
+                            let cache_file = match result {
+                                Ok(x) => x,
+                                Err(e) => {
+                                    log::info!(
+                                        "Error while fetching CFI cache: {}",
+                                        LogError(&ArcFail(e.clone()))
+                                    );
+                                    continue;
+                                }
+                            };
+
+                            let cfi_cache = match cache_file.parse() {
+                                Ok(Some(x)) => x,
+                                Ok(None) => continue,
+                                Err(e) => {
+                                    log::warn!("Error while parsing CFI cache: {}", LogError(&e));
+                                    continue;
+                                }
+                            };
+
+                            frame_info_map.insert(code_module_id.clone(), cfi_cache);
+                        }
+
+                        let process_state =
+                            ProcessState::from_minidump(&byteview, Some(&frame_info_map))
+                                .map_err(|_| SymbolicationError::Minidump)?;
+
+                        let minidump_system_info = process_state.system_info();
+                        let os_name = minidump_system_info.os_name();
+                        let os_version = minidump_system_info.os_version();
+                        let os_build = minidump_system_info.os_build();
+                        let cpu_arch = minidump_system_info.cpu_arch();
+
+                        let modules = process_state
+                            .modules()
+                            .into_iter()
+                            .map(|code_module| {
+                                object_info_from_minidump_module(&os_name, code_module)
+                            })
+                            .collect();
+
+                        // This type only exists because ProcessState is not Send
+                        let minidump_state = MinidumpState {
+                            system_info: SystemInfo {
+                                os_name,
+                                os_version,
+                                os_build,
+                                cpu_arch,
+                            },
+                            requesting_thread_index: process_state
+                                .requesting_thread()
+                                .try_into()
+                                .ok(),
+                            crashed: process_state.crashed(),
+                            crash_reason: process_state.crash_reason(),
+                            assertion: process_state.assertion(),
                         };
 
-                        let cfi_cache = match cache_file.parse() {
-                            Ok(Some(x)) => x,
-                            Ok(None) => continue,
-                            Err(e) => {
-                                log::warn!("Error while parsing CFI cache: {}", LogError(&e));
-                                continue;
-                            }
-                        };
+                        let stacktraces = process_state
+                            .threads()
+                            .iter()
+                            .map(|thread| {
+                                let frames = thread.frames();
+                                RawStacktrace {
+                                    registers: frames
+                                        .get(0)
+                                        .map(|frame| {
+                                            symbolic_registers_to_protocol_registers(
+                                                &frame.registers(cpu_arch),
+                                            )
+                                        })
+                                        .unwrap_or_default(),
+                                    frames: frames
+                                        .iter()
+                                        .map(|frame| RawFrame {
+                                            instruction_addr: HexValue(
+                                                frame.return_address(cpu_arch),
+                                            ),
+                                            package: frame.module().map(CodeModule::code_file),
+                                        })
+                                        .collect(),
+                                }
+                            })
+                            .collect();
 
-                        frame_info_map.insert(code_module_id.clone(), cfi_cache);
-                    }
-
-                    let process_state =
-                        ProcessState::from_minidump(&byteview, Some(&frame_info_map))
-                            .map_err(|_| SymbolicationError::Minidump)?;
-
-                    let minidump_system_info = process_state.system_info();
-                    let os_name = minidump_system_info.os_name();
-                    let os_version = minidump_system_info.os_version();
-                    let os_build = minidump_system_info.os_build();
-                    let cpu_arch = minidump_system_info.cpu_arch();
-
-                    let modules = process_state
-                        .modules()
-                        .into_iter()
-                        .map(|code_module| object_info_from_minidump_module(&os_name, code_module))
-                        .collect();
-
-                    // This type only exists because ProcessState is not Send
-                    let minidump_state = MinidumpState {
-                        system_info: SystemInfo {
-                            os_name,
-                            os_version,
-                            os_build,
-                            cpu_arch,
-                        },
-                        requesting_thread_index: process_state.requesting_thread().try_into().ok(),
-                        crashed: process_state.crashed(),
-                        crash_reason: process_state.crash_reason(),
-                        assertion: process_state.assertion(),
-                    };
-
-                    let stacktraces = process_state
-                        .threads()
-                        .iter()
-                        .map(|thread| {
-                            let frames = thread.frames();
-                            RawStacktrace {
-                                registers: frames
-                                    .get(0)
-                                    .map(|frame| {
-                                        symbolic_registers_to_protocol_registers(
-                                            &frame.registers(cpu_arch),
-                                        )
-                                    })
-                                    .unwrap_or_default(),
-                                frames: frames
-                                    .iter()
-                                    .map(|frame| RawFrame {
-                                        instruction_addr: HexValue(frame.return_address(cpu_arch)),
-                                        package: frame.module().map(CodeModule::code_file),
-                                    })
-                                    .collect(),
-                            }
-                        })
-                        .collect();
-
-                    Ok((
-                        SymbolicateStacktraces {
-                            modules,
-                            scope,
-                            sources,
-                            signal: None,
-                            stacktraces,
-                        },
-                        minidump_state,
-                    ))
-                }))
+                        Ok((
+                            SymbolicateStacktraces {
+                                modules,
+                                scope,
+                                sources,
+                                signal: None,
+                                stacktraces,
+                            },
+                            minidump_state,
+                        ))
+                    })
+                    .sentry_hub_current(),
+                )
             }));
 
         Box::new(future_metrics!(
@@ -488,12 +510,15 @@ impl SymCacheLookup {
 
                     Either::A(
                         symcache_actor
-                            .send(FetchSymCache {
-                                object_type: object_info.ty.clone(),
-                                identifier: object_id_from_object_info(&object_info),
-                                sources: sources.clone(),
-                                scope: scope.clone(),
-                            })
+                            .send(
+                                FetchSymCache {
+                                    object_type: object_info.ty.clone(),
+                                    identifier: object_id_from_object_info(&object_info),
+                                    sources: sources.clone(),
+                                    scope: scope.clone(),
+                                }
+                                .sentry_hub_new_from_current(),
+                            )
                             .map_err(|_| SymbolicationError::Mailbox)
                             .and_then(|result| {
                                 result
@@ -773,6 +798,8 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
                     })
                     .map_err(|_| ())
                 })
+                // Clone hub because of `ctx.spawn`
+                .sentry_hub_new_from_current()
                 .into_actor(self),
         );
 
@@ -859,18 +886,17 @@ impl Handler<ProcessMinidump> for SymbolicationActor {
 
         let (tx, rx) = oneshot::channel();
 
-        ctx.spawn(
-            self.do_process_minidump(request)
-                .then(move |result, slf, _ctx| {
-                    tx.send(match result {
-                        Ok(x) => Ok(Arc::new(x)),
-                        Err(e) => Err(Arc::new(e)),
-                    })
-                    .map_err(|_| ())
-                    .into_future()
-                    .into_actor(slf)
-                }),
-        );
+        ctx.spawn(self.do_process_minidump(request).sentry_hub_current().then(
+            move |result, slf, _ctx| {
+                tx.send(match result {
+                    Ok(x) => Ok(Arc::new(x)),
+                    Err(e) => Err(Arc::new(e)),
+                })
+                .map_err(|_| ())
+                .into_future()
+                .into_actor(slf)
+            },
+        ));
 
         let channel = rx.shared();
         self.requests.insert(request_id.clone(), channel);
@@ -894,3 +920,7 @@ fn symbolic_registers_to_protocol_registers(
         })
         .collect()
 }
+
+handle_sentry_actix_message!(SymbolicationActor, GetSymbolicationStatus);
+handle_sentry_actix_message!(SymbolicationActor, SymbolicateStacktraces);
+handle_sentry_actix_message!(SymbolicationActor, ProcessMinidump);
