@@ -218,7 +218,9 @@ fn get_scope_path(
 }
 
 fn safe_path_segment(s: &str) -> String {
-    s.replace(".", "_").replace("/", "_")
+    s.replace(".", "_") // protect against ..
+        .replace("/", "_") // protect against absolute paths
+        .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
 }
 
 fn check_cache_hit(name: &'static str, path: &Path) -> io::Result<ByteView<'static>> {
