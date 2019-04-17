@@ -8,6 +8,7 @@ use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
+use ::sentry::integrations::failure::capture_fail;
 use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
@@ -225,6 +226,11 @@ impl CacheItemRequest for FetchFileRequest {
                 log::debug!("No debug file found for {}", cache_key);
                 Box::new(Ok(final_scope).into_future()) as Box<dyn Future<Item = _, Error = _>>
             }
+        });
+
+        let result = result.map_err(|e| {
+            capture_fail(&e);
+            e
         });
 
         let type_name = self.request.source().type_name();
