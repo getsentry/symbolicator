@@ -9,7 +9,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadPath, DownloadStream, FetchFile, FetchFileRequest,
+    paths::get_directory_path, DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest,
     ObjectError, ObjectErrorKind, PrioritizedDownloads, USER_AGENT,
 };
 use crate::http;
@@ -21,7 +21,7 @@ pub fn prepare_downloads(
     filetypes: &'static [FileType],
     object_id: &ObjectId,
     threadpool: Arc<ThreadPool>,
-    cache: Addr<CacheActor<FetchFile>>,
+    cache: Addr<CacheActor<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     let mut requests = vec![];
 
@@ -35,9 +35,10 @@ pub fn prepare_downloads(
             None => continue,
         };
 
-        requests.push(FetchFile {
+        requests.push(FetchFileRequest {
             scope: scope.clone(),
-            request: FetchFileRequest::Http(source.clone(), download_path, object_id.clone()),
+            request: FetchFileInner::Http(source.clone(), download_path),
+            object_id: object_id.clone(),
             threadpool: threadpool.clone(),
         });
     }

@@ -71,18 +71,27 @@ impl From<io::Error> for ObjectError {
     }
 }
 
+/// The cache item request type yielded by `http::prepare_downloads` and `s3::prepare_downloads`.
+/// This requests the download of a single file at a specific path.
 #[derive(Debug, Clone)]
-pub struct FetchFile {
+pub struct FetchFileRequest {
+    /// The scope that the file should be stored under.
     scope: Scope,
-    request: FetchFileRequest,
+    /// Source-type specific attributes.
+    request: FetchFileInner,
+    object_id: ObjectId,
+
+    // XXX: This kind of state is not request data. We should find a different way to get this into
+    // `<FetchFileRequest as CacheItemRequest>::compute`, e.g. make the CacheActor hold arbitrary
+    // state for computing.
     threadpool: Arc<ThreadPool>,
 }
 
 #[derive(Debug, Clone)]
-enum FetchFileRequest {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId, ObjectId),
-    S3(Arc<S3SourceConfig>, DownloadPath, ObjectId),
-    Http(Arc<HttpSourceConfig>, DownloadPath, ObjectId),
+enum FetchFileInner {
+    Sentry(Arc<SentrySourceConfig>, SentryFileId),
+    S3(Arc<S3SourceConfig>, DownloadPath),
+    Http(Arc<HttpSourceConfig>, DownloadPath),
 }
 
 #[derive(Debug, Clone)]
@@ -91,38 +100,26 @@ pub struct DownloadPath(String);
 #[derive(Debug, Clone)]
 pub struct SentryFileId(String);
 
-impl FetchFileRequest {
+impl FetchFileInner {
     fn source(&self) -> SourceConfig {
         match *self {
-            FetchFileRequest::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            FetchFileRequest::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            FetchFileRequest::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-        }
-    }
-
-    fn object_id(&self) -> &ObjectId {
-        match *self {
-            FetchFileRequest::Sentry(_, _, ref id) => id,
-            FetchFileRequest::S3(_, _, ref id) => id,
-            FetchFileRequest::Http(_, _, ref id) => id,
+            FetchFileInner::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
+            FetchFileInner::S3(ref x, ..) => SourceConfig::S3(x.clone()),
+            FetchFileInner::Http(ref x, ..) => SourceConfig::Http(x.clone()),
         }
     }
 }
 
-impl CacheItemRequest for FetchFile {
+impl CacheItemRequest for FetchFileRequest {
     type Item = ObjectFile;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
             cache_key: match self.request {
-                FetchFileRequest::Http(ref source, ref path, _) => {
-                    format!("{}.{}", source.id, path.0)
-                }
-                FetchFileRequest::S3(ref source, ref path, _) => {
-                    format!("{}.{}", source.id, path.0)
-                }
-                FetchFileRequest::Sentry(ref source, ref file_id, _) => {
+                FetchFileInner::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
+                FetchFileInner::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
+                FetchFileInner::Sentry(ref source, ref file_id) => {
                     format!("{}.{}.sentryinternal", source.id, file_id.0)
                 }
             },
@@ -252,7 +249,9 @@ impl CacheItemRequest for FetchFile {
 /// Handle to local cache file.
 #[derive(Debug, Clone)]
 pub struct ObjectFile {
-    request: Option<FetchFile>,
+    /// The original request. This can be `None` if we
+    request: Option<FetchFileRequest>,
+
     scope: Scope,
     object: Option<ByteView<'static>>,
 }
@@ -266,7 +265,7 @@ impl ObjectFile {
         let parsed = Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
 
         if let Some(ref request) = self.request {
-            let object_id = request.request.object_id();
+            let object_id = &request.object_id;
 
             if let Some(ref debug_id) = object_id.debug_id {
                 let parsed_id = parsed.debug_id();
@@ -315,12 +314,12 @@ impl ObjectFile {
 
 #[derive(Clone)]
 pub struct ObjectsActor {
-    cache: Addr<CacheActor<FetchFile>>,
+    cache: Addr<CacheActor<FetchFileRequest>>,
     threadpool: Arc<ThreadPool>,
 }
 
 impl ObjectsActor {
-    pub fn new(cache: Addr<CacheActor<FetchFile>>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(cache: Addr<CacheActor<FetchFileRequest>>, threadpool: Arc<ThreadPool>) -> Self {
         ObjectsActor { cache, threadpool }
     }
 }
@@ -421,7 +420,7 @@ fn prepare_downloads(
     filetypes: &'static [FileType],
     object_id: &ObjectId,
     threadpool: Arc<ThreadPool>,
-    cache: Addr<CacheActor<FetchFile>>,
+    cache: Addr<CacheActor<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     match *source {
         SourceConfig::Sentry(ref source) => {
@@ -437,17 +436,15 @@ fn prepare_downloads(
 }
 
 fn download_from_source(
-    request: &FetchFileRequest,
+    request: &FetchFileInner,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *request {
-        FetchFileRequest::Sentry(ref source, ref file_id, _) => {
+        FetchFileInner::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source, file_id)
         }
-        FetchFileRequest::Http(ref source, ref file_id, _) => {
+        FetchFileInner::Http(ref source, ref file_id) => {
             http::download_from_source(source, file_id)
         }
-        FetchFileRequest::S3(ref source, ref file_id, _) => {
-            s3::download_from_source(source, file_id)
-        }
+        FetchFileInner::S3(ref source, ref file_id) => s3::download_from_source(source, file_id),
     }
 }

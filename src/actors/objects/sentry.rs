@@ -10,7 +10,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
 use crate::actors::objects::{
-    DownloadStream, FetchFile, FetchFileRequest, ObjectError, ObjectErrorKind,
+    DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
     PrioritizedDownloads, SentryFileId, USER_AGENT,
 };
 use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig};
@@ -48,7 +48,7 @@ pub fn prepare_downloads(
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
     threadpool: Arc<ThreadPool>,
-    cache: Addr<CacheActor<FetchFile>>,
+    cache: Addr<CacheActor<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     let index_url = {
         let mut url = source.url.clone();
@@ -93,14 +93,14 @@ pub fn prepare_downloads(
         index_request
             .and_then(clone!(source, object_id, |entries| future::join_all(
                 entries.into_iter().map(move |api_response| cache
-                    .send(ComputeMemoized(FetchFile {
+                    .send(ComputeMemoized(FetchFileRequest {
                         scope: scope.clone(),
-                        request: FetchFileRequest::Sentry(
+                        request: FetchFileInner::Sentry(
                             source.clone(),
                             SentryFileId(api_response.id),
-                            object_id.clone(),
                         ),
                         threadpool: threadpool.clone(),
+                        object_id: object_id.clone(),
                     }))
                     .map_err(|e| e.context(SentryErrorKind::Mailbox).into())
                     .and_then(move |response| Ok(
