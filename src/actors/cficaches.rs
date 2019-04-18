@@ -7,6 +7,7 @@ use std::time::Duration;
 use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
 use failure::{Fail, ResultExt};
 use futures::Future;
+use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
 
@@ -135,29 +136,37 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 .sentry_hub_new_from_current(),
             )
             .map_err(|e| e.context(CfiCacheErrorKind::Mailbox).into())
-            .and_then(move |result| {
+            .and_then(clone!(path, |result| {
                 threadpool.spawn_handle(futures::lazy(move || {
                     let object = result.context(CfiCacheErrorKind::Fetching)?;
-                    let mut file =
-                        BufWriter::new(File::create(&path).context(CfiCacheErrorKind::Io)?);
-                    match object.parse() {
-                        Ok(Some(object)) => {
+                    let file = BufWriter::new(File::create(&path).context(CfiCacheErrorKind::Io)?);
+                    match object.parse().context(CfiCacheErrorKind::ObjectParsing)? {
+                        Some(object) => {
                             minidump::cfi::CfiCache::from_object(&object)
-                                .context(CfiCacheErrorKind::Parsing)?
+                                .context(CfiCacheErrorKind::ObjectParsing)?
                                 .write_to(file)
                                 .context(CfiCacheErrorKind::Io)?;
                         }
-                        Ok(None) => (),
-                        Err(err) => {
-                            log::warn!("Could not parse object: {}", err);
-                            file.write_all(b"malformed")
-                                .context(CfiCacheErrorKind::Io)?;
-                        }
+                        None => (),
                     };
 
                     Ok(object.scope().clone())
                 }))
-            });
+            }))
+            .map_err(|e: CfiCacheError| {
+                capture_fail(e.cause().unwrap_or(&e));
+                e
+            })
+            .or_else(clone!(path, |e| {
+                log::warn!("Could not write cficache: {}", e);
+                let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+
+                file.write_all(b"malformed")
+                    .context(CfiCacheErrorKind::Io)?;
+
+                file.sync_all().context(CfiCacheErrorKind::Io)?;
+                Err(e)
+            }));
 
         let num_sources = self.request.sources.len();
 

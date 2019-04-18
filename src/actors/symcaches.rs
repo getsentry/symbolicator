@@ -139,54 +139,50 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 purpose: ObjectPurpose::Debug,
             })
             .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
-            .and_then(move |result| {
-                threadpool
-                    .spawn_handle(futures::lazy(move || {
-                        let object = result.context(SymCacheErrorKind::Fetching)?;
-                        let file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                        let mut writer = BufWriter::new(file);
-
-                        let symbolic_object = match object.parse() {
-                            Ok(Some(object)) => object,
-                            Ok(None) => return Ok(object.scope().clone()),
-                            Err(err) => {
-                                capture_fail(&err);
-                                log::warn!("Could not parse object: {}", err);
-                                writer
-                                    .write_all(b"malformed")
-                                    .context(SymCacheErrorKind::Io)?;
-
-                                let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-                                file.sync_all().context(SymCacheErrorKind::Io)?;
-                                return Ok(object.scope().clone());
-                            }
+            .and_then(clone!(path, |result| {
+                threadpool.spawn_handle(futures::lazy(move || {
+                    let object = result.context(SymCacheErrorKind::Fetching)?;
+                    let file = File::create(&path).context(SymCacheErrorKind::Io)?;
+                    let symbolic_object =
+                        match object.parse().context(SymCacheErrorKind::ObjectParsing)? {
+                            Some(object) => object,
+                            None => return Ok(object.scope().clone()),
                         };
 
-                        if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer)
-                        {
-                            match e.kind() {
-                                symcache::SymCacheErrorKind::WriteFailed => {
-                                    return Err(e.context(SymCacheErrorKind::Io).into())
-                                }
-                                _ => {
-                                    return Err(e.context(SymCacheErrorKind::ObjectParsing).into())
-                                }
+                    let mut writer = BufWriter::new(file);
+
+                    if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
+                        match e.kind() {
+                            symcache::SymCacheErrorKind::WriteFailed => {
+                                return Err(e.context(SymCacheErrorKind::Io).into())
                             }
+                            _ => return Err(e.context(SymCacheErrorKind::ObjectParsing).into()),
                         }
+                    }
 
-                        let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-                        file.sync_all().context(SymCacheErrorKind::Io)?;
+                    let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
+                    file.sync_all().context(SymCacheErrorKind::Io)?;
 
-                        let metadata = file.metadata().context(SymCacheErrorKind::Io)?;
-                        metric!(time_raw("symcaches.size") = metadata.len());
+                    let metadata = file.metadata().context(SymCacheErrorKind::Io)?;
+                    metric!(time_raw("symcaches.size") = metadata.len());
 
-                        Ok(object.scope().clone())
-                    }))
-                    .map_err(|e: SymCacheError| {
-                        capture_fail(e.cause().unwrap_or(&e));
-                        e
-                    })
-            });
+                    Ok(object.scope().clone())
+                }))
+            }))
+            .map_err(|e: SymCacheError| {
+                capture_fail(e.cause().unwrap_or(&e));
+                e
+            })
+            .or_else(clone!(path, |e| {
+                log::warn!("Could not write symcache: {}", e);
+                let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
+
+                file.write_all(b"malformed")
+                    .context(SymCacheErrorKind::Io)?;
+
+                file.sync_all().context(SymCacheErrorKind::Io)?;
+                Err(e)
+            }));
 
         let num_sources = self.request.sources.len();
 
