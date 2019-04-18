@@ -1,12 +1,14 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{self, Write};
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::hex::HexValue;
 
 use failure::{Backtrace, Fail};
-use serde::{Deserialize, Deserializer, Serialize};
-use symbolic::common::{Arch, CodeId, DebugId, Language};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use url::Url;
 
 fn is_default<T: Default + PartialEq>(x: &T) -> bool {
@@ -136,9 +138,9 @@ pub struct S3SourceConfig {
 /// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug)]
 pub struct ExternalSourceConfigBase {
-    /// File types that are supported by this server.
-    #[serde(default = "FileType::all_vec")]
-    pub filetypes: Vec<FileType>,
+    /// Influence whether this source will be selected
+    #[serde(default)]
+    pub filters: SourceFilters,
 
     /// How files are laid out in this storage.
     pub layout: DirectoryLayout,
@@ -146,6 +148,45 @@ pub struct ExternalSourceConfigBase {
     /// Whether debug files are shared across scopes.
     #[serde(default)]
     pub is_public: bool,
+}
+
+/// Common attributes to make the symbolicator skip/consider sources by certain criteria.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct SourceFilters {
+    /// File types that are supported by this server.
+    pub filetypes: Vec<FileType>,
+
+    /// When nonempty, a list of glob patterns to fuzzy-match filepaths against. The source is then
+    /// only used if one of the patterns matches.
+    ///
+    /// "Fuzzy" in this context means that (ascii) casing is ignored, and `\` is treated as equal
+    /// to `/`.
+    ///
+    /// If a debug image does not contain any path information it will be treated like an image
+    /// whose path doesn't match any pattern.
+    pub path_patterns: Vec<Glob>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Glob(pub glob::Pattern);
+
+impl<'de> Deserialize<'de> for Glob {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = Cow::<str>::deserialize(deserializer)?;
+        s.parse().map_err(de::Error::custom).map(Glob)
+    }
+}
+
+impl Deref for Glob {
+    type Target = glob::Pattern;
+
+    fn deref(&self) -> &glob::Pattern {
+        &self.0
+    }
 }
 
 /// Determines how files are named in an external source.
@@ -590,11 +631,6 @@ impl FileType {
             _ => Self::all(),
         }
     }
-
-    #[inline]
-    fn all_vec() -> Vec<Self> {
-        Self::all().to_vec()
-    }
 }
 
 impl AsRef<str> for FileType {
@@ -640,5 +676,13 @@ impl ObjectId {
         }
 
         rv
+    }
+
+    pub fn code_file_basename(&self) -> Option<&str> {
+        Some(split_path(self.code_file.as_ref()?).1)
+    }
+
+    pub fn debug_file_basename(&self) -> Option<&str> {
+        Some(split_path(self.debug_file.as_ref()?).1)
     }
 }

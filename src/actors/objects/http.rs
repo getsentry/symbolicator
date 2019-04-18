@@ -8,9 +8,10 @@ use futures::{future, Future, IntoFuture, Stream};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
+use crate::actors::objects::paths::prepare_download_paths;
 use crate::actors::objects::{
-    paths::get_directory_path, DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest,
-    ObjectError, ObjectErrorKind, PrioritizedDownloads, USER_AGENT,
+    DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
+    PrioritizedDownloads, USER_AGENT,
 };
 use crate::http;
 use crate::sentry::SentryFutureExt;
@@ -26,32 +27,31 @@ pub fn prepare_downloads(
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     let mut requests = vec![];
 
-    for &filetype in filetypes {
-        if !source.files.filetypes.contains(&filetype) {
-            continue;
-        }
-
-        let download_path = match get_directory_path(source.files.layout, filetype, object_id) {
-            Some(x) => DownloadPath(x),
-            None => continue,
-        };
-
-        requests.push(FetchFileRequest {
-            scope: scope.clone(),
-            request: FetchFileInner::Http(source.clone(), download_path),
-            object_id: object_id.clone(),
-            threadpool: threadpool.clone(),
-        });
-    }
-
-    Box::new(future::join_all(requests.into_iter().map(move |request| {
-        cache
-            .send(ComputeMemoized(request).sentry_hub_new_from_current())
+    for download_path in prepare_download_paths(
+        object_id,
+        filetypes,
+        &source.files.filters,
+        source.files.layout,
+    ) {
+        let request = cache
+            .send(
+                ComputeMemoized(FetchFileRequest {
+                    scope: scope.clone(),
+                    request: FetchFileInner::Http(source.clone(), download_path),
+                    object_id: object_id.clone(),
+                    threadpool: threadpool.clone(),
+                })
+                .sentry_hub_new_from_current(),
+            )
             .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
             .and_then(move |response| {
                 Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into()))
-            })
-    })))
+            });
+
+        requests.push(request);
+    }
+
+    Box::new(future::join_all(requests))
 }
 
 pub fn download_from_source(
