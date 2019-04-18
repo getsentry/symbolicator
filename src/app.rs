@@ -1,5 +1,4 @@
 //! Exposes the command line application.
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,9 +10,10 @@ use structopt::StructOpt;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::{
-    cache::CacheActor, cficaches::CfiCacheActor, objects::ObjectsActor,
-    symbolication::SymbolicationActor, symcaches::SymCacheActor,
+    cficaches::CfiCacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
+    symcaches::SymCacheActor,
 };
+use crate::cache::{Cache, CleanupError};
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
 use crate::logging;
@@ -30,6 +30,10 @@ pub enum CliError {
     /// Indicates an IO error accessing the cache.
     #[fail(display = "Failed loading cache dirs")]
     CacheIo(#[fail(cause)] io::Error),
+
+    /// Indicates an error while cleaning up caches.
+    #[fail(display = "Failed cleaning up caches")]
+    Cleanup(#[fail(cause)] CleanupError),
 }
 
 fn get_crate_version() -> &'static str {
@@ -75,6 +79,10 @@ enum Command {
     /// Run server
     #[structopt(name = "run")]
     Run,
+
+    /// Clean up caches
+    #[structopt(name = "cleanup")]
+    Cleanup,
 }
 
 /// The shared state for the service.
@@ -111,8 +119,42 @@ fn execute() -> Result<(), CliError> {
 
     match cli.command {
         Command::Run => run_server(config)?,
+        Command::Cleanup => cleanup_caches(config)?,
     }
 
+    Ok(())
+}
+
+struct Caches {
+    objects: Cache,
+    symcaches: Cache,
+    cficaches: Cache,
+}
+
+impl Caches {
+    fn new(config: &Config) -> Self {
+        Caches {
+            objects: {
+                let path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
+                Cache::new("objects", path, config.caches.objects.clone())
+            },
+            symcaches: {
+                let path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
+                Cache::new("symcaches", path, config.caches.symcaches.clone())
+            },
+            cficaches: {
+                let path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
+                Cache::new("cficaches", path, config.caches.cficaches.clone())
+            },
+        }
+    }
+}
+
+fn cleanup_caches(config: Config) -> Result<(), CliError> {
+    let caches = Caches::new(&config);
+    caches.objects.cleanup()?;
+    caches.symcaches.cleanup()?;
+    caches.cficaches.cleanup()?;
     Ok(())
 }
 
@@ -122,42 +164,19 @@ fn run_server(config: Config) -> Result<(), CliError> {
         metrics::configure_statsd(&config.metrics.prefix, statsd);
     }
 
+    let caches = Caches::new(&config);
+
     let sys = actix::System::new("symbolicator");
 
     let cpu_threadpool = Arc::new(ThreadPool::new());
     let io_threadpool = Arc::new(ThreadPool::new());
 
-    let objects_cache_path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
-    if let Some(ref objects_cache_path) = objects_cache_path {
-        fs::create_dir_all(objects_cache_path)?;
-    }
-    let objects = ObjectsActor::new(
-        CacheActor::new("objects", objects_cache_path).start(),
-        io_threadpool.clone(),
-    )
-    .start();
+    let objects = ObjectsActor::new(caches.objects, io_threadpool.clone()).start();
 
-    let symcache_path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
-    if let Some(ref symcache_path) = symcache_path {
-        fs::create_dir_all(symcache_path)?;
-    }
-    let symcaches = SymCacheActor::new(
-        CacheActor::new("symcaches", symcache_path).start(),
-        objects.clone(),
-        cpu_threadpool.clone(),
-    )
-    .start();
+    let symcaches =
+        SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone()).start();
 
-    let cficache_path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
-    if let Some(ref cficache_path) = cficache_path {
-        fs::create_dir_all(cficache_path)?;
-    }
-    let cficaches = CfiCacheActor::new(
-        CacheActor::new("cficaches", cficache_path).start(),
-        objects,
-        cpu_threadpool.clone(),
-    )
-    .start();
+    let cficaches = CfiCacheActor::new(caches.cficaches, objects, cpu_threadpool.clone()).start();
 
     let symbolication =
         SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();

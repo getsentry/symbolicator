@@ -11,8 +11,9 @@ use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
+use crate::actors::cache::{CacheActor, CacheItemRequest, ComputeMemoized};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
+use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::SentryFutureExt;
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
@@ -60,13 +61,9 @@ impl Actor for CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(
-        cficaches: Addr<CacheActor<FetchCfiCacheInternal>>,
-        objects: Addr<ObjectsActor>,
-        threadpool: Arc<ThreadPool>,
-    ) -> Self {
+    pub fn new(cache: Cache, objects: Addr<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
         CfiCacheActor {
-            cficaches,
+            cficaches: CacheActor::new(cache).start(),
             objects,
             threadpool,
         }
@@ -87,7 +84,7 @@ impl CfiCacheFile {
             None => return Ok(None),
         };
 
-        if &bytes[..] == b"malformed" {
+        if &bytes[..] == MALFORMED_MARKER {
             return Err(CfiCacheErrorKind::ObjectParsing.into());
         }
 
@@ -99,7 +96,7 @@ impl CfiCacheFile {
 }
 
 #[derive(Clone)]
-pub struct FetchCfiCacheInternal {
+struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
@@ -160,7 +157,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 log::warn!("Could not write cficache: {}", e);
                 let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
 
-                file.write_all(b"malformed")
+                file.write_all(MALFORMED_MARKER)
                     .context(CfiCacheErrorKind::Io)?;
 
                 file.sync_all().context(CfiCacheErrorKind::Io)?;

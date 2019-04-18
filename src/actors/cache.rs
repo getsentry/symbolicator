@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use actix::fut::{ActorFuture, WrapFuture};
 use actix::{Actor, AsyncContext, Context, Handler, Message, ResponseActFuture};
@@ -13,6 +12,7 @@ use futures::sync::oneshot;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
+use crate::cache::{get_scope_path, Cache, CacheKey};
 use crate::types::Scope;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -24,7 +24,7 @@ type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>
 ///
 /// - Object files
 /// - Symcaches
-/// - CFI caches (soon)
+/// - CFI caches
 ///
 /// Handles a single message `ComputeMemoized` that transparently performs cache lookups,
 /// downloads and cache stores via the `CacheItemRequest` trait and associated types.
@@ -32,21 +32,16 @@ type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>
 /// Internally deduplicates concurrent cache lookups (in-memory).
 #[derive(Clone)]
 pub struct CacheActor<T: CacheItemRequest> {
-    /// Cache identifier used for metric names.
-    name: &'static str,
-
-    /// Directory to use for storing cache items. Assumed to exist.
-    cache_dir: Option<PathBuf>,
+    config: Cache,
 
     /// Used for deduplicating cache lookups.
     current_computations: BTreeMap<CacheKey, ComputationChannel<T::Item, T::Error>>,
 }
 
 impl<T: CacheItemRequest> CacheActor<T> {
-    pub fn new<P: AsRef<Path>>(name: &'static str, cache_dir: Option<P>) -> Self {
+    pub fn new(config: Cache) -> Self {
         CacheActor {
-            name,
-            cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
+            config,
             current_computations: BTreeMap::new(),
         }
     }
@@ -54,12 +49,6 @@ impl<T: CacheItemRequest> CacheActor<T> {
 
 impl<T: CacheItemRequest> Actor for CacheActor<T> {
     type Context = Context<Self>;
-}
-
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct CacheKey {
-    pub cache_key: String,
-    pub scope: Scope,
 }
 
 impl fmt::Display for CacheKey {
@@ -91,21 +80,21 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
     fn handle(&mut self, request: ComputeMemoized<T>, ctx: &mut Self::Context) -> Self::Result {
         let key = request.0.get_cache_key();
-        let name = self.name;
+        let name = self.config.name;
 
         let channel = if let Some(channel) = self.current_computations.get(&key) {
             // A concurrent cache lookup was deduplicated.
-            metric!(counter(&format!("caches.{}.channel.hit", self.name)) += 1);
+            metric!(counter(&format!("caches.{}.channel.hit", self.config.name)) += 1);
             channel.clone()
         } else {
             // A concurrent cache lookup is considered new. This does not imply a full cache miss.
-            metric!(counter(&format!("caches.{}.channel.miss", self.name)) += 1);
-            let cache_dir = self.cache_dir.clone();
+            metric!(counter(&format!("caches.{}.channel.miss", self.config.name)) += 1);
+            let config = self.config.clone();
 
             let (tx, rx) = oneshot::channel();
 
-            let file = if let Some(ref dir) = self.cache_dir {
-                NamedTempFile::new_in(dir)
+            let file = if let Some(ref dir) = config.cache_dir {
+                fs::create_dir_all(dir).and_then(|_| NamedTempFile::new_in(dir))
             } else {
                 NamedTempFile::new()
             }
@@ -115,8 +104,8 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
             let result = file.and_then(clone!(key, |file| {
                 for &scope in &[&key.scope, &Scope::Global] {
                     let path = tryf!(get_scope_path(
-                        cache_dir.as_ref().map(|x| &**x),
-                        scope,
+                        config.cache_dir.as_ref().map(|x| &**x),
+                        &scope,
                         &key.cache_key
                     ));
 
@@ -125,16 +114,19 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                         None => continue,
                     };
 
-                    let byteview = match check_cache_hit(name, &path) {
-                        Ok(x) => x,
-                        Err(e) => {
-                            if e.kind() == io::ErrorKind::NotFound {
-                                continue;
-                            } else {
-                                tryf!(Err(e))
-                            }
-                        }
+                    let byteview = match tryf!(config.open_cachefile(&path)) {
+                        Some(x) => x,
+                        None => continue,
                     };
+
+                    // This is also reported for "negative cache hits": When we cached the 404 response from a
+                    // server as empty file.
+                    metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+
+                    metric!(
+                        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                        "hit" => "true"
+                    );
 
                     let item = tryf!(request.0.load(scope.clone(), byteview));
                     return Box::new(Ok(item).into_future());
@@ -147,7 +139,7 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                 // XXX: Unsure if we need SyncArbiter here
                 Box::new(request.0.compute(file.path()).and_then(move |new_scope| {
                     let new_cache_path = tryf!(get_scope_path(
-                        cache_dir.as_ref().map(|x| &**x),
+                        config.cache_dir.as_ref().map(|x| &**x),
                         &new_scope,
                         &key.cache_key
                     ));
@@ -204,57 +196,3 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 }
 
 handle_sentry_actix_message!(<T: CacheItemRequest>, CacheActor<T>, ComputeMemoized<T>);
-
-fn get_scope_path(
-    cache_dir: Option<&Path>,
-    scope: &Scope,
-    cache_key: &str,
-) -> Result<Option<PathBuf>, io::Error> {
-    let dir = match cache_dir {
-        Some(x) => x.join(safe_path_segment(scope.as_ref())),
-        None => return Ok(None),
-    };
-
-    fs::create_dir_all(&dir)?;
-    Ok(Some(dir.join(safe_path_segment(cache_key))))
-}
-
-fn safe_path_segment(s: &str) -> String {
-    s.replace(".", "_") // protect against ..
-        .replace("/", "_") // protect against absolute paths
-        .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
-}
-
-fn check_cache_hit(name: &'static str, path: &Path) -> io::Result<ByteView<'static>> {
-    let metadata = path.metadata()?;
-
-    // A file was found and we're about to mmap it. This is also reported
-    // for "negative cache hits": When we cached the 404 response from a
-    // server as empty file.
-    metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-
-    if metadata
-        .modified()?
-        .elapsed()
-        .map(|elapsed| elapsed > Duration::from_secs(3600))
-        .unwrap_or(true)
-    {
-        // We use mtime to keep track of "cache last used", because filesystem is usually mounted
-        // with `noatime` and therefore atime is nonsense.
-        //
-        // Since we're about to use the cache, let's touch the file. We don't touch the file if it
-        // was touched in the last hour to avoid too many disk writes.
-        OpenOptions::new()
-            .append(true)
-            .truncate(false)
-            .open(&path)?;
-    }
-
-    let byteview = ByteView::open(path)?;
-    metric!(
-        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-        "hit" => "true"
-    );
-
-    Ok(byteview)
-}

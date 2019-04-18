@@ -1,6 +1,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use failure::Fail;
 use log::LevelFilter;
@@ -71,6 +72,41 @@ impl Default for Metrics {
     }
 }
 
+/// Options for fine-tuning cache expiry.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CacheConfig {
+    /// Maximum duration since last use of (positive) cache item (item age).
+    pub max_age: Option<Duration>,
+
+    /// Maximum duration since last use of (positive) cache item (item last used).
+    pub max_last_used: Option<Duration>,
+
+    /// Maximum duration since creation of negative cache item (item age).
+    pub max_negative_age: Option<Duration>,
+
+    /// Maximum duration since last use of negative cache item (item last used).
+    pub max_negative_last_used: Option<Duration>,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        CacheConfig {
+            max_age: None,
+            max_last_used: Some(Duration::from_secs(3600 * 24 * 7)),
+            max_negative_age: Some(Duration::from_secs(3600)),
+            max_negative_last_used: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct CacheConfigs {
+    pub symcaches: CacheConfig,
+    pub cficaches: CacheConfig,
+    pub objects: CacheConfig,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -88,6 +124,9 @@ pub struct Config {
 
     /// DSN to report internal errors to
     pub sentry_dsn: Option<Dsn>,
+
+    /// Fine-tune cache expiry
+    pub caches: CacheConfigs,
 }
 
 /// Checks if we are running in docker.
@@ -119,6 +158,7 @@ impl Default for Config {
             logging: Logging::default(),
             metrics: Metrics::default(),
             sentry_dsn: None,
+            caches: CacheConfigs::default(),
         }
     }
 }

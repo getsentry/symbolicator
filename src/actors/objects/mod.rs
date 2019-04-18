@@ -15,7 +15,8 @@ use symbolic::debuginfo::Object;
 use tempfile::tempfile_in;
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey};
+use crate::actors::cache::{CacheActor, CacheItemRequest};
+use crate::cache::{Cache, CacheKey};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
@@ -325,8 +326,11 @@ pub struct ObjectsActor {
 }
 
 impl ObjectsActor {
-    pub fn new(cache: Addr<CacheActor<FetchFileRequest>>, threadpool: Arc<ThreadPool>) -> Self {
-        ObjectsActor { cache, threadpool }
+    pub fn new(cache: Cache, threadpool: Arc<ThreadPool>) -> Self {
+        ObjectsActor {
+            cache: CacheActor::new(cache).start(),
+            threadpool,
+        }
     }
 }
 

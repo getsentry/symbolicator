@@ -11,6 +11,7 @@ mod metrics;
 mod sentry;
 
 mod actors;
+mod cache;
 mod config;
 mod endpoints;
 mod hex;
