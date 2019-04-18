@@ -140,15 +140,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 threadpool.spawn_handle(futures::lazy(move || {
                     let object = result.context(CfiCacheErrorKind::Fetching)?;
                     let file = BufWriter::new(File::create(&path).context(CfiCacheErrorKind::Io)?);
-                    match object.parse().context(CfiCacheErrorKind::ObjectParsing)? {
-                        Some(object) => {
-                            minidump::cfi::CfiCache::from_object(&object)
-                                .context(CfiCacheErrorKind::ObjectParsing)?
-                                .write_to(file)
-                                .context(CfiCacheErrorKind::Io)?;
-                        }
-                        None => (),
-                    };
+                    if let Some(object) =
+                        object.parse().context(CfiCacheErrorKind::ObjectParsing)?
+                    {
+                        minidump::cfi::CfiCache::from_object(&object)
+                            .context(CfiCacheErrorKind::ObjectParsing)?
+                            .write_to(file)
+                            .context(CfiCacheErrorKind::Io)?;
+                    }
 
                     Ok(object.scope().clone())
                 }))
