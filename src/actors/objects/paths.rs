@@ -7,14 +7,19 @@ use crate::types::{
     DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId, SourceFilters,
 };
 
-/// Yield download paths given parameters from the source config
+/// Generate a list of filepaths to try downloading from.
+///
+/// `object_id`: Information about the image we want to download.
+/// `filetypes`: Limit search to these filetypes.
+/// `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
+/// `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
 pub fn prepare_download_paths<'a>(
-    filetypes: impl Iterator<Item = FileType> + 'a,
+    object_id: &'a ObjectId,
+    filetypes: &'static [FileType],
     filters: &'a SourceFilters,
     layout: DirectoryLayout,
-    object_id: &'a ObjectId,
 ) -> impl Iterator<Item = DownloadPath> + 'a {
-    filetypes.filter_map(move |filetype| {
+    filetypes.iter().filter_map(move |&filetype| {
         if (filters.filetypes.is_empty() || filters.filetypes.contains(&filetype))
             && matches_path_prefixes(object_id, &filters.path_prefixes)
         {

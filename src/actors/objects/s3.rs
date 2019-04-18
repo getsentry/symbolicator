@@ -64,28 +64,30 @@ pub fn prepare_downloads(
     threadpool: Arc<ThreadPool>,
     cache: Addr<CacheActor<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
-    let requests: Vec<_> = prepare_download_paths(
-        filetypes.iter().cloned(),
+    let mut requests = vec![];
+
+    for download_path in prepare_download_paths(
+        object_id,
+        filetypes,
         &source.files.filters,
         source.files.layout,
-        object_id,
-    )
-    .map(|download_path| FetchFileRequest {
-        scope: scope.clone(),
-        request: FetchFileInner::S3(source.clone(), download_path),
-        object_id: object_id.clone(),
-        threadpool: threadpool.clone(),
-    })
-    .collect();
-
-    Box::new(future::join_all(requests.into_iter().map(move |request| {
-        cache
-            .send(ComputeMemoized(request))
+    ) {
+        let request = cache
+            .send(ComputeMemoized(FetchFileRequest {
+                scope: scope.clone(),
+                request: FetchFileInner::S3(source.clone(), download_path),
+                object_id: object_id.clone(),
+                threadpool: threadpool.clone(),
+            }))
             .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
             .and_then(move |response| {
                 Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into()))
-            })
-    })))
+            });
+
+        requests.push(request);
+    }
+
+    Box::new(future::join_all(requests))
 }
 
 pub fn download_from_source(
