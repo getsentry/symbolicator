@@ -150,12 +150,7 @@ impl SymbolicationActor {
                     let modules = object_lookup
                         .inner
                         .into_iter()
-                        .map(|(object_info, cache, debug_status)| CompleteObjectInfo {
-                            debug_status,
-                            unwind_status: None,
-                            arch: cache.as_ref().map(|c| c.arch()).unwrap_or_default(),
-                            object_info,
-                        })
+                        .map(|(object_info, _)| object_info)
                         .collect();
 
                     Ok(CompletedSymbolicationResponse {
@@ -290,20 +285,20 @@ impl SymbolicationActor {
                     let os_build = minidump_system_info.os_build();
                     let cpu_arch = minidump_system_info.cpu_arch();
 
-                    let mut unwind_statuses_by_module_index = vec![];
-
                     let modules = process_state
                         .modules()
                         .into_iter()
                         .map(|code_module| {
-                            unwind_statuses_by_module_index.push(
+                            let mut info: CompleteObjectInfo =
+                                object_info_from_minidump_module(&os_name, code_module).into();
+                            info.unwind_status = Some(
                                 code_module
                                     .id()
-                                    .and_then(|id| Some(*unwind_statuses.get(&id)?))
+                                    .and_then(|id| unwind_statuses.get(&id))
+                                    .map(|x| *x)
                                     .unwrap_or(ObjectFileStatus::Unused),
                             );
-
-                            object_info_from_minidump_module(&os_name, code_module)
+                            info
                         })
                         .collect();
 
@@ -319,7 +314,6 @@ impl SymbolicationActor {
                         crashed: process_state.crashed(),
                         crash_reason: process_state.crash_reason(),
                         assertion: process_state.assertion(),
-                        unwind_statuses_by_module_index,
                     };
 
                     let stacktraces = process_state
@@ -385,7 +379,6 @@ impl SymbolicationActor {
                             crashed,
                             crash_reason,
                             assertion,
-                            unwind_statuses_by_module_index,
                         } = minidump_state;
 
                         response.system_info = Some(system_info);
@@ -395,14 +388,6 @@ impl SymbolicationActor {
 
                         for (i, mut stacktrace) in response.stacktraces.iter_mut().enumerate() {
                             stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
-                        }
-
-                        for (mut module, unwind_status) in response
-                            .modules
-                            .iter_mut()
-                            .zip(unwind_statuses_by_module_index)
-                        {
-                            module.unwind_status = Some(unwind_status);
                         }
 
                         Ok(response).into_future().into_actor(slf)
@@ -456,19 +441,16 @@ fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule)
 }
 
 struct SymCacheLookup {
-    inner: Vec<(RawObjectInfo, Option<Arc<SymCacheFile>>, ObjectFileStatus)>,
+    inner: Vec<(CompleteObjectInfo, Option<Arc<SymCacheFile>>)>,
 }
 
-impl FromIterator<RawObjectInfo> for SymCacheLookup {
+impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = RawObjectInfo>,
+        T: IntoIterator<Item = CompleteObjectInfo>,
     {
         let mut rv = SymCacheLookup {
-            inner: iter
-                .into_iter()
-                .map(|x| (x, None, ObjectFileStatus::Unused))
-                .collect(),
+            inner: iter.into_iter().map(|x| (x, None)).collect(),
         };
         rv.sort();
         rv
@@ -477,18 +459,17 @@ impl FromIterator<RawObjectInfo> for SymCacheLookup {
 
 impl SymCacheLookup {
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _, _)| info.image_addr.0);
+        self.inner.sort_by_key(|(info, _)| info.raw.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
-        self.inner
-            .dedup_by(|(ref info2, _, _), (ref mut info1, _, _)| {
-                // If this underflows we didn't sort properly.
-                let size = info2.image_addr.0 - info1.image_addr.0;
-                info1.image_size.get_or_insert(size);
+        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
+            // If this underflows we didn't sort properly.
+            let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
+            info1.raw.image_size.get_or_insert(size);
 
-                false
-            });
+            false
+        });
     }
 
     fn fetch_symcaches(
@@ -509,38 +490,40 @@ impl SymCacheLookup {
             }
         }
 
-        future::join_all(
-            self.inner
-                .into_iter()
-                .enumerate()
-                .map(move |(i, (object_info, _, _))| {
-                    if !referenced_objects.contains(&i) {
-                        return Either::B(
-                            Ok((object_info, None, ObjectFileStatus::Unused)).into_future(),
-                        );
-                    }
+        future::join_all(self.inner.into_iter().enumerate().map(
+            move |(i, (mut object_info, _))| {
+                if !referenced_objects.contains(&i) {
+                    object_info.debug_status = ObjectFileStatus::Unused;
+                    return Either::B(Ok((object_info, None)).into_future());
+                }
 
-                    Either::A(
-                        symcache_actor
-                            .send(FetchSymCache {
-                                object_type: object_info.ty.clone(),
-                                identifier: object_id_from_object_info(&object_info),
-                                sources: sources.clone(),
-                                scope: scope.clone(),
-                            })
-                            .map_err(|_| SymbolicationError::Mailbox)
-                            .and_then(|result| {
-                                result
-                                    .and_then(|symcache| match symcache.parse()? {
-                                        Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
-                                        None => Ok((Some(symcache), ObjectFileStatus::MissingFile)),
-                                    })
-                                    .or_else(|e| Ok((None, symcache_error_to_status(&e))))
-                            })
-                            .map(move |(symcache, status)| (object_info, symcache, status)),
-                    )
-                }),
-        )
+                Either::A(
+                    symcache_actor
+                        .send(FetchSymCache {
+                            object_type: object_info.raw.ty.clone(),
+                            identifier: object_id_from_object_info(&object_info.raw),
+                            sources: sources.clone(),
+                            scope: scope.clone(),
+                        })
+                        .map_err(|_| SymbolicationError::Mailbox)
+                        .and_then(|result| {
+                            result
+                                .and_then(|symcache| match symcache.parse()? {
+                                    Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
+                                    None => Ok((Some(symcache), ObjectFileStatus::MissingFile)),
+                                })
+                                .or_else(|e| Ok((None, symcache_error_to_status(&e))))
+                        })
+                        .map(move |(symcache, status)| {
+                            object_info.arch =
+                                symcache.as_ref().map(|c| c.arch()).unwrap_or_default();
+
+                            object_info.debug_status = status;
+                            (object_info, symcache)
+                        }),
+                )
+            },
+        ))
         .map(|results| SymCacheLookup {
             inner: results.into_iter().collect(),
         })
@@ -549,15 +532,10 @@ impl SymCacheLookup {
     fn lookup_symcache(
         &self,
         addr: u64,
-    ) -> Option<(
-        usize,
-        &RawObjectInfo,
-        Option<&SymCacheFile>,
-        ObjectFileStatus,
-    )> {
-        for (i, (info, cache, status)) in self.inner.iter().enumerate() {
-            let addr_smaller_than_end = if let Some(size) = info.image_size {
-                if let Some(end) = info.image_addr.0.checked_add(size) {
+    ) -> Option<(usize, &CompleteObjectInfo, Option<&SymCacheFile>)> {
+        for (i, (info, cache)) in self.inner.iter().enumerate() {
+            let addr_smaller_than_end = if let Some(size) = info.raw.image_size {
+                if let Some(end) = info.raw.image_addr.0.checked_add(size) {
                     addr < end
                 } else {
                     // Image end addr is larger than u64::max, therefore addr (also u64) is smaller
@@ -570,8 +548,8 @@ impl SymCacheLookup {
                 continue;
             };
 
-            if info.image_addr.0 <= addr && addr_smaller_than_end {
-                return Some((i, info, cache.as_ref().map(|x| &**x), *status));
+            if info.raw.image_addr.0 <= addr && addr_smaller_than_end {
+                return Some((i, info, cache.as_ref().map(|x| &**x)));
             }
         }
 
@@ -593,11 +571,14 @@ fn symbolize_thread(
 
     let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
         let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
-            Some((_, symcache_info, Some(symcache), _)) => (symcache_info, symcache),
-            Some((_, _, None, ObjectFileStatus::MalformedFile)) => {
-                return Err(FrameStatus::MalformedFile);
+            Some((_, info, Some(symcache))) => (info, symcache),
+            Some((_, info, None)) => {
+                if info.debug_status == ObjectFileStatus::MalformedFile {
+                    return Err(FrameStatus::MalformedFile);
+                } else {
+                    return Err(FrameStatus::MissingFile);
+                }
             }
-            Some((_, _, None, _)) => return Err(FrameStatus::MissingFile),
             None => return Err(FrameStatus::UnknownImage),
         };
 
@@ -628,7 +609,7 @@ fn symbolize_thread(
         };
         let caller_address = instruction_info.caller_address();
 
-        let relative_addr = match caller_address.checked_sub(object_info.image_addr.0) {
+        let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
             Some(x) => x,
             None => {
                 log::warn!(
@@ -675,7 +656,7 @@ fn symbolize_thread(
             rv.push(SymbolicatedFrame {
                 status: FrameStatus::Symbolicated,
                 symbol: Some(line_info.symbol().to_string()),
-                package: object_info.code_file.clone(),
+                package: object_info.raw.code_file.clone(),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
                 } else {
@@ -694,10 +675,10 @@ fn symbolize_thread(
                 },
                 lineno: Some(line_info.line()),
                 instruction_addr: HexValue(
-                    object_info.image_addr.0 + line_info.instruction_address(),
+                    object_info.raw.image_addr.0 + line_info.instruction_address(),
                 ),
                 sym_addr: Some(HexValue(
-                    object_info.image_addr.0 + line_info.function_address(),
+                    object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
                 lang: if lang != Language::Unknown {
                     Some(lang)
@@ -713,7 +694,7 @@ fn symbolize_thread(
                 status: FrameStatus::MissingSymbol,
                 original_index: Some(i),
                 instruction_addr: frame.instruction_addr,
-                package: object_info.code_file.clone(),
+                package: object_info.raw.code_file.clone(),
                 ..Default::default()
             });
         }
@@ -760,7 +741,7 @@ pub struct SymbolicateStacktraces {
     /// This list must cover the instruction addresses of the frames in `threads`. If a frame is not
     /// covered by any image, the frame cannot be symbolicated as it is not clear which debug file
     /// to load.
-    pub modules: Vec<RawObjectInfo>,
+    pub modules: Vec<CompleteObjectInfo>,
 }
 
 impl Message for SymbolicateStacktraces {
@@ -856,7 +837,6 @@ struct MinidumpState {
     crash_reason: String,
     assertion: String,
     requesting_thread_index: Option<usize>,
-    unwind_statuses_by_module_index: Vec<ObjectFileStatus>,
 }
 
 impl Message for ProcessMinidump {

@@ -418,6 +418,12 @@ pub enum ObjectFileStatus {
     Other,
 }
 
+impl Default for ObjectFileStatus {
+    fn default() -> Self {
+        ObjectFileStatus::Unused
+    }
+}
+
 /// Enhanced information on an in
 #[derive(Debug, Clone, Serialize)]
 pub struct CompleteObjectInfo {
@@ -430,7 +436,18 @@ pub struct CompleteObjectInfo {
     pub arch: Arch,
     /// More information on the object file.
     #[serde(flatten)]
-    pub object_info: RawObjectInfo,
+    pub raw: RawObjectInfo,
+}
+
+impl From<RawObjectInfo> for CompleteObjectInfo {
+    fn from(raw: RawObjectInfo) -> Self {
+        CompleteObjectInfo {
+            debug_status: Default::default(),
+            unwind_status: Default::default(),
+            arch: Default::default(),
+            raw,
+        }
+    }
 }
 
 /// The response of a symbolication request or poll request.

@@ -45,7 +45,7 @@ fn symbolicate_frames(
         signal: body.signal,
         sources: body.sources,
         stacktraces: body.stacktraces,
-        modules: body.modules,
+        modules: body.modules.into_iter().map(From::from).collect(),
         scope: params.scope,
     };
 
