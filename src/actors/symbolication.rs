@@ -240,9 +240,6 @@ impl SymbolicationActor {
                     let mut unwind_statuses = BTreeMap::new();
 
                     for (code_module_id, result) in &cfi_requests {
-                        // XXX: We should actually build a list of CompleteObjectInfo instead of
-                        // discarding errors.
-
                         let cache_file = match result {
                             Ok(x) => x,
                             Err(e) => {
