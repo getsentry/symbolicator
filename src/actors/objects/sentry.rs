@@ -13,6 +13,7 @@ use crate::actors::objects::{
     DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
     PrioritizedDownloads, SentryFileId, USER_AGENT,
 };
+use crate::sentry::SentryFutureExt;
 use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig};
 
 #[derive(Debug, Fail, Clone, Copy)]
@@ -93,15 +94,18 @@ pub fn prepare_downloads(
         index_request
             .and_then(clone!(source, object_id, |entries| future::join_all(
                 entries.into_iter().map(move |api_response| cache
-                    .send(ComputeMemoized(FetchFileRequest {
-                        scope: scope.clone(),
-                        request: FetchFileInner::Sentry(
-                            source.clone(),
-                            SentryFileId(api_response.id),
-                        ),
-                        threadpool: threadpool.clone(),
-                        object_id: object_id.clone(),
-                    }))
+                    .send(
+                        ComputeMemoized(FetchFileRequest {
+                            scope: scope.clone(),
+                            request: FetchFileInner::Sentry(
+                                source.clone(),
+                                SentryFileId(api_response.id),
+                            ),
+                            threadpool: threadpool.clone(),
+                            object_id: object_id.clone(),
+                        })
+                        .sentry_hub_new_from_current()
+                    )
                     .map_err(|e| e.context(SentryErrorKind::Mailbox).into())
                     .and_then(move |response| Ok(
                         response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())

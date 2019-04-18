@@ -18,6 +18,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
+use crate::sentry::SentryFutureExt;
 use crate::types::{SourceConfig, SymbolicationError, SymbolicationResponse};
 
 enum MultipartItem {
@@ -141,17 +142,20 @@ fn process_minidump(
         });
 
     let request_id = request.and_then(clone!(symbolication, |request| symbolication
-        .send(request)
+        .send(request.sentry_hub_current())
         .map_err(|_| SymbolicationError::Mailbox)
         .map_err(error::ErrorInternalServerError)
         .and_then(|result| Ok(result.map_err(error::ErrorInternalServerError)?))));
 
     let response = request_id
         .and_then(clone!(symbolication, |request_id| symbolication
-            .send(GetSymbolicationStatus {
-                request_id,
-                timeout
-            })
+            .send(
+                GetSymbolicationStatus {
+                    request_id,
+                    timeout
+                }
+                .sentry_hub_current()
+            )
             .map_err(|_| SymbolicationError::Mailbox)
             .map_err(error::ErrorInternalServerError)
             .and_then(|result| Ok(
@@ -163,7 +167,7 @@ fn process_minidump(
         .map(Json)
         .map_err(Error::from);
 
-    Box::new(response)
+    Box::new(response.sentry_hub_new_from_current())
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {
