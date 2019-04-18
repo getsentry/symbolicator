@@ -21,7 +21,7 @@ pub fn prepare_download_paths<'a>(
 ) -> impl Iterator<Item = DownloadPath> + 'a {
     filetypes.iter().filter_map(move |&filetype| {
         if (filters.filetypes.is_empty() || filters.filetypes.contains(&filetype))
-            && matches_path_prefixes(object_id, &filters.path_prefixes)
+            && matches_path_patterns(object_id, &filters.path_patterns)
         {
             Some(DownloadPath(get_directory_path(
                 layout, filetype, &object_id,
@@ -32,23 +32,30 @@ pub fn prepare_download_paths<'a>(
     })
 }
 
-fn matches_path_prefixes(object_id: &ObjectId, prefixes: &[String]) -> bool {
+fn matches_path_patterns(object_id: &ObjectId, patterns: &[String]) -> bool {
     fn canonicalize_path(s: &str) -> String {
-        let mut s = s.replace(r"\", "/").replace("//", "/");
-        s.make_ascii_lowercase();
-        s
+        s.replace(r"\", "/")
     }
 
-    if prefixes.is_empty() {
+    if patterns.is_empty() {
         return true;
     }
 
-    for prefix in prefixes {
-        let prefix = canonicalize_path(prefix);
+    for pattern in patterns {
+        let pattern = match glob::Pattern::new(&canonicalize_path(pattern)) {
+            Ok(x) => x,
+            Err(_) => continue,
+        };
+
         for path in &[&object_id.code_file, &object_id.debug_file] {
             if let Some(ref path) = path {
-                let path = canonicalize_path(path);
-                if path.starts_with(&prefix) {
+                if pattern.matches_with(
+                    &canonicalize_path(path),
+                    glob::MatchOptions {
+                        case_sensitive: false,
+                        ..glob::MatchOptions::new()
+                    },
+                ) {
                     return true;
                 }
             }

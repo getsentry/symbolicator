@@ -85,7 +85,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
                 "layout": {"type": "symstore"},
                 "filters": {
                     "filetypes": ["pdb", "pe"],
-                    "path_prefixes": ["c:/windows"],
+                    "path_patterns": ["?:/windows/**"],
                 },
                 "url": f"{hitcounter.url}/msdl/",
                 "is_public": is_public,

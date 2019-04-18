@@ -155,15 +155,15 @@ pub struct SourceFilters {
     /// File types that are supported by this server.
     pub filetypes: Vec<FileType>,
 
-    /// When nonempty, a list of prefixes to fuzzy-match filepaths against. The source is then only
-    /// used if one of the path prefixes matches.
+    /// When nonempty, a list of glob patterns to fuzzy-match filepaths against. The source is then
+    /// only used if one of the patterns matches.
     ///
-    /// "Fuzzy" in this context means that (ascii) casing is ignored, `\` is treated as equal
-    /// to `/` and consecutive slashes are treated as single slash.
+    /// "Fuzzy" in this context means that (ascii) casing is ignored, and `\` is treated as equal
+    /// to `/`.
     ///
     /// If a debug image does not contain any path information it will be treated like an image
-    /// whose path doesn't match any prefix.
-    pub path_prefixes: Vec<String>,
+    /// whose path doesn't match any pattern.
+    pub path_patterns: Vec<String>,
 }
 
 /// Determines how files are named in an external source.
