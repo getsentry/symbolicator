@@ -890,8 +890,8 @@ impl From<&CfiCacheError> for ObjectFileStatus {
     fn from(e: &CfiCacheError) -> ObjectFileStatus {
         match e.kind() {
             CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
-            // nb: Timeouts during download are caught by Fetching
-            CfiCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
+            // nb: Timeouts during download are also caught by Fetching
+            CfiCacheErrorKind::Timeout => ObjectFileStatus::Timeout,
             CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
 
             _ => {
@@ -906,8 +906,8 @@ impl From<&SymCacheError> for ObjectFileStatus {
     fn from(e: &SymCacheError) -> ObjectFileStatus {
         match e.kind() {
             SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
-            // nb: Timeouts during download are caught by Fetching
-            SymCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
+            // nb: Timeouts during download are also caught by Fetching
+            SymCacheErrorKind::Timeout => ObjectFileStatus::Timeout,
             SymCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
             _ => {
                 capture_fail(e);

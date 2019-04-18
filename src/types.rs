@@ -412,8 +412,8 @@ pub enum ObjectFileStatus {
     Malformed,
     /// The file could not be downloaded.
     FetchingFailed,
-    /// The file exceeds the internal download limit.
-    TooLarge,
+    /// Downloading or processing the file took too long.
+    Timeout,
     /// An internal error while handling this image.
     Other,
 }
