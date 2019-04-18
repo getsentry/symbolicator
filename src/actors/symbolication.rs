@@ -259,8 +259,7 @@ impl SymbolicationActor {
                         let cfi_cache = match cache_file.parse() {
                             Ok(Some(x)) => x,
                             Ok(None) => {
-                                unwind_statuses
-                                    .insert(code_module_id, ObjectFileStatus::MissingFile);
+                                unwind_statuses.insert(code_module_id, ObjectFileStatus::Missing);
                                 continue;
                             }
                             Err(e) => {
@@ -510,7 +509,7 @@ impl SymCacheLookup {
                             result
                                 .and_then(|symcache| match symcache.parse()? {
                                     Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
-                                    None => Ok((Some(symcache), ObjectFileStatus::MissingFile)),
+                                    None => Ok((Some(symcache), ObjectFileStatus::Missing)),
                                 })
                                 .or_else(|e| Ok((None, symcache_error_to_status(&e))))
                         })
@@ -573,10 +572,10 @@ fn symbolize_thread(
         let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
             Some((_, info, Some(symcache))) => (info, symcache),
             Some((_, info, None)) => {
-                if info.debug_status == ObjectFileStatus::MalformedFile {
-                    return Err(FrameStatus::MalformedFile);
+                if info.debug_status == ObjectFileStatus::Malformed {
+                    return Err(FrameStatus::Malformed);
                 } else {
-                    return Err(FrameStatus::MissingFile);
+                    return Err(FrameStatus::Missing);
                 }
             }
             None => return Err(FrameStatus::UnknownImage),
@@ -584,8 +583,8 @@ fn symbolize_thread(
 
         let symcache = match symcache.parse() {
             Ok(Some(x)) => x,
-            Ok(None) => return Err(FrameStatus::MissingFile),
-            Err(_) => return Err(FrameStatus::MalformedFile),
+            Ok(None) => return Err(FrameStatus::Missing),
+            Err(_) => return Err(FrameStatus::Malformed),
         };
 
         let crashing_frame = i == 0;
@@ -622,7 +621,7 @@ fn symbolize_thread(
 
         let line_infos = match symcache.lookup(relative_addr) {
             Ok(x) => x,
-            Err(_) => return Err(FrameStatus::MalformedFile),
+            Err(_) => return Err(FrameStatus::Malformed),
         };
 
         let mut rv = vec![];
@@ -630,7 +629,7 @@ fn symbolize_thread(
         for line_info in line_infos {
             let line_info = match line_info {
                 Ok(x) => x,
-                Err(_) => return Err(FrameStatus::MalformedFile),
+                Err(_) => return Err(FrameStatus::Malformed),
             };
 
             // The logic for filename and abs_path intentionally diverges from how symbolic is used
@@ -897,7 +896,7 @@ fn cficache_error_to_status(e: &CfiCacheError) -> ObjectFileStatus {
         CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
         // nb: Timeouts during download are caught by Fetching
         CfiCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
-        CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::MalformedFile,
+        CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
 
         _ => {
             capture_fail(e);
@@ -911,7 +910,7 @@ fn symcache_error_to_status(e: &SymCacheError) -> ObjectFileStatus {
         SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
         // nb: Timeouts during download are caught by Fetching
         SymCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
-        SymCacheErrorKind::ObjectParsing => ObjectFileStatus::MalformedFile,
+        SymCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
         _ => {
             capture_fail(e);
             ObjectFileStatus::Other

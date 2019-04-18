@@ -318,9 +318,9 @@ pub enum FrameStatus {
     /// No debug image is specified for the address of the frame.
     UnknownImage,
     /// The debug file could not be retrieved from any of the sources.
-    MissingFile,
+    Missing,
     /// The retrieved debug file could not be processed.
-    MalformedFile,
+    Malformed,
 }
 
 impl Default for FrameStatus {
@@ -407,9 +407,9 @@ pub enum ObjectFileStatus {
     /// The image was not referenced in the stack trace and not further handled.
     Unused,
     /// The file could not be found in any of the specified sources.
-    MissingFile,
+    Missing,
     /// The file failed to process.
-    MalformedFile,
+    Malformed,
     /// The file could not be downloaded.
     FetchingFailed,
     /// The file exceeds the internal download limit.

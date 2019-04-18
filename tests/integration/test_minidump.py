@@ -15,12 +15,12 @@ MINIDUMP_SUCCESS = {
         {
             "frames": [
                 {
-                    "status": "missing_file",
+                    "status": "missing",
                     "original_index": 0,
                     "instruction_addr": "0x2a2a3d",
                 },
                 {
-                    "status": "missing_file",
+                    "status": "missing",
                     "original_index": 1,
                     "instruction_addr": "0x2a28d0",
                 },
@@ -65,12 +65,12 @@ MINIDUMP_SUCCESS = {
                     "lineno": 0,
                 },
                 {
-                    "status": "missing_file",
+                    "status": "missing",
                     "original_index": 7,
                     "instruction_addr": "0x2a3435",
                 },
                 {
-                    "status": "missing_file",
+                    "status": "missing",
                     "original_index": 8,
                     "instruction_addr": "0x2a2d97",
                 },
@@ -245,8 +245,8 @@ MINIDUMP_SUCCESS = {
     ],
     "modules": [
         {
-            "debug_status": "missing_file",
-            "unwind_status": "missing_file",
+            "debug_status": "missing",
+            "unwind_status": "missing",
             "arch": "unknown",
             "type": "pe",
             "code_id": "5AB380779000",

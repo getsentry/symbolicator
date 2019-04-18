@@ -64,8 +64,8 @@ def _make_unsuccessful_result(status):
     }
 
 
-MISSING_FILE = _make_unsuccessful_result("missing_file")
-MALFORMED_FILE = _make_unsuccessful_result("malformed_file")
+MISSING_FILE = _make_unsuccessful_result("missing")
+MALFORMED_FILE = _make_unsuccessful_result("malformed")
 
 
 @pytest.fixture(params=[True, False])
