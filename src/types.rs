@@ -270,13 +270,14 @@ pub struct RawStacktrace {
 
 /// Specification of an image loaded into the process.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ObjectInfo {
+pub struct RawObjectInfo {
     /// Platform image file type (container format).
     #[serde(rename = "type")]
     pub ty: ObjectType,
 
     /// Identifier of the code file.
     #[serde(skip_serializing_if = "is_default")]
+    #[serde(default)]
     pub code_id: Option<String>,
 
     /// Name of the code file.
@@ -317,9 +318,9 @@ pub enum FrameStatus {
     /// No debug image is specified for the address of the frame.
     UnknownImage,
     /// The debug file could not be retrieved from any of the sources.
-    MissingDebugFile,
+    Missing,
     /// The retrieved debug file could not be processed.
-    MalformedDebugFile,
+    Malformed,
 }
 
 impl Default for FrameStatus {
@@ -375,7 +376,7 @@ pub struct SymbolicatedFrame {
 /// Frames in this request may or may not be symbolicated. The status field contains information on
 /// the individual success for each frame.
 #[derive(Debug, Default, Clone, Serialize)]
-pub struct SymbolicatedStacktrace {
+pub struct CompleteStacktrace {
     /// ID of thread that had this stacktrace. Returned when a minidump was processed.
     #[serde(skip_serializing_if = "is_default")]
     pub thread_id: Option<u64>,
@@ -398,35 +399,55 @@ pub struct SymbolicatedStacktrace {
 }
 
 /// Information on a debug information file.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum DebugFileStatus {
-    /// The debug information file was found and successfully processed.
+pub enum ObjectFileStatus {
+    /// The file was found and successfully processed.
     Found,
-    /// The debug image was not referenced in the stack trace and not further handled.
+    /// The image was not referenced in the stack trace and not further handled.
     Unused,
     /// The file could not be found in any of the specified sources.
-    MissingDebugFile,
-    /// The debug file failed to process.
-    MalformedDebugFile,
-    /// The debug file could not be downloaded.
+    Missing,
+    /// The file failed to process.
+    Malformed,
+    /// The file could not be downloaded.
     FetchingFailed,
-    /// The file exceeds the internal download limit.
-    TooLarge,
+    /// Downloading or processing the file took too long.
+    Timeout,
     /// An internal error while handling this image.
     Other,
 }
 
+impl Default for ObjectFileStatus {
+    fn default() -> Self {
+        ObjectFileStatus::Unused
+    }
+}
+
 /// Enhanced information on an in
 #[derive(Debug, Clone, Serialize)]
-pub struct FetchedDebugFile {
-    /// Status for handling this debug file.
-    pub status: DebugFileStatus,
+pub struct CompleteObjectInfo {
+    /// Status for fetching the file with debug info.
+    pub debug_status: ObjectFileStatus,
+    /// Status for fetching the file with unwind info (for minidump stackwalking).
+    #[serde(skip_serializing_if = "is_default", default)]
+    pub unwind_status: Option<ObjectFileStatus>,
     /// Actual architecture of this debug file.
     pub arch: Arch,
     /// More information on the object file.
     #[serde(flatten)]
-    pub object_info: ObjectInfo,
+    pub raw: RawObjectInfo,
+}
+
+impl From<RawObjectInfo> for CompleteObjectInfo {
+    fn from(raw: RawObjectInfo) -> Self {
+        CompleteObjectInfo {
+            debug_status: Default::default(),
+            unwind_status: Default::default(),
+            arch: Default::default(),
+            raw,
+        }
+    }
 }
 
 /// The response of a symbolication request or poll request.
@@ -470,10 +491,10 @@ pub struct CompletedSymbolicationResponse {
     pub assertion: Option<String>,
 
     /// The threads containing symbolicated stack frames.
-    pub stacktraces: Vec<SymbolicatedStacktrace>,
+    pub stacktraces: Vec<CompleteStacktrace>,
 
     /// A list of images, extended with status information.
-    pub modules: Vec<FetchedDebugFile>,
+    pub modules: Vec<CompleteObjectInfo>,
 }
 
 /// Information about the operating system.

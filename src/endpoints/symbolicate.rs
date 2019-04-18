@@ -8,7 +8,7 @@ use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktrace
 use crate::app::{ServiceApp, ServiceState};
 use crate::sentry::SentryFutureExt;
 use crate::types::{
-    ObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
+    RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
     SymbolicationResponse,
 };
 
@@ -31,7 +31,7 @@ struct SymbolicationRequestBody {
     #[serde(default)]
     pub stacktraces: Vec<RawStacktrace>,
     #[serde(default)]
-    pub modules: Vec<ObjectInfo>,
+    pub modules: Vec<RawObjectInfo>,
 }
 
 fn symbolicate_frames(
@@ -46,7 +46,7 @@ fn symbolicate_frames(
         signal: body.signal,
         sources: body.sources,
         stacktraces: body.stacktraces,
-        modules: body.modules,
+        modules: body.modules.into_iter().map(From::from).collect(),
         scope: params.scope,
     }
     .sentry_hub_new_from_current();

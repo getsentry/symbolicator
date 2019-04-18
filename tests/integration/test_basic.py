@@ -39,7 +39,7 @@ SUCCESS_WINDOWS = {
             ]
         }
     ],
-    "modules": [dict(status="found", arch="x86", **WINDOWS_DATA["modules"][0])],
+    "modules": [dict(debug_status="found", arch="x86", **WINDOWS_DATA["modules"][0])],
     "status": "completed",
 }
 
@@ -57,13 +57,15 @@ def _make_unsuccessful_result(status):
                 ]
             }
         ],
-        "modules": [dict(status=status, arch="unknown", **WINDOWS_DATA["modules"][0])],
+        "modules": [
+            dict(debug_status=status, arch="unknown", **WINDOWS_DATA["modules"][0])
+        ],
         "status": "completed",
     }
 
 
-MISSING_DEBUG_FILE = _make_unsuccessful_result("missing_debug_file")
-MALFORMED_DEBUG_FILE = _make_unsuccessful_result("malformed_debug_file")
+MISSING_FILE = _make_unsuccessful_result("missing")
+MALFORMED_FILE = _make_unsuccessful_result("malformed")
 
 
 @pytest.fixture(params=[True, False])
@@ -133,7 +135,7 @@ def test_no_sources(symbolicator, cache_dir_param):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == MISSING_DEBUG_FILE
+    assert response.json() == MISSING_FILE
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
@@ -203,7 +205,7 @@ def test_sources_without_filetypes(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == MISSING_DEBUG_FILE
+    assert response.json() == MISSING_FILE
     assert not hitcounter.hits
 
 
@@ -278,7 +280,7 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode):
     response.raise_for_status()
     response = response.json()
     # TODO(markus): Better error reporting
-    assert response == MISSING_DEBUG_FILE
+    assert response == MISSING_FILE
 
 
 def test_malformed_objects(symbolicator, hitcounter):
@@ -300,4 +302,4 @@ def test_malformed_objects(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
     response = response.json()
-    assert response == MALFORMED_DEBUG_FILE
+    assert response == MALFORMED_FILE

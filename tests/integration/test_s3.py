@@ -35,7 +35,7 @@ MACHO_SUCCESS = {
             "debug_id": str(debug_id),
             "image_addr": "0x100000000",
             "image_size": 4096,
-            "status": "found",
+            "debug_status": "found",
             "type": "macho",
         }
     ],
