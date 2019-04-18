@@ -543,6 +543,11 @@ impl SymCacheLookup {
                                             }
 
                                             _ => {
+                                                // Just in case we didn't handle an error properly,
+                                                // capture it here. If an error was captured with
+                                                // `capture_fail` further down in the callstack, it
+                                                // should be explicitly handled here as a
+                                                // SymCacheErrorKind variant.
                                                 capture_fail(&*e);
                                                 DebugFileStatus::Other
                                             }
