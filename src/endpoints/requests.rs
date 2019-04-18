@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::actors::symbolication::GetSymbolicationStatus;
 use crate::app::{ServiceApp, ServiceState};
+use crate::sentry::SentryFutureExt;
 use crate::types::{RequestId, SymbolicationError};
 
 /// Path parameters of the symbolication poll request.
@@ -32,7 +33,8 @@ fn poll_request(
     let message = GetSymbolicationStatus {
         request_id: path.request_id,
         timeout: query.timeout,
-    };
+    }
+    .sentry_hub_new_from_current();
 
     let future = state
         .symbolication

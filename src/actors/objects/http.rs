@@ -14,6 +14,7 @@ use crate::actors::objects::{
     PrioritizedDownloads, USER_AGENT,
 };
 use crate::http;
+use crate::sentry::SentryFutureExt;
 use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope};
 
 pub fn prepare_downloads(
@@ -33,12 +34,15 @@ pub fn prepare_downloads(
         source.files.layout,
     ) {
         let request = cache
-            .send(ComputeMemoized(FetchFileRequest {
-                scope: scope.clone(),
-                request: FetchFileInner::Http(source.clone(), download_path),
-                object_id: object_id.clone(),
-                threadpool: threadpool.clone(),
-            }))
+            .send(
+                ComputeMemoized(FetchFileRequest {
+                    scope: scope.clone(),
+                    request: FetchFileInner::Http(source.clone(), download_path),
+                    object_id: object_id.clone(),
+                    threadpool: threadpool.clone(),
+                })
+                .sentry_hub_new_from_current(),
+            )
             .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
             .and_then(move |response| {
                 Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into()))

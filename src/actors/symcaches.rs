@@ -13,6 +13,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
+use crate::sentry::SentryFutureExt;
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -214,13 +215,18 @@ impl Handler<FetchSymCache> for SymCacheActor {
     fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.symcaches
-                .send(ComputeMemoized(FetchSymCacheInternal {
-                    request,
-                    objects: self.objects.clone(),
-                    threadpool: self.threadpool.clone(),
-                }))
+                .send(
+                    ComputeMemoized(FetchSymCacheInternal {
+                        request,
+                        objects: self.objects.clone(),
+                        threadpool: self.threadpool.clone(),
+                    })
+                    .sentry_hub_new_from_current(),
+                )
                 .map_err(|e| Arc::new(e.context(SymCacheErrorKind::Mailbox).into()))
                 .and_then(|response| Ok(response?)),
         )
     }
 }
+
+handle_sentry_actix_message!(SymCacheActor, FetchSymCache);
