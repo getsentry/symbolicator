@@ -4,7 +4,13 @@ use symbolic::common::Uuid;
 
 use crate::actors::objects::DownloadPath;
 use crate::types::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId, SourceFilters,
+    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId, SourceFilters,
+};
+
+const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
+    case_sensitive: false,
+    require_literal_separator: false,
+    require_literal_leading_dot: false,
 };
 
 /// Generate a list of filepaths to try downloading from.
@@ -32,7 +38,7 @@ pub fn prepare_download_paths<'a>(
     })
 }
 
-fn matches_path_patterns(object_id: &ObjectId, patterns: &[String]) -> bool {
+fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
     fn canonicalize_path(s: &str) -> String {
         s.replace(r"\", "/")
     }
@@ -42,20 +48,9 @@ fn matches_path_patterns(object_id: &ObjectId, patterns: &[String]) -> bool {
     }
 
     for pattern in patterns {
-        let pattern = match glob::Pattern::new(&canonicalize_path(pattern)) {
-            Ok(x) => x,
-            Err(_) => continue,
-        };
-
         for path in &[&object_id.code_file, &object_id.debug_file] {
             if let Some(ref path) = path {
-                if pattern.matches_with(
-                    &canonicalize_path(path),
-                    glob::MatchOptions {
-                        case_sensitive: false,
-                        ..glob::MatchOptions::new()
-                    },
-                ) {
+                if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
                     return true;
                 }
             }

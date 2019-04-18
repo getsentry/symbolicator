@@ -1,11 +1,13 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{self, Write};
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::hex::HexValue;
 
 use failure::{Backtrace, Fail};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use url::Url;
 
@@ -163,7 +165,28 @@ pub struct SourceFilters {
     ///
     /// If a debug image does not contain any path information it will be treated like an image
     /// whose path doesn't match any pattern.
-    pub path_patterns: Vec<String>,
+    pub path_patterns: Vec<Glob>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Glob(pub glob::Pattern);
+
+impl<'de> Deserialize<'de> for Glob {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = Cow::<str>::deserialize(deserializer)?;
+        s.parse().map_err(de::Error::custom).map(Glob)
+    }
+}
+
+impl Deref for Glob {
+    type Target = glob::Pattern;
+
+    fn deref(&self) -> &glob::Pattern {
+        &self.0
+    }
 }
 
 /// Determines how files are named in an external source.
