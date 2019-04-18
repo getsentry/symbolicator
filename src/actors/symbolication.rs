@@ -250,8 +250,7 @@ impl SymbolicationActor {
                                     "Error while fetching CFI cache: {}",
                                     LogError(&ArcFail(e.clone()))
                                 );
-                                unwind_statuses
-                                    .insert(code_module_id, cficache_error_to_status(&e));
+                                unwind_statuses.insert(code_module_id, (&**e).into());
                                 continue;
                             }
                         };
@@ -264,8 +263,7 @@ impl SymbolicationActor {
                             }
                             Err(e) => {
                                 log::warn!("Error while parsing CFI cache: {}", LogError(&e));
-                                unwind_statuses
-                                    .insert(code_module_id, cficache_error_to_status(&e));
+                                unwind_statuses.insert(code_module_id, (&e).into());
                                 continue;
                             }
                         };
@@ -294,7 +292,7 @@ impl SymbolicationActor {
                                 code_module
                                     .id()
                                     .and_then(|id| unwind_statuses.get(&id))
-                                    .map(|x| *x)
+                                    .cloned()
                                     .unwrap_or(ObjectFileStatus::Unused),
                             );
                             info
@@ -511,7 +509,7 @@ impl SymCacheLookup {
                                     Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
                                     None => Ok((Some(symcache), ObjectFileStatus::Missing)),
                                 })
-                                .or_else(|e| Ok((None, symcache_error_to_status(&e))))
+                                .or_else(|e| Ok((None, (&*e).into())))
                         })
                         .map(move |(symcache, status)| {
                             object_info.arch =
@@ -891,29 +889,33 @@ fn symbolic_registers_to_protocol_registers(
         .collect()
 }
 
-fn cficache_error_to_status(e: &CfiCacheError) -> ObjectFileStatus {
-    match e.kind() {
-        CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
-        // nb: Timeouts during download are caught by Fetching
-        CfiCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
-        CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
+impl From<&CfiCacheError> for ObjectFileStatus {
+    fn from(e: &CfiCacheError) -> ObjectFileStatus {
+        match e.kind() {
+            CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+            // nb: Timeouts during download are caught by Fetching
+            CfiCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
+            CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
 
-        _ => {
-            capture_fail(e);
-            ObjectFileStatus::Other
+            _ => {
+                capture_fail(e);
+                ObjectFileStatus::Other
+            }
         }
     }
 }
 
-fn symcache_error_to_status(e: &SymCacheError) -> ObjectFileStatus {
-    match e.kind() {
-        SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
-        // nb: Timeouts during download are caught by Fetching
-        SymCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
-        SymCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
-        _ => {
-            capture_fail(e);
-            ObjectFileStatus::Other
+impl From<&SymCacheError> for ObjectFileStatus {
+    fn from(e: &SymCacheError) -> ObjectFileStatus {
+        match e.kind() {
+            SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+            // nb: Timeouts during download are caught by Fetching
+            SymCacheErrorKind::Timeout => ObjectFileStatus::TooLarge,
+            SymCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
+            _ => {
+                capture_fail(e);
+                ObjectFileStatus::Other
+            }
         }
     }
 }
