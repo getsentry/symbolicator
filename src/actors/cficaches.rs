@@ -12,6 +12,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
+use crate::sentry::SentryFutureExt;
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -123,13 +124,16 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
         // in Sentry itself?
         let result = objects
-            .send(FetchObject {
-                filetypes: FileType::from_object_type(&self.request.object_type),
-                identifier: self.request.identifier.clone(),
-                sources: self.request.sources.clone(),
-                scope: self.request.scope.clone(),
-                purpose: ObjectPurpose::Unwind,
-            })
+            .send(
+                FetchObject {
+                    filetypes: FileType::from_object_type(&self.request.object_type),
+                    identifier: self.request.identifier.clone(),
+                    sources: self.request.sources.clone(),
+                    scope: self.request.scope.clone(),
+                    purpose: ObjectPurpose::Unwind,
+                }
+                .sentry_hub_new_from_current(),
+            )
             .map_err(|e| e.context(CfiCacheErrorKind::Mailbox).into())
             .and_then(move |result| {
                 threadpool.spawn_handle(futures::lazy(move || {
@@ -193,13 +197,18 @@ impl Handler<FetchCfiCache> for CfiCacheActor {
     fn handle(&mut self, request: FetchCfiCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.cficaches
-                .send(ComputeMemoized(FetchCfiCacheInternal {
-                    request,
-                    objects: self.objects.clone(),
-                    threadpool: self.threadpool.clone(),
-                }))
+                .send(
+                    ComputeMemoized(FetchCfiCacheInternal {
+                        request,
+                        objects: self.objects.clone(),
+                        threadpool: self.threadpool.clone(),
+                    })
+                    .sentry_hub_new_from_current(),
+                )
                 .map_err(|e| Arc::new(e.context(CfiCacheErrorKind::Mailbox).into()))
                 .and_then(|response| Ok(response?)),
         )
     }
 }
+
+handle_sentry_actix_message!(CfiCacheActor, FetchCfiCache);

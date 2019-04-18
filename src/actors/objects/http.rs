@@ -13,6 +13,7 @@ use crate::actors::objects::{
     ObjectError, ObjectErrorKind, PrioritizedDownloads, USER_AGENT,
 };
 use crate::http;
+use crate::sentry::SentryFutureExt;
 use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope};
 
 pub fn prepare_downloads(
@@ -45,7 +46,7 @@ pub fn prepare_downloads(
 
     Box::new(future::join_all(requests.into_iter().map(move |request| {
         cache
-            .send(ComputeMemoized(request))
+            .send(ComputeMemoized(request).sentry_hub_new_from_current())
             .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
             .and_then(move |response| {
                 Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into()))
