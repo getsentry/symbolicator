@@ -67,6 +67,8 @@ where
     type Result = M::Result;
 }
 
+/// Implement `Handler<SentryFuture<$message>>` for `$actor`. This allows message senders to wrap
+/// their `$message` in a `SentryFuture` to control the Hub used in the message handler.
 #[macro_export]
 macro_rules! handle_sentry_actix_message {
     ($actor:ident, $message:ident) => { handle_sentry_actix_message!(<>, $actor <>, $message <>); };
