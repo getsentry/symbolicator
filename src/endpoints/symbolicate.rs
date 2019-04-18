@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
-    ObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
+    RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
     SymbolicationResponse,
 };
 
@@ -30,7 +30,7 @@ struct SymbolicationRequestBody {
     #[serde(default)]
     pub stacktraces: Vec<RawStacktrace>,
     #[serde(default)]
-    pub modules: Vec<ObjectInfo>,
+    pub modules: Vec<RawObjectInfo>,
 }
 
 fn symbolicate_frames(

@@ -270,7 +270,7 @@ pub struct RawStacktrace {
 
 /// Specification of an image loaded into the process.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ObjectInfo {
+pub struct RawObjectInfo {
     /// Platform image file type (container format).
     #[serde(rename = "type")]
     pub ty: ObjectType,
@@ -376,7 +376,7 @@ pub struct SymbolicatedFrame {
 /// Frames in this request may or may not be symbolicated. The status field contains information on
 /// the individual success for each frame.
 #[derive(Debug, Default, Clone, Serialize)]
-pub struct SymbolicatedStacktrace {
+pub struct CompleteStacktrace {
     /// ID of thread that had this stacktrace. Returned when a minidump was processed.
     #[serde(skip_serializing_if = "is_default")]
     pub thread_id: Option<u64>,
@@ -420,7 +420,7 @@ pub enum ObjectFileStatus {
 
 /// Enhanced information on an in
 #[derive(Debug, Clone, Serialize)]
-pub struct FetchedObjectFile {
+pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
     pub debug_status: ObjectFileStatus,
     /// Status for fetching the file with unwind info (for minidump stackwalking).
@@ -430,7 +430,7 @@ pub struct FetchedObjectFile {
     pub arch: Arch,
     /// More information on the object file.
     #[serde(flatten)]
-    pub object_info: ObjectInfo,
+    pub object_info: RawObjectInfo,
 }
 
 /// The response of a symbolication request or poll request.
@@ -474,10 +474,10 @@ pub struct CompletedSymbolicationResponse {
     pub assertion: Option<String>,
 
     /// The threads containing symbolicated stack frames.
-    pub stacktraces: Vec<SymbolicatedStacktrace>,
+    pub stacktraces: Vec<CompleteStacktrace>,
 
     /// A list of images, extended with status information.
-    pub modules: Vec<FetchedObjectFile>,
+    pub modules: Vec<CompleteObjectInfo>,
 }
 
 /// Information about the operating system.

@@ -28,10 +28,10 @@ use crate::actors::symcaches::{
 use crate::hex::HexValue;
 use crate::logging::LogError;
 use crate::types::{
-    ArcFail, CompletedSymbolicationResponse, FetchedObjectFile, FrameStatus, ObjectFileStatus,
-    ObjectId, ObjectInfo, ObjectType, RawFrame, RawStacktrace, RequestId, Scope, Signal,
-    SourceConfig, SymbolicatedFrame, SymbolicatedStacktrace, SymbolicationError,
-    SymbolicationResponse, SystemInfo,
+    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
+    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, RequestId,
+    Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationError, SymbolicationResponse,
+    SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -150,7 +150,7 @@ impl SymbolicationActor {
                     let modules = object_lookup
                         .inner
                         .into_iter()
-                        .map(|(object_info, cache, debug_status)| FetchedObjectFile {
+                        .map(|(object_info, cache, debug_status)| CompleteObjectInfo {
                             debug_status,
                             unwind_status: None,
                             arch: cache.as_ref().map(|c| c.arch()).unwrap_or_default(),
@@ -245,7 +245,7 @@ impl SymbolicationActor {
                     let mut unwind_statuses = BTreeMap::new();
 
                     for (code_module_id, result) in &cfi_requests {
-                        // XXX: We should actually build a list of FetchedObjectFile instead of
+                        // XXX: We should actually build a list of CompleteObjectInfo instead of
                         // discarding errors.
 
                         let cache_file = match result {
@@ -414,7 +414,7 @@ impl SymbolicationActor {
     }
 }
 
-fn object_id_from_object_info(object_info: &ObjectInfo) -> ObjectId {
+fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
         debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
@@ -438,9 +438,9 @@ fn get_image_type_from_minidump(minidump_os_name: &str) -> &'static str {
     }
 }
 
-fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule) -> ObjectInfo {
+fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule) -> RawObjectInfo {
     // TODO: should we also add `module.id()` somewhere?
-    ObjectInfo {
+    RawObjectInfo {
         ty: ObjectType(get_image_type_from_minidump(minidump_os_name).to_owned()),
         code_id: Some(module.code_identifier()),
         code_file: Some(split_path(&module.code_file()).1.to_owned()),
@@ -456,13 +456,13 @@ fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule)
 }
 
 struct SymCacheLookup {
-    inner: Vec<(ObjectInfo, Option<Arc<SymCacheFile>>, ObjectFileStatus)>,
+    inner: Vec<(RawObjectInfo, Option<Arc<SymCacheFile>>, ObjectFileStatus)>,
 }
 
-impl FromIterator<ObjectInfo> for SymCacheLookup {
+impl FromIterator<RawObjectInfo> for SymCacheLookup {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = ObjectInfo>,
+        T: IntoIterator<Item = RawObjectInfo>,
     {
         let mut rv = SymCacheLookup {
             inner: iter
@@ -549,7 +549,12 @@ impl SymCacheLookup {
     fn lookup_symcache(
         &self,
         addr: u64,
-    ) -> Option<(usize, &ObjectInfo, Option<&SymCacheFile>, ObjectFileStatus)> {
+    ) -> Option<(
+        usize,
+        &RawObjectInfo,
+        Option<&SymCacheFile>,
+        ObjectFileStatus,
+    )> {
         for (i, (info, cache, status)) in self.inner.iter().enumerate() {
             let addr_smaller_than_end = if let Some(size) = info.image_size {
                 if let Some(end) = info.image_addr.0.checked_add(size) {
@@ -578,10 +583,10 @@ fn symbolize_thread(
     thread: RawStacktrace,
     caches: &SymCacheLookup,
     signal: Option<Signal>,
-) -> SymbolicatedStacktrace {
+) -> CompleteStacktrace {
     let registers = thread.registers;
 
-    let mut stacktrace = SymbolicatedStacktrace {
+    let mut stacktrace = CompleteStacktrace {
         frames: vec![],
         ..Default::default()
     };
@@ -755,7 +760,7 @@ pub struct SymbolicateStacktraces {
     /// This list must cover the instruction addresses of the frames in `threads`. If a frame is not
     /// covered by any image, the frame cannot be symbolicated as it is not clear which debug file
     /// to load.
-    pub modules: Vec<ObjectInfo>,
+    pub modules: Vec<RawObjectInfo>,
 }
 
 impl Message for SymbolicateStacktraces {
