@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use actix::ResponseFuture;
-use actix_web::{http::Method, HttpResponse, Path, State};
+use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
 use futures::{future, Future, Stream};
@@ -71,8 +71,11 @@ fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
 
 fn proxy_symstore_request(
     state: State<ServiceState>,
+    req: HttpRequest<ServiceState>,
     path: Path<(String,)>,
 ) -> ResponseFuture<HttpResponse, Error> {
+    let is_head = req.method() == Method::HEAD;
+
     if !state.config.symstore_proxy {
         return Box::new(future::ok(HttpResponse::NotFound().finish()));
     }
@@ -92,7 +95,7 @@ fn proxy_symstore_request(
                 purpose: ObjectPurpose::Debug,
             })
             .map_err(|e| e.context(ProxyErrorKind::Mailbox).into())
-            .and_then(|result| {
+            .and_then(move |result| {
                 let object_file = match result {
                     Ok(object_file) => object_file,
                     Err(_err) => {
@@ -103,23 +106,28 @@ fn proxy_symstore_request(
                     return future::ok(HttpResponse::NotFound().finish());
                 }
                 let length = object_file.len();
-                let bytes = Cursor::new(ObjectFileBytes(object_file));
-                let async_bytes = FramedRead::new(bytes, BytesCodec::new())
-                    .map(BytesMut::freeze)
-                    .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
-                    .map_err(Error::from);
-                future::ok(
-                    HttpResponse::Ok()
-                        .header("content-type", "application/octet-stream")
-                        .content_length(length)
-                        .streaming(async_bytes),
-                )
+                let mut response = HttpResponse::Ok();
+                response
+                    .content_length(length)
+                    .header("content-type", "application/octet-stream");
+                if is_head {
+                    future::ok(response.finish())
+                } else {
+                    let bytes = Cursor::new(ObjectFileBytes(object_file));
+                    let async_bytes = FramedRead::new(bytes, BytesCodec::new())
+                        .map(BytesMut::freeze)
+                        .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
+                        .map_err(Error::from);
+                    future::ok(response.streaming(async_bytes))
+                }
             }),
     )
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {
     app.resource("/symbols/{path:.+}", |r| {
-        r.method(Method::GET).with(proxy_symstore_request);
+        r.route()
+            .filter(pred::Any(pred::Get()).or(pred::Head()))
+            .with(proxy_symstore_request);
     })
 }
