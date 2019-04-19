@@ -208,7 +208,7 @@ pub struct DirectoryLayout {
 impl Default for DirectoryLayout {
     fn default() -> DirectoryLayout {
         DirectoryLayout {
-            ty: DirectoryLayoutType::Symstore,
+            ty: DirectoryLayoutType::Native,
             casing: Default::default(),
         }
     }
