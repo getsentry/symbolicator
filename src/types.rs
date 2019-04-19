@@ -143,6 +143,7 @@ pub struct ExternalSourceConfigBase {
     pub filters: SourceFilters,
 
     /// How files are laid out in this storage.
+    #[serde(default)]
     pub layout: DirectoryLayout,
 
     /// Whether debug files are shared across scopes.
@@ -202,6 +203,15 @@ pub struct DirectoryLayout {
     /// making this aspect not well-specified.
     #[serde(default)]
     pub casing: FilenameCasing,
+}
+
+impl Default for DirectoryLayout {
+    fn default() -> DirectoryLayout {
+        DirectoryLayout {
+            ty: DirectoryLayoutType::Symstore,
+            casing: Default::default(),
+        }
+    }
 }
 
 /// Known conventions for `DirectoryLayout`
