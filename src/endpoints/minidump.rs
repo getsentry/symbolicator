@@ -109,6 +109,7 @@ fn process_minidump(
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     let threadpool = state.io_threadpool.clone();
     let symbolication = state.symbolication.clone();
+    let default_sources = state.config.sources.clone();
 
     let SymbolicationRequestQueryParams { scope, timeout } = params.into_inner();
 
@@ -132,10 +133,13 @@ fn process_minidump(
 
             Ok((file_opt, sources_opt))
         })
-        .and_then(|collect_state| match collect_state {
-            (Some(file), Some(sources)) => Ok(ProcessMinidump {
+        .and_then(move |collect_state| match collect_state {
+            (Some(file), requested_sources) => Ok(ProcessMinidump {
                 file,
-                sources,
+                sources: match requested_sources {
+                    Some(sources) => Arc::new(sources),
+                    None => default_sources,
+                },
                 scope,
             }),
             _ => Err(error::ErrorBadRequest("missing formdata fields")),

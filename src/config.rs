@@ -1,12 +1,15 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use failure::Fail;
 use log::LevelFilter;
 use sentry::internals::Dsn;
 use serde::Deserialize;
+
+use crate::types::SourceConfig;
 
 #[derive(Debug, Fail, derive_more::From)]
 pub enum ConfigError {
@@ -120,6 +123,12 @@ pub struct Config {
 
     /// Fine-tune cache expiry
     pub caches: CacheConfigs,
+
+    /// Enables symbol proxy mode.
+    pub symstore_proxy: bool,
+
+    /// Default list of sources and the sources used for proxy mode.
+    pub sources: Arc<Vec<SourceConfig>>,
 }
 
 /// Checks if we are running in docker.
@@ -152,6 +161,8 @@ impl Default for Config {
             metrics: Metrics::default(),
             sentry_dsn: None,
             caches: CacheConfigs::default(),
+            symstore_proxy: true,
+            sources: Arc::new(vec![]),
         }
     }
 }
