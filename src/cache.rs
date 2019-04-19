@@ -1,11 +1,12 @@
 /// Core logic for cache files. Used by `crate::actors::cache`.
 ///
 /// Terminology:
-/// * positive cache item: A cache item that represents the presence of something. E.g. we succeeded in downloading an object file and cached that file.
-/// * Negative cache item: A cache item that represents the absence of something. E.g. we encountered a 404 while trying to download a file, and cached that fact. Represented by an empty file.
+/// - positive cache item: A cache item that represents the presence of something. E.g. we
+///   succeeded in downloading an object file and cached that file.
+/// - Negative cache item: A cache item that represents the absence of something. E.g. we encountered a 404 while trying to download a file, and cached that fact. Represented by an empty file.
 ///
-/// * item age: When the item was computed and created.
-/// * item last used: Last time this item was involved in a cache hit.
+/// - item age: When the item was computed and created.
+/// - item last used: Last time this item was involved in a cache hit.
 ///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
@@ -147,9 +148,9 @@ impl Cache {
         // Translate externally visible caching config to internal concepts of "access time" and
         // "creation time"
         let (max_age, max_last_used) = if is_negative {
-            (None, self.cache_config.max_unused_for)
-        } else {
             (self.cache_config.retry_misses_after, None)
+        } else {
+            (None, self.cache_config.max_unused_for)
         };
 
         if let Some(max_age) = max_age {
@@ -237,4 +238,104 @@ where
             _ => Err(e),
         },
     }
+}
+
+#[test]
+fn test_max_unused_for() -> Result<(), CleanupError> {
+    use std::io::Write;
+    use std::thread::sleep;
+
+    let tempdir = tempfile::tempdir()?;
+
+    let cache = Cache::new(
+        "test",
+        Some(tempdir.path()),
+        CacheConfig {
+            max_unused_for: Some(Duration::from_millis(10)),
+            ..Default::default()
+        },
+    );
+
+    File::create(tempdir.path().join("killthis"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("keepthis"))?.write_all(b"")?;
+    sleep(Duration::from_millis(11));
+
+    File::create(tempdir.path().join("keepthis2"))?.write_all(b"hi")?;
+    cache.cleanup()?;
+
+    let mut basenames: Vec<_> = read_dir(tempdir.path())?
+        .into_iter()
+        .map(|x| x.unwrap().file_name().into_string().unwrap())
+        .collect();
+
+    basenames.sort();
+
+    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+    Ok(())
+}
+
+#[test]
+fn test_retry_misses_after() -> Result<(), CleanupError> {
+    use std::io::Write;
+    use std::thread::sleep;
+
+    let tempdir = tempfile::tempdir()?;
+
+    let cache = Cache::new(
+        "test",
+        Some(tempdir.path()),
+        CacheConfig {
+            retry_misses_after: Some(Duration::from_millis(10)),
+            ..Default::default()
+        },
+    );
+
+    File::create(tempdir.path().join("keepthis"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("killthis"))?.write_all(b"")?;
+    sleep(Duration::from_millis(11));
+
+    File::create(tempdir.path().join("keepthis2"))?.write_all(b"")?;
+    cache.cleanup()?;
+
+    let mut basenames: Vec<_> = read_dir(tempdir.path())?
+        .into_iter()
+        .map(|x| x.unwrap().file_name().into_string().unwrap())
+        .collect();
+
+    basenames.sort();
+
+    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+    Ok(())
+}
+
+#[test]
+fn test_cleanup_malformed() -> Result<(), CleanupError> {
+    use std::io::Write;
+
+    let tempdir = tempfile::tempdir()?;
+
+    // File has same amount of chars, check that optimization  works
+    File::create(tempdir.path().join("keepthis"))?.write_all(b"additive")?;
+    File::create(tempdir.path().join("keepthis2"))?.write_all(b"hi")?;
+
+    File::create(tempdir.path().join("killthis"))?.write_all(b"malformed")?;
+
+    // Creation of this struct == "process startup"
+    let cache = Cache::new("test", Some(tempdir.path()), Default::default());
+    cache.cleanup()?;
+
+    File::create(tempdir.path().join("keepthis3"))?.write_all(b"malformed")?;
+
+    let mut basenames: Vec<_> = read_dir(tempdir.path())?
+        .into_iter()
+        .map(|x| x.unwrap().file_name().into_string().unwrap())
+        .collect();
+
+    basenames.sort();
+
+    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+
+    Ok(())
 }
