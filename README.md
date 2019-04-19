@@ -126,6 +126,41 @@ to the symbolication API.
 If you want to use the symbolicator as a symstore compatible proxy you need to
 preconfigure the sources.
 
+Example configuration:
+
+```yaml
+sources:
+  - id: my-bucket-linux
+    type: s3
+    bucket: my-project-my-bucket
+    region: us-east-1
+    prefix: /linux
+    access_key: AMVSAVWEXRIRJPOMCKWN
+    secret_key: Lqnc45YWr9y7qftCI+vST/1ZPmmw1H6SkbIf2v/8
+    filters:
+      filetypes: [elf_debug, elf_code]
+    layout:
+      type: native
+      casing: lowercase
+  - id: my-bucket-windows
+    type: s3
+    bucket: my-project-my-bucket
+    region: us-east-1
+    prefix: /windows
+    access_key: AMVSAVWEXRIRJPOMCKWN
+    secret_key: Lqnc45YWr9y7qftCI+vST/1ZPmmw1H6SkbIf2v/8
+    filters:
+      filetypes: [pe, pdb]
+    layout:
+      type: native
+      casing: lowercase
+  - id: microsoft
+    type: http
+    filters:
+      filetypes: [pe, pdb]
+    url: https://msdl.microsoft.com/download/symbols/
+```
+
 Sources are ordered by priority.  Each source needs at least two keys:
 
 - `id`: the ID of the source.  This can be freely chosen and is used to identify
