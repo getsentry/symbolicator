@@ -35,9 +35,7 @@ fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
     let (leading_fn, signature, trailing_fn) = path.splitn(3, '/').collect_tuple()?;
 
     let leading_fn_lower = leading_fn.to_lowercase();
-    if !trailing_fn.eq_ignore_ascii_case("file.ptr")
-        && !leading_fn_lower.eq_ignore_ascii_case(trailing_fn)
-    {
+    if !leading_fn_lower.eq_ignore_ascii_case(trailing_fn) {
         return None;
     }
 
@@ -91,7 +89,7 @@ fn proxy_symstore_request(
                 filetypes,
                 identifier: object_id,
                 sources: state.config.sources.clone(),
-                scope: Scope::Proxy,
+                scope: Scope::Global,
                 purpose: ObjectPurpose::Debug,
             })
             .map_err(|e| e.context(ProxyErrorKind::Mailbox).into())
