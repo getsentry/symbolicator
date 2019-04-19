@@ -2202,17 +2202,19 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "symbolic-common 6.1.0",
- "symbolic-debuginfo 6.1.0",
- "symbolic-demangle 6.1.0",
- "symbolic-minidump 6.1.0",
- "symbolic-symcache 6.1.0",
+ "symbolic-common 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-demangle 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-minidump 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-symcache 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "symbolic-common"
 version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "debugid 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2225,6 +2227,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "dmsort 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2239,42 +2242,45 @@ dependencies = [
  "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.90 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.0",
+ "symbolic-common 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "symbolic-demangle"
 version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "cpp_demangle 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "msvc-demangler 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-demangle 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.0",
+ "symbolic-common 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "symbolic-minidump"
 version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.90 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.0",
- "symbolic-debuginfo 6.1.0",
+ "symbolic-common 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "symbolic-symcache"
 version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.0",
- "symbolic-debuginfo 6.1.0",
+ "symbolic-common 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2309,7 +2315,7 @@ dependencies = [
  "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.8.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic 6.1.0",
+ "symbolic 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempfile 3.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-threadpool 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3239,6 +3245,12 @@ dependencies = [
 "checksum strsim 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 "checksum structopt 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)" = "3d0760c312538987d363c36c42339b55f5ee176ea8808bbe4543d484a291c8d1"
 "checksum structopt-derive 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)" = "528aeb7351d042e6ffbc2a6fb76a86f9b622fdf7c25932798e7a82cb03bc94c6"
+"checksum symbolic 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d588b3b3de75f155127d97e3352e482ca895ca96f9242b514eee7971f9f7ab0c"
+"checksum symbolic-common 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "55bd6182c7ef9cccb7ac401e3188b993a2b8d2c68fcb1516ee868ce22627cc7d"
+"checksum symbolic-debuginfo 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "924a0bf4a5b69ac4fd46f1f2a81546e95f6cbe84b34afca25b2ec93572ec6465"
+"checksum symbolic-demangle 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "0afd1197cba6b4adcadd1e07453129f6b29cf1c9b9a6ae6b86e33fc1c4566d1e"
+"checksum symbolic-minidump 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "324d081390c32ac6ed291aa888f25a233539040953daaf9e6a9cc4cc5a8cdce1"
+"checksum symbolic-symcache 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a8ff31262fe91947594289d5283548fc7c8e8374e1281c95e825534aab16297d"
 "checksum syn 0.15.32 (registry+https://github.com/rust-lang/crates.io-index)" = "846620ec526c1599c070eff393bfeeeb88a93afa2513fc3b49f1fea84cf7b0ed"
 "checksum synstructure 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)" = "73687139bf99285483c96ac0add482c3776528beac1d97d444f6e91f203a2015"
 "checksum tempfile 3.0.7 (registry+https://github.com/rust-lang/crates.io-index)" = "b86c784c88d98c801132806dadd3819ed29d8600836c4088e855cdf3e178ed8a"

@@ -47,6 +47,3 @@ itertools = "0.8.0"
 
 [build-dependencies]
 git-version = "0.2.1"
-
-[patch.crates-io]
-symbolic = { path = "../symbolic" }
