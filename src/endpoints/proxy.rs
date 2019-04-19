@@ -4,7 +4,7 @@ use actix::ResponseFuture;
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
-use futures::{future, Future, Stream};
+use futures::{Future, IntoFuture, Stream};
 use itertools::Itertools;
 use symbolic::common::{CodeId, DebugId};
 use tokio::codec::{BytesCodec, FramedRead};
@@ -77,12 +77,12 @@ fn proxy_symstore_request(
     let is_head = req.method() == Method::HEAD;
 
     if !state.config.symstore_proxy {
-        return Box::new(future::ok(HttpResponse::NotFound().finish()));
+        return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
     }
 
     let (filetypes, object_id) = match parse_symstore_path(&path.0) {
         Some(x) => x,
-        None => return Box::new(future::ok(HttpResponse::NotFound().finish())),
+        None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
     };
     Box::new(
         state
@@ -99,11 +99,11 @@ fn proxy_symstore_request(
                 let object_file = match result {
                     Ok(object_file) => object_file,
                     Err(_err) => {
-                        return future::err(ProxyErrorKind::Fetching.into());
+                        return Err(ProxyErrorKind::Fetching.into());
                     }
                 };
                 if !object_file.has_object() {
-                    return future::ok(HttpResponse::NotFound().finish());
+                    return Ok(HttpResponse::NotFound().finish());
                 }
                 let length = object_file.len();
                 let mut response = HttpResponse::Ok();
@@ -111,14 +111,14 @@ fn proxy_symstore_request(
                     .content_length(length)
                     .header("content-type", "application/octet-stream");
                 if is_head {
-                    future::ok(response.finish())
+                    Ok(response.finish())
                 } else {
                     let bytes = Cursor::new(ObjectFileBytes(object_file));
                     let async_bytes = FramedRead::new(bytes, BytesCodec::new())
                         .map(BytesMut::freeze)
                         .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
                         .map_err(Error::from);
-                    future::ok(response.streaming(async_bytes))
+                    Ok(response.streaming(async_bytes))
                 }
             }),
     )
