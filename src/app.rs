@@ -136,15 +136,15 @@ impl Caches {
         Caches {
             objects: {
                 let path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
-                Cache::new("objects", path, config.caches.objects.clone())
+                Cache::new("objects", path, config.caches.downloaded)
             },
             symcaches: {
                 let path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
-                Cache::new("symcaches", path, config.caches.symcaches.clone())
+                Cache::new("symcaches", path, config.caches.derived)
             },
             cficaches: {
                 let path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
-                Cache::new("cficaches", path, config.caches.cficaches.clone())
+                Cache::new("cficaches", path, config.caches.derived)
             },
         }
     }

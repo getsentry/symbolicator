@@ -6,6 +6,9 @@
 ///
 /// * item age: When the item was computed and created.
 /// * item last used: Last time this item was involved in a cache hit.
+///
+/// TODO:
+/// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -141,13 +144,12 @@ impl Cache {
 
         let is_negative = metadata.len() == 0;
 
+        // Translate externally visible caching config to internal concepts of "access time" and
+        // "creation time"
         let (max_age, max_last_used) = if is_negative {
-            (
-                self.cache_config.max_negative_age,
-                self.cache_config.max_negative_last_used,
-            )
+            (None, self.cache_config.max_unused_for)
         } else {
-            (self.cache_config.max_age, self.cache_config.max_last_used)
+            (self.cache_config.retry_misses_after, None)
         };
 
         if let Some(max_age) = max_age {
