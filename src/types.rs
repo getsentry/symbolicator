@@ -143,6 +143,7 @@ pub struct ExternalSourceConfigBase {
     pub filters: SourceFilters,
 
     /// How files are laid out in this storage.
+    #[serde(default)]
     pub layout: DirectoryLayout,
 
     /// Whether debug files are shared across scopes.
@@ -191,6 +192,7 @@ impl Deref for Glob {
 
 /// Determines how files are named in an external source.
 #[derive(Deserialize, Clone, Copy, Debug)]
+#[serde(default)]
 pub struct DirectoryLayout {
     /// Directory layout of this symbol server.
     #[serde(rename = "type")]
@@ -202,6 +204,15 @@ pub struct DirectoryLayout {
     /// making this aspect not well-specified.
     #[serde(default)]
     pub casing: FilenameCasing,
+}
+
+impl Default for DirectoryLayout {
+    fn default() -> DirectoryLayout {
+        DirectoryLayout {
+            ty: DirectoryLayoutType::Native,
+            casing: Default::default(),
+        }
+    }
 }
 
 /// Known conventions for `DirectoryLayout`
@@ -266,6 +277,8 @@ impl SourceConfig {
 pub enum Scope {
     #[serde(rename = "global")]
     Global,
+    #[serde(rename = "proxy")]
+    Proxy,
     Scoped(String),
 }
 
@@ -273,6 +286,7 @@ impl AsRef<str> for Scope {
     fn as_ref(&self) -> &str {
         match *self {
             Scope::Global => "global",
+            Scope::Proxy => "proxy",
             Scope::Scoped(ref s) => &s,
         }
     }
@@ -288,6 +302,7 @@ impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Scope::Global => f.write_str("global"),
+            Scope::Proxy => f.write_str("proxy"),
             Scope::Scoped(ref scope) => f.write_str(&scope),
         }
     }
@@ -618,6 +633,13 @@ impl FileType {
     pub fn all() -> &'static [Self] {
         use FileType::*;
         &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
+    }
+
+    /// Returns PE file types.
+    #[inline]
+    pub fn pe() -> &'static [Self] {
+        use FileType::*;
+        &[Pdb, Pe, Breakpad]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.

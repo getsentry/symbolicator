@@ -743,7 +743,7 @@ pub struct SymbolicateStacktraces {
     pub signal: Option<Signal>,
 
     /// A list of external sources to load debug files.
-    pub sources: Vec<SourceConfig>,
+    pub sources: Arc<Vec<SourceConfig>>,
 
     /// A list of threads containing stack traces.
     pub stacktraces: Vec<RawStacktrace>,
@@ -842,7 +842,7 @@ pub struct ProcessMinidump {
     pub file: File,
 
     /// A list of external sources to load debug files.
-    pub sources: Vec<SourceConfig>,
+    pub sources: Arc<Vec<SourceConfig>>,
 }
 
 struct MinidumpState {

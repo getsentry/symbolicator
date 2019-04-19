@@ -84,6 +84,10 @@ pub struct ServiceState {
     pub io_threadpool: Arc<ThreadPool>,
     /// The address of the symbolication actor.
     pub symbolication: Addr<SymbolicationActor>,
+    /// The address of the objects actor.
+    pub objects: Addr<ObjectsActor>,
+    /// The config object.
+    pub config: Arc<Config>,
 }
 
 /// Typedef for the application type.
@@ -118,6 +122,7 @@ fn execute() -> Result<(), CliError> {
 
 /// Starts all actors and HTTP server based on loaded config.
 fn run_server(config: Config) -> Result<(), CliError> {
+    let config = Arc::new(config);
     if let Some(ref statsd) = config.metrics.statsd {
         metrics::configure_statsd(&config.metrics.prefix, statsd);
     }
@@ -154,7 +159,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
     }
     let cficaches = CfiCacheActor::new(
         CacheActor::new("cficaches", cficache_path).start(),
-        objects,
+        objects.clone(),
         cpu_threadpool.clone(),
     )
     .start();
@@ -165,6 +170,8 @@ fn run_server(config: Config) -> Result<(), CliError> {
     let state = ServiceState {
         io_threadpool,
         symbolication,
+        objects,
+        config: config.clone(),
     };
 
     fn get_app(state: ServiceState) -> ServiceApp {
@@ -177,6 +184,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
         app = endpoints::minidump::register(app);
         app = endpoints::requests::register(app);
         app = endpoints::symbolicate::register(app);
+        app = endpoints::proxy::register(app);
         app
     }
 

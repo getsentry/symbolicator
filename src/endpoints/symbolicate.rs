@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::ResponseFuture;
 use actix_web::{http::Method, Json, Query, State};
 use failure::Error;
@@ -27,7 +29,7 @@ struct SymbolicationRequestBody {
     #[serde(default)]
     pub signal: Option<Signal>,
     #[serde(default)]
-    pub sources: Vec<SourceConfig>,
+    pub sources: Option<Vec<SourceConfig>>,
     #[serde(default)]
     pub stacktraces: Vec<RawStacktrace>,
     #[serde(default)]
@@ -41,10 +43,14 @@ fn symbolicate_frames(
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     let params = params.into_inner();
     let body = body.into_inner();
+    let sources = match body.sources {
+        Some(sources) => Arc::new(sources),
+        None => state.config.sources.clone(),
+    };
 
     let message = SymbolicateStacktraces {
         signal: body.signal,
-        sources: body.sources,
+        sources,
         stacktraces: body.stacktraces,
         modules: body.modules.into_iter().map(From::from).collect(),
         scope: params.scope,
