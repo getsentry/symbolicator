@@ -1,11 +1,14 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use failure::Fail;
 use log::LevelFilter;
 use sentry::internals::Dsn;
 use serde::Deserialize;
+
+use crate::types::SourceConfig;
 
 #[derive(Debug, Fail, derive_more::From)]
 pub enum ConfigError {
@@ -88,6 +91,12 @@ pub struct Config {
 
     /// DSN to report internal errors to
     pub sentry_dsn: Option<Dsn>,
+
+    /// Enables symbol proxy mode.
+    pub symstore_proxy: bool,
+
+    /// Default list of sources and the sources used for proxy mode.
+    pub sources: Arc<Vec<SourceConfig>>,
 }
 
 /// Checks if we are running in docker.
@@ -119,6 +128,8 @@ impl Default for Config {
             logging: Logging::default(),
             metrics: Metrics::default(),
             sentry_dsn: None,
+            symstore_proxy: true,
+            sources: Arc::new(vec![]),
         }
     }
 }

@@ -266,6 +266,8 @@ impl SourceConfig {
 pub enum Scope {
     #[serde(rename = "global")]
     Global,
+    #[serde(rename = "proxy")]
+    Proxy,
     Scoped(String),
 }
 
@@ -273,6 +275,7 @@ impl AsRef<str> for Scope {
     fn as_ref(&self) -> &str {
         match *self {
             Scope::Global => "global",
+            Scope::Proxy => "proxy",
             Scope::Scoped(ref s) => &s,
         }
     }
@@ -288,6 +291,7 @@ impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Scope::Global => f.write_str("global"),
+            Scope::Proxy => f.write_str("proxy"),
             Scope::Scoped(ref scope) => f.write_str(&scope),
         }
     }
@@ -618,6 +622,13 @@ impl FileType {
     pub fn all() -> &'static [Self] {
         use FileType::*;
         &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
+    }
+
+    /// Returns PE file types.
+    #[inline]
+    pub fn pe() -> &'static [Self] {
+        use FileType::*;
+        &[Pdb, Pe, Breakpad]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.

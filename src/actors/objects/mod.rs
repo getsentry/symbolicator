@@ -262,7 +262,23 @@ pub struct ObjectFile {
     object: Option<ByteView<'static>>,
 }
 
+pub struct ObjectFileBytes(pub Arc<ObjectFile>);
+
+impl AsRef<[u8]> for ObjectFileBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.object.as_ref().map_or(&[][..], |x| &x[..])
+    }
+}
+
 impl ObjectFile {
+    pub fn len(&self) -> u64 {
+        self.object.as_ref().map_or(0, |x| x.len() as u64)
+    }
+
+    pub fn has_object(&self) -> bool {
+        self.object.is_some()
+    }
+
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         let bytes = match self.object {
             Some(ref x) => x,
@@ -341,7 +357,7 @@ pub struct FetchObject {
     pub purpose: ObjectPurpose,
     pub scope: Scope,
     pub identifier: ObjectId,
-    pub sources: Vec<SourceConfig>,
+    pub sources: Arc<Vec<SourceConfig>>,
 }
 
 #[derive(Debug, Copy, Clone)]

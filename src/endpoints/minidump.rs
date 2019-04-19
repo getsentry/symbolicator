@@ -135,7 +135,7 @@ fn process_minidump(
         .and_then(|collect_state| match collect_state {
             (Some(file), Some(sources)) => Ok(ProcessMinidump {
                 file,
-                sources,
+                sources: Arc::new(sources),
                 scope,
             }),
             _ => Err(error::ErrorBadRequest("missing formdata fields")),
