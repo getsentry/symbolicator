@@ -631,13 +631,6 @@ impl FileType {
         &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
     }
 
-    /// Returns PE file types.
-    #[inline]
-    pub fn pe() -> &'static [Self] {
-        use FileType::*;
-        &[Pdb, Pe, Breakpad]
-    }
-
     /// Given an object type, returns filetypes in the order they should be tried.
     #[inline]
     pub fn from_object_type(ty: &ObjectType) -> &'static [Self] {
