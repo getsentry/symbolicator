@@ -192,6 +192,7 @@ impl Deref for Glob {
 
 /// Determines how files are named in an external source.
 #[derive(Deserialize, Clone, Copy, Debug)]
+#[serde(default)]
 pub struct DirectoryLayout {
     /// Directory layout of this symbol server.
     #[serde(rename = "type")]
