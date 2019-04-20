@@ -205,6 +205,11 @@ fn get_symstore_path(
         FileType::ElfCode => {
             let code_id = identifier.code_id.as_ref()?;
             let code_file = identifier.code_file_basename()?;
+            let code_file = if ssqp_casing {
+                Cow::Owned(code_file.to_lowercase())
+            } else {
+                Cow::Borrowed(code_file)
+            };
             Some(format!(
                 "{}/elf-buildid-{}/{}",
                 code_file, code_id, code_file
@@ -217,6 +222,11 @@ fn get_symstore_path(
 
         FileType::MachCode => {
             let code_file = identifier.code_file_basename()?;
+            let code_file = if ssqp_casing {
+                Cow::Owned(code_file.to_lowercase())
+            } else {
+                Cow::Borrowed(code_file)
+            };
             let uuid = get_mach_uuid(identifier)?;
             Some(format!(
                 "{}/mach-uuid-{}/{}",
