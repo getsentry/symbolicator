@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Write;
 
 use symbolic::common::Uuid;
@@ -103,22 +104,44 @@ fn get_lldb_path(identifier: &ObjectId) -> Option<String> {
     Some(path)
 }
 
-fn get_pdb_symstore_path(identifier: &ObjectId) -> Option<String> {
+fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<String> {
     let debug_file = identifier.debug_file_basename()?;
     let debug_id = identifier.debug_id.as_ref()?;
 
-    // XXX: Calling `breakpad` here is kinda wrong. We really only want to have no hyphens.
-    Some(format!(
-        "{}/{}/{}",
-        debug_file,
-        debug_id.breakpad(),
-        debug_file
-    ))
+    let debug_file = if ssqp_casing {
+        Cow::Owned(debug_file.to_lowercase())
+    } else {
+        Cow::Borrowed(debug_file)
+    };
+    let debug_id = if ssqp_casing {
+        format!("{:x}{:X}", debug_id.uuid(), debug_id.appendix())
+    } else {
+        format!("{:X}{:x}", debug_id.uuid(), debug_id.appendix())
+    };
+
+    Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
 }
 
-fn get_pe_symstore_path(identifier: &ObjectId) -> Option<String> {
+fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<String> {
     let code_file = identifier.code_file_basename()?;
-    let code_id = identifier.code_id.as_ref()?;
+    let code_id = identifier.code_id.as_ref()?.to_string();
+
+    let code_file = if ssqp_casing {
+        Cow::Owned(code_file.to_lowercase())
+    } else {
+        Cow::Borrowed(code_file)
+    };
+    let code_id = if ssqp_casing {
+        code_id
+    } else {
+        let timestamp = code_id.get(..8)?;
+        let size_of_image = code_id.get(8..)?;
+        format!(
+            "{}{}",
+            timestamp.to_uppercase(),
+            size_of_image.to_lowercase()
+        )
+    };
 
     Some(format!("{}/{}/{}", code_file, code_id, code_file))
 }
@@ -145,8 +168,8 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
 
         // PDB and PE follows the "Symbol Server" protocol
         // See: https://docs.microsoft.com/en-us/windows/desktop/debug/using-symsrv
-        FileType::Pdb => get_pdb_symstore_path(identifier),
-        FileType::Pe => get_pe_symstore_path(identifier),
+        FileType::Pdb => get_pdb_symstore_path(identifier, false),
+        FileType::Pe => get_pe_symstore_path(identifier, false),
 
         // Breakpad has its own layout similar to Microsoft Symbol Server
         // See: https://github.com/google/breakpad/blob/79ba6a494fb2097b39f76fe6a4b4b4f407e32a02/src/processor/simple_symbol_supplier.cc
@@ -173,7 +196,11 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
     }
 }
 
-fn get_symstore_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+fn get_symstore_path(
+    filetype: FileType,
+    identifier: &ObjectId,
+    ssqp_casing: bool,
+) -> Option<String> {
     match filetype {
         FileType::ElfCode => {
             let code_id = identifier.code_id.as_ref()?;
@@ -206,8 +233,8 @@ fn get_symstore_path(filetype: FileType, identifier: &ObjectId) -> Option<String
             ))
         }
 
-        FileType::Pdb => get_pdb_symstore_path(identifier),
-        FileType::Pe => get_pe_symstore_path(identifier),
+        FileType::Pdb => get_pdb_symstore_path(identifier, ssqp_casing),
+        FileType::Pe => get_pe_symstore_path(identifier, ssqp_casing),
 
         // Microsoft SymbolServer does not specify Breakpad.
         FileType::Breakpad => None,
@@ -222,7 +249,8 @@ fn get_directory_path(
 ) -> Option<String> {
     let mut path = match directory_layout.ty {
         DirectoryLayoutType::Native => get_native_path(filetype, identifier)?,
-        DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier)?,
+        DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier, false)?,
+        DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)?,
     };
 
     match directory_layout.casing {

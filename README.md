@@ -178,8 +178,10 @@ These are common parameters that work on most symbol sources (except `sentry`):
 - `layout`: configures the file system layout of the sources.  This configuration
   key is an object with two keys:
   - `type`: defines the general layout of the directory.  Possible values are
-    `native` and `symstore`.  `native` uses the file type's native format and
-    `symstore` enforces symstore with SSQP rules.
+    `native`, `symstore` and `ssqp`.  `native` uses the file type's native format.
+    `symstore` and `ssqp` both use the Microsoft Symbol Server format but control
+    the case conventions.  `symstore` uses the conventional casing rules for
+    signatures and filenames, `ssqp` uses the Microsoft SSQP casing rules instead.
   - `casing`: enforces a casing style.  The default is not to touch the casing and
     forward it unchanged.  If the backend does not support a case insensitive
     backend (eg: S3) then it's recommended to set this to `lowercase` to enforce

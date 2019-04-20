@@ -223,6 +223,9 @@ pub enum DirectoryLayoutType {
     Native,
     /// Uses Microsoft symbol server conventions.
     Symstore,
+    /// Uses Microsoft SSQP server conventions.
+    #[serde(rename = "ssqp")]
+    SSQP,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug)]
