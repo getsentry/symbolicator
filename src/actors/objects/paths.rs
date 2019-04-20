@@ -241,6 +241,18 @@ fn get_symstore_path(
     }
 }
 
+fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    let rv = get_symstore_path(filetype, identifier, false)?;
+    if let Some(prefix) = rv.get(..2) {
+        if prefix.ends_with('/') || prefix.ends_with('.') {
+            return Some(format!("{}/{}", &prefix[..1], rv));
+        } else {
+            return Some(format!("{}/{}", prefix, rv));
+        }
+    }
+    Some(rv)
+}
+
 /// Determines the path for an object file in the given layout.
 fn get_directory_path(
     directory_layout: DirectoryLayout,
@@ -250,6 +262,7 @@ fn get_directory_path(
     let mut path = match directory_layout.ty {
         DirectoryLayoutType::Native => get_native_path(filetype, identifier)?,
         DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier, false)?,
+        DirectoryLayoutType::SymstoreIndex2 => get_symstore_index2_path(filetype, identifier)?,
         DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)?,
     };
 
