@@ -181,7 +181,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
     let symcaches =
         SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone()).start();
 
-    let cficaches = CfiCacheActor::new(caches.cficaches, objects, cpu_threadpool.clone()).start();
+    let cficaches = CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone()).start();
 
     let symbolication =
         SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();

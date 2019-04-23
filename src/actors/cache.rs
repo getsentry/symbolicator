@@ -80,20 +80,20 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
     fn handle(&mut self, request: ComputeMemoized<T>, ctx: &mut Self::Context) -> Self::Result {
         let key = request.0.get_cache_key();
-        let name = self.config.name;
+        let name = self.config.name();
 
         let channel = if let Some(channel) = self.current_computations.get(&key) {
             // A concurrent cache lookup was deduplicated.
-            metric!(counter(&format!("caches.{}.channel.hit", self.config.name)) += 1);
+            metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
             channel.clone()
         } else {
             // A concurrent cache lookup is considered new. This does not imply a full cache miss.
-            metric!(counter(&format!("caches.{}.channel.miss", self.config.name)) += 1);
+            metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
             let config = self.config.clone();
 
             let (tx, rx) = oneshot::channel();
 
-            let file = if let Some(ref dir) = config.cache_dir {
+            let file = if let Some(ref dir) = config.cache_dir() {
                 fs::create_dir_all(dir).and_then(|_| NamedTempFile::new_in(dir))
             } else {
                 NamedTempFile::new()
@@ -104,7 +104,7 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
             let result = file.and_then(clone!(key, |file| {
                 for &scope in &[&key.scope, &Scope::Global] {
                     let path = tryf!(get_scope_path(
-                        config.cache_dir.as_ref().map(|x| &**x),
+                        config.cache_dir(),
                         &scope,
                         &key.cache_key
                     ));
@@ -139,7 +139,7 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
                 // XXX: Unsure if we need SyncArbiter here
                 Box::new(request.0.compute(file.path()).and_then(move |new_scope| {
                     let new_cache_path = tryf!(get_scope_path(
-                        config.cache_dir.as_ref().map(|x| &**x),
+                        config.cache_dir(),
                         &new_scope,
                         &key.cache_key
                     ));

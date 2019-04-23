@@ -50,16 +50,16 @@ pub enum CleanupError {
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// Cache identifier used for metric names.
-    pub name: &'static str,
+    name: &'static str,
 
     /// Directory to use for storing cache items. Will be created if it does not exist.
-    pub cache_dir: Option<PathBuf>,
+    cache_dir: Option<PathBuf>,
 
     /// Time when this process started.
     start_time: SystemTime,
 
     /// Options intended to be user-configurable.
-    pub cache_config: CacheConfig,
+    cache_config: CacheConfig,
 }
 
 impl Cache {
@@ -74,6 +74,14 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
         }
+    }
+
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    pub fn cache_dir(&self) -> Option<&Path> {
+        self.cache_dir.as_ref().map(|x| &**x)
     }
 
     pub fn cleanup(&self) -> Result<(), CleanupError> {
