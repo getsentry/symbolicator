@@ -20,8 +20,8 @@ use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
 
-mod http;
 mod common;
+mod http;
 pub mod s3;
 mod sentry;
 

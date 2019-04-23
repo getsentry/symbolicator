@@ -159,10 +159,6 @@ pub fn upload_file(
     let content_length = Some(bytes.len() as i64);
     let bytes = FramedRead::new(std::io::Cursor::new(bytes), BytesCodec::new()).map(|x| x.to_vec());
 
-    println!("{}", key);
-    return Box::new(future::ok(()));
-    /*
-
     let bucket = source.bucket.clone();
     let response = get_s3_client(&source.source_key)
         .put_object(rusoto_s3::PutObjectRequest {
@@ -179,5 +175,4 @@ pub fn upload_file(
         });
 
     Box::new(response)
-    */
 }
