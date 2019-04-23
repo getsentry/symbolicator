@@ -114,9 +114,17 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
         Cow::Borrowed(debug_file)
     };
     let debug_id = if ssqp_casing {
-        format!("{:x}{:X}", debug_id.uuid(), debug_id.appendix())
+        format!(
+            "{:x}{:X}",
+            debug_id.uuid().to_simple_ref(),
+            debug_id.appendix()
+        )
     } else {
-        format!("{:X}{:x}", debug_id.uuid(), debug_id.appendix())
+        format!(
+            "{:X}{:x}",
+            debug_id.uuid().to_simple_ref(),
+            debug_id.appendix()
+        )
     };
 
     Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
