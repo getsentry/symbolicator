@@ -7,6 +7,7 @@ use std::sync::Arc;
 use actix::{Actor, Addr};
 use actix_web::{server, App};
 use failure::Fail;
+use futures::{future, Future};
 use structopt::StructOpt;
 use tokio_threadpool::ThreadPool;
 
@@ -30,6 +31,14 @@ pub enum CliError {
     /// Indicates an IO error accessing the cache.
     #[fail(display = "Failed loading cache dirs")]
     CacheIo(#[fail(cause)] io::Error),
+
+    /// A source was not found.
+    #[fail(display = "Source not found in config")]
+    SourceNotFound,
+
+    /// A source is not supported for this operation
+    #[fail(display = "Source not supported for this operation")]
+    UnsupportedSource,
 }
 
 fn get_crate_version() -> &'static str {
@@ -75,6 +84,19 @@ enum Command {
     /// Run server
     #[structopt(name = "run")]
     Run,
+    /// Uploads debug information files to a source store
+    #[structopt(name = "upload")]
+    Upload(UploadCommand),
+}
+
+#[derive(StructOpt)]
+struct UploadCommand {
+    /// The store to upload to
+    #[structopt(long = "store", short = "s", value_name = "ID")]
+    store: String,
+    /// The files to upload
+    #[structopt(index = 1, value_name = "PATH")]
+    files: Vec<PathBuf>,
 }
 
 /// The shared state for the service.
@@ -115,8 +137,113 @@ fn execute() -> Result<(), CliError> {
 
     match cli.command {
         Command::Run => run_server(config)?,
+        Command::Upload(args) => upload_files(config, args)?,
     }
 
+    Ok(())
+}
+
+fn upload_files(config: Config, args: UploadCommand) -> Result<(), CliError> {
+    use crate::actors::objects::s3::upload_file;
+    use crate::types::SourceConfig;
+    use crate::utils::paths::get_directory_path_for_object;
+    use symbolic::common::ByteView;
+    use symbolic::debuginfo::{Archive, FileFormat};
+
+    let source = config
+        .sources
+        .iter()
+        .find(|x| x.id() == args.store)
+        .ok_or(CliError::SourceNotFound)?
+        .clone();
+    if !source.is_writable() {
+        return Err(CliError::UnsupportedSource);
+    };
+
+    let sys = actix::System::new("symbolicator-upload");
+
+    actix::spawn(future::lazy(move || {
+        let mut futures = vec![];
+        for root in args.files {
+            for entry in walkdir::WalkDir::new(root)
+                .into_iter()
+                .filter_map(Result::ok)
+            {
+                if !entry.metadata().ok().map_or(false, |x| x.is_file()) {
+                    continue;
+                }
+                let buffer = match ByteView::open(entry.path()) {
+                    Ok(buffer) => buffer,
+                    Err(_) => continue,
+                };
+                if Archive::peek(&buffer) == FileFormat::Unknown {
+                    continue;
+                }
+
+                let archive = match Archive::parse(&buffer) {
+                    Ok(archive) => archive,
+                    Err(err) => {
+                        log::error!("could not load object {}: {}", entry.path().display(), err);
+                        continue;
+                    }
+                };
+
+                let mut target_keys = vec![];
+                for obj in archive.objects() {
+                    let obj = match obj {
+                        Ok(obj) => {
+                            if obj.debug_id().is_nil() {
+                                continue;
+                            }
+                            obj
+                        }
+                        Err(err) => {
+                            log::error!(
+                                "could not load contained object {}: {}",
+                                entry.path().display(),
+                                err
+                            );
+                            continue;
+                        }
+                    };
+
+                    let key = match get_directory_path_for_object(
+                        source.directory_layout(),
+                        Some(entry.path()),
+                        &obj,
+                    ) {
+                        Some(key) => key,
+                        None => {
+                            log::info!(
+                                "skipping {}; target store does not support this format",
+                                entry.path().display(),
+                            );
+                            continue;
+                        }
+                    };
+                    target_keys.push(key);
+                }
+
+                for key in target_keys {
+                    log::info!("Uploading {}", key);
+                    let s3_config = match source {
+                        SourceConfig::S3(ref s3_config) => s3_config.clone(),
+                        _ => continue,
+                    };
+                    futures.push(upload_file(&s3_config, key, buffer.clone()));
+                }
+            }
+        }
+
+        future::join_all(futures)
+            .map_err(|err| log::error!("upload failed: {}", err))
+            .then(|_| {
+                actix::System::current().stop();
+                Ok(())
+            })
+    }));
+
+    let _ = sys.run();
     Ok(())
 }
 

@@ -265,6 +265,24 @@ impl SourceConfig {
             SourceConfig::Sentry(_) => false,
         }
     }
+
+    /// Returns the layout of this source.
+    pub fn directory_layout(&self) -> DirectoryLayout {
+        match *self {
+            SourceConfig::Http(ref x) => x.files.layout,
+            SourceConfig::S3(ref x) => x.files.layout,
+            SourceConfig::Sentry(_) => Default::default(),
+        }
+    }
+
+    /// Returns `true` if this source is writable
+    pub fn is_writable(&self) -> bool {
+        match *self {
+            SourceConfig::Http(_) => false,
+            SourceConfig::S3(_) => true,
+            SourceConfig::Sentry(_) => false,
+        }
+    }
 }
 
 /// The scope of a source or debug file.

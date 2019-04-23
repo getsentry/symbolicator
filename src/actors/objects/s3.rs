@@ -4,14 +4,15 @@ use std::time::Duration;
 use actix::Addr;
 use bytes::BytesMut;
 use failure::Fail;
-use futures::{future, Future, Stream};
+use futures::{future, Future, IntoFuture, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
+use symbolic::common::ByteView;
 use tokio::codec::{BytesCodec, FramedRead};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::cache::{CacheActor, ComputeMemoized};
-use crate::actors::objects::paths::prepare_download_paths;
+use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
     DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
     PrioritizedDownloads,
@@ -139,4 +140,44 @@ pub fn download_from_source(
         });
 
     Box::new(response)
+}
+
+pub fn upload_file(
+    source: &S3SourceConfig,
+    key: String,
+    bytes: ByteView<'static>,
+) -> Box<Future<Item = (), Error = ObjectError>> {
+    let key = {
+        let prefix = source.prefix.trim_matches(&['/'][..]);
+        if prefix.is_empty() {
+            key
+        } else {
+            format!("{}/{}", prefix, key)
+        }
+    };
+
+    let content_length = Some(bytes.len() as i64);
+    let bytes = FramedRead::new(std::io::Cursor::new(bytes), BytesCodec::new()).map(|x| x.to_vec());
+
+    println!("{}", key);
+    return Box::new(future::ok(()));
+    /*
+
+    let bucket = source.bucket.clone();
+    let response = get_s3_client(&source.source_key)
+        .put_object(rusoto_s3::PutObjectRequest {
+            key,
+            bucket: bucket.clone(),
+            body: Some(rusoto_core::ByteStream::new(bytes)),
+            content_length,
+            ..Default::default()
+        })
+        .and_then(|_result| Ok(()).into_future())
+        .map_err(|_err| {
+            println!("{:#?}", _err);
+            ObjectError::from(ObjectErrorKind::Io)
+        });
+
+    Box::new(response)
+    */
 }

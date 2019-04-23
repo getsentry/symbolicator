@@ -21,8 +21,8 @@ use crate::types::{
 };
 
 mod http;
-mod paths;
-mod s3;
+mod common;
+pub mod s3;
 mod sentry;
 
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
