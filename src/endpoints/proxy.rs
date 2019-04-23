@@ -39,9 +39,51 @@ fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
         return None;
     }
 
-    if leading_fn_lower.ends_with(".pdb") {
+    let signature_lower = signature.to_lowercase();
+    if leading_fn_lower.ends_with(".debug") && signature_lower.starts_with("elf-buildid-sym-") {
         Some((
-            FileType::pe(),
+            &[FileType::ElfDebug],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[16..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if signature_lower.starts_with("elf-buildid-") {
+        Some((
+            &[FileType::ElfCode],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[12..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if leading_fn_lower.ends_with(".dwarf") && signature_lower.starts_with("mach-uuid-sym-")
+    {
+        Some((
+            &[FileType::MachDebug],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[14..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if signature_lower.starts_with("mach-uuid-") {
+        Some((
+            &[FileType::MachCode],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[10..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if leading_fn_lower.ends_with(".pdb") {
+        Some((
+            &[FileType::Pdb],
             ObjectId {
                 code_id: None,
                 code_file: None,
@@ -49,14 +91,9 @@ fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
                 debug_file: Some(leading_fn.into()),
             },
         ))
-    } else if leading_fn_lower.ends_with(".debug")
-        || leading_fn_lower.ends_with(".dwarf")
-        || signature.starts_with("mach-uuid-sym-")
-    {
-        None
     } else {
         Some((
-            FileType::pe(),
+            &[FileType::Pe],
             ObjectId {
                 code_id: Some(CodeId::parse_hex(signature).ok()?),
                 code_file: Some(leading_fn.into()),
@@ -82,6 +119,7 @@ fn proxy_symstore_request(
         Some(x) => x,
         None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
     };
+    log::debug!("looking for {:?} ({:?})", object_id, filetypes);
     Box::new(
         state
             .objects
