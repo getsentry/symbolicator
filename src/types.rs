@@ -666,7 +666,7 @@ impl AsRef<str> for FileType {
 }
 
 /// Information to find a Object in external sources and also internal cache.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ObjectId {
     /// Identifier of the code file.
     pub code_id: Option<CodeId>,
