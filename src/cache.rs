@@ -137,7 +137,17 @@ impl Cache {
         // See docstring of MALFORMED_MARKER
         if MALFORMED_MARKER.len() as u64 == metadata.len() {
             let created_at = metadata.created()?;
-            if created_at < self.start_time {
+
+            let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
+                created_at.elapsed(),
+                self.cache_config.retry_malformed_after,
+            ) {
+                elapsed > retry_malformed_after
+            } else {
+                false
+            };
+
+            if created_at < self.start_time || retry_malformed {
                 log::trace!("Created at is older than start time");
                 let mut file = File::open(path)?;
                 let mut buf = vec![0; MALFORMED_MARKER.len()];

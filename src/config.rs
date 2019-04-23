@@ -83,6 +83,9 @@ pub struct CacheConfig {
 
     /// Maximum duration since creation of negative cache item (item age).
     pub retry_misses_after: Option<Duration>,
+
+    /// Maximum duration since creation of malformed cache item (item age).
+    pub retry_malformed_after: Option<Duration>,
 }
 
 impl Default for CacheConfig {
@@ -90,6 +93,7 @@ impl Default for CacheConfig {
         CacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
+            retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
         }
     }
 }

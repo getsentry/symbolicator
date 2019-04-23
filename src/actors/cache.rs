@@ -103,11 +103,7 @@ impl<T: CacheItemRequest> Handler<ComputeMemoized<T>> for CacheActor<T> {
 
             let result = file.and_then(clone!(key, |file| {
                 for &scope in &[&key.scope, &Scope::Global] {
-                    let path = tryf!(get_scope_path(
-                        config.cache_dir(),
-                        &scope,
-                        &key.cache_key
-                    ));
+                    let path = tryf!(get_scope_path(config.cache_dir(), &scope, &key.cache_key));
 
                     let path = match path {
                         Some(x) => x,
