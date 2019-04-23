@@ -287,7 +287,6 @@ fn test_max_unused_for() -> Result<(), CleanupError> {
     cache.cleanup()?;
 
     let mut basenames: Vec<_> = read_dir(tempdir.path())?
-        .into_iter()
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -309,20 +308,19 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
         "test",
         Some(tempdir.path()),
         CacheConfig {
-            retry_misses_after: Some(Duration::from_millis(10)),
+            retry_misses_after: Some(Duration::from_millis(20)),
             ..Default::default()
         },
     );
 
     File::create(tempdir.path().join("keepthis"))?.write_all(b"hi")?;
     File::create(tempdir.path().join("killthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(20));
+    sleep(Duration::from_millis(25));
 
     File::create(tempdir.path().join("keepthis2"))?.write_all(b"")?;
     cache.cleanup()?;
 
     let mut basenames: Vec<_> = read_dir(tempdir.path())?
-        .into_iter()
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -340,8 +338,8 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
 
     let tempdir = tempdir()?;
 
-    // File has same amount of chars, check that optimization  works
-    File::create(tempdir.path().join("keepthis"))?.write_all(b"additive")?;
+    // File has same amount of chars as "malformed", check that optimization works
+    File::create(tempdir.path().join("keepthis"))?.write_all(b"addictive")?;
     File::create(tempdir.path().join("keepthis2"))?.write_all(b"hi")?;
 
     File::create(tempdir.path().join("killthis"))?.write_all(b"malformed")?;
@@ -350,12 +348,12 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
 
     // Creation of this struct == "process startup"
     let cache = Cache::new("test", Some(tempdir.path()), Default::default());
-    cache.cleanup()?;
 
     File::create(tempdir.path().join("keepthis3"))?.write_all(b"malformed")?;
 
+    cache.cleanup()?;
+
     let mut basenames: Vec<_> = read_dir(tempdir.path())?
-        .into_iter()
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
