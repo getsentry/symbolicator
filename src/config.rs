@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use failure::Fail;
 use log::LevelFilter;
@@ -74,6 +75,38 @@ impl Default for Metrics {
     }
 }
 
+/// Options for fine-tuning cache expiry.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct CacheConfig {
+    /// Maximum duration since last use of cache item (item last used).
+    pub max_unused_for: Option<Duration>,
+
+    /// Maximum duration since creation of negative cache item (item age).
+    pub retry_misses_after: Option<Duration>,
+
+    /// Maximum duration since creation of malformed cache item (item age).
+    pub retry_malformed_after: Option<Duration>,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        CacheConfig {
+            max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
+            retry_misses_after: Some(Duration::from_secs(3600)),
+            retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct CacheConfigs {
+    /// Configure how long downloads are cached for.
+    pub downloaded: CacheConfig,
+    /// Configure how long caches derived from downloads are cached for.
+    pub derived: CacheConfig,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -91,6 +124,9 @@ pub struct Config {
 
     /// DSN to report internal errors to
     pub sentry_dsn: Option<Dsn>,
+
+    /// Fine-tune cache expiry
+    pub caches: CacheConfigs,
 
     /// Enables symbol proxy mode.
     pub symstore_proxy: bool,
@@ -128,6 +164,7 @@ impl Default for Config {
             logging: Logging::default(),
             metrics: Metrics::default(),
             sentry_dsn: None,
+            caches: CacheConfigs::default(),
             symstore_proxy: true,
             sources: Arc::new(vec![]),
         }

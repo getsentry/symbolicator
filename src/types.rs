@@ -638,13 +638,6 @@ impl FileType {
         &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
     }
 
-    /// Returns PE file types.
-    #[inline]
-    pub fn pe() -> &'static [Self] {
-        use FileType::*;
-        &[Pdb, Pe, Breakpad]
-    }
-
     /// Given an object type, returns filetypes in the order they should be tried.
     #[inline]
     pub fn from_object_type(ty: &ObjectType) -> &'static [Self] {
@@ -673,7 +666,7 @@ impl AsRef<str> for FileType {
 }
 
 /// Information to find a Object in external sources and also internal cache.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ObjectId {
     /// Identifier of the code file.
     pub code_id: Option<CodeId>,

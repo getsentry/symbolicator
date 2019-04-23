@@ -12,8 +12,9 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, CacheItemRequest, CacheKey, ComputeMemoized};
+use crate::actors::cache::{CacheActor, CacheItemRequest, ComputeMemoized};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
+use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::SentryFutureExt;
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
@@ -61,13 +62,9 @@ impl Actor for SymCacheActor {
 }
 
 impl SymCacheActor {
-    pub fn new(
-        symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
-        objects: Addr<ObjectsActor>,
-        threadpool: Arc<ThreadPool>,
-    ) -> Self {
+    pub fn new(cache: Cache, objects: Addr<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
         SymCacheActor {
-            symcaches,
+            symcaches: CacheActor::new(cache).start(),
             objects,
             threadpool,
         }
@@ -89,7 +86,7 @@ impl SymCacheFile {
             None => return Ok(None),
         };
 
-        if &bytes[..] == b"malformed" {
+        if &bytes[..] == MALFORMED_MARKER {
             return Err(SymCacheErrorKind::ObjectParsing.into());
         }
 
@@ -105,7 +102,7 @@ impl SymCacheFile {
 }
 
 #[derive(Clone)]
-pub struct FetchSymCacheInternal {
+struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
@@ -177,7 +174,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 log::warn!("Could not write symcache: {}", e);
                 let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
 
-                file.write_all(b"malformed")
+                file.write_all(MALFORMED_MARKER)
                     .context(SymCacheErrorKind::Io)?;
 
                 file.sync_all().context(SymCacheErrorKind::Io)?;

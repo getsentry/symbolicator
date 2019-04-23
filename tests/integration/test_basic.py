@@ -85,10 +85,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
                 "type": "http",
                 "id": "microsoft",
                 "layout": {"type": "symstore"},
-                "filters": {
-                    "filetypes": ["pdb", "pe"],
-                    "path_patterns": ["?:/windows/**"],
-                },
+                "filters": {"filetypes": ["pdb", "pe"]},
                 "url": f"{hitcounter.url}/msdl/",
                 "is_public": is_public,
             }
@@ -306,3 +303,36 @@ def test_malformed_objects(symbolicator, hitcounter):
     response.raise_for_status()
     response = response.json()
     assert response == MALFORMED_FILE
+
+
+@pytest.mark.parametrize(
+    "patterns,output",
+    [
+        [["?:/windows/**"], SUCCESS_WINDOWS],
+        [["?:/windows/*"], SUCCESS_WINDOWS],
+        [[], SUCCESS_WINDOWS],
+        [["?:/windows/"], MISSING_FILE],
+        [["d:/windows/**"], MISSING_FILE],
+    ],
+)
+def test_path_patterns(symbolicator, hitcounter, patterns, output):
+    input = dict(
+        sources=[
+            {
+                "type": "http",
+                "id": "microsoft",
+                "layout": {"type": "symstore"},
+                "filters": {"path_patterns": patterns},
+                "url": f"{hitcounter.url}/msdl/",
+            }
+        ],
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+
+    assert response.json() == output
