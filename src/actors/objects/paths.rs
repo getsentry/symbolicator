@@ -233,3 +233,52 @@ fn get_directory_path(
 
     Some(path)
 }
+
+#[cfg(test)]
+fn pattern(x: &str) -> Glob {
+    Glob(x.parse().unwrap())
+}
+
+#[test]
+fn test_matches_path_patterns_empty() {
+    assert!(matches_path_patterns(
+        &ObjectId {
+            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
+            ..Default::default()
+        },
+        &[]
+    ));
+}
+
+#[test]
+fn test_matches_path_patterns_single_star() {
+    assert!(matches_path_patterns(
+        &ObjectId {
+            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
+            ..Default::default()
+        },
+        &[pattern("c:/windows/*")]
+    ));
+}
+
+#[test]
+fn test_matches_path_patterns_drive_letter_wildcard() {
+    assert!(matches_path_patterns(
+        &ObjectId {
+            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
+            ..Default::default()
+        },
+        &[pattern("?:/windows/*")]
+    ));
+}
+
+#[test]
+fn test_matches_path_patterns_drive_letter() {
+    assert!(!matches_path_patterns(
+        &ObjectId {
+            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
+            ..Default::default()
+        },
+        &[pattern("d:/windows/**")]
+    ));
+}

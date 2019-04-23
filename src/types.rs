@@ -277,8 +277,6 @@ impl SourceConfig {
 pub enum Scope {
     #[serde(rename = "global")]
     Global,
-    #[serde(rename = "proxy")]
-    Proxy,
     Scoped(String),
 }
 
@@ -286,7 +284,6 @@ impl AsRef<str> for Scope {
     fn as_ref(&self) -> &str {
         match *self {
             Scope::Global => "global",
-            Scope::Proxy => "proxy",
             Scope::Scoped(ref s) => &s,
         }
     }
@@ -302,7 +299,6 @@ impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Scope::Global => f.write_str("global"),
-            Scope::Proxy => f.write_str("proxy"),
             Scope::Scoped(ref scope) => f.write_str(&scope),
         }
     }
@@ -670,7 +666,7 @@ impl AsRef<str> for FileType {
 }
 
 /// Information to find a Object in external sources and also internal cache.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ObjectId {
     /// Identifier of the code file.
     pub code_id: Option<CodeId>,
