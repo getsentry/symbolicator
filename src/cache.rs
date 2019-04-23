@@ -258,12 +258,17 @@ where
     }
 }
 
+#[cfg(test)]
+fn tempdir() -> io::Result<tempfile::TempDir> {
+    tempfile::tempdir_in(".")
+}
+
 #[test]
 fn test_max_unused_for() -> Result<(), CleanupError> {
     use std::io::Write;
     use std::thread::sleep;
 
-    let tempdir = tempfile::tempdir()?;
+    let tempdir = tempdir()?;
 
     let cache = Cache::new(
         "test",
@@ -298,7 +303,7 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
     use std::io::Write;
     use std::thread::sleep;
 
-    let tempdir = tempfile::tempdir()?;
+    let tempdir = tempdir()?;
 
     let cache = Cache::new(
         "test",
@@ -333,7 +338,7 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
     use std::io::Write;
     use std::thread::sleep;
 
-    let tempdir = tempfile::tempdir()?;
+    let tempdir = tempdir()?;
 
     // File has same amount of chars, check that optimization  works
     File::create(tempdir.path().join("keepthis"))?.write_all(b"additive")?;
