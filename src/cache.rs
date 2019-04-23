@@ -5,9 +5,6 @@
 ///   succeeded in downloading an object file and cached that file.
 /// - Negative cache item: A cache item that represents the absence of something. E.g. we encountered a 404 while trying to download a file, and cached that fact. Represented by an empty file.
 ///
-/// - item age: When the item was computed and created.
-/// - item last used: Last time this item was involved in a cache hit.
-///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
@@ -129,14 +126,42 @@ impl Cache {
     /// `Err(io::ErrorKind::NotFound)` is returned.  If cache is usable, `Ok(x)` is returned, where
     /// `x` indicates whether the file should be touched before using.
     fn check_expiry(&self, path: &Path) -> io::Result<bool> {
+        // We use mtime to keep track of both "cache last used" and "cache created" depending on
+        // whether the file is a negative cache item or not, because literally every other
+        // filesystem attribute is unreliable.
+        //
+        // * creation time does not exist pre-Linux 4.11
+        // * most filesystems are mounted with noatime
+        //
+        // States a cache item can be in:
+        // * negative/empty: An empty file. Represents a failed download. mtime is used to indicate
+        //   when the failed download happened (when the file was created)
+        // * malformed: A file with the content `b"malformed"`. Represents a failed symcache
+        //   conversion. mtime indicates when we attempted to convert.
+        // * ok (don't really have a name): File has any other content, mtime is used to keep track
+        //   of last use.
         let metadata = path.metadata()?;
 
         log::trace!("File length: {}", metadata.len());
 
-        // Immediately expire malformed items that have been created before this process started.
-        // See docstring of MALFORMED_MARKER
-        if MALFORMED_MARKER.len() as u64 == metadata.len() {
-            let created_at = metadata.created()?;
+        let is_malformed = if MALFORMED_MARKER.len() as u64 == metadata.len() {
+            let mut file = File::open(path)?;
+            let mut buf = vec![0; MALFORMED_MARKER.len()];
+            file.read_exact(&mut buf)?;
+
+            log::trace!("First {} bytes: {:?}", buf.len(), buf);
+            buf == MALFORMED_MARKER
+        } else {
+            false
+        };
+
+        let is_negative = metadata.len() == 0;
+
+        if is_malformed {
+            // Immediately expire malformed items that have been created before this process started.
+            // See docstring of MALFORMED_MARKER
+
+            let created_at = metadata.modified()?;
 
             let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
                 created_at.elapsed(),
@@ -149,53 +174,31 @@ impl Cache {
 
             if created_at < self.start_time || retry_malformed {
                 log::trace!("Created at is older than start time");
-                let mut file = File::open(path)?;
-                let mut buf = vec![0; MALFORMED_MARKER.len()];
-                file.read_exact(&mut buf)?;
-
-                log::trace!("First {} bytes: {:?}", buf.len(), buf);
-
-                if buf == MALFORMED_MARKER {
-                    return Err(io::ErrorKind::NotFound.into());
-                }
+                return Err(io::ErrorKind::NotFound.into());
             }
         }
 
-        let is_negative = metadata.len() == 0;
-
-        // Translate externally visible caching config to internal concepts of "access time" and
-        // "creation time"
-        let (max_age, max_last_used) = if is_negative {
-            (self.cache_config.retry_misses_after, None)
+        let max_mtime = if is_negative {
+            self.cache_config.retry_misses_after
         } else {
-            (None, self.cache_config.max_unused_for)
+            self.cache_config.max_unused_for
         };
 
-        if let Some(max_age) = max_age {
-            let created_at = metadata.created()?;
+        let mtime = if let Some(max_mtime) = max_mtime {
+            let mtime = metadata.modified()?.elapsed().ok();
 
-            if created_at.elapsed().map(|x| x > max_age).unwrap_or(true) {
-                return Err(io::ErrorKind::NotFound.into());
-            }
-        }
-
-        // We use mtime to keep track of "cache last used", because filesystem is usually mounted
-        // with `noatime` and therefore atime is nonsense.
-        let last_used = if let Some(max_last_used) = max_last_used {
-            let last_used = metadata.modified()?.elapsed().ok();
-
-            if last_used.map(|x| x > max_last_used).unwrap_or(true) {
+            if mtime.map(|x| x > max_mtime).unwrap_or(true) {
                 return Err(io::ErrorKind::NotFound.into());
             }
 
-            last_used
+            mtime
         } else {
             None
         };
 
-        Ok(last_used
-            .map(|x| x > Duration::from_secs(3600))
-            .unwrap_or(true))
+        Ok(!is_negative
+            && !is_malformed
+            && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true))
     }
 
     /// Validate cachefile against expiration config and open a byteview on it. Takes care of
@@ -349,8 +352,6 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
     // Creation of this struct == "process startup"
     let cache = Cache::new("test", Some(tempdir.path()), Default::default());
 
-    File::create(tempdir.path().join("keepthis3"))?.write_all(b"malformed")?;
-
     cache.cleanup()?;
 
     let mut basenames: Vec<_> = read_dir(tempdir.path())?
@@ -359,7 +360,7 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
 
     Ok(())
 }
