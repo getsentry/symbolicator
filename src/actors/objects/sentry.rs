@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use actix::Addr;
 use actix_web::{client, HttpMessage};
 
 use failure::Fail;
@@ -8,7 +7,7 @@ use futures::future::{self, Either};
 use futures::{Future, IntoFuture, Stream};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, ComputeMemoized};
+use crate::actors::common::cache::Cacher;
 use crate::actors::objects::{
     DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
     PrioritizedDownloads, SentryFileId, USER_AGENT,
@@ -26,9 +25,6 @@ pub enum SentryErrorKind {
 
     #[fail(display = "failed sending request to Sentry")]
     SendRequest,
-
-    #[fail(display = "failed sending message to actor")]
-    Mailbox,
 }
 
 #[derive(serde::Deserialize)]
@@ -49,7 +45,7 @@ pub fn prepare_downloads(
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
     threadpool: Arc<ThreadPool>,
-    cache: Addr<CacheActor<FetchFileRequest>>,
+    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     let index_url = {
         let mut url = source.url.clone();
@@ -94,22 +90,18 @@ pub fn prepare_downloads(
         index_request
             .and_then(clone!(source, object_id, |entries| future::join_all(
                 entries.into_iter().map(move |api_response| cache
-                    .send(
-                        ComputeMemoized(FetchFileRequest {
-                            scope: scope.clone(),
-                            request: FetchFileInner::Sentry(
-                                source.clone(),
-                                SentryFileId(api_response.id),
-                            ),
-                            threadpool: threadpool.clone(),
-                            object_id: object_id.clone(),
-                        })
-                        .sentry_hub_new_from_current()
-                    )
-                    .map_err(|e| e.context(SentryErrorKind::Mailbox).into())
-                    .and_then(move |response| Ok(
-                        response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-                    )))
+                    .compute_memoized(FetchFileRequest {
+                        scope: scope.clone(),
+                        request: FetchFileInner::Sentry(
+                            source.clone(),
+                            SentryFileId(api_response.id),
+                        ),
+                        threadpool: threadpool.clone(),
+                        object_id: object_id.clone(),
+                    })
+                    .sentry_hub_new_from_current()
+                    .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+                    .then(|response| Ok(response)))
             )))
             .map_err(|e| e.context(ObjectErrorKind::Sentry).into()),
     )

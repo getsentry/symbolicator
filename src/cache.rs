@@ -1,4 +1,4 @@
-/// Core logic for cache files. Used by `crate::actors::cache`.
+/// Core logic for cache files. Used by `crate::actors::common::cache`.
 ///
 /// Terminology:
 /// - positive cache item: A cache item that represents the presence of something. E.g. we

@@ -11,7 +11,7 @@ use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, CacheItemRequest, ComputeMemoized};
+use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::SentryFutureExt;
@@ -51,7 +51,7 @@ impl From<io::Error> for CfiCacheError {
 }
 
 pub struct CfiCacheActor {
-    cficaches: Addr<CacheActor<FetchCfiCacheInternal>>,
+    cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
@@ -63,7 +63,7 @@ impl Actor for CfiCacheActor {
 impl CfiCacheActor {
     pub fn new(cache: Cache, objects: Addr<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
         CfiCacheActor {
-            cficaches: CacheActor::new(cache).start(),
+            cficaches: Arc::new(Cacher::new(cache)),
             objects,
             threadpool,
         }
@@ -202,16 +202,12 @@ impl Handler<FetchCfiCache> for CfiCacheActor {
     fn handle(&mut self, request: FetchCfiCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.cficaches
-                .send(
-                    ComputeMemoized(FetchCfiCacheInternal {
-                        request,
-                        objects: self.objects.clone(),
-                        threadpool: self.threadpool.clone(),
-                    })
-                    .sentry_hub_new_from_current(),
-                )
-                .map_err(|e| Arc::new(e.context(CfiCacheErrorKind::Mailbox).into()))
-                .and_then(|response| Ok(response?)),
+                .compute_memoized(FetchCfiCacheInternal {
+                    request,
+                    objects: self.objects.clone(),
+                    threadpool: self.threadpool.clone(),
+                })
+                .sentry_hub_new_from_current(),
         )
     }
 }
