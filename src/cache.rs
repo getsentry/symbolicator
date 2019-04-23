@@ -311,7 +311,7 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
 
     File::create(tempdir.path().join("keepthis"))?.write_all(b"hi")?;
     File::create(tempdir.path().join("killthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(11));
+    sleep(Duration::from_millis(20));
 
     File::create(tempdir.path().join("keepthis2"))?.write_all(b"")?;
     cache.cleanup()?;
@@ -331,6 +331,7 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
 #[test]
 fn test_cleanup_malformed() -> Result<(), CleanupError> {
     use std::io::Write;
+    use std::thread::sleep;
 
     let tempdir = tempfile::tempdir()?;
 
@@ -339,6 +340,8 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
     File::create(tempdir.path().join("keepthis2"))?.write_all(b"hi")?;
 
     File::create(tempdir.path().join("killthis"))?.write_all(b"malformed")?;
+
+    sleep(Duration::from_millis(10));
 
     // Creation of this struct == "process startup"
     let cache = Cache::new("test", Some(tempdir.path()), Default::default());
