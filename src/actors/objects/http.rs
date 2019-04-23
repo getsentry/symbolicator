@@ -41,7 +41,7 @@ pub fn prepare_downloads(
             })
             .sentry_hub_new_from_current()
             .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-            .then(|response| Ok(response));
+            .then(Ok);
 
         requests.push(request);
     }

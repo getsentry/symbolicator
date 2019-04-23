@@ -19,6 +19,8 @@ use crate::types::Scope;
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
 
+type ComputationMap<T, E> = Arc<RwLock<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
+
 /// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
 /// it:
 ///
@@ -35,7 +37,7 @@ pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
 
     /// Used for deduplicating cache lookups.
-    current_computations: Arc<RwLock<BTreeMap<CacheKey, ComputationChannel<T::Item, T::Error>>>>,
+    current_computations: ComputationMap<T::Item, T::Error>,
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
