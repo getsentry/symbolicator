@@ -1,7 +1,6 @@
 use std::io;
 use std::process::{Command, Stdio};
 
-
 fn emit_version_var() -> Result<(), io::Error> {
     let cmd = Command::new("git")
         .args(&["describe", "--always", "--dirty=-modified"])
