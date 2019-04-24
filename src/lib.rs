@@ -19,5 +19,6 @@ mod http;
 mod logging;
 mod middlewares;
 mod types;
+mod utils;
 
 pub mod app;

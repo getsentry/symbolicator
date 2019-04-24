@@ -7,7 +7,7 @@ use futures::{future, Future, IntoFuture, Stream};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::Cacher;
-use crate::actors::objects::paths::prepare_download_paths;
+use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
     DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
     PrioritizedDownloads, USER_AGENT,
