@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::Addr;
 use bytes::BytesMut;
 use failure::Fail;
 use futures::{future, Future, Stream};
@@ -10,7 +9,7 @@ use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, ComputeMemoized};
+use crate::actors::common::cache::Cacher;
 use crate::actors::objects::paths::prepare_download_paths;
 use crate::actors::objects::{
     DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
@@ -63,7 +62,7 @@ pub fn prepare_downloads(
     filetypes: &'static [FileType],
     object_id: &ObjectId,
     threadpool: Arc<ThreadPool>,
-    cache: Addr<CacheActor<FetchFileRequest>>,
+    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     let mut requests = vec![];
 
@@ -74,19 +73,15 @@ pub fn prepare_downloads(
         source.files.layout,
     ) {
         let request = cache
-            .send(
-                ComputeMemoized(FetchFileRequest {
-                    scope: scope.clone(),
-                    request: FetchFileInner::S3(source.clone(), download_path),
-                    object_id: object_id.clone(),
-                    threadpool: threadpool.clone(),
-                })
-                .sentry_hub_new_from_current(),
-            )
-            .map_err(|e| e.context(ObjectErrorKind::Mailbox).into())
-            .and_then(move |response| {
-                Ok(response.map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into()))
-            });
+            .compute_memoized(FetchFileRequest {
+                scope: scope.clone(),
+                request: FetchFileInner::S3(source.clone(), download_path),
+                object_id: object_id.clone(),
+                threadpool: threadpool.clone(),
+            })
+            .sentry_hub_new_from_current()
+            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+            .then(Ok);
 
         requests.push(request);
     }

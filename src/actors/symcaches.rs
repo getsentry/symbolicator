@@ -12,7 +12,7 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, CacheItemRequest, ComputeMemoized};
+use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::SentryFutureExt;
@@ -52,7 +52,7 @@ impl From<io::Error> for SymCacheError {
 }
 
 pub struct SymCacheActor {
-    symcaches: Addr<CacheActor<FetchSymCacheInternal>>,
+    symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: Addr<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
@@ -64,7 +64,7 @@ impl Actor for SymCacheActor {
 impl SymCacheActor {
     pub fn new(cache: Cache, objects: Addr<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
         SymCacheActor {
-            symcaches: CacheActor::new(cache).start(),
+            symcaches: Arc::new(Cacher::new(cache)),
             objects,
             threadpool,
         }
@@ -225,16 +225,12 @@ impl Handler<FetchSymCache> for SymCacheActor {
     fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(
             self.symcaches
-                .send(
-                    ComputeMemoized(FetchSymCacheInternal {
-                        request,
-                        objects: self.objects.clone(),
-                        threadpool: self.threadpool.clone(),
-                    })
-                    .sentry_hub_new_from_current(),
-                )
-                .map_err(|e| Arc::new(e.context(SymCacheErrorKind::Mailbox).into()))
-                .and_then(|response| Ok(response?)),
+                .compute_memoized(FetchSymCacheInternal {
+                    request,
+                    objects: self.objects.clone(),
+                    threadpool: self.threadpool.clone(),
+                })
+                .sentry_hub_new_from_current(),
         )
     }
 }

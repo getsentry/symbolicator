@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+use actix::{Actor, Context, Handler, Message, ResponseFuture};
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
@@ -15,7 +15,7 @@ use symbolic::debuginfo::Object;
 use tempfile::tempfile_in;
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::cache::{CacheActor, CacheItemRequest};
+use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
@@ -84,7 +84,7 @@ pub struct FetchFileRequest {
     object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
-    // `<FetchFileRequest as CacheItemRequest>::compute`, e.g. make the CacheActor hold arbitrary
+    // `<FetchFileRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
     threadpool: Arc<ThreadPool>,
 }
@@ -337,14 +337,14 @@ impl ObjectFile {
 
 #[derive(Clone)]
 pub struct ObjectsActor {
-    cache: Addr<CacheActor<FetchFileRequest>>,
+    cache: Arc<Cacher<FetchFileRequest>>,
     threadpool: Arc<ThreadPool>,
 }
 
 impl ObjectsActor {
     pub fn new(cache: Cache, threadpool: Arc<ThreadPool>) -> Self {
         ObjectsActor {
-            cache: CacheActor::new(cache).start(),
+            cache: Arc::new(Cacher::new(cache)),
             threadpool,
         }
     }
@@ -448,7 +448,7 @@ fn prepare_downloads(
     filetypes: &'static [FileType],
     object_id: &ObjectId,
     threadpool: Arc<ThreadPool>,
-    cache: Addr<CacheActor<FetchFileRequest>>,
+    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     match *source {
         SourceConfig::Sentry(ref source) => {
