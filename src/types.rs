@@ -217,12 +217,19 @@ impl Default for DirectoryLayout {
 
 /// Known conventions for `DirectoryLayout`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum DirectoryLayoutType {
     /// Uses conventions of native debuggers.
+    #[serde(rename = "native")]
     Native,
     /// Uses Microsoft symbol server conventions.
+    #[serde(rename = "symstore")]
     Symstore,
+    /// Uses Microsoft symbol server conventions (2 Tier Layout)
+    #[serde(rename = "symstore_index2")]
+    SymstoreIndex2,
+    /// Uses Microsoft SSQP server conventions.
+    #[serde(rename = "ssqp")]
+    SSQP,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug)]
