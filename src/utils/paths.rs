@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
-use symbolic::common::Uuid;
+use itertools::Itertools;
+use symbolic::common::{CodeId, DebugId, Uuid};
 
 use crate::types::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId};
 
@@ -235,4 +236,77 @@ pub fn get_directory_path(
     };
 
     Some(path)
+}
+
+pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
+    let (leading_fn, signature, trailing_fn) = path.splitn(3, '/').collect_tuple()?;
+
+    let leading_fn_lower = leading_fn.to_lowercase();
+    if !leading_fn_lower.eq_ignore_ascii_case(trailing_fn) {
+        return None;
+    }
+
+    let signature_lower = signature.to_lowercase();
+    if leading_fn_lower.ends_with(".debug") && signature_lower.starts_with("elf-buildid-sym-") {
+        Some((
+            &[FileType::ElfDebug],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[16..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if signature_lower.starts_with("elf-buildid-") {
+        Some((
+            &[FileType::ElfCode],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[12..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if leading_fn_lower.ends_with(".dwarf") && signature_lower.starts_with("mach-uuid-sym-")
+    {
+        Some((
+            &[FileType::MachDebug],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[14..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if signature_lower.starts_with("mach-uuid-") {
+        Some((
+            &[FileType::MachCode],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[10..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if leading_fn_lower.ends_with(".pdb") {
+        Some((
+            &[FileType::Pdb],
+            ObjectId {
+                code_id: None,
+                code_file: None,
+                debug_id: Some(DebugId::from_breakpad(signature).ok()?),
+                debug_file: Some(leading_fn.into()),
+            },
+        ))
+    } else {
+        Some((
+            &[FileType::Pe],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(signature).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    }
 }
