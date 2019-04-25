@@ -5,13 +5,12 @@ use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
 use futures::{Future, IntoFuture, Stream};
-use itertools::Itertools;
-use symbolic::common::{CodeId, DebugId};
 use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::{FetchObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
-use crate::types::{FileType, ObjectId, Scope};
+use crate::types::Scope;
+use crate::utils::paths::parse_symstore_path;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum ProxyErrorKind {
@@ -30,79 +29,6 @@ symbolic::common::derive_failure!(
     ProxyErrorKind,
     doc = "Errors happening while proxying to a symstore"
 );
-
-fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
-    let (leading_fn, signature, trailing_fn) = path.splitn(3, '/').collect_tuple()?;
-
-    let leading_fn_lower = leading_fn.to_lowercase();
-    if !leading_fn_lower.eq_ignore_ascii_case(trailing_fn) {
-        return None;
-    }
-
-    let signature_lower = signature.to_lowercase();
-    if leading_fn_lower.ends_with(".debug") && signature_lower.starts_with("elf-buildid-sym-") {
-        Some((
-            &[FileType::ElfDebug],
-            ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[16..]).ok()?),
-                code_file: Some(leading_fn.into()),
-                debug_id: None,
-                debug_file: None,
-            },
-        ))
-    } else if signature_lower.starts_with("elf-buildid-") {
-        Some((
-            &[FileType::ElfCode],
-            ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[12..]).ok()?),
-                code_file: Some(leading_fn.into()),
-                debug_id: None,
-                debug_file: None,
-            },
-        ))
-    } else if leading_fn_lower.ends_with(".dwarf") && signature_lower.starts_with("mach-uuid-sym-")
-    {
-        Some((
-            &[FileType::MachDebug],
-            ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[14..]).ok()?),
-                code_file: Some(leading_fn.into()),
-                debug_id: None,
-                debug_file: None,
-            },
-        ))
-    } else if signature_lower.starts_with("mach-uuid-") {
-        Some((
-            &[FileType::MachCode],
-            ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[10..]).ok()?),
-                code_file: Some(leading_fn.into()),
-                debug_id: None,
-                debug_file: None,
-            },
-        ))
-    } else if leading_fn_lower.ends_with(".pdb") {
-        Some((
-            &[FileType::Pdb],
-            ObjectId {
-                code_id: None,
-                code_file: None,
-                debug_id: Some(DebugId::from_breakpad(signature).ok()?),
-                debug_file: Some(leading_fn.into()),
-            },
-        ))
-    } else {
-        Some((
-            &[FileType::Pe],
-            ObjectId {
-                code_id: Some(CodeId::parse_hex(signature).ok()?),
-                code_file: Some(leading_fn.into()),
-                debug_id: None,
-                debug_file: None,
-            },
-        ))
-    }
-}
 
 fn proxy_symstore_request(
     state: State<ServiceState>,

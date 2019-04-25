@@ -1,65 +1,10 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
-use symbolic::common::Uuid;
+use itertools::Itertools;
+use symbolic::common::{CodeId, DebugId, Uuid};
 
-use crate::actors::objects::DownloadPath;
-use crate::types::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId, SourceFilters,
-};
-
-const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
-    case_sensitive: false,
-    require_literal_separator: false,
-    require_literal_leading_dot: false,
-};
-
-/// Generate a list of filepaths to try downloading from.
-///
-/// `object_id`: Information about the image we want to download.
-/// `filetypes`: Limit search to these filetypes.
-/// `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
-/// `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
-pub fn prepare_download_paths<'a>(
-    object_id: &'a ObjectId,
-    filetypes: &'static [FileType],
-    filters: &'a SourceFilters,
-    layout: DirectoryLayout,
-) -> impl Iterator<Item = DownloadPath> + 'a {
-    filetypes.iter().filter_map(move |&filetype| {
-        if (filters.filetypes.is_empty() || filters.filetypes.contains(&filetype))
-            && matches_path_patterns(object_id, &filters.path_patterns)
-        {
-            Some(DownloadPath(get_directory_path(
-                layout, filetype, &object_id,
-            )?))
-        } else {
-            None
-        }
-    })
-}
-
-fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
-    fn canonicalize_path(s: &str) -> String {
-        s.replace(r"\", "/")
-    }
-
-    if patterns.is_empty() {
-        return true;
-    }
-
-    for pattern in patterns {
-        for path in &[&object_id.code_file, &object_id.debug_file] {
-            if let Some(ref path) = path {
-                if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
-}
+use crate::types::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId};
 
 fn get_gdb_path(identifier: &ObjectId) -> Option<String> {
     let code_id = identifier.code_id.as_ref()?;
@@ -272,7 +217,7 @@ fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option
 }
 
 /// Determines the path for an object file in the given layout.
-fn get_directory_path(
+pub fn get_directory_path(
     directory_layout: DirectoryLayout,
     filetype: FileType,
     identifier: &ObjectId,
@@ -293,51 +238,75 @@ fn get_directory_path(
     Some(path)
 }
 
-#[cfg(test)]
-fn pattern(x: &str) -> Glob {
-    Glob(x.parse().unwrap())
-}
+pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
+    let (leading_fn, signature, trailing_fn) = path.splitn(3, '/').collect_tuple()?;
 
-#[test]
-fn test_matches_path_patterns_empty() {
-    assert!(matches_path_patterns(
-        &ObjectId {
-            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-            ..Default::default()
-        },
-        &[]
-    ));
-}
+    let leading_fn_lower = leading_fn.to_lowercase();
+    if !leading_fn_lower.eq_ignore_ascii_case(trailing_fn) {
+        return None;
+    }
 
-#[test]
-fn test_matches_path_patterns_single_star() {
-    assert!(matches_path_patterns(
-        &ObjectId {
-            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-            ..Default::default()
-        },
-        &[pattern("c:/windows/*")]
-    ));
-}
-
-#[test]
-fn test_matches_path_patterns_drive_letter_wildcard() {
-    assert!(matches_path_patterns(
-        &ObjectId {
-            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-            ..Default::default()
-        },
-        &[pattern("?:/windows/*")]
-    ));
-}
-
-#[test]
-fn test_matches_path_patterns_drive_letter() {
-    assert!(!matches_path_patterns(
-        &ObjectId {
-            code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-            ..Default::default()
-        },
-        &[pattern("d:/windows/**")]
-    ));
+    let signature_lower = signature.to_lowercase();
+    if leading_fn_lower.ends_with(".debug") && signature_lower.starts_with("elf-buildid-sym-") {
+        Some((
+            &[FileType::ElfDebug],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[16..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if signature_lower.starts_with("elf-buildid-") {
+        Some((
+            &[FileType::ElfCode],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[12..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if leading_fn_lower.ends_with(".dwarf") && signature_lower.starts_with("mach-uuid-sym-")
+    {
+        Some((
+            &[FileType::MachDebug],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[14..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if signature_lower.starts_with("mach-uuid-") {
+        Some((
+            &[FileType::MachCode],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(&signature[10..]).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    } else if leading_fn_lower.ends_with(".pdb") {
+        Some((
+            &[FileType::Pdb],
+            ObjectId {
+                code_id: None,
+                code_file: None,
+                debug_id: Some(DebugId::from_breakpad(signature).ok()?),
+                debug_file: Some(leading_fn.into()),
+            },
+        ))
+    } else {
+        Some((
+            &[FileType::Pe],
+            ObjectId {
+                code_id: Some(CodeId::parse_hex(signature).ok()?),
+                code_file: Some(leading_fn.into()),
+                debug_id: None,
+                debug_file: None,
+            },
+        ))
+    }
 }
