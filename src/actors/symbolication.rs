@@ -311,7 +311,7 @@ impl SymbolicationActor {
                             .collect();
 
                         // This type only exists because ProcessState is not Send
-                        let minidump_state = MinidumpState {
+                        let mut minidump_state = MinidumpState {
                             system_info: SystemInfo {
                                 os_name,
                                 os_version,
@@ -325,12 +325,14 @@ impl SymbolicationActor {
                             crashed: process_state.crashed(),
                             crash_reason: process_state.crash_reason(),
                             assertion: process_state.assertion(),
+                            thread_ids: Vec::new(),
                         };
 
                         let stacktraces = process_state
                             .threads()
                             .iter()
                             .map(|thread| {
+                                minidump_state.thread_ids.push(thread.thread_id());
                                 let frames = thread.frames();
                                 RawStacktrace {
                                     registers: frames
@@ -394,6 +396,7 @@ impl SymbolicationActor {
                             crashed,
                             crash_reason,
                             assertion,
+                            thread_ids,
                         } = minidump_state;
 
                         response.system_info = Some(system_info);
@@ -401,8 +404,14 @@ impl SymbolicationActor {
                         response.crash_reason = Some(crash_reason);
                         response.assertion = Some(assertion);
 
-                        for (i, mut stacktrace) in response.stacktraces.iter_mut().enumerate() {
+                        for ((i, mut stacktrace), thread_id) in response
+                            .stacktraces
+                            .iter_mut()
+                            .enumerate()
+                            .zip(thread_ids.into_iter())
+                        {
                             stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
+                            stacktrace.thread_id = Some(thread_id.into());
                         }
 
                         Ok(response).into_future().into_actor(slf)
@@ -851,6 +860,7 @@ struct MinidumpState {
     crash_reason: String,
     assertion: String,
     requesting_thread_index: Option<usize>,
+    thread_ids: Vec<u32>,
 }
 
 impl Message for ProcessMinidump {

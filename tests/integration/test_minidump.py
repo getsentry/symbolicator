@@ -106,6 +106,7 @@ MINIDUMP_SUCCESS = {
                 },
             ],
             "is_requesting": True,
+            "thread_id": 1636,
         },
         {
             "frames": [
@@ -161,6 +162,7 @@ MINIDUMP_SUCCESS = {
                 },
             ],
             "is_requesting": False,
+            "thread_id": 3580,
         },
         {
             "frames": [
@@ -216,6 +218,7 @@ MINIDUMP_SUCCESS = {
                 },
             ],
             "is_requesting": False,
+            "thread_id": 2600,
         },
         {
             "frames": [
@@ -241,6 +244,7 @@ MINIDUMP_SUCCESS = {
                 },
             ],
             "is_requesting": False,
+            "thread_id": 2920,
         },
     ],
     "modules": [
