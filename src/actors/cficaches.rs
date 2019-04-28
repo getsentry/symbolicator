@@ -132,31 +132,29 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 }
                 .sentry_hub_new_from_current(),
             )
-            .map_err(|e| e.context(CfiCacheErrorKind::Mailbox).into())
-            .and_then(clone!(path, |result| {
+            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Mailbox)))
+            .and_then(|result| Ok(result.context(CfiCacheErrorKind::Fetching)?))
+            .and_then(clone!(path, |object| {
                 threadpool.spawn_handle(futures::lazy(move || {
-                    let object = result.context(CfiCacheErrorKind::Fetching)?;
-                    let file = BufWriter::new(File::create(&path).context(CfiCacheErrorKind::Io)?);
-                    if let Some(object) =
-                        object.parse().context(CfiCacheErrorKind::ObjectParsing)?
-                    {
+                    let object_opt = object.parse().context(CfiCacheErrorKind::ObjectParsing)?;
+                    if let Some(object) = object_opt {
+                        let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+                        let writer = BufWriter::new(file);
+
                         minidump::cfi::CfiCache::from_object(&object)
                             .context(CfiCacheErrorKind::ObjectParsing)?
-                            .write_to(file)
+                            .write_to(writer)
                             .context(CfiCacheErrorKind::Io)?;
                     }
 
                     Ok(object.scope().clone())
                 }))
             }))
-            .map_err(|e: CfiCacheError| {
-                capture_fail(e.cause().unwrap_or(&e));
-                e
-            })
-            .or_else(clone!(path, |e| {
+            .or_else(clone!(path, |e: CfiCacheError| {
                 log::warn!("Could not write cficache: {}", e);
-                let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+                capture_fail(e.cause().unwrap_or(&e));
 
+                let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
                 file.write_all(MALFORMED_MARKER)
                     .context(CfiCacheErrorKind::Io)?;
 

@@ -24,4 +24,11 @@ macro_rules! clone {
             move |$($p),*| $body
         }
     );
+
+    ($($n:ident),+ , |$($p:ident : $t:ty),*| $body:expr) => (
+        {
+            $( let $n = $n.clone(); )+
+            move |$($p : $t),*| $body
+        }
+    );
 }

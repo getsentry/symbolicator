@@ -135,19 +135,18 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 scope: self.request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .map_err(|e| e.context(SymCacheErrorKind::Mailbox).into())
-            .and_then(clone!(path, |result| {
+            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Mailbox)))
+            .and_then(|result| Ok(result.context(SymCacheErrorKind::Fetching)?))
+            .and_then(clone!(path, |object| {
                 threadpool.spawn_handle(futures::lazy(move || {
-                    let object = result.context(SymCacheErrorKind::Fetching)?;
+                    let object_opt = object.parse().context(SymCacheErrorKind::ObjectParsing)?;
+                    let symbolic_object = match object_opt {
+                        Some(object) => object,
+                        None => return Ok(object.scope().clone()),
+                    };
+
                     let file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                    let symbolic_object =
-                        match object.parse().context(SymCacheErrorKind::ObjectParsing)? {
-                            Some(object) => object,
-                            None => return Ok(object.scope().clone()),
-                        };
-
                     let mut writer = BufWriter::new(file);
-
                     if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
                         match e.kind() {
                             symcache::SymCacheErrorKind::WriteFailed => {
@@ -166,14 +165,11 @@ impl CacheItemRequest for FetchSymCacheInternal {
                     Ok(object.scope().clone())
                 }))
             }))
-            .map_err(|e: SymCacheError| {
+            .or_else(clone!(path, |e: SymCacheError| {
+                log::warn!("Failed to write symcache: {}", e);
                 capture_fail(e.cause().unwrap_or(&e));
-                e
-            })
-            .or_else(clone!(path, |e| {
-                log::warn!("Could not write symcache: {}", e);
-                let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
 
+                let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
                 file.write_all(MALFORMED_MARKER)
                     .context(SymCacheErrorKind::Io)?;
 
