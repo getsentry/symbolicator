@@ -119,7 +119,7 @@ fn execute() -> Result<(), CliError> {
 
     let _sentry = sentry::init(config.sentry_dsn.clone());
     logging::init_logging(&config);
-    sentry::integrations::panic::register_panic_handler();
+    // sentry::integrations::panic::register_panic_handler();
 
     match cli.command {
         Command::Run => run_server(config)?,
@@ -209,8 +209,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
     }
 
     server::new(move || get_app(state.clone()))
-        .bind(&config.bind)
-        .unwrap()
+        .bind(&config.bind)?
         .start();
 
     log::info!("Started http server: {}", config.bind);
