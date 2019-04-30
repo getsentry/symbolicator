@@ -54,6 +54,7 @@ def _make_unsuccessful_result(status):
                     {
                         "status": status,
                         "original_index": 0,
+                        "package": "C:\\Windows\\System32\\kernel32.dll",
                         "instruction_addr": "0x749e8630",
                     }
                 ],

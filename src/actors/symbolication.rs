@@ -591,147 +591,153 @@ fn symbolize_thread(
         ..Default::default()
     };
 
-    let symbolize_frame = |i, frame: &RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-        let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
-            Some((_, info, Some(symcache))) => (info, symcache),
-            Some((_, info, None)) => {
-                if info.debug_status == ObjectFileStatus::Malformed {
-                    return Err(FrameStatus::Malformed);
-                } else {
-                    return Err(FrameStatus::Missing);
+    let symbolize_frame =
+        |i, frame: &mut RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
+            let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
+                Some((_, info, Some(symcache))) => {
+                    frame.package = info.raw.code_file.clone();
+                    (info, symcache)
                 }
-            }
-            None => return Err(FrameStatus::UnknownImage),
-        };
+                Some((_, info, None)) => {
+                    frame.package = info.raw.code_file.clone();
+                    if info.debug_status == ObjectFileStatus::Malformed {
+                        return Err(FrameStatus::Malformed);
+                    } else {
+                        return Err(FrameStatus::Missing);
+                    }
+                }
+                None => return Err(FrameStatus::UnknownImage),
+            };
 
-        let symcache = match symcache.parse() {
-            Ok(Some(x)) => x,
-            Ok(None) => return Err(FrameStatus::Missing),
-            Err(_) => return Err(FrameStatus::Malformed),
-        };
+            let symcache = match symcache.parse() {
+                Ok(Some(x)) => x,
+                Ok(None) => return Err(FrameStatus::Missing),
+                Err(_) => return Err(FrameStatus::Malformed),
+            };
 
-        let crashing_frame = i == 0;
+            let crashing_frame = i == 0;
 
-        let ip_reg = if crashing_frame {
-            symcache
-                .arch()
-                .ip_register_name()
-                .and_then(|ip_reg_name| registers.get(ip_reg_name))
-                .map(|x| x.0)
-        } else {
-            None
-        };
+            let ip_reg = if crashing_frame {
+                symcache
+                    .arch()
+                    .ip_register_name()
+                    .and_then(|ip_reg_name| registers.get(ip_reg_name))
+                    .map(|x| x.0)
+            } else {
+                None
+            };
 
-        let instruction_info = InstructionInfo {
-            addr: frame.instruction_addr.0,
-            arch: symcache.arch(),
-            signal: signal.map(|x| x.0),
-            crashing_frame,
-            ip_reg,
-        };
-        let caller_address = instruction_info.caller_address();
+            let instruction_info = InstructionInfo {
+                addr: frame.instruction_addr.0,
+                arch: symcache.arch(),
+                signal: signal.map(|x| x.0),
+                crashing_frame,
+                ip_reg,
+            };
+            let caller_address = instruction_info.caller_address();
 
-        let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
-            Some(x) => x,
-            None => {
-                log::warn!(
-                    "Underflow when trying to subtract image start addr from caller address"
-                );
-                metric!(counter("relative_addr.underflow") += 1);
-                return Err(FrameStatus::MissingSymbol);
-            }
-        };
+            let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
+                Some(x) => x,
+                None => {
+                    log::warn!(
+                        "Underflow when trying to subtract image start addr from caller address"
+                    );
+                    metric!(counter("relative_addr.underflow") += 1);
+                    return Err(FrameStatus::MissingSymbol);
+                }
+            };
 
-        let line_infos = match symcache.lookup(relative_addr) {
-            Ok(x) => x,
-            Err(_) => return Err(FrameStatus::Malformed),
-        };
-
-        let mut rv = vec![];
-
-        for line_info in line_infos {
-            let line_info = match line_info {
+            let line_infos = match symcache.lookup(relative_addr) {
                 Ok(x) => x,
                 Err(_) => return Err(FrameStatus::Malformed),
             };
 
-            // The logic for filename and abs_path intentionally diverges from how symbolic is used
-            // inside of Sentry right now.
-            let (filename, abs_path) = {
-                let comp_dir = line_info.compilation_dir();
-                let rel_path = line_info.path();
-                let abs_path = join_path(&comp_dir, &rel_path);
+            let mut rv = vec![];
 
-                if abs_path == rel_path {
-                    // rel_path is absolute and therefore not usable for `filename`. Use the
-                    // basename as filename.
-                    (line_info.filename().to_owned(), abs_path.to_owned())
-                } else {
-                    // rel_path is relative (probably to the compilation dir) and therefore useful
-                    // as filename for Sentry.
-                    (rel_path.to_owned(), abs_path.to_owned())
-                }
-            };
+            for line_info in line_infos {
+                let line_info = match line_info {
+                    Ok(x) => x,
+                    Err(_) => return Err(FrameStatus::Malformed),
+                };
 
-            let lang = line_info.language();
+                // The logic for filename and abs_path intentionally diverges from how symbolic is used
+                // inside of Sentry right now.
+                let (filename, abs_path) = {
+                    let comp_dir = line_info.compilation_dir();
+                    let rel_path = line_info.path();
+                    let abs_path = join_path(&comp_dir, &rel_path);
 
-            rv.push(SymbolicatedFrame {
-                status: FrameStatus::Symbolicated,
-                symbol: Some(line_info.symbol().to_string()),
-                package: object_info.raw.code_file.clone(),
-                abs_path: if !abs_path.is_empty() {
-                    Some(abs_path)
-                } else {
-                    None
-                },
-                function: Some(
-                    line_info
-                        .function_name()
-                        .try_demangle(DEMANGLE_OPTIONS)
-                        .into_owned(),
-                ),
-                filename: if !filename.is_empty() {
-                    Some(filename)
-                } else {
-                    None
-                },
-                lineno: Some(line_info.line()),
-                instruction_addr: HexValue(
-                    object_info.raw.image_addr.0 + line_info.instruction_address(),
-                ),
-                sym_addr: Some(HexValue(
-                    object_info.raw.image_addr.0 + line_info.function_address(),
-                )),
-                lang: if lang != Language::Unknown {
-                    Some(lang)
-                } else {
-                    None
-                },
-                original_index: Some(i),
-            });
-        }
+                    if abs_path == rel_path {
+                        // rel_path is absolute and therefore not usable for `filename`. Use the
+                        // basename as filename.
+                        (line_info.filename().to_owned(), abs_path.to_owned())
+                    } else {
+                        // rel_path is relative (probably to the compilation dir) and therefore useful
+                        // as filename for Sentry.
+                        (rel_path.to_owned(), abs_path.to_owned())
+                    }
+                };
 
-        if rv.is_empty() {
-            rv.push(SymbolicatedFrame {
-                status: FrameStatus::MissingSymbol,
-                original_index: Some(i),
-                instruction_addr: frame.instruction_addr,
-                package: object_info.raw.code_file.clone(),
-                ..Default::default()
-            });
-        }
+                let lang = line_info.language();
 
-        Ok(rv)
-    };
+                rv.push(SymbolicatedFrame {
+                    status: FrameStatus::Symbolicated,
+                    symbol: Some(line_info.symbol().to_string()),
+                    package: object_info.raw.code_file.clone(),
+                    abs_path: if !abs_path.is_empty() {
+                        Some(abs_path)
+                    } else {
+                        None
+                    },
+                    function: Some(
+                        line_info
+                            .function_name()
+                            .try_demangle(DEMANGLE_OPTIONS)
+                            .into_owned(),
+                    ),
+                    filename: if !filename.is_empty() {
+                        Some(filename)
+                    } else {
+                        None
+                    },
+                    lineno: Some(line_info.line()),
+                    instruction_addr: HexValue(
+                        object_info.raw.image_addr.0 + line_info.instruction_address(),
+                    ),
+                    sym_addr: Some(HexValue(
+                        object_info.raw.image_addr.0 + line_info.function_address(),
+                    )),
+                    lang: if lang != Language::Unknown {
+                        Some(lang)
+                    } else {
+                        None
+                    },
+                    original_index: Some(i),
+                });
+            }
 
-    for (i, frame) in thread.frames.into_iter().enumerate() {
-        match symbolize_frame(i, &frame) {
+            if rv.is_empty() {
+                rv.push(SymbolicatedFrame {
+                    status: FrameStatus::Symbolicated,
+                    original_index: Some(i),
+                    instruction_addr: frame.instruction_addr,
+                    package: frame.package.clone(),
+                    ..Default::default()
+                });
+            }
+
+            Ok(rv)
+        };
+
+    for (i, mut frame) in thread.frames.into_iter().enumerate() {
+        match symbolize_frame(i, &mut frame) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
                 stacktrace.frames.push(SymbolicatedFrame {
                     status,
                     original_index: Some(i),
                     instruction_addr: frame.instruction_addr,
+                    package: frame.package.clone(),
                     ..Default::default()
                 });
             }

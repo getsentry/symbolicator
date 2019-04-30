@@ -17,11 +17,13 @@ MINIDUMP_SUCCESS = {
                 {
                     "status": "missing",
                     "original_index": 0,
+                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a2a3d",
                 },
                 {
                     "status": "missing",
                     "original_index": 1,
+                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a28d0",
                 },
                 {
@@ -37,6 +39,7 @@ MINIDUMP_SUCCESS = {
                 {
                     "status": "missing_symbol",
                     "original_index": 3,
+                    "package": "C:\\Windows\\System32\\dbghelp.dll",
                     "instruction_addr": "0x70850000",
                 },
                 {
@@ -52,6 +55,7 @@ MINIDUMP_SUCCESS = {
                 {
                     "status": "missing_symbol",
                     "original_index": 5,
+                    "package": "C:\\Windows\\System32\\rpcrt4.dll",
                     "instruction_addr": "0x75810000",
                 },
                 {
@@ -67,11 +71,13 @@ MINIDUMP_SUCCESS = {
                 {
                     "status": "missing",
                     "original_index": 7,
+                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a3435",
                 },
                 {
                     "status": "missing",
                     "original_index": 8,
+                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a2d97",
                 },
                 {
