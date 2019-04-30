@@ -25,6 +25,7 @@ WINDOWS_DATA = {
 SUCCESS_WINDOWS = {
     "stacktraces": [
         {
+            "registers": {"eip": "0x1509530"},
             "frames": [
                 {
                     "status": "symbolicated",
@@ -36,7 +37,7 @@ SUCCESS_WINDOWS = {
                     "symbol": "@BaseThreadInitThunk@12",
                     "sym_addr": "0x749e8630",
                 }
-            ]
+            ],
         }
     ],
     "modules": [dict(debug_status="found", arch="x86", **WINDOWS_DATA["modules"][0])],
@@ -48,13 +49,14 @@ def _make_unsuccessful_result(status):
     return {
         "stacktraces": [
             {
+                "registers": {"eip": "0x1509530"},
                 "frames": [
                     {
                         "status": status,
                         "original_index": 0,
                         "instruction_addr": "0x749e8630",
                     }
-                ]
+                ],
             }
         ],
         "modules": [

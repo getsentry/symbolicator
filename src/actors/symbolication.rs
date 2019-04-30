@@ -587,6 +587,7 @@ fn symbolize_thread(
 
     let mut stacktrace = CompleteStacktrace {
         frames: vec![],
+        registers: registers.clone(),
         ..Default::default()
     };
 

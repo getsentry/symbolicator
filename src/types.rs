@@ -448,7 +448,7 @@ pub struct CompleteStacktrace {
     #[serde(skip_serializing_if = "is_default")]
     pub is_requesting: Option<bool>,
 
-    /// Registers, only relevant when returning a processed minidump.
+    /// Registers, only useful when returning a processed minidump.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
     pub registers: BTreeMap<String, HexValue>,
