@@ -84,24 +84,31 @@ impl Cache {
     pub fn cleanup(&self) -> Result<(), CleanupError> {
         log::info!("Cleaning up cache: {}", self.name);
         let cache_dir = match self.cache_dir {
-            Some(ref x) => x,
+            Some(ref x) => x.clone(),
             None => return Err(CleanupError::NoCachingConfigured),
         };
 
-        let entries = match catch_not_found(|| read_dir(cache_dir))? {
-            Some(x) => x,
-            None => {
-                log::warn!("Directory not found");
-                return Ok(());
-            }
-        };
+        let mut directories = vec![cache_dir];
+        while !directories.is_empty() {
+            let directory = directories.pop().unwrap();
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-            if let Err(e) = self.try_cleanup_path(&path) {
-                log::error!("Failed to clean up {}: {}", path.display(), LogError(&e));
-                capture_fail(&e);
+            let entries = match catch_not_found(|| read_dir(directory))? {
+                Some(x) => x,
+                None => {
+                    log::warn!("Directory not found");
+                    return Ok(());
+                }
+            };
+
+            for entry in entries {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    directories.push(path.to_owned());
+                } else if let Err(e) = self.try_cleanup_path(&path) {
+                    log::error!("Failed to clean up {}: {}", path.display(), LogError(&e));
+                    capture_fail(&e);
+                }
             }
         }
 
@@ -272,6 +279,7 @@ fn test_max_unused_for() -> Result<(), CleanupError> {
     use std::thread::sleep;
 
     let tempdir = tempdir()?;
+    create_dir_all(tempdir.path().join("foo"))?;
 
     let cache = Cache::new(
         "test",
@@ -282,14 +290,14 @@ fn test_max_unused_for() -> Result<(), CleanupError> {
         },
     );
 
-    File::create(tempdir.path().join("killthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("keepthis"))?.write_all(b"")?;
+    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
     sleep(Duration::from_millis(11));
 
-    File::create(tempdir.path().join("keepthis2"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path())?
+    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -306,6 +314,7 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
     use std::thread::sleep;
 
     let tempdir = tempdir()?;
+    create_dir_all(tempdir.path().join("foo"))?;
 
     let cache = Cache::new(
         "test",
@@ -316,14 +325,14 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
         },
     );
 
-    File::create(tempdir.path().join("keepthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("killthis"))?.write_all(b"")?;
+    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
     sleep(Duration::from_millis(25));
 
-    File::create(tempdir.path().join("keepthis2"))?.write_all(b"")?;
+    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path())?
+    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -340,12 +349,13 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
     use std::thread::sleep;
 
     let tempdir = tempdir()?;
+    create_dir_all(tempdir.path().join("foo"))?;
 
     // File has same amount of chars as "malformed", check that optimization works
-    File::create(tempdir.path().join("keepthis"))?.write_all(b"addictive")?;
-    File::create(tempdir.path().join("keepthis2"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
+    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
 
-    File::create(tempdir.path().join("killthis"))?.write_all(b"malformed")?;
+    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
 
     sleep(Duration::from_millis(10));
 
@@ -354,7 +364,7 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
 
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path())?
+    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
