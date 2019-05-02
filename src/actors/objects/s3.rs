@@ -7,6 +7,8 @@ use futures::{future, Future, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
+use tokio_retry::Retry;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::Cacher;
@@ -105,33 +107,46 @@ pub fn download_from_source(
     log::debug!("fetching from s3: {} (from {})", &key, source.bucket);
 
     let bucket = source.bucket.clone();
-    let response = get_s3_client(&source.source_key)
-        .get_object(rusoto_s3::GetObjectRequest {
+    let source_key = &source.source_key;
+    let response = clone!(source_key, key, bucket, || {
+        get_s3_client(&source_key).get_object(rusoto_s3::GetObjectRequest {
             key: key.clone(),
             bucket: bucket.clone(),
             ..Default::default()
         })
-        .then(move |result| match result {
-            Ok(mut result) => {
-                let body_read = match result.body.take() {
-                    Some(body) => body.into_async_read(),
-                    None => {
-                        log::warn!("Empty response from s3:{}{}", bucket, &key);
-                        return Ok(None);
-                    }
-                };
+    });
 
-                let bytes = FramedRead::new(body_read, BytesCodec::new())
-                    .map(BytesMut::freeze)
-                    .map_err(|_err| ObjectError::from(ObjectErrorKind::Io));
+    let response = Retry::spawn(
+        ExponentialBackoff::from_millis(100).map(jitter).take(20),
+        response,
+    );
 
-                Ok(Some(Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>))
-            }
-            Err(err) => {
-                log::warn!("Skipping response from s3:{}{}: {}", bucket, &key, err);
-                Ok(None)
-            }
-        });
+    let response = response.map_err(|e| match e {
+        tokio_retry::Error::OperationError(e) => e,
+        e => panic!("{}", e),
+    });
+
+    let response = response.then(move |result| match result {
+        Ok(mut result) => {
+            let body_read = match result.body.take() {
+                Some(body) => body.into_async_read(),
+                None => {
+                    log::warn!("Empty response from s3:{}{}", bucket, &key);
+                    return Ok(None);
+                }
+            };
+
+            let bytes = FramedRead::new(body_read, BytesCodec::new())
+                .map(BytesMut::freeze)
+                .map_err(|_err| ObjectError::from(ObjectErrorKind::Io));
+
+            Ok(Some(Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>))
+        }
+        Err(err) => {
+            log::warn!("Skipping response from s3:{}{}: {}", bucket, &key, err);
+            Ok(None)
+        }
+    });
 
     Box::new(response)
 }

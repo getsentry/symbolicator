@@ -4,6 +4,8 @@ use actix_web::http::header::HeaderName;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
 use futures::{future, Future, IntoFuture, Stream};
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
+use tokio_retry::Retry;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::Cacher;
@@ -60,20 +62,33 @@ pub fn download_from_source(
     };
 
     log::debug!("Fetching debug file from {}", download_url);
-    let response = http::follow_redirects(
-        {
-            let mut builder = client::get(&download_url);
-            for (key, value) in source.headers.iter() {
-                if let Ok(key) = HeaderName::from_bytes(key.as_bytes()) {
-                    builder.header(key, value.as_str());
+    let response = clone!(download_url, source, || {
+        http::follow_redirects(
+            {
+                let mut builder = client::get(&download_url);
+                for (key, value) in source.headers.iter() {
+                    if let Ok(key) = HeaderName::from_bytes(key.as_bytes()) {
+                        builder.header(key, value.as_str());
+                    }
                 }
-            }
-            builder.header("user-agent", USER_AGENT);
-            builder.finish().unwrap()
-        },
-        10,
-    )
-    .then(move |result| match result {
+                builder.header("user-agent", USER_AGENT);
+                builder.finish().unwrap()
+            },
+            10,
+        )
+    });
+
+    let response = Retry::spawn(
+        ExponentialBackoff::from_millis(100).map(jitter).take(20),
+        response,
+    );
+
+    let response = response.map_err(|e| match e {
+        tokio_retry::Error::OperationError(e) => e,
+        e => panic!("{}", e),
+    });
+
+    let response = response.then(move |result| match result {
         Ok(response) => {
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);

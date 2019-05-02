@@ -5,6 +5,8 @@ use actix_web::{client, HttpMessage};
 use failure::Fail;
 use futures::future::{self, Either};
 use futures::{Future, IntoFuture, Stream};
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
+use tokio_retry::Retry;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::Cacher;
@@ -63,26 +65,33 @@ pub fn prepare_downloads(
     };
 
     log::debug!("Fetching list of Sentry debug files from {}", index_url);
-    let index_request = client::get(&index_url)
-        .header("User-Agent", USER_AGENT)
-        .header("Authorization", format!("Bearer {}", source.token))
-        .finish()
-        .unwrap()
-        .send()
-        .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
-        .and_then(move |response| {
-            if response.status().is_success() {
-                log::debug!("Success fetching index from Sentry");
-                Either::A(
-                    response
-                        .json::<Vec<FileEntry>>()
-                        .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
-                )
-            } else {
-                log::debug!("Sentry returned status code {}", response.status());
-                Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
-            }
-        });
+    let index_request = clone!(source, || {
+        client::get(&index_url)
+            .header("User-Agent", USER_AGENT)
+            .header("Authorization", format!("Bearer {}", source.token.clone()))
+            .finish()
+            .unwrap()
+            .send()
+            .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
+            .and_then(move |response| {
+                if response.status().is_success() {
+                    log::debug!("Success fetching index from Sentry");
+                    Either::A(
+                        response
+                            .json::<Vec<FileEntry>>()
+                            .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
+                    )
+                } else {
+                    log::debug!("Sentry returned status code {}", response.status());
+                    Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
+                }
+            })
+    });
+
+    let index_request = Retry::spawn(
+        ExponentialBackoff::from_millis(100).map(jitter).take(20),
+        index_request,
+    );
 
     let index_request = future_metrics!("downloads.sentry.index", None, index_request);
 
@@ -103,7 +112,10 @@ pub fn prepare_downloads(
                     .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
                     .then(Ok))
             )))
-            .map_err(|e| e.context(ObjectErrorKind::Sentry).into()),
+            .map_err(|e| match e {
+                tokio_retry::Error::OperationError(e) => e.context(ObjectErrorKind::Sentry).into(),
+                e => panic!("{}", e),
+            }),
     )
 }
 
@@ -118,36 +130,50 @@ pub fn download_from_source(
     };
 
     log::debug!("Fetching debug file from {}", download_url);
-    let response = client::get(&download_url)
-        .header("User-Agent", USER_AGENT)
-        .header("Authorization", format!("Bearer {}", source.token))
-        .finish()
-        .unwrap()
-        .send()
-        .then(move |result| match result {
-            Ok(response) => {
-                if response.status().is_success() {
-                    log::info!("Success hitting {}", download_url);
-                    Ok(Some(Box::new(
-                        response
-                            .payload()
-                            .map_err(|e| e.context(ObjectErrorKind::Io).into()),
-                    )
-                        as Box<dyn Stream<Item = _, Error = _>>))
-                } else {
-                    log::debug!(
-                        "Unexpected status code from {}: {}",
-                        download_url,
-                        response.status()
-                    );
-                    Ok(None)
-                }
-            }
-            Err(e) => {
-                log::warn!("Skipping response from {}: {}", download_url, e);
+    let token = &source.token;
+    let response = clone!(token, download_url, || {
+        client::get(&download_url)
+            .header("User-Agent", USER_AGENT)
+            .header("Authorization", format!("Bearer {}", token))
+            .finish()
+            .unwrap()
+            .send()
+    });
+
+    let response = Retry::spawn(
+        ExponentialBackoff::from_millis(100).map(jitter).take(20),
+        response,
+    );
+
+    let response = response.map_err(|e| match e {
+        tokio_retry::Error::OperationError(e) => e,
+        e => panic!("{}", e),
+    });
+
+    let response = response.then(move |result| match result {
+        Ok(response) => {
+            if response.status().is_success() {
+                log::info!("Success hitting {}", download_url);
+                Ok(Some(Box::new(
+                    response
+                        .payload()
+                        .map_err(|e| e.context(ObjectErrorKind::Io).into()),
+                )
+                    as Box<dyn Stream<Item = _, Error = _>>))
+            } else {
+                log::debug!(
+                    "Unexpected status code from {}: {}",
+                    download_url,
+                    response.status()
+                );
                 Ok(None)
             }
-        });
+        }
+        Err(e) => {
+            log::warn!("Skipping response from {}: {}", download_url, e);
+            Ok(None)
+        }
+    });
 
     Box::new(response)
 }
