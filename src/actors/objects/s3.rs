@@ -7,8 +7,6 @@ use futures::{future, Future, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::Cacher;
@@ -108,22 +106,10 @@ pub fn download_from_source(
 
     let bucket = source.bucket.clone();
     let source_key = &source.source_key;
-    let response = clone!(source_key, key, bucket, || {
-        get_s3_client(&source_key).get_object(rusoto_s3::GetObjectRequest {
-            key: key.clone(),
-            bucket: bucket.clone(),
-            ..Default::default()
-        })
-    });
-
-    let response = Retry::spawn(
-        ExponentialBackoff::from_millis(100).map(jitter).take(20),
-        response,
-    );
-
-    let response = response.map_err(|e| match e {
-        tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
+    let response = get_s3_client(&source_key).get_object(rusoto_s3::GetObjectRequest {
+        key: key.clone(),
+        bucket: bucket.clone(),
+        ..Default::default()
     });
 
     let response = response.then(move |result| match result {

@@ -89,7 +89,7 @@ pub fn prepare_downloads(
     });
 
     let index_request = Retry::spawn(
-        ExponentialBackoff::from_millis(100).map(jitter).take(20),
+        ExponentialBackoff::from_millis(100).map(jitter).take(3),
         index_request,
     );
 
@@ -141,7 +141,7 @@ pub fn download_from_source(
     });
 
     let response = Retry::spawn(
-        ExponentialBackoff::from_millis(100).map(jitter).take(20),
+        ExponentialBackoff::from_millis(100).map(jitter).take(3),
         response,
     );
 
