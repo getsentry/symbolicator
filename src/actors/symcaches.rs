@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::ResponseFuture;
 use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::integrations::failure::capture_fail;
@@ -210,7 +209,7 @@ impl SymCacheActor {
     pub fn fetch(
         &self,
         request: FetchSymCache,
-    ) -> ResponseFuture<Arc<SymCacheFile>, Arc<SymCacheError>> {
+    ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
         Box::new(
             self.symcaches
                 .compute_memoized(FetchSymCacheInternal {

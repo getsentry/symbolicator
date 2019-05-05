@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use actix::{Actor};
 use futures::future::Future;
 use futures::Poll;
 

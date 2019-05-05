@@ -6,7 +6,6 @@ use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::ResponseFuture;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
@@ -800,16 +799,16 @@ impl SymbolicationActor {
     pub fn get_symbolication_status(
         &self,
         request: GetSymbolicationStatus,
-    ) -> ResponseFuture<Option<SymbolicationResponse>, SymbolicationError> {
+    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = SymbolicationError> {
         let request_id = request.request_id;
 
         if let Some(channel) = self.requests.read().get(&request_id) {
-            Box::new(
+            Either::A(
                 self.wrap_response_channel(request_id, request.timeout, channel.clone())
                     .map(|x| Some(x)),
             )
         } else {
-            Box::new(Ok(None).into_future())
+            Either::B(Ok(None).into_future())
         }
     }
 }

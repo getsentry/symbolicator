@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::ResponseFuture;
 use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::integrations::failure::capture_fail;
@@ -186,7 +185,7 @@ impl CfiCacheActor {
     pub fn fetch(
         &self,
         request: FetchCfiCache,
-    ) -> ResponseFuture<Arc<CfiCacheFile>, Arc<CfiCacheError>> {
+    ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
         Box::new(
             self.cficaches
                 .compute_memoized(FetchCfiCacheInternal {

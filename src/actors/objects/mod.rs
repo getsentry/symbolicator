@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::ResponseFuture;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
@@ -367,7 +366,10 @@ pub enum ObjectPurpose {
 }
 
 impl ObjectsActor {
-    pub fn fetch(&self, request: FetchObject) -> ResponseFuture<Arc<ObjectFile>, ObjectError> {
+    pub fn fetch(
+        &self,
+        request: FetchObject,
+    ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
         let FetchObject {
             filetypes,
             scope,
