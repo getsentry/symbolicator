@@ -17,9 +17,6 @@ pub enum ProxyErrorKind {
     #[fail(display = "failed to write object")]
     Io,
 
-    #[fail(display = "failed sending message to objects actor")]
-    Mailbox,
-
     #[fail(display = "failed to download object")]
     Fetching,
 }
@@ -49,21 +46,15 @@ fn proxy_symstore_request(
     Box::new(
         state
             .objects
-            .send(FetchObject {
+            .fetch(FetchObject {
                 filetypes,
                 identifier: object_id,
                 sources: state.config.sources.clone(),
                 scope: Scope::Global,
                 purpose: ObjectPurpose::Debug,
             })
-            .map_err(|e| e.context(ProxyErrorKind::Mailbox).into())
-            .and_then(move |result| {
-                let object_file = match result {
-                    Ok(object_file) => object_file,
-                    Err(_err) => {
-                        return Err(ProxyErrorKind::Fetching.into());
-                    }
-                };
+            .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
+            .and_then(move |object_file| {
                 if !object_file.has_object() {
                     return Ok(HttpResponse::NotFound().finish());
                 }

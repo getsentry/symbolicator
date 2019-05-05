@@ -93,7 +93,7 @@ pub struct ServiceState {
     /// The address of the symbolication actor.
     pub symbolication: Addr<SymbolicationActor>,
     /// The address of the objects actor.
-    pub objects: Addr<ObjectsActor>,
+    pub objects: Arc<ObjectsActor>,
     /// The config object.
     pub config: Arc<Config>,
 }
@@ -176,7 +176,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
     let cpu_threadpool = Arc::new(ThreadPool::new());
     let io_threadpool = Arc::new(ThreadPool::new());
 
-    let objects = ObjectsActor::new(caches.objects, io_threadpool.clone()).start();
+    let objects = Arc::new(ObjectsActor::new(caches.objects, io_threadpool.clone()));
 
     let symcaches =
         SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone()).start();

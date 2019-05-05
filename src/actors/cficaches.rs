@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+use actix::{Actor, Context, Handler, Message, ResponseFuture};
 use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::integrations::failure::capture_fail;
@@ -52,7 +52,7 @@ impl From<io::Error> for CfiCacheError {
 
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
-    objects: Addr<ObjectsActor>,
+    objects: Arc<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -61,7 +61,7 @@ impl Actor for CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: Addr<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -98,7 +98,7 @@ impl CfiCacheFile {
 #[derive(Clone)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
-    objects: Addr<ObjectsActor>,
+    objects: Arc<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -122,18 +122,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
         // in Sentry itself?
         let result = objects
-            .send(
-                FetchObject {
-                    filetypes: FileType::from_object_type(&self.request.object_type),
-                    identifier: self.request.identifier.clone(),
-                    sources: self.request.sources.clone(),
-                    scope: self.request.scope.clone(),
-                    purpose: ObjectPurpose::Unwind,
-                }
-                .sentry_hub_new_from_current(),
-            )
-            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Mailbox)))
-            .and_then(|result| Ok(result.context(CfiCacheErrorKind::Fetching)?))
+            .fetch(FetchObject {
+                filetypes: FileType::from_object_type(&self.request.object_type),
+                identifier: self.request.identifier.clone(),
+                sources: self.request.sources.clone(),
+                scope: self.request.scope.clone(),
+                purpose: ObjectPurpose::Unwind,
+            })
+            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
             .and_then(clone!(path, |object| {
                 threadpool.spawn_handle(futures::lazy(move || {
                     let object_opt = object.parse().context(CfiCacheErrorKind::ObjectParsing)?;

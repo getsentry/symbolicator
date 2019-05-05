@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Addr, Context, Handler, Message, ResponseFuture};
+use actix::{Actor, Context, Handler, Message, ResponseFuture};
 use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::integrations::failure::capture_fail;
@@ -53,7 +53,7 @@ impl From<io::Error> for SymCacheError {
 
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
-    objects: Addr<ObjectsActor>,
+    objects: Arc<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -62,7 +62,7 @@ impl Actor for SymCacheActor {
 }
 
 impl SymCacheActor {
-    pub fn new(cache: Cache, objects: Addr<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -104,7 +104,7 @@ impl SymCacheFile {
 #[derive(Clone)]
 struct FetchSymCacheInternal {
     request: FetchSymCache,
-    objects: Addr<ObjectsActor>,
+    objects: Arc<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -128,15 +128,14 @@ impl CacheItemRequest for FetchSymCacheInternal {
         // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
         // in Sentry itself?
         let result = objects
-            .send(FetchObject {
+            .fetch(FetchObject {
                 filetypes: FileType::from_object_type(&self.request.object_type),
                 identifier: self.request.identifier.clone(),
                 sources: self.request.sources.clone(),
                 scope: self.request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Mailbox)))
-            .and_then(|result| Ok(result.context(SymCacheErrorKind::Fetching)?))
+            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)))
             .and_then(clone!(path, |object| {
                 threadpool.spawn_handle(futures::lazy(move || {
                     let object_opt = object.parse().context(SymCacheErrorKind::ObjectParsing)?;

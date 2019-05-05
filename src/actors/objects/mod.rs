@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Context, Handler, Message, ResponseFuture};
+use actix::ResponseFuture;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
@@ -350,10 +350,6 @@ impl ObjectsActor {
     }
 }
 
-impl Actor for ObjectsActor {
-    type Context = Context<Self>;
-}
-
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FetchObject {
@@ -370,14 +366,8 @@ pub enum ObjectPurpose {
     Debug,
 }
 
-impl Message for FetchObject {
-    type Result = Result<Arc<ObjectFile>, ObjectError>;
-}
-
-impl Handler<FetchObject> for ObjectsActor {
-    type Result = ResponseFuture<Arc<ObjectFile>, ObjectError>;
-
-    fn handle(&mut self, request: FetchObject, _ctx: &mut Self::Context) -> Self::Result {
+impl ObjectsActor {
+    pub fn fetch(&self, request: FetchObject) -> ResponseFuture<Arc<ObjectFile>, ObjectError> {
         let FetchObject {
             filetypes,
             scope,
@@ -436,8 +426,6 @@ impl Handler<FetchObject> for ObjectsActor {
         )
     }
 }
-
-handle_sentry_actix_message!(ObjectsActor, FetchObject);
 
 type PrioritizedDownloads = Vec<Result<Arc<ObjectFile>, ObjectError>>;
 type DownloadStream = Box<dyn Stream<Item = Bytes, Error = ObjectError>>;
