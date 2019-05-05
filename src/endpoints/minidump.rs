@@ -19,7 +19,7 @@ use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::sentry::SentryFutureExt;
-use crate::types::{SourceConfig, SymbolicationError, SymbolicationResponse};
+use crate::types::{SourceConfig, SymbolicationResponse};
 
 enum MultipartItem {
     MinidumpFile(fs::File),
@@ -145,30 +145,22 @@ fn process_minidump(
             _ => Err(error::ErrorBadRequest("missing formdata fields")),
         });
 
-    let request_id = request.and_then(clone!(symbolication, |request| symbolication
-        .send(request.sentry_hub_current())
-        .map_err(|_| SymbolicationError::Mailbox)
-        .map_err(error::ErrorInternalServerError)
-        .and_then(|result| Ok(result.map_err(error::ErrorInternalServerError)?))));
+    let request_id = request.and_then(clone!(symbolication, |request| {
+        symbolication
+            .process_minidump(request)
+            .map_err(error::ErrorInternalServerError)
+    }));
 
     let response = request_id
-        .and_then(clone!(symbolication, |request_id| symbolication
-            .send(
-                GetSymbolicationStatus {
+        .and_then(clone!(symbolication, |request_id| {
+            symbolication
+                .get_symbolication_status(GetSymbolicationStatus {
                     request_id,
-                    timeout
-                }
-                .sentry_hub_current()
-            )
-            .map_err(|_| SymbolicationError::Mailbox)
-            .map_err(error::ErrorInternalServerError)
-            .and_then(|result| Ok(
-                result.map_err(error::ErrorInternalServerError)?
-            ))))
-        .and_then(|response_opt| {
-            response_opt.ok_or_else(|| error::ErrorInternalServerError(SymbolicationError::Mailbox))
-        })
-        .map(Json)
+                    timeout,
+                })
+                .map_err(error::ErrorInternalServerError)
+        }))
+        .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
         .map_err(Error::from);
 
     Box::new(response.sentry_hub_new_from_current())

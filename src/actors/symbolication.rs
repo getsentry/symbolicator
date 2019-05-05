@@ -6,11 +6,10 @@ use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{
-    fut::WrapFuture, Actor, ActorFuture, AsyncContext, Context, Handler, Message, ResponseActFuture,
-};
+use actix::ResponseFuture;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
+use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
 
@@ -43,16 +42,14 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
 
+type ComputationMap<T, E> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T, E>>>>;
+
+#[derive(Clone)]
 pub struct SymbolicationActor {
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests:
-        BTreeMap<RequestId, ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>>,
-}
-
-impl Actor for SymbolicationActor {
-    type Context = Context<SymbolicationActor>;
+    requests: ComputationMap<CompletedSymbolicationResponse, SymbolicationError>,
 }
 
 impl SymbolicationActor {
@@ -61,7 +58,7 @@ impl SymbolicationActor {
         cficaches: Arc<CfiCacheActor>,
         threadpool: Arc<ThreadPool>,
     ) -> Self {
-        let requests = BTreeMap::new();
+        let requests = Arc::new(RwLock::new(BTreeMap::new()));
 
         SymbolicationActor {
             symcaches,
@@ -76,7 +73,7 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
         channel: ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>,
-    ) -> ResponseActFuture<Self, SymbolicationResponse, SymbolicationError> {
+    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
             .map_err(|_: SharedError<oneshot::Canceled>| {
                 panic!("Oneshot channel cancelled! Race condition or system shutting down")
@@ -88,19 +85,20 @@ impl SymbolicationActor {
                 SymbolicationError::Mailbox
             });
 
+        let requests = &self.requests;
+
         if let Some(timeout) = timeout {
-            Box::new(
+            Either::A(
                 rv.timeout(Duration::from_secs(timeout))
-                    .into_actor(self)
-                    .then(move |result, slf, _ctx| {
+                    .then(clone!(requests, |result| {
                         match result {
                             Ok(x) => {
-                                slf.requests.remove(&request_id);
+                                requests.write().remove(&request_id);
                                 Ok(SymbolicationResponse::Completed(x))
                             }
                             Err(e) => {
                                 if let Some(inner) = e.into_inner() {
-                                    slf.requests.remove(&request_id);
+                                    requests.write().remove(&request_id);
                                     Err(inner)
                                 } else {
                                     Ok(SymbolicationResponse::Pending {
@@ -112,18 +110,13 @@ impl SymbolicationActor {
                                 }
                             }
                         }
-                        .into_future()
-                        .into_actor(slf)
-                    }),
+                    })),
             )
         } else {
-            Box::new(rv.into_actor(self).then(move |result, slf, _ctx| {
-                slf.requests.remove(&request_id);
-                result
-                    .map(SymbolicationResponse::Completed)
-                    .into_future()
-                    .into_actor(slf)
-            }))
+            Either::B(rv.then(clone!(requests, |result| {
+                requests.write().remove(&request_id);
+                result.map(SymbolicationResponse::Completed)
+            })))
         }
     }
 
@@ -376,45 +369,42 @@ impl SymbolicationActor {
     fn do_process_minidump(
         &self,
         request: ProcessMinidump,
-    ) -> impl ActorFuture<Item = CompletedSymbolicationResponse, Error = SymbolicationError, Actor = Self>
-    {
-        let symbolication_request = self.do_stackwalk_minidump(request);
+    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
+        let self2 = self.clone();
 
-        let result = symbolication_request.into_actor(self).and_then(
-            |(request, minidump_state), slf, _ctx| {
-                slf.do_symbolicate(request)
-                    .into_actor(slf)
-                    .and_then(|mut response, slf, _ctx| {
-                        let MinidumpState {
-                            requesting_thread_index,
-                            system_info,
-                            crashed,
-                            crash_reason,
-                            assertion,
-                            thread_ids,
-                        } = minidump_state;
+        self.do_stackwalk_minidump(request)
+            .and_then(move |(request, minidump_state)| {
+                self2
+                    .do_symbolicate(request)
+                    .map(move |response| (response, minidump_state))
+            })
+            .map(|(mut response, minidump_state)| {
+                let MinidumpState {
+                    requesting_thread_index,
+                    system_info,
+                    crashed,
+                    crash_reason,
+                    assertion,
+                    thread_ids,
+                } = minidump_state;
 
-                        response.system_info = Some(system_info);
-                        response.crashed = Some(crashed);
-                        response.crash_reason = Some(crash_reason);
-                        response.assertion = Some(assertion);
+                response.system_info = Some(system_info);
+                response.crashed = Some(crashed);
+                response.crash_reason = Some(crash_reason);
+                response.assertion = Some(assertion);
 
-                        for ((i, mut stacktrace), thread_id) in response
-                            .stacktraces
-                            .iter_mut()
-                            .enumerate()
-                            .zip(thread_ids.into_iter())
-                        {
-                            stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
-                            stacktrace.thread_id = Some(thread_id.into());
-                        }
+                for ((i, mut stacktrace), thread_id) in response
+                    .stacktraces
+                    .iter_mut()
+                    .enumerate()
+                    .zip(thread_ids.into_iter())
+                {
+                    stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
+                    stacktrace.thread_id = Some(thread_id.into());
+                }
 
-                        Ok(response).into_future().into_actor(slf)
-                    })
-            },
-        );
-
-        Box::new(result)
+                response
+            })
     }
 }
 
@@ -760,24 +750,21 @@ pub struct SymbolicateStacktraces {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
-impl Message for SymbolicateStacktraces {
-    type Result = Result<RequestId, SymbolicationError>;
-}
-
-impl Handler<SymbolicateStacktraces> for SymbolicationActor {
-    type Result = Result<RequestId, SymbolicationError>;
-
-    fn handle(&mut self, request: SymbolicateStacktraces, ctx: &mut Self::Context) -> Self::Result {
+impl SymbolicationActor {
+    pub fn symbolicate_stacktraces(
+        &self,
+        request: SymbolicateStacktraces,
+    ) -> Result<RequestId, SymbolicationError> {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
-            if !self.requests.contains_key(&request_id) {
+            if !self.requests.read().contains_key(&request_id) {
                 break request_id;
             }
         };
 
         let (tx, rx) = oneshot::channel();
 
-        ctx.spawn(
+        actix::spawn(
             self.do_symbolicate(request)
                 .then(move |result| {
                     tx.send(match result {
@@ -786,13 +773,12 @@ impl Handler<SymbolicateStacktraces> for SymbolicationActor {
                     })
                     .map_err(|_| ())
                 })
-                // Clone hub because of `ctx.spawn`
-                .sentry_hub_new_from_current()
-                .into_actor(self),
+                // Clone hub because of `actix::spawn`
+                .sentry_hub_new_from_current(),
         );
 
         let channel = rx.shared();
-        self.requests.insert(request_id.clone(), channel);
+        self.requests.write().insert(request_id.clone(), channel);
 
         Ok(request_id)
     }
@@ -810,27 +796,20 @@ pub struct GetSymbolicationStatus {
     pub timeout: Option<u64>,
 }
 
-impl Message for GetSymbolicationStatus {
-    type Result = Result<Option<SymbolicationResponse>, SymbolicationError>;
-}
-
-impl Handler<GetSymbolicationStatus> for SymbolicationActor {
-    type Result = ResponseActFuture<Self, Option<SymbolicationResponse>, SymbolicationError>;
-
-    fn handle(
-        &mut self,
+impl SymbolicationActor {
+    pub fn get_symbolication_status(
+        &self,
         request: GetSymbolicationStatus,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
+    ) -> ResponseFuture<Option<SymbolicationResponse>, SymbolicationError> {
         let request_id = request.request_id;
 
-        if let Some(channel) = self.requests.get(&request_id) {
+        if let Some(channel) = self.requests.read().get(&request_id) {
             Box::new(
                 self.wrap_response_channel(request_id, request.timeout, channel.clone())
-                    .map(|x, _, _| Some(x)),
+                    .map(|x| Some(x)),
             )
         } else {
-            Box::new(Ok(None).into_future().into_actor(self))
+            Box::new(Ok(None).into_future())
         }
     }
 }
@@ -858,39 +837,34 @@ struct MinidumpState {
     thread_ids: Vec<u32>,
 }
 
-impl Message for ProcessMinidump {
-    type Result = Result<RequestId, SymbolicationError>;
-}
-
-impl Handler<ProcessMinidump> for SymbolicationActor {
-    type Result = Result<RequestId, SymbolicationError>;
-
-    fn handle(&mut self, request: ProcessMinidump, ctx: &mut Self::Context) -> Self::Result {
+impl SymbolicationActor {
+    pub fn process_minidump(
+        &self,
+        request: ProcessMinidump,
+    ) -> Result<RequestId, SymbolicationError> {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
-            if !self.requests.contains_key(&request_id) {
+            if !self.requests.read().contains_key(&request_id) {
                 break request_id;
             }
         };
 
         let (tx, rx) = oneshot::channel();
 
-        ctx.spawn(
+        actix::spawn(
             self.do_process_minidump(request)
                 .sentry_hub_new_from_current()
-                .then(move |result, slf, _ctx| {
+                .then(move |result| {
                     tx.send(match result {
                         Ok(x) => Ok(Arc::new(x)),
                         Err(e) => Err(Arc::new(e)),
                     })
                     .map_err(|_| ())
-                    .into_future()
-                    .into_actor(slf)
                 }),
         );
 
         let channel = rx.shared();
-        self.requests.insert(request_id.clone(), channel);
+        self.requests.write().insert(request_id.clone(), channel);
 
         Ok(request_id)
     }
@@ -952,7 +926,3 @@ impl From<&SymCacheError> for ObjectFileStatus {
         }
     }
 }
-
-handle_sentry_actix_message!(SymbolicationActor, GetSymbolicationStatus);
-handle_sentry_actix_message!(SymbolicationActor, SymbolicateStacktraces);
-handle_sentry_actix_message!(SymbolicationActor, ProcessMinidump);

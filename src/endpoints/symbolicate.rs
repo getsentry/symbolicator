@@ -10,8 +10,7 @@ use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktrace
 use crate::app::{ServiceApp, ServiceState};
 use crate::sentry::SentryFutureExt;
 use crate::types::{
-    RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationError,
-    SymbolicationResponse,
+    RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
 };
 
 /// Query parameters of the symbolication request.
@@ -54,32 +53,18 @@ fn symbolicate_frames(
         stacktraces: body.stacktraces,
         modules: body.modules.into_iter().map(From::from).collect(),
         scope: params.scope,
-    }
-    .sentry_hub_new_from_current();
+    };
 
-    let request_id = state
-        .symbolication
-        .send(message)
-        .map_err(|_| SymbolicationError::Mailbox)
-        .flatten();
+    let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
 
     let timeout = params.timeout;
-    let response = request_id
-        .and_then(move |request_id| {
-            state
-                .symbolication
-                .send(
-                    GetSymbolicationStatus {
-                        request_id,
-                        timeout,
-                    }
-                    .sentry_hub_current(),
-                )
-                .map_err(|_| SymbolicationError::Mailbox)
+    let response = state
+        .symbolication
+        .get_symbolication_status(GetSymbolicationStatus {
+            request_id,
+            timeout,
         })
-        .flatten()
-        .and_then(|response_opt| response_opt.ok_or(SymbolicationError::Mailbox))
-        .map(Json)
+        .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
         .map_err(Error::from);
 
     Box::new(response.sentry_hub_new_from_current())

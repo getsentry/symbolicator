@@ -3,7 +3,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use actix::{Actor, Addr};
 use actix_web::{server, App};
 use failure::Fail;
 use structopt::StructOpt;
@@ -90,9 +89,9 @@ enum Command {
 pub struct ServiceState {
     /// Thread pool instance reserved for IO-intensive tasks.
     pub io_threadpool: Arc<ThreadPool>,
-    /// The address of the symbolication actor.
-    pub symbolication: Addr<SymbolicationActor>,
-    /// The address of the objects actor.
+    /// Actor for minidump and stacktrace processing
+    pub symbolication: Arc<SymbolicationActor>,
+    /// Actor for downloading and caching objects (no symcaches or cficaches)
     pub objects: Arc<ObjectsActor>,
     /// The config object.
     pub config: Arc<Config>,
@@ -190,8 +189,11 @@ fn run_server(config: Config) -> Result<(), CliError> {
         cpu_threadpool.clone(),
     ));
 
-    let symbolication =
-        SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();
+    let symbolication = Arc::new(SymbolicationActor::new(
+        symcaches,
+        cficaches,
+        cpu_threadpool.clone(),
+    ));
 
     let state = ServiceState {
         io_threadpool,

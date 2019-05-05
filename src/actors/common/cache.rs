@@ -1,4 +1,3 @@
-use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
@@ -8,6 +7,7 @@ use std::sync::Arc;
 
 use futures::future::{Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
+use parking_lot::RwLock;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
