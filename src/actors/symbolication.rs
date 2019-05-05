@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix::{
-    fut::WrapFuture, Actor, ActorFuture, Addr, AsyncContext, Context, Handler, Message,
-    ResponseActFuture,
+    fut::WrapFuture, Actor, ActorFuture, AsyncContext, Context, Handler, Message, ResponseActFuture,
 };
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
@@ -45,8 +44,8 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
 
 pub struct SymbolicationActor {
-    symcaches: Addr<SymCacheActor>,
-    cficaches: Addr<CfiCacheActor>,
+    symcaches: Arc<SymCacheActor>,
+    cficaches: Arc<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
     requests:
         BTreeMap<RequestId, ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>>,
@@ -58,8 +57,8 @@ impl Actor for SymbolicationActor {
 
 impl SymbolicationActor {
     pub fn new(
-        symcaches: Addr<SymCacheActor>,
-        cficaches: Addr<CfiCacheActor>,
+        symcaches: Arc<SymCacheActor>,
+        cficaches: Arc<CfiCacheActor>,
         threadpool: Arc<ThreadPool>,
     ) -> Self {
         let requests = BTreeMap::new();
@@ -222,17 +221,13 @@ impl SymbolicationActor {
                     .into_iter()
                     .map(move |(code_module_id, object_info)| {
                         cficaches
-                            .send(
-                                FetchCfiCache {
-                                    object_type: object_info.ty.clone(),
-                                    identifier: object_id_from_object_info(&object_info),
-                                    sources: sources.clone(),
-                                    scope: scope.clone(),
-                                }
-                                .sentry_hub_new_from_current(),
-                            )
-                            .map_err(|_| SymbolicationError::Mailbox)
-                            .map(move |result| (code_module_id, result))
+                            .fetch(FetchCfiCache {
+                                object_type: object_info.ty.clone(),
+                                identifier: object_id_from_object_info(&object_info),
+                                sources: sources.clone(),
+                                scope: scope.clone(),
+                            })
+                            .then(move |result| Ok((code_module_id, result)).into_future())
                             // Clone hub because of join_all
                             .sentry_hub_new_from_current()
                     }),
@@ -492,7 +487,7 @@ impl SymCacheLookup {
 
     fn fetch_symcaches(
         self,
-        symcache_actor: Addr<SymCacheActor>,
+        symcache_actor: Arc<SymCacheActor>,
         request: SymbolicateStacktraces,
     ) -> impl Future<Item = Self, Error = SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
@@ -517,24 +512,17 @@ impl SymCacheLookup {
 
                 Either::A(
                     symcache_actor
-                        .send(
-                            FetchSymCache {
-                                object_type: object_info.raw.ty.clone(),
-                                identifier: object_id_from_object_info(&object_info.raw),
-                                sources: sources.clone(),
-                                scope: scope.clone(),
-                            }
-                            .sentry_hub_new_from_current(),
-                        )
-                        .map_err(|_| SymbolicationError::Mailbox)
-                        .and_then(|result| {
-                            result
-                                .and_then(|symcache| match symcache.parse()? {
-                                    Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
-                                    None => Ok((Some(symcache), ObjectFileStatus::Missing)),
-                                })
-                                .or_else(|e| Ok((None, (&*e).into())))
+                        .fetch(FetchSymCache {
+                            object_type: object_info.raw.ty.clone(),
+                            identifier: object_id_from_object_info(&object_info.raw),
+                            sources: sources.clone(),
+                            scope: scope.clone(),
                         })
+                        .and_then(|symcache| match symcache.parse()? {
+                            Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
+                            None => Ok((Some(symcache), ObjectFileStatus::Missing)),
+                        })
+                        .or_else(|e| Ok((None, (&*e).into())))
                         .map(move |(symcache, status)| {
                             object_info.arch =
                                 symcache.as_ref().map(|c| c.arch()).unwrap_or_default();

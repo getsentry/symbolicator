@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Context, Handler, Message, ResponseFuture};
+use actix::ResponseFuture;
 use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::integrations::failure::capture_fail;
@@ -55,10 +55,6 @@ pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: Arc<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
-}
-
-impl Actor for SymCacheActor {
-    type Context = Context<Self>;
 }
 
 impl SymCacheActor {
@@ -210,14 +206,11 @@ pub struct FetchSymCache {
     pub scope: Scope,
 }
 
-impl Message for FetchSymCache {
-    type Result = Result<Arc<SymCacheFile>, Arc<SymCacheError>>;
-}
-
-impl Handler<FetchSymCache> for SymCacheActor {
-    type Result = ResponseFuture<Arc<SymCacheFile>, Arc<SymCacheError>>;
-
-    fn handle(&mut self, request: FetchSymCache, _ctx: &mut Self::Context) -> Self::Result {
+impl SymCacheActor {
+    pub fn fetch(
+        &self,
+        request: FetchSymCache,
+    ) -> ResponseFuture<Arc<SymCacheFile>, Arc<SymCacheError>> {
         Box::new(
             self.symcaches
                 .compute_memoized(FetchSymCacheInternal {
@@ -229,5 +222,3 @@ impl Handler<FetchSymCache> for SymCacheActor {
         )
     }
 }
-
-handle_sentry_actix_message!(SymCacheActor, FetchSymCache);

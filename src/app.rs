@@ -178,11 +178,17 @@ fn run_server(config: Config) -> Result<(), CliError> {
 
     let objects = Arc::new(ObjectsActor::new(caches.objects, io_threadpool.clone()));
 
-    let symcaches =
-        SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone()).start();
+    let symcaches = Arc::new(SymCacheActor::new(
+        caches.symcaches,
+        objects.clone(),
+        cpu_threadpool.clone(),
+    ));
 
-    let cficaches =
-        CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone()).start();
+    let cficaches = Arc::new(CfiCacheActor::new(
+        caches.cficaches,
+        objects.clone(),
+        cpu_threadpool.clone(),
+    ));
 
     let symbolication =
         SymbolicationActor::new(symcaches, cficaches, cpu_threadpool.clone()).start();

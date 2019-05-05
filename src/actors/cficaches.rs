@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Actor, Context, Handler, Message, ResponseFuture};
+use actix::ResponseFuture;
 use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::integrations::failure::capture_fail;
@@ -54,10 +54,6 @@ pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: Arc<ObjectsActor>,
     threadpool: Arc<ThreadPool>,
-}
-
-impl Actor for CfiCacheActor {
-    type Context = Context<Self>;
 }
 
 impl CfiCacheActor {
@@ -186,14 +182,11 @@ pub struct FetchCfiCache {
     pub scope: Scope,
 }
 
-impl Message for FetchCfiCache {
-    type Result = Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>;
-}
-
-impl Handler<FetchCfiCache> for CfiCacheActor {
-    type Result = ResponseFuture<Arc<CfiCacheFile>, Arc<CfiCacheError>>;
-
-    fn handle(&mut self, request: FetchCfiCache, _ctx: &mut Self::Context) -> Self::Result {
+impl CfiCacheActor {
+    pub fn fetch(
+        &self,
+        request: FetchCfiCache,
+    ) -> ResponseFuture<Arc<CfiCacheFile>, Arc<CfiCacheError>> {
         Box::new(
             self.cficaches
                 .compute_memoized(FetchCfiCacheInternal {
@@ -205,5 +198,3 @@ impl Handler<FetchCfiCache> for CfiCacheActor {
         )
     }
 }
-
-handle_sentry_actix_message!(CfiCacheActor, FetchCfiCache);
