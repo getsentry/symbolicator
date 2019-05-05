@@ -392,40 +392,38 @@ impl ObjectsActor {
             })
             .collect();
 
-        Box::new(
-            future::join_all(prepare_futures).and_then(move |responses| {
-                responses
-                    .into_iter()
-                    .flatten()
-                    .enumerate()
-                    .min_by_key(|(ref i, response)| {
-                        (
-                            // Prefer object files with debug/unwind info over object files without
-                            // Prefer files that contain an object over unparseable files
-                            match response.as_ref().ok().and_then(|o| {
-                                let object = o.parse().ok()??;
-                                match purpose {
-                                    ObjectPurpose::Unwind => Some(object.has_unwind_info()),
-                                    ObjectPurpose::Debug => Some(object.has_debug_info()),
-                                }
-                            }) {
-                                Some(true) => 0,
-                                Some(false) => 1,
-                                None => 2,
-                            },
-                            *i,
-                        )
-                    })
-                    .map(|(_, response)| response)
-                    .unwrap_or_else(move || {
-                        Ok(Arc::new(ObjectFile {
-                            request: None,
-                            scope,
-                            object: None,
-                        }))
-                    })
-            }),
-        )
+        future::join_all(prepare_futures).and_then(move |responses| {
+            responses
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .min_by_key(|(ref i, response)| {
+                    (
+                        // Prefer object files with debug/unwind info over object files without
+                        // Prefer files that contain an object over unparseable files
+                        match response.as_ref().ok().and_then(|o| {
+                            let object = o.parse().ok()??;
+                            match purpose {
+                                ObjectPurpose::Unwind => Some(object.has_unwind_info()),
+                                ObjectPurpose::Debug => Some(object.has_debug_info()),
+                            }
+                        }) {
+                            Some(true) => 0,
+                            Some(false) => 1,
+                            None => 2,
+                        },
+                        *i,
+                    )
+                })
+                .map(|(_, response)| response)
+                .unwrap_or_else(move || {
+                    Ok(Arc::new(ObjectFile {
+                        request: None,
+                        scope,
+                        object: None,
+                    }))
+                })
+        })
     }
 }
 

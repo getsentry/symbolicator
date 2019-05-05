@@ -210,14 +210,12 @@ impl SymCacheActor {
         &self,
         request: FetchSymCache,
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
-        Box::new(
-            self.symcaches
-                .compute_memoized(FetchSymCacheInternal {
-                    request,
-                    objects: self.objects.clone(),
-                    threadpool: self.threadpool.clone(),
-                })
-                .sentry_hub_new_from_current(),
-        )
+        self.symcaches
+            .compute_memoized(FetchSymCacheInternal {
+                request,
+                objects: self.objects.clone(),
+                threadpool: self.threadpool.clone(),
+            })
+            .sentry_hub_new_from_current()
     }
 }

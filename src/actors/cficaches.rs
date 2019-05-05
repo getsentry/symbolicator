@@ -186,14 +186,12 @@ impl CfiCacheActor {
         &self,
         request: FetchCfiCache,
     ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
-        Box::new(
-            self.cficaches
-                .compute_memoized(FetchCfiCacheInternal {
-                    request,
-                    objects: self.objects.clone(),
-                    threadpool: self.threadpool.clone(),
-                })
-                .sentry_hub_new_from_current(),
-        )
+        self.cficaches
+            .compute_memoized(FetchCfiCacheInternal {
+                request,
+                objects: self.objects.clone(),
+                threadpool: self.threadpool.clone(),
+            })
+            .sentry_hub_new_from_current()
     }
 }
