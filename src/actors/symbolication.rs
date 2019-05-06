@@ -695,7 +695,7 @@ fn symbolize_thread(
 
             if rv.is_empty() {
                 rv.push(SymbolicatedFrame {
-                    status: FrameStatus::Symbolicated,
+                    status: FrameStatus::MissingSymbol,
                     original_index: Some(i),
                     instruction_addr: frame.instruction_addr,
                     package: frame.package.clone(),
