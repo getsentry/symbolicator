@@ -805,7 +805,7 @@ impl SymbolicationActor {
         if let Some(channel) = self.requests.read().get(&request_id) {
             Either::A(
                 self.wrap_response_channel(request_id, request.timeout, channel.clone())
-                    .map(|x| Some(x)),
+                    .map(Some),
             )
         } else {
             Either::B(Ok(None).into_future())
