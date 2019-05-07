@@ -9,7 +9,7 @@ MACHO_HELLO_DATA = {
     "modules": [
         {
             "type": "macho",
-            "code_id": str(debug_id).upper(),
+            "code_id": str(debug_id).replace("-", "").upper(),
             "debug_id": str(debug_id),
             "image_vmaddr": "0x0000000100000000",
             "image_size": 4096,
@@ -31,7 +31,7 @@ MACHO_SUCCESS = {
     "modules": [
         {
             "arch": "x86_64",
-            "code_id": str(debug_id).upper(),
+            "code_id": str(debug_id).replace("-", "").upper(),
             "debug_id": str(debug_id),
             "image_addr": "0x100000000",
             "image_size": 4096,

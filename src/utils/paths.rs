@@ -7,25 +7,18 @@ use symbolic::common::{CodeId, DebugId, Uuid};
 use crate::types::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId};
 
 fn get_gdb_path(identifier: &ObjectId) -> Option<String> {
-    let code_id = identifier.code_id.as_ref()?;
-    let code_id = code_id.as_slice();
-    if code_id.is_empty() {
+    let code_id = identifier.code_id.as_ref()?.as_str();
+    if code_id.len() < 2 {
         // this is just a panic guard. It is not meant to validate the GNU build id
         return None;
     }
 
-    let mut path = String::with_capacity(code_id.len() * 2 + 1);
-    write!(path, "{:02x}/", code_id[0]).ok()?;
-    for byte in &code_id[1..] {
-        write!(path, "{:02x}", byte).ok()?;
-    }
-
-    Some(path)
+    Some(format!("{}/{}", &code_id[..2], &code_id[2..]))
 }
 
 fn get_mach_uuid(identifier: &ObjectId) -> Option<Uuid> {
     if let Some(ref code_id) = identifier.code_id {
-        Uuid::from_slice(code_id.as_slice()).ok()
+        code_id.as_str().parse().ok()
     } else if let Some(ref debug_id) = identifier.debug_id {
         Some(debug_id.uuid())
     } else {
@@ -77,7 +70,7 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
 
 fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<String> {
     let code_file = identifier.code_file_basename()?;
-    let code_id = identifier.code_id.as_ref()?.to_string();
+    let code_id = identifier.code_id.as_ref()?.as_str();
 
     let code_file = if ssqp_casing {
         Cow::Owned(code_file.to_lowercase())
@@ -85,7 +78,7 @@ fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Stri
         Cow::Borrowed(code_file)
     };
     let code_id = if ssqp_casing {
-        code_id
+        code_id.to_owned()
     } else {
         let timestamp = code_id.get(..8)?;
         let size_of_image = code_id.get(8..)?;
@@ -251,7 +244,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
         Some((
             &[FileType::ElfDebug],
             ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[16..]).ok()?),
+                code_id: Some(CodeId::new(signature[16..].into())),
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
@@ -261,7 +254,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
         Some((
             &[FileType::ElfCode],
             ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[12..]).ok()?),
+                code_id: Some(CodeId::new(signature[12..].into())),
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
@@ -272,7 +265,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
         Some((
             &[FileType::MachDebug],
             ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[14..]).ok()?),
+                code_id: Some(CodeId::new(signature[14..].into())),
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
@@ -282,7 +275,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
         Some((
             &[FileType::MachCode],
             ObjectId {
-                code_id: Some(CodeId::parse_hex(&signature[10..]).ok()?),
+                code_id: Some(CodeId::new(signature[10..].into())),
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
@@ -302,7 +295,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
         Some((
             &[FileType::Pe],
             ObjectId {
-                code_id: Some(CodeId::parse_hex(signature).ok()?),
+                code_id: Some(CodeId::new(signature.to_owned())),
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
