@@ -10,7 +10,7 @@ use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, Shared
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
+use symbolic::common::{join_path, ByteView, DebugId, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
 use tokio::prelude::FutureExt;
@@ -426,11 +426,17 @@ fn get_image_type_from_minidump(minidump_os_name: &str) -> &'static str {
 
 fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule) -> RawObjectInfo {
     // TODO: should we also add `module.id()` somewhere?
+    let debug_id = module.debug_identifier();
+    let debug_id = match DebugId::from_breakpad(debug_id.as_str()) {
+        Ok(id) => id.to_string(),
+        Err(_) => debug_id,
+    };
+
     RawObjectInfo {
         ty: ObjectType(get_image_type_from_minidump(minidump_os_name).to_owned()),
         code_id: Some(module.code_identifier()),
         code_file: Some(module.code_file()),
-        debug_id: Some(module.debug_identifier()),
+        debug_id: Some(debug_id),
         debug_file: Some(module.debug_file()),
         image_addr: HexValue(module.base_address()),
         image_size: if module.size() != 0 {
