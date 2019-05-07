@@ -9,9 +9,10 @@ use std::time::Duration;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
+use sentry::protocol::Level;
+use sentry::capture_message;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
-
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
 use tokio::prelude::FutureExt;
@@ -808,6 +809,10 @@ impl SymbolicationActor {
                     .map(Some),
             )
         } else {
+            // This is okay to occur during deploys, but if it happens all the time we have a state
+            // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
+            // scopes).
+            metric!(counter("symbolication.request_id_unknown") += 1);
             Either::B(Ok(None).into_future())
         }
     }
