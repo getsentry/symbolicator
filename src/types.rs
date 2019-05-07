@@ -509,8 +509,8 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
         }
 
         if let Some(ref raw_id) = raw.code_id {
-            if let Ok(id) = raw_id.parse() {
-                raw.code_id = Some(id);
+            if let Ok(id) = raw_id.parse::<CodeId>() {
+                raw.code_id = Some(id.to_string());
             }
         }
 
