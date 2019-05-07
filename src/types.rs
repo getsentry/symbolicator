@@ -483,7 +483,9 @@ impl Default for ObjectFileStatus {
     }
 }
 
-/// Enhanced information on an in
+/// Normalized RawObjectInfo with status attached.
+///
+/// RawObjectInfo is what the user sends and CompleteObjectInfo is what the user gets.
 #[derive(Debug, Clone, Serialize)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
@@ -499,7 +501,19 @@ pub struct CompleteObjectInfo {
 }
 
 impl From<RawObjectInfo> for CompleteObjectInfo {
-    fn from(raw: RawObjectInfo) -> Self {
+    fn from(mut raw: RawObjectInfo) -> Self {
+        if let Some(ref raw_id) = raw.debug_id {
+            if let Ok(id) = DebugId::from_breakpad(raw_id.as_str()) {
+                raw.debug_id = Some(id.to_string());
+            }
+        }
+
+        if let Some(ref raw_id) = raw.code_id {
+            if let Ok(id) = raw_id.parse() {
+                raw.code_id = Some(id);
+            }
+        }
+
         CompleteObjectInfo {
             debug_status: Default::default(),
             unwind_status: Default::default(),
