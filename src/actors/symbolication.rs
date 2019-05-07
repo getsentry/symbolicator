@@ -9,8 +9,6 @@ use std::time::Duration;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
-use sentry::protocol::Level;
-use sentry::capture_message;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
