@@ -9,6 +9,7 @@ use crate::hex::HexValue;
 use failure::{Backtrace, Fail};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
+use symbolic::minidump::processor::FrameTrust;
 use url::Url;
 
 fn is_default<T: Default + PartialEq>(x: &T) -> bool {
@@ -312,12 +313,20 @@ impl fmt::Display for Scope {
 }
 
 /// An unsymbolicated frame from a symbolication request.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
     /// The absolute instruction address of this frame.
     pub instruction_addr: HexValue,
+
+    /// The path to the image this frame is located in.
+    #[serde(skip_serializing_if = "is_default")]
     #[serde(default)]
     pub package: Option<String>,
+
+    /// Information about how the raw frame was created.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_default")]
+    pub trust: FrameTrust,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -401,12 +410,7 @@ pub struct SymbolicatedFrame {
     ///  2. Frames might expand to multiple inline frames at the same instruction address. However,
     ///     this might occur within recursion, so the instruction address is not a good
     pub original_index: Option<usize>,
-    /// The instruction address as given in the request.
-    pub instruction_addr: HexValue,
 
-    /// The path to the image this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
-    pub package: Option<String>,
     /// The language of the symbol (function) this frame is located in.
     #[serde(skip_serializing_if = "is_default")]
     pub lang: Option<Language>,
@@ -428,6 +432,9 @@ pub struct SymbolicatedFrame {
     /// The line number within the source file, starting at 1 for the first line.
     #[serde(skip_serializing_if = "is_default")]
     pub lineno: Option<u32>,
+
+    #[serde(flatten)]
+    pub raw: RawFrame,
 }
 
 /// A symbolicated stacktrace.
