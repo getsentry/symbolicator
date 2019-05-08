@@ -73,6 +73,7 @@ MINIDUMP_SUCCESS = {
                     "original_index": 8,
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "status": "missing",
+                    "trust": "scan",
                 },
                 {
                     "status": "symbolicated",
