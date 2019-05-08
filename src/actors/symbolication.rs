@@ -712,14 +712,26 @@ fn symbolize_thread(
         match symbolize_frame(i, &mut frame) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
-                if frame.trust != FrameTrust::Scan {
-                    stacktrace.frames.push(SymbolicatedFrame {
-                        status,
-                        original_index: Some(i),
-                        raw: frame.clone(),
-                        ..Default::default()
-                    });
+                // Temporary workaround: Skip false-positive frames from stack scanning after the
+                // fact.
+                //
+                // Usually, the stack scanner would skip all scanned frames when it *knows* that
+                // they cannot be symbolized. However, in our case we supply breakpad symbols
+                // without function records. This breaks its original heuristic, since it would now
+                // *always* skip scan frames. Our patch in breakpad omits this check.
+                //
+                // Here, we fix this after the fact. If symbolication failed for a scanned frame
+                // where we *know* we have a debug info, but the lookup inside that file failed.
+                if frame.trust == FrameTrust::Scan && status == FrameStatus::MissingSymbol {
+                    continue;
                 }
+
+                stacktrace.frames.push(SymbolicatedFrame {
+                    status,
+                    original_index: Some(i),
+                    raw: frame.clone(),
+                    ..Default::default()
+                });
             }
         }
     }

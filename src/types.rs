@@ -376,7 +376,7 @@ pub struct RawObjectInfo {
 pub struct ObjectType(pub String);
 
 /// Information on the symbolication status of this frame.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FrameStatus {
     /// The frame was symbolicated successfully.
