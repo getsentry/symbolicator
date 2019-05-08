@@ -91,6 +91,7 @@ def symbolicator(tmpdir, request, random_port, background_process):
         bind = f"127.0.0.1:{port}"
 
         config_data["bind"] = bind
+        config_data["logging"] = {"level": "debug"}
 
         if config_data.get("cache_dir"):
             config_data["cache_dir"] = str(config_data["cache_dir"])
