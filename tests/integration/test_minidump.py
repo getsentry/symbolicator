@@ -329,7 +329,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\msvcp140.dll",
-            "code_id": "589ABC846c000",
+            "code_id": "589abc846c000",
             "debug_file": "msvcp140.i386.pdb",
             "debug_id": "bf5257f7-8c26-43dd-9bb7-901625e1136a-1",
             "image_addr": "0x709a0000",
@@ -341,7 +341,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\apphelp.dll",
-            "code_id": "57898EEB92000",
+            "code_id": "57898eeb92000",
             "debug_file": "apphelp.pdb",
             "debug_id": "8daf7773-372f-460a-af38-944e193f7e33-1",
             "image_addr": "0x70a10000",
@@ -355,7 +355,7 @@ MINIDUMP_SUCCESS = {
             "unwind_status": "found",
             "arch": "x86",
             "type": "pe",
-            "code_id": "57898DAB25000",
+            "code_id": "57898dab25000",
             "code_file": "C:\\Windows\\System32\\dbgcore.dll",
             "debug_id": "aec7ef2f-df4b-4642-a471-4c3e5fe8760a-1",
             "debug_file": "dbgcore.pdb",
@@ -365,7 +365,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\VCRUNTIME140.dll",
-            "code_id": "589ABC7714000",
+            "code_id": "589abc7714000",
             "debug_file": "vcruntime140.i386.pdb",
             "debug_id": "0ed80a50-ecda-472b-86a4-eb6c833f8e1b-1",
             "image_addr": "0x70c60000",
@@ -389,7 +389,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\sspicli.dll",
-            "code_id": "59BF30E31f000",
+            "code_id": "59bf30e31f000",
             "debug_file": "wsspicli.pdb",
             "debug_id": "51e432b1-0450-4b19-8ed1-6d4335f9f543-1",
             "image_addr": "0x73bb0000",
@@ -401,7 +401,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\advapi32.dll",
-            "code_id": "5A49BB7677000",
+            "code_id": "5a49bb7677000",
             "debug_file": "advapi32.pdb",
             "debug_id": "0c799483-b549-417d-8433-4331852031fe-1",
             "image_addr": "0x73c70000",
@@ -425,7 +425,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\sechost.dll",
-            "code_id": "598942C741000",
+            "code_id": "598942c741000",
             "debug_file": "sechost.pdb",
             "debug_id": "6f6a05dd-0a80-478b-a419-9b88703bf75b-1",
             "image_addr": "0x74450000",
@@ -439,7 +439,7 @@ MINIDUMP_SUCCESS = {
             "unwind_status": "found",
             "arch": "x86",
             "type": "pe",
-            "code_id": "590285E9e0000",
+            "code_id": "590285e9e0000",
             "code_file": "C:\\Windows\\System32\\kernel32.dll",
             "debug_id": "d3474559-96f7-47d6-bf43-c176b2171e68-1",
             "debug_file": "wkernel32.pdb",
@@ -450,7 +450,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\bcryptPrimitives.dll",
-            "code_id": "59B0DF8F5a000",
+            "code_id": "59b0df8f5a000",
             "debug_file": "bcryptprimitives.pdb",
             "debug_id": "287b19c3-9209-4a2b-bb8f-bcc37f411b11-1",
             "image_addr": "0x75130000",
@@ -464,7 +464,7 @@ MINIDUMP_SUCCESS = {
             "unwind_status": "found",
             "arch": "x86",
             "type": "pe",
-            "code_id": "5A49BB75c1000",
+            "code_id": "5a49bb75c1000",
             "code_file": "C:\\Windows\\System32\\rpcrt4.dll",
             "debug_id": "ae131c67-27a7-4fa1-9916-b5a4aef41190-1",
             "debug_file": "wrpcrt4.pdb",
@@ -474,7 +474,7 @@ MINIDUMP_SUCCESS = {
         {
             "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\ucrtbase.dll",
-            "code_id": "59BF2B5Ae0000",
+            "code_id": "59bf2b5ae0000",
             "debug_file": "ucrtbase.pdb",
             "debug_id": "6bedcbce-0a3a-40e9-8040-81c2c8c6cc2f-1",
             "image_addr": "0x758f0000",
