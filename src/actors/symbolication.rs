@@ -12,7 +12,7 @@ use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
-use symbolic::minidump::processor::{CodeModule, FrameInfoMap, ProcessState, RegVal};
+use symbolic::minidump::processor::{CodeModule, FrameInfoMap, FrameTrust, ProcessState, RegVal};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
@@ -336,6 +336,7 @@ impl SymbolicationActor {
                                                 frame.return_address(cpu_arch),
                                             ),
                                             package: frame.module().map(CodeModule::code_file),
+                                            trust: frame.trust(),
                                         })
                                         .collect(),
                                 }
@@ -659,7 +660,6 @@ fn symbolize_thread(
                 rv.push(SymbolicatedFrame {
                     status: FrameStatus::Symbolicated,
                     symbol: Some(line_info.symbol().to_string()),
-                    package: object_info.raw.code_file.clone(),
                     abs_path: if !abs_path.is_empty() {
                         Some(abs_path)
                     } else {
@@ -677,9 +677,6 @@ fn symbolize_thread(
                         None
                     },
                     lineno: Some(line_info.line()),
-                    instruction_addr: HexValue(
-                        object_info.raw.image_addr.0 + line_info.instruction_address(),
-                    ),
                     sym_addr: Some(HexValue(
                         object_info.raw.image_addr.0 + line_info.function_address(),
                     )),
@@ -689,6 +686,13 @@ fn symbolize_thread(
                         None
                     },
                     original_index: Some(i),
+                    raw: RawFrame {
+                        package: object_info.raw.code_file.clone(),
+                        instruction_addr: HexValue(
+                            object_info.raw.image_addr.0 + line_info.instruction_address(),
+                        ),
+                        trust: frame.trust,
+                    },
                 });
             }
 
@@ -696,8 +700,7 @@ fn symbolize_thread(
                 rv.push(SymbolicatedFrame {
                     status: FrameStatus::MissingSymbol,
                     original_index: Some(i),
-                    instruction_addr: frame.instruction_addr,
-                    package: frame.package.clone(),
+                    raw: frame.clone(),
                     ..Default::default()
                 });
             }
@@ -709,13 +712,14 @@ fn symbolize_thread(
         match symbolize_frame(i, &mut frame) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
-                stacktrace.frames.push(SymbolicatedFrame {
-                    status,
-                    original_index: Some(i),
-                    instruction_addr: frame.instruction_addr,
-                    package: frame.package.clone(),
-                    ..Default::default()
-                });
+                if frame.trust != FrameTrust::Scan {
+                    stacktrace.frames.push(SymbolicatedFrame {
+                        status,
+                        original_index: Some(i),
+                        raw: frame.clone(),
+                        ..Default::default()
+                    });
+                }
             }
         }
     }

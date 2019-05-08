@@ -19,12 +19,14 @@ MINIDUMP_SUCCESS = {
                     "original_index": 0,
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a2a3d",
+                    "trust": "context",
                 },
                 {
                     "status": "missing",
                     "original_index": 1,
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a28d0",
+                    "trust": "fp",
                 },
                 {
                     "status": "symbolicated",
@@ -35,12 +37,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x7584e960",
                     "function": "FreeWrapper(void *)",
                     "lineno": 0,
-                },
-                {
-                    "status": "missing_symbol",
-                    "original_index": 3,
-                    "package": "C:\\Windows\\System32\\dbghelp.dll",
-                    "instruction_addr": "0x70850000",
+                    "trust": "scan",
                 },
                 {
                     "status": "symbolicated",
@@ -51,12 +48,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x70b7ad6b",
                     "function": "DetermineOutputProvider(class MiniDumpAllocationProvider *,void *,struct _MINIDUMP_CALLBACK_INFORMATION * const,class MiniDumpOutputProvider * *)",
                     "lineno": 0,
-                },
-                {
-                    "status": "missing_symbol",
-                    "original_index": 5,
-                    "package": "C:\\Windows\\System32\\rpcrt4.dll",
-                    "instruction_addr": "0x75810000",
+                    "trust": "scan",
                 },
                 {
                     "status": "symbolicated",
@@ -67,18 +59,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x7584e960",
                     "function": "FreeWrapper(void *)",
                     "lineno": 0,
-                },
-                {
-                    "status": "missing",
-                    "original_index": 7,
-                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
-                    "instruction_addr": "0x2a3435",
-                },
-                {
-                    "status": "missing",
-                    "original_index": 8,
-                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
-                    "instruction_addr": "0x2a2d97",
+                    "trust": "scan",
                 },
                 {
                     "status": "symbolicated",
@@ -89,6 +70,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x750662a0",
                     "function": "@BaseThreadInitThunk@12",
                     "lineno": 0,
+                    "trust": "fp",
                 },
                 {
                     "status": "symbolicated",
@@ -99,6 +81,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771d0f4a",
                     "function": "__RtlUserThreadStart@8",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -109,6 +92,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771d0f29",
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
             ],
             "is_requesting": True,
@@ -137,6 +121,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771e0160",
                     "function": "ZwWaitForWorkViaWorkerFactory@20",
                     "lineno": 0,
+                    "trust": "context",
                 },
                 {
                     "status": "symbolicated",
@@ -147,6 +132,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771a6770",
                     "function": "TppWorkerThread@4",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -157,6 +143,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x750662a0",
                     "function": "@BaseThreadInitThunk@12",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -167,6 +154,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771d0f4a",
                     "function": "__RtlUserThreadStart@8",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -177,6 +165,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771d0f29",
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
             ],
             "is_requesting": False,
@@ -205,6 +194,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771e0160",
                     "function": "ZwWaitForWorkViaWorkerFactory@20",
                     "lineno": 0,
+                    "trust": "context",
                 },
                 {
                     "status": "symbolicated",
@@ -215,6 +205,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771a6770",
                     "function": "TppWorkerThread@4",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -225,6 +216,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x750662a0",
                     "function": "@BaseThreadInitThunk@12",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -235,6 +227,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771d0f4a",
                     "function": "__RtlUserThreadStart@8",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
                 {
                     "status": "symbolicated",
@@ -245,6 +238,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771d0f29",
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
             ],
             "is_requesting": False,
@@ -273,6 +267,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x771df3d0",
                     "function": "ZwGetContextThread@8",
                     "lineno": 0,
+                    "trust": "context",
                 },
                 {
                     "status": "symbolicated",
@@ -283,6 +278,7 @@ MINIDUMP_SUCCESS = {
                     "sym_addr": "0x76e75d90",
                     "function": "NlsIsUserDefaultLocale@4",
                     "lineno": 0,
+                    "trust": "cfi",
                 },
             ],
             "is_requesting": False,
