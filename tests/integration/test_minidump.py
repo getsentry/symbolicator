@@ -62,6 +62,19 @@ MINIDUMP_SUCCESS = {
                     "trust": "scan",
                 },
                 {
+                    "instruction_addr": "0x2a3435",
+                    "original_index": 7,
+                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
+                    "status": "missing",
+                    "trust": "scan",
+                },
+                {
+                    "instruction_addr": "0x2a2d97",
+                    "original_index": 8,
+                    "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
+                    "status": "missing",
+                },
+                {
                     "status": "symbolicated",
                     "original_index": 9,
                     "instruction_addr": "0x750662c3",
