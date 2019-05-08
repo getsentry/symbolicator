@@ -78,15 +78,15 @@ fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Stri
         Cow::Borrowed(code_file)
     };
     let code_id = if ssqp_casing {
-        code_id.to_owned()
+        Cow::Borrowed(code_id)
     } else {
         let timestamp = code_id.get(..8)?;
         let size_of_image = code_id.get(8..)?;
-        format!(
+        Cow::Owned(format!(
             "{}{}",
             timestamp.to_uppercase(),
             size_of_image.to_lowercase()
-        )
+        ))
     };
 
     Some(format!("{}/{}/{}", code_file, code_id, code_file))
