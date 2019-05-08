@@ -4,6 +4,7 @@
   "recommendations": [
     "rust-lang.rust",
     "bungcip.better-toml",
-    "serayuzgur.crates"
+    "serayuzgur.crates",
+    "vadimcn.vscode-lldb"
   ]
 }
