@@ -17,7 +17,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey};
-use crate::sentry::WriteSentryScope;
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
@@ -145,6 +145,10 @@ impl CacheItemRequest for FetchFileRequest {
         let mut cache_key = self.get_cache_key();
         cache_key.scope = final_scope.clone();
 
+        configure_scope(|scope| {
+            self.request.source().write_sentry_scope(scope);
+        });
+
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
                 log::info!("Resolved debug file for {}", cache_key);
@@ -230,10 +234,12 @@ impl CacheItemRequest for FetchFileRequest {
             }
         });
 
-        let result = result.map_err(|e| {
-            capture_fail(&e);
-            e
-        });
+        let result = result
+            .map_err(|e| {
+                capture_fail(&e);
+                e
+            })
+            .sentry_hub_current();
 
         let type_name = self.request.source().type_name();
 
