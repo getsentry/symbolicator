@@ -1,0 +1,27 @@
+#!/bin/bash
+set -eu
+# Required environment variables:
+#   SENTRY_AUTH_TOKEN: Sentry auth token (https://sentry.io/settings/account/api/auth-tokens/)
+
+VERSION="${1:-}"
+GITHUB_PROJECT="getsentry/symbolicator"
+export SENTRY_ORG="sentry"
+export SENTRY_PROJECT="symbolicator"
+
+if [ -z "${VERSION}" ]; then
+  echo 'No version specified' && exit 1
+fi
+
+
+if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+  echo 'No Sentry auth token found' && exit 1
+fi
+
+sentry-cli --version
+
+echo 'Creating a new deploy in Sentry...'
+sentry-cli releases new "${VERSION}"
+sentry-cli releases set-commits "${VERSION}" --commit "${GITHUB_PROJECT}@${VERSION}"
+sentry-cli releases deploys "${VERSION}" new -e release
+sentry-cli releases finalize "${VERSION}"
+echo 'Deploy created.'
