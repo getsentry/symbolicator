@@ -38,6 +38,9 @@ pub trait SentryFutureExt: Sized {
 
 impl<F> SentryFutureExt for F {}
 
+/// Write own data to Sentry scope, only the subset that is considered useful for debugging. Right
+/// now this could've been a simple method, but the idea is that one day we want a custom derive
+/// for this.
 pub trait WriteSentryScope {
     fn write_sentry_scope(&self, scope: &mut Scope);
 }

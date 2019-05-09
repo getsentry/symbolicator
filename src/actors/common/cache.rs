@@ -133,7 +133,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     );
                 });
 
-                log::debug!(
+                log::trace!(
                     "Loading existing cache item for {} at path {:?}",
                     name,
                     path
@@ -163,7 +163,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                         );
                     });
 
-                    log::debug!("Creating cache item for {} at path {:?}", name, cache_path);
+                    log::trace!("Creating cache item for {} at path {:?}", name, cache_path);
                 }
 
                 let byteview = tryf!(ByteView::open(file.path()));
