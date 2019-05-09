@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -255,7 +256,7 @@ impl CacheItemRequest for FetchFileRequest {
         configure_scope(|scope| {
             scope.set_extra(
                 "objects.load.first_16_bytes",
-                format!("{:x?}", &data[..16]).into(),
+                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
             );
         });
 
