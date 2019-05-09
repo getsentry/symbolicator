@@ -119,7 +119,6 @@ pub fn init_logging(config: &Config) {
         Some(logger),
         sentry_log::LoggerOptions {
             global_filter: Some(global_filter),
-            filter: LevelFilter::Debug,
             ..Default::default()
         },
     );
