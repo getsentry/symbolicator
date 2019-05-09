@@ -3,7 +3,7 @@ use std::sync::Arc;
 use futures::future::Future;
 use futures::Poll;
 
-use sentry::Hub;
+use sentry::{Hub, Scope};
 
 pub struct SentryFuture<F> {
     pub(crate) hub: Arc<Hub>,
@@ -37,3 +37,7 @@ pub trait SentryFutureExt: Sized {
 }
 
 impl<F> SentryFutureExt for F {}
+
+pub trait WriteSentryScope {
+    fn write_sentry_scope(&self, scope: &mut Scope);
+}

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::Future;
+use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
@@ -13,7 +14,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
-use crate::sentry::SentryFutureExt;
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -126,8 +127,12 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             })
             .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
             .and_then(clone!(path, |object| {
-                threadpool
-                    .spawn_handle(futures::lazy(move || {
+                threadpool.spawn_handle(
+                    futures::lazy(move || {
+                        configure_scope(|scope| {
+                            object.write_sentry_scope(scope);
+                        });
+
                         let object_opt =
                             object.parse().context(CfiCacheErrorKind::ObjectParsing)?;
                         if let Some(object) = object_opt {
@@ -141,11 +146,12 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                         }
 
                         Ok(object.scope().clone())
-                    }))
+                    })
                     .map_err(|e: CfiCacheError| {
                         capture_fail(e.cause().unwrap_or(&e));
                         e
-                    })
+                    }),
+                )
             }))
             .or_else(clone!(path, |e: CfiCacheError| {
                 log::warn!("Could not write cficache: {}", e);

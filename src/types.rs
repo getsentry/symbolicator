@@ -5,6 +5,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::hex::HexValue;
+use crate::sentry::WriteSentryScope;
 
 use failure::{Backtrace, Fail};
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -260,8 +261,8 @@ impl SourceConfig {
     pub fn type_name(&self) -> &'static str {
         match *self {
             SourceConfig::Sentry(..) => "sentry",
-            SourceConfig::S3(..) => "sentry",
-            SourceConfig::Http(..) => "sentry",
+            SourceConfig::S3(..) => "s3",
+            SourceConfig::Http(..) => "http",
         }
     }
 
@@ -272,6 +273,14 @@ impl SourceConfig {
             SourceConfig::S3(ref x) => x.files.is_public,
             SourceConfig::Sentry(_) => false,
         }
+    }
+}
+
+impl WriteSentryScope for SourceConfig {
+    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+        scope.set_tag("source.id", self.id());
+        scope.set_tag("source.type", self.type_name());
+        scope.set_tag("source.is_public", self.is_public());
     }
 }
 
@@ -723,5 +732,20 @@ impl ObjectId {
 
     pub fn debug_file_basename(&self) -> Option<&str> {
         Some(split_path(self.debug_file.as_ref()?).1)
+    }
+}
+
+impl WriteSentryScope for ObjectId {
+    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+        scope.set_tag("object_id.code_id", format!("{:?}", self.code_id));
+        scope.set_tag(
+            "object_id.code_file_basename",
+            format!("{:?}", self.code_file_basename()),
+        );
+        scope.set_tag("object_id.debug_id", format!("{:?}", self.debug_id));
+        scope.set_tag(
+            "object_id.debug_file_basename",
+            format!("{:?}", self.debug_file_basename()),
+        );
     }
 }

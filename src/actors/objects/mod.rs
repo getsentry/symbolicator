@@ -7,6 +7,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
+use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
@@ -16,6 +17,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey};
+use crate::sentry::WriteSentryScope;
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
@@ -244,6 +246,13 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+        configure_scope(|scope| {
+            scope.set_extra(
+                "objects.load.first_16_bytes",
+                format!("{:x?}", &data[..16]).into(),
+            );
+        });
+
         Ok(ObjectFile {
             request: Some(self),
             scope,
@@ -331,6 +340,16 @@ impl ObjectFile {
 
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+}
+
+impl WriteSentryScope for ObjectFile {
+    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+        if let Some(ref request) = self.request {
+            request.object_id.write_sentry_scope(scope);
+            scope.set_tag("object_file.scope", self.scope());
+            request.request.source().write_sentry_scope(scope);
+        }
     }
 }
 

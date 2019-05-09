@@ -8,6 +8,7 @@ use std::sync::Arc;
 use futures::future::{Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
+use sentry::configure_scope;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
@@ -125,6 +126,19 @@ impl<T: CacheItemRequest> Cacher<T> {
                     "hit" => "true"
                 );
 
+                configure_scope(|scope| {
+                    scope.set_extra(
+                        &format!("cache.{}.cache_path", name),
+                        format!("{:?}", path).into(),
+                    );
+                });
+
+                log::debug!(
+                    "Loading existing cache item for {} at path {:?}",
+                    name,
+                    path
+                );
+
                 let item = tryf!(request.load(scope.clone(), byteview));
                 return Box::new(Ok(item).into_future());
             }
@@ -140,6 +154,17 @@ impl<T: CacheItemRequest> Cacher<T> {
                     &new_scope,
                     &key.cache_key
                 ));
+
+                if let Some(ref cache_path) = new_cache_path {
+                    configure_scope(|scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            format!("{:?}", cache_path).into(),
+                        );
+                    });
+
+                    log::debug!("Creating cache item for {} at path {:?}", name, cache_path);
+                }
 
                 let byteview = tryf!(ByteView::open(file.path()));
 
