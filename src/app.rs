@@ -118,7 +118,7 @@ fn execute() -> Result<(), CliError> {
 
     let _sentry = sentry::init(config.sentry_dsn.clone());
     logging::init_logging(&config);
-    // sentry::integrations::panic::register_panic_handler();
+    sentry::integrations::panic::register_panic_handler();
 
     match cli.command {
         Command::Run => run_server(config)?,

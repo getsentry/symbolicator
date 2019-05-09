@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -7,6 +8,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
+use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
@@ -16,6 +18,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey};
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
@@ -143,6 +146,10 @@ impl CacheItemRequest for FetchFileRequest {
         let mut cache_key = self.get_cache_key();
         cache_key.scope = final_scope.clone();
 
+        configure_scope(|scope| {
+            self.request.source().write_sentry_scope(scope);
+        });
+
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
                 log::info!("Resolved debug file for {}", cache_key);
@@ -228,10 +235,12 @@ impl CacheItemRequest for FetchFileRequest {
             }
         });
 
-        let result = result.map_err(|e| {
-            capture_fail(&e);
-            e
-        });
+        let result = result
+            .map_err(|e| {
+                capture_fail(&e);
+                e
+            })
+            .sentry_hub_current();
 
         let type_name = self.request.source().type_name();
 
@@ -244,6 +253,13 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+        configure_scope(|scope| {
+            scope.set_extra(
+                "objects.load.first_16_bytes",
+                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
+            );
+        });
+
         Ok(ObjectFile {
             request: Some(self),
             scope,
@@ -331,6 +347,16 @@ impl ObjectFile {
 
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+}
+
+impl WriteSentryScope for ObjectFile {
+    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+        if let Some(ref request) = self.request {
+            request.object_id.write_sentry_scope(scope);
+            scope.set_tag("object_file.scope", self.scope());
+            request.request.source().write_sentry_scope(scope);
+        }
     }
 }
 
