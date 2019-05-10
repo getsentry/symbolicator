@@ -15,7 +15,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
-use crate::sentry::WriteSentryScope;
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -133,21 +133,25 @@ impl CacheItemRequest for FetchSymCacheInternal {
             })
             .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)))
             .and_then(move |object| {
-                threadpool.spawn_handle(futures::lazy(move || {
-                    if let Err(e) = write_symcache(&path, &*object) {
-                        log::warn!("Failed to write symcache: {}", e);
-                        capture_fail(e.cause().unwrap_or(&e));
+                threadpool.spawn_handle(
+                    futures::lazy(move || {
+                        if let Err(e) = write_symcache(&path, &*object) {
+                            log::warn!("Failed to write symcache: {}", e);
+                            capture_fail(e.cause().unwrap_or(&e));
 
-                        let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                        file.write_all(MALFORMED_MARKER)
-                            .context(SymCacheErrorKind::Io)?;
+                            let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
+                            file.write_all(MALFORMED_MARKER)
+                                .context(SymCacheErrorKind::Io)?;
 
-                        file.sync_all().context(SymCacheErrorKind::Io)?;
-                    }
+                            file.sync_all().context(SymCacheErrorKind::Io)?;
+                        }
 
-                    Ok(object.scope().clone())
-                }))
-            });
+                        Ok(object.scope().clone())
+                    })
+                    .sentry_hub_current(),
+                )
+            })
+            .sentry_hub_current();
 
         let num_sources = self.request.sources.len();
 

@@ -14,7 +14,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
-use crate::sentry::WriteSentryScope;
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -127,21 +127,25 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             })
             .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
             .and_then(move |object| {
-                threadpool.spawn_handle(futures::lazy(move || {
-                    if let Err(e) = write_cficache(&path, &*object) {
-                        log::warn!("Could not write cficache: {}", e);
-                        capture_fail(e.cause().unwrap_or(&e));
+                threadpool.spawn_handle(
+                    futures::lazy(move || {
+                        if let Err(e) = write_cficache(&path, &*object) {
+                            log::warn!("Could not write cficache: {}", e);
+                            capture_fail(e.cause().unwrap_or(&e));
 
-                        let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
-                        file.write_all(MALFORMED_MARKER)
-                            .context(CfiCacheErrorKind::Io)?;
+                            let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+                            file.write_all(MALFORMED_MARKER)
+                                .context(CfiCacheErrorKind::Io)?;
 
-                        file.sync_all().context(CfiCacheErrorKind::Io)?;
-                    }
+                            file.sync_all().context(CfiCacheErrorKind::Io)?;
+                        }
 
-                    Ok(object.scope().clone())
-                }))
-            });
+                        Ok(object.scope().clone())
+                    })
+                    .sentry_hub_current(),
+                )
+            })
+            .sentry_hub_current();
 
         let num_sources = self.request.sources.len();
 
