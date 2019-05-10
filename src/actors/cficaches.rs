@@ -14,7 +14,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::sentry::WriteSentryScope;
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -176,12 +176,11 @@ impl CfiCacheActor {
         &self,
         request: FetchCfiCache,
     ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
-        self.cficaches
-            .compute_memoized(FetchCfiCacheInternal {
-                request,
-                objects: self.objects.clone(),
-                threadpool: self.threadpool.clone(),
-            })
+        self.cficaches.compute_memoized(FetchCfiCacheInternal {
+            request,
+            objects: self.objects.clone(),
+            threadpool: self.threadpool.clone(),
+        })
     }
 }
 
