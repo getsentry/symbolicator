@@ -108,7 +108,7 @@ pub fn download_from_source(
             }
         }
         Err(e) => {
-            log::warn!("Skipping response from {}: {}", download_url, e);
+            log::trace!("Skipping response from {}: {}", download_url, e);
             Ok(None)
         }
     });

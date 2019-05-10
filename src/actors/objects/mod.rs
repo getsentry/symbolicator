@@ -153,7 +153,7 @@ impl CacheItemRequest for FetchFileRequest {
 
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
-                log::info!("Resolved debug file for {}", cache_key);
+                log::debug!("Fetching debug file for {}", cache_key);
 
                 let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir));
                 let download_file = tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
@@ -166,6 +166,7 @@ impl CacheItemRequest for FetchFileRequest {
                         )),
                     )
                     .and_then(clone!(threadpool, |mut download_file| {
+                        log::trace!("Finished download for {}", cache_key);
                         threadpool.spawn_handle(future::lazy(move || {
                             // Ensure that both meta data and file contents are available to the
                             // subsequent reads of the file metadata and reads from other threads.
@@ -199,12 +200,15 @@ impl CacheItemRequest for FetchFileRequest {
                                 // Magic bytes for zstd
                                 // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
                                 [0x28, 0xb5, 0x2f, 0xfd] => {
+                                    log::trace!("Decompressing (zstd): {}", cache_key);
                                     zstd::stream::copy_decode(download_file, persist_file)
                                         .context(ObjectErrorKind::Parsing)?;
                                 }
                                 // Magic bytes for gzip
                                 // https://tools.ietf.org/html/rfc1952#section-2.3.1
                                 [0x1f, 0x8b, _, _] => {
+                                    log::trace!("Decompressing (gz): {}", cache_key);
+
                                     // We assume MultiGzDecoder accepts a strict superset of input
                                     // values compared to GzDecoder.
                                     let mut reader =
@@ -214,12 +218,14 @@ impl CacheItemRequest for FetchFileRequest {
                                 }
                                 // Magic bytes for zlib
                                 [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
+                                    log::trace!("Decompressing (zlib): {}", cache_key);
                                     let mut reader = flate2::read::ZlibDecoder::new(download_file);
                                     io::copy(&mut reader, &mut persist_file)
                                         .context(ObjectErrorKind::Io)?;
                                 }
                                 // Probably not compressed
                                 _ => {
+                                    log::trace!("Moving to cache: {}", cache_key);
                                     io::copy(&mut download_file, &mut persist_file)
                                         .context(ObjectErrorKind::Io)?;
                                 }
@@ -320,7 +326,7 @@ impl ObjectFile {
                 {
                     metric!(counter("object.debug_id_mismatch") += 1);
                     log::debug!(
-                        "debug id mismatch. got {}, expected {}",
+                        "Debug id mismatch. got {}, expected {}",
                         parsed.debug_id(),
                         debug_id
                     );
@@ -333,7 +339,7 @@ impl ObjectFile {
                     if object_code_id != code_id {
                         metric!(counter("object.code_id_mismatch") += 1);
                         log::debug!(
-                            "code id mismatch. got {}, expected {}",
+                            "Code id mismatch. got {}, expected {}",
                             object_code_id,
                             code_id
                         );

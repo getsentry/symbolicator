@@ -75,14 +75,14 @@ pub fn prepare_downloads(
             .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
             .and_then(move |response| {
                 if response.status().is_success() {
-                    log::debug!("Success fetching index from Sentry");
+                    log::trace!("Success fetching index from Sentry");
                     Either::A(
                         response
                             .json::<Vec<FileEntry>>()
                             .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
                     )
                 } else {
-                    log::debug!("Sentry returned status code {}", response.status());
+                    log::warn!("Sentry returned status code {}", response.status());
                     Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
                 }
             })
@@ -153,7 +153,7 @@ pub fn download_from_source(
     let response = response.then(move |result| match result {
         Ok(response) => {
             if response.status().is_success() {
-                log::info!("Success hitting {}", download_url);
+                log::trace!("Success hitting {}", download_url);
                 Ok(Some(Box::new(
                     response
                         .payload()

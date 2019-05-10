@@ -102,7 +102,7 @@ pub fn download_from_source(
         }
     };
 
-    log::debug!("fetching from s3: {} (from {})", &key, source.bucket);
+    log::debug!("Fetching from s3: {} (from {})", &key, source.bucket);
 
     let bucket = source.bucket.clone();
     let source_key = &source.source_key;
@@ -117,7 +117,7 @@ pub fn download_from_source(
             let body_read = match result.body.take() {
                 Some(body) => body.into_async_read(),
                 None => {
-                    log::warn!("Empty response from s3:{}{}", bucket, &key);
+                    log::debug!("Empty response from s3:{}{}", bucket, &key);
                     return Ok(None);
                 }
             };
@@ -129,7 +129,7 @@ pub fn download_from_source(
             Ok(Some(Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>))
         }
         Err(err) => {
-            log::warn!("Skipping response from s3:{}{}: {}", bucket, &key, err);
+            log::debug!("Skipping response from s3:{}{}: {}", bucket, &key, err);
             Ok(None)
         }
     });

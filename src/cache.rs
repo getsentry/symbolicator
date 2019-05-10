@@ -116,7 +116,7 @@ impl Cache {
     }
 
     fn try_cleanup_path(&self, path: &Path) -> Result<(), CleanupError> {
-        log::debug!("Looking at {}", path.display());
+        log::trace!("Checking {}", path.display());
         if path.is_file() {
             if catch_not_found(|| self.check_expiry(path))?.is_none() {
                 log::info!("Removing {}", path.display());

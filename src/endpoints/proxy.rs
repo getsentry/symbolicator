@@ -42,7 +42,7 @@ fn proxy_symstore_request(
         Some(x) => x,
         None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
     };
-    log::debug!("looking for {:?} ({:?})", object_id, filetypes);
+    log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
     Box::new(
         state
             .objects

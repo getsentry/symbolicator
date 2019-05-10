@@ -149,6 +149,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
                         let file = File::create(&path).context(SymCacheErrorKind::Io)?;
                         let mut writer = BufWriter::new(file);
+
+                        log::debug!("Converting SymCache");
                         if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer)
                         {
                             match e.kind() {

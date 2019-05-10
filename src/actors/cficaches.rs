@@ -140,6 +140,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                             let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
                             let writer = BufWriter::new(file);
 
+                            log::debug!("Converting CFI cache");
                             minidump::cfi::CfiCache::from_object(&object)
                                 .context(CfiCacheErrorKind::ObjectParsing)?
                                 .write_to(writer)

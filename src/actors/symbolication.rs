@@ -178,7 +178,7 @@ impl SymbolicationActor {
 
         let cfi_to_fetch = self.threadpool.spawn_handle(
             future::lazy(move || {
-                log::debug!("Minidump size: {}", byteview.len());
+                log::debug!("Processing minidump ({} bytes)", byteview.len());
                 metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
                 let state = ProcessState::from_minidump(&byteview, None)
                     .map_err(|_| SymbolicationError::Minidump)?;
@@ -586,6 +586,7 @@ fn symbolize_thread(
                 None => return Err(FrameStatus::UnknownImage),
             };
 
+            log::trace!("Loading SymCache");
             let symcache = match symcache.parse() {
                 Ok(Some(x)) => x,
                 Ok(None) => return Err(FrameStatus::Missing),
@@ -624,6 +625,7 @@ fn symbolize_thread(
                 }
             };
 
+            log::trace!("Symbolicating {:#x}", relative_addr);
             let line_infos = match symcache.lookup(relative_addr) {
                 Ok(x) => x,
                 Err(_) => return Err(FrameStatus::Malformed),
