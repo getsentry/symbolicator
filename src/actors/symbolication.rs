@@ -354,7 +354,7 @@ impl SymbolicationActor {
                             minidump_state,
                         ))
                     })
-                    .sentry_hub_new_from_current(),
+                    .sentry_hub_current(),
                 )
             }));
 

@@ -182,7 +182,6 @@ impl CfiCacheActor {
                 objects: self.objects.clone(),
                 threadpool: self.threadpool.clone(),
             })
-            .sentry_hub_new_from_current()
     }
 }
 

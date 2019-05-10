@@ -196,7 +196,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     .map_err(|_| ())
                     .into_future()
                 }))
-                .sentry_hub_new_from_current(),
+                .sentry_hub_current(),
         );
 
         let channel = rx.shared();
