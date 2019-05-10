@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::{client, HttpMessage};
 
@@ -135,6 +136,8 @@ pub fn download_from_source(
         client::get(&download_url)
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", token))
+            // Sentry fetches the entire file from an external service before starting response.
+            .timeout(Duration::from_secs(60))
             .finish()
             .unwrap()
             .send()
