@@ -147,6 +147,7 @@ impl CacheItemRequest for FetchFileRequest {
         cache_key.scope = final_scope.clone();
 
         configure_scope(|scope| {
+            scope.set_transaction(Some("download_file"));
             self.request.source().write_sentry_scope(scope);
         });
 
@@ -237,7 +238,7 @@ impl CacheItemRequest for FetchFileRequest {
 
         let result = result
             .map_err(|e| {
-                capture_fail(&e);
+                capture_fail(e.cause().unwrap_or(&e));
                 e
             })
             .sentry_hub_current();

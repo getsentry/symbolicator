@@ -136,6 +136,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 threadpool.spawn_handle(
                     futures::lazy(move || {
                         configure_scope(|scope| {
+                            scope.set_transaction(Some("compute_symcache"));
                             object.write_sentry_scope(scope);
                         });
 
