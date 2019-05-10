@@ -114,6 +114,12 @@ impl FetchFileInner {
     }
 }
 
+impl WriteSentryScope for FetchFileInner {
+    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+        self.source().write_sentry_scope(scope);
+    }
+}
+
 impl CacheItemRequest for FetchFileRequest {
     type Item = ObjectFile;
     type Error = ObjectError;
@@ -148,7 +154,7 @@ impl CacheItemRequest for FetchFileRequest {
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.request.source().write_sentry_scope(scope);
+            self.request.write_sentry_scope(scope);
         });
 
         let result = request.and_then(move |payload| {
@@ -260,18 +266,17 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
-        configure_scope(|scope| {
-            scope.set_extra(
-                "objects.load.first_16_bytes",
-                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
-            );
-        });
-
-        Ok(ObjectFile {
+        let rv = ObjectFile {
             request: Some(self),
             scope,
             object: if data.is_empty() { None } else { Some(data) },
-        })
+        };
+
+        configure_scope(|scope| {
+            rv.write_sentry_scope(scope);
+        });
+
+        Ok(rv)
     }
 }
 
@@ -362,7 +367,15 @@ impl WriteSentryScope for ObjectFile {
         if let Some(ref request) = self.request {
             request.object_id.write_sentry_scope(scope);
             scope.set_tag("object_file.scope", self.scope());
-            request.request.source().write_sentry_scope(scope);
+
+            request.request.write_sentry_scope(scope);
+        }
+
+        if let Some(ref data) = self.object {
+            scope.set_extra(
+                "object_file.first_16_bytes",
+                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
+            );
         }
     }
 }

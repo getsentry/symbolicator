@@ -12,7 +12,7 @@ use symbolic::{common::ByteView, minidump};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -126,45 +126,22 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 purpose: ObjectPurpose::Unwind,
             })
             .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
-            .and_then(clone!(path, |object| {
-                threadpool.spawn_handle(
-                    futures::lazy(move || {
-                        configure_scope(|scope| {
-                            scope.set_transaction(Some("compute_cficache"));
-                            object.write_sentry_scope(scope);
-                        });
-
-                        let object_opt =
-                            object.parse().context(CfiCacheErrorKind::ObjectParsing)?;
-                        if let Some(object) = object_opt {
-                            let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
-                            let writer = BufWriter::new(file);
-
-                            log::debug!("Converting CFI cache");
-                            minidump::cfi::CfiCache::from_object(&object)
-                                .context(CfiCacheErrorKind::ObjectParsing)?
-                                .write_to(writer)
-                                .context(CfiCacheErrorKind::Io)?;
-                        }
-
-                        Ok(object.scope().clone())
-                    })
-                    .map_err(|e: CfiCacheError| {
+            .and_then(move |object| {
+                threadpool.spawn_handle(futures::lazy(move || {
+                    if let Err(e) = write_cficache(&path, &*object) {
+                        log::warn!("Could not write cficache: {}", e);
                         capture_fail(e.cause().unwrap_or(&e));
-                        e
-                    }),
-                )
-            }))
-            .or_else(clone!(path, |e: CfiCacheError| {
-                log::warn!("Could not write cficache: {}", e);
 
-                let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
-                file.write_all(MALFORMED_MARKER)
-                    .context(CfiCacheErrorKind::Io)?;
+                        let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+                        file.write_all(MALFORMED_MARKER)
+                            .context(CfiCacheErrorKind::Io)?;
 
-                file.sync_all().context(CfiCacheErrorKind::Io)?;
-                Err(e)
-            }));
+                        file.sync_all().context(CfiCacheErrorKind::Io)?;
+                    }
+
+                    Ok(object.scope().clone())
+                }))
+            });
 
         let num_sources = self.request.sources.len();
 
@@ -207,4 +184,25 @@ impl CfiCacheActor {
             })
             .sentry_hub_new_from_current()
     }
+}
+
+fn write_cficache(path: &Path, object: &ObjectFile) -> Result<(), CfiCacheError> {
+    configure_scope(|scope| {
+        scope.set_transaction(Some("compute_cficache"));
+        object.write_sentry_scope(scope);
+    });
+
+    let object_opt = object.parse().context(CfiCacheErrorKind::ObjectParsing)?;
+    if let Some(object) = object_opt {
+        let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+        let writer = BufWriter::new(file);
+
+        log::debug!("Converting CFI cache");
+        minidump::cfi::CfiCache::from_object(&object)
+            .context(CfiCacheErrorKind::ObjectParsing)?
+            .write_to(writer)
+            .context(CfiCacheErrorKind::Io)?;
+    }
+
+    Ok(())
 }

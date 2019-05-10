@@ -13,7 +13,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{FetchObject, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -132,58 +132,22 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 purpose: ObjectPurpose::Debug,
             })
             .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)))
-            .and_then(clone!(path, |object| {
-                threadpool.spawn_handle(
-                    futures::lazy(move || {
-                        configure_scope(|scope| {
-                            scope.set_transaction(Some("compute_symcache"));
-                            object.write_sentry_scope(scope);
-                        });
-
-                        let object_opt =
-                            object.parse().context(SymCacheErrorKind::ObjectParsing)?;
-                        let symbolic_object = match object_opt {
-                            Some(object) => object,
-                            None => return Ok(object.scope().clone()),
-                        };
-
-                        let file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                        let mut writer = BufWriter::new(file);
-
-                        log::debug!("Converting SymCache");
-                        if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer)
-                        {
-                            match e.kind() {
-                                symcache::SymCacheErrorKind::WriteFailed => {
-                                    return Err(e.context(SymCacheErrorKind::Io).into())
-                                }
-                                _ => {
-                                    return Err(e.context(SymCacheErrorKind::ObjectParsing).into())
-                                }
-                            }
-                        }
-
-                        let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-                        file.sync_all().context(SymCacheErrorKind::Io)?;
-
-                        Ok(object.scope().clone())
-                    })
-                    .map_err(|e: SymCacheError| {
+            .and_then(move |object| {
+                threadpool.spawn_handle(futures::lazy(move || {
+                    if let Err(e) = write_symcache(&path, &*object) {
+                        log::warn!("Failed to write symcache: {}", e);
                         capture_fail(e.cause().unwrap_or(&e));
-                        e
-                    }),
-                )
-            }))
-            .or_else(clone!(path, |e| {
-                log::warn!("Failed to write symcache: {}", e);
 
-                let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                file.write_all(MALFORMED_MARKER)
-                    .context(SymCacheErrorKind::Io)?;
+                        let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
+                        file.write_all(MALFORMED_MARKER)
+                            .context(SymCacheErrorKind::Io)?;
 
-                file.sync_all().context(SymCacheErrorKind::Io)?;
-                Err(e)
-            }));
+                        file.sync_all().context(SymCacheErrorKind::Io)?;
+                    }
+
+                    Ok(object.scope().clone())
+                }))
+            });
 
         let num_sources = self.request.sources.len();
 
@@ -232,4 +196,35 @@ impl SymCacheActor {
             })
             .sentry_hub_new_from_current()
     }
+}
+
+fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError> {
+    configure_scope(|scope| {
+        scope.set_transaction(Some("compute_symcache"));
+        object.write_sentry_scope(scope);
+    });
+
+    let object_opt = object.parse().context(SymCacheErrorKind::ObjectParsing)?;
+    let symbolic_object = match object_opt {
+        Some(object) => object,
+        None => return Ok(()),
+    };
+
+    let file = File::create(&path).context(SymCacheErrorKind::Io)?;
+    let mut writer = BufWriter::new(file);
+
+    log::debug!("Converting SymCache");
+    if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
+        match e.kind() {
+            symcache::SymCacheErrorKind::WriteFailed => {
+                return Err(e.context(SymCacheErrorKind::Io).into())
+            }
+            _ => return Err(e.context(SymCacheErrorKind::ObjectParsing).into()),
+        }
+    }
+
+    let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
+    file.sync_all().context(SymCacheErrorKind::Io)?;
+
+    Ok(())
 }
