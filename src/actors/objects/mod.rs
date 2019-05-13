@@ -393,6 +393,7 @@ impl ObjectsActor {
                     self.threadpool.clone(),
                     self.cache.clone(),
                 )
+                .sentry_hub_new_from_current() // new hub because of join_all
             })
             .collect();
 

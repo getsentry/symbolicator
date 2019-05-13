@@ -41,7 +41,7 @@ pub fn prepare_downloads(
                 object_id: object_id.clone(),
                 threadpool: threadpool.clone(),
             })
-            .sentry_hub_current()
+            .sentry_hub_new_from_current() // new hub because of join_all
             .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
             .then(Ok);
 
