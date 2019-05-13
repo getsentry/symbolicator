@@ -44,9 +44,6 @@ pub enum ObjectErrorKind {
     #[fail(display = "failed to parse object")]
     Parsing,
 
-    #[fail(display = "mismatching IDs")]
-    IdMismatch,
-
     #[fail(display = "bad status code")]
     BadStatusCode,
 
@@ -308,53 +305,10 @@ impl ObjectFile {
     }
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        let bytes = match self.object {
-            Some(ref x) => x,
-            None => return Ok(None),
-        };
-        let parsed = Object::parse(&bytes).context(ObjectErrorKind::Parsing)?;
-
-        if let Some(ref request) = self.request {
-            let object_id = &request.object_id;
-
-            if let Some(ref debug_id) = object_id.debug_id {
-                let parsed_id = parsed.debug_id();
-
-                // Microsoft symbol server sometimes stores updated files with a more recent
-                // (=higher) age, but resolves it for requests with lower ages as well. Thus, we
-                // need to check whether the parsed debug file fullfills the *miniumum* age bound.
-                // For example:
-                // `4A236F6A0B3941D1966B41A4FC77738C2` is reported as
-                // `4A236F6A0B3941D1966B41A4FC77738C4` from the server.
-                //                                  ^
-                if parsed_id.uuid() != debug_id.uuid() || parsed_id.appendix() < debug_id.appendix()
-                {
-                    metric!(counter("object.debug_id_mismatch") += 1);
-                    log::debug!(
-                        "Debug id mismatch. got {}, expected {}",
-                        parsed.debug_id(),
-                        debug_id
-                    );
-                    return Err(ObjectErrorKind::IdMismatch.into());
-                }
-            }
-
-            if let Some(ref code_id) = object_id.code_id {
-                if let Some(ref object_code_id) = parsed.code_id() {
-                    if object_code_id != code_id {
-                        metric!(counter("object.code_id_mismatch") += 1);
-                        log::debug!(
-                            "Code id mismatch. got {}, expected {}",
-                            object_code_id,
-                            code_id
-                        );
-                        return Err(ObjectErrorKind::IdMismatch.into());
-                    }
-                }
-            }
-        }
-
-        Ok(Some(parsed))
+        Ok(match self.object {
+            Some(ref data) => Some(Object::parse(&data).context(ObjectErrorKind::Parsing)?),
+            None => None,
+        })
     }
 
     pub fn scope(&self) -> &Scope {
