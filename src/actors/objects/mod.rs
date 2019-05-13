@@ -172,7 +172,7 @@ impl CacheItemRequest for FetchFileRequest {
                         )),
                     )
                     .and_then(clone!(threadpool, |mut download_file| {
-                        log::trace!("Finished download for {}", cache_key);
+                        log::trace!("Finished download of {}", cache_key);
                         threadpool.spawn_handle(future::lazy(move || {
                             // Ensure that both meta data and file contents are available to the
                             // subsequent reads of the file metadata and reads from other threads.
@@ -359,6 +359,10 @@ impl ObjectFile {
 
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+
+    pub fn cache_key(&self) -> Option<CacheKey> {
+        self.request.as_ref().map(CacheItemRequest::get_cache_key)
     }
 }
 

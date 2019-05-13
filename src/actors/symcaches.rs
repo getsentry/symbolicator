@@ -215,7 +215,10 @@ fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError>
     let file = File::create(&path).context(SymCacheErrorKind::Io)?;
     let mut writer = BufWriter::new(file);
 
-    log::debug!("Converting SymCache");
+    if let Some(cache_key) = object.cache_key() {
+        log::debug!("Converting symcache for {}", cache_key);
+    }
+
     if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
         match e.kind() {
             symcache::SymCacheErrorKind::WriteFailed => {

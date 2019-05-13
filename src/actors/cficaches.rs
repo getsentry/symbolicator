@@ -188,18 +188,24 @@ impl CfiCacheActor {
     }
 }
 
-fn write_cficache(path: &Path, object: &ObjectFile) -> Result<(), CfiCacheError> {
+fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
-        object.write_sentry_scope(scope);
+        object_file.write_sentry_scope(scope);
     });
 
-    let object_opt = object.parse().context(CfiCacheErrorKind::ObjectParsing)?;
+    let object_opt = object_file
+        .parse()
+        .context(CfiCacheErrorKind::ObjectParsing)?;
+
     if let Some(object) = object_opt {
         let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
         let writer = BufWriter::new(file);
 
-        log::debug!("Converting CFI cache");
+        if let Some(cache_key) = object_file.cache_key() {
+            log::debug!("Converting cficache for {}", cache_key);
+        }
+
         minidump::cfi::CfiCache::from_object(&object)
             .context(CfiCacheErrorKind::ObjectParsing)?
             .write_to(writer)

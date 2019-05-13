@@ -243,7 +243,7 @@ impl SymbolicationActor {
                                 Ok(x) => x,
                                 Err(e) => {
                                     log::info!(
-                                        "Error while fetching CFI cache: {}",
+                                        "Error while fetching cficache: {}",
                                         LogError(&ArcFail(e.clone()))
                                     );
                                     unwind_statuses.insert(code_module_id, (&**e).into());
@@ -251,6 +251,7 @@ impl SymbolicationActor {
                                 }
                             };
 
+                            log::trace!("Loading cficache");
                             let cfi_cache = match cache_file.parse() {
                                 Ok(Some(x)) => x,
                                 Ok(None) => {
@@ -259,7 +260,7 @@ impl SymbolicationActor {
                                     continue;
                                 }
                                 Err(e) => {
-                                    log::warn!("Error while parsing CFI cache: {}", LogError(&e));
+                                    log::warn!("Error while parsing cficache: {}", LogError(&e));
                                     unwind_statuses.insert(code_module_id, (&e).into());
                                     continue;
                                 }
@@ -586,7 +587,7 @@ fn symbolize_thread(
                 None => return Err(FrameStatus::UnknownImage),
             };
 
-            log::trace!("Loading SymCache");
+            log::trace!("Loading symcache");
             let symcache = match symcache.parse() {
                 Ok(Some(x)) => x,
                 Ok(None) => return Err(FrameStatus::Missing),

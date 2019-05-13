@@ -133,11 +133,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     );
                 });
 
-                log::trace!(
-                    "Loading existing cache item for {} at path {:?}",
-                    name,
-                    path
-                );
+                log::trace!("Loading {} at path {:?}", name, path);
 
                 let item = tryf!(request.load(scope.clone(), byteview));
                 return Box::new(Ok(item).into_future());
@@ -163,7 +159,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                         );
                     });
 
-                    log::trace!("Creating cache item for {} at path {:?}", name, cache_path);
+                    log::trace!("Creating {} at path {:?}", name, cache_path);
                 }
 
                 let byteview = tryf!(ByteView::open(file.path()));
