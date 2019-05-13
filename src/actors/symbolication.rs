@@ -178,7 +178,7 @@ impl SymbolicationActor {
 
         let cfi_to_fetch = self.threadpool.spawn_handle(
             future::lazy(move || {
-                log::debug!("Minidump size: {}", byteview.len());
+                log::debug!("Processing minidump ({} bytes)", byteview.len());
                 metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
                 let state = ProcessState::from_minidump(&byteview, None)
                     .map_err(|_| SymbolicationError::Minidump)?;
@@ -243,7 +243,7 @@ impl SymbolicationActor {
                                 Ok(x) => x,
                                 Err(e) => {
                                     log::info!(
-                                        "Error while fetching CFI cache: {}",
+                                        "Error while fetching cficache: {}",
                                         LogError(&ArcFail(e.clone()))
                                     );
                                     unwind_statuses.insert(code_module_id, (&**e).into());
@@ -251,6 +251,7 @@ impl SymbolicationActor {
                                 }
                             };
 
+                            log::trace!("Loading cficache");
                             let cfi_cache = match cache_file.parse() {
                                 Ok(Some(x)) => x,
                                 Ok(None) => {
@@ -259,7 +260,7 @@ impl SymbolicationActor {
                                     continue;
                                 }
                                 Err(e) => {
-                                    log::warn!("Error while parsing CFI cache: {}", LogError(&e));
+                                    log::warn!("Error while parsing cficache: {}", LogError(&e));
                                     unwind_statuses.insert(code_module_id, (&e).into());
                                     continue;
                                 }
@@ -354,7 +355,7 @@ impl SymbolicationActor {
                             minidump_state,
                         ))
                     })
-                    .sentry_hub_new_from_current(),
+                    .sentry_hub_current(),
                 )
             }));
 
@@ -586,6 +587,7 @@ fn symbolize_thread(
                 None => return Err(FrameStatus::UnknownImage),
             };
 
+            log::trace!("Loading symcache");
             let symcache = match symcache.parse() {
                 Ok(Some(x)) => x,
                 Ok(None) => return Err(FrameStatus::Missing),
@@ -624,6 +626,7 @@ fn symbolize_thread(
                 }
             };
 
+            log::trace!("Symbolicating {:#x}", relative_addr);
             let line_infos = match symcache.lookup(relative_addr) {
                 Ok(x) => x,
                 Err(_) => return Err(FrameStatus::Malformed),

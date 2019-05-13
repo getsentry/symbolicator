@@ -38,10 +38,10 @@ pub enum ObjectErrorKind {
     #[fail(display = "unable to get directory for tempfiles")]
     NoTempDir,
 
-    #[fail(display = "failed sending message to actor")]
+    #[fail(display = "failed dispatch internal message")]
     Mailbox,
 
-    #[fail(display = "failed parsing object")]
+    #[fail(display = "failed to parse object")]
     Parsing,
 
     #[fail(display = "mismatching IDs")]
@@ -50,7 +50,7 @@ pub enum ObjectErrorKind {
     #[fail(display = "bad status code")]
     BadStatusCode,
 
-    #[fail(display = "failed sending request to source")]
+    #[fail(display = "failed to send request to source")]
     SendRequest,
 
     #[fail(display = "failed to look into cache")]
@@ -59,7 +59,7 @@ pub enum ObjectErrorKind {
     #[fail(display = "object download took too long")]
     Timeout,
 
-    #[fail(display = "failed fetching data from Sentry")]
+    #[fail(display = "failed to fetch data from Sentry")]
     Sentry,
 }
 
@@ -114,6 +114,12 @@ impl FetchFileInner {
     }
 }
 
+impl WriteSentryScope for FetchFileInner {
+    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+        self.source().write_sentry_scope(scope);
+    }
+}
+
 impl CacheItemRequest for FetchFileRequest {
     type Item = ObjectFile;
     type Error = ObjectError;
@@ -148,12 +154,12 @@ impl CacheItemRequest for FetchFileRequest {
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.request.source().write_sentry_scope(scope);
+            self.request.write_sentry_scope(scope);
         });
 
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
-                log::info!("Resolved debug file for {}", cache_key);
+                log::debug!("Fetching debug file for {}", cache_key);
 
                 let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir));
                 let download_file = tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
@@ -166,6 +172,7 @@ impl CacheItemRequest for FetchFileRequest {
                         )),
                     )
                     .and_then(clone!(threadpool, |mut download_file| {
+                        log::trace!("Finished download of {}", cache_key);
                         threadpool.spawn_handle(future::lazy(move || {
                             // Ensure that both meta data and file contents are available to the
                             // subsequent reads of the file metadata and reads from other threads.
@@ -199,12 +206,15 @@ impl CacheItemRequest for FetchFileRequest {
                                 // Magic bytes for zstd
                                 // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
                                 [0x28, 0xb5, 0x2f, 0xfd] => {
+                                    log::trace!("Decompressing (zstd): {}", cache_key);
                                     zstd::stream::copy_decode(download_file, persist_file)
                                         .context(ObjectErrorKind::Parsing)?;
                                 }
                                 // Magic bytes for gzip
                                 // https://tools.ietf.org/html/rfc1952#section-2.3.1
                                 [0x1f, 0x8b, _, _] => {
+                                    log::trace!("Decompressing (gz): {}", cache_key);
+
                                     // We assume MultiGzDecoder accepts a strict superset of input
                                     // values compared to GzDecoder.
                                     let mut reader =
@@ -214,12 +224,14 @@ impl CacheItemRequest for FetchFileRequest {
                                 }
                                 // Magic bytes for zlib
                                 [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
+                                    log::trace!("Decompressing (zlib): {}", cache_key);
                                     let mut reader = flate2::read::ZlibDecoder::new(download_file);
                                     io::copy(&mut reader, &mut persist_file)
                                         .context(ObjectErrorKind::Io)?;
                                 }
                                 // Probably not compressed
                                 _ => {
+                                    log::trace!("Moving to cache: {}", cache_key);
                                     io::copy(&mut download_file, &mut persist_file)
                                         .context(ObjectErrorKind::Io)?;
                                 }
@@ -254,18 +266,17 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
-        configure_scope(|scope| {
-            scope.set_extra(
-                "objects.load.first_16_bytes",
-                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
-            );
-        });
-
-        Ok(ObjectFile {
+        let rv = ObjectFile {
             request: Some(self),
             scope,
             object: if data.is_empty() { None } else { Some(data) },
-        })
+        };
+
+        configure_scope(|scope| {
+            rv.write_sentry_scope(scope);
+        });
+
+        Ok(rv)
     }
 }
 
@@ -320,7 +331,7 @@ impl ObjectFile {
                 {
                     metric!(counter("object.debug_id_mismatch") += 1);
                     log::debug!(
-                        "debug id mismatch. got {}, expected {}",
+                        "Debug id mismatch. got {}, expected {}",
                         parsed.debug_id(),
                         debug_id
                     );
@@ -333,7 +344,7 @@ impl ObjectFile {
                     if object_code_id != code_id {
                         metric!(counter("object.code_id_mismatch") += 1);
                         log::debug!(
-                            "code id mismatch. got {}, expected {}",
+                            "Code id mismatch. got {}, expected {}",
                             object_code_id,
                             code_id
                         );
@@ -349,6 +360,10 @@ impl ObjectFile {
     pub fn scope(&self) -> &Scope {
         &self.scope
     }
+
+    pub fn cache_key(&self) -> Option<CacheKey> {
+        self.request.as_ref().map(CacheItemRequest::get_cache_key)
+    }
 }
 
 impl WriteSentryScope for ObjectFile {
@@ -356,7 +371,15 @@ impl WriteSentryScope for ObjectFile {
         if let Some(ref request) = self.request {
             request.object_id.write_sentry_scope(scope);
             scope.set_tag("object_file.scope", self.scope());
-            request.request.source().write_sentry_scope(scope);
+
+            request.request.write_sentry_scope(scope);
+        }
+
+        if let Some(ref data) = self.object {
+            scope.set_extra(
+                "object_file.first_16_bytes",
+                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
+            );
         }
     }
 }

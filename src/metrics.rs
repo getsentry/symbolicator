@@ -34,7 +34,7 @@ pub fn set_client(statsd_client: StatsdClient) {
 pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A) {
     let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
     if !addrs.is_empty() {
-        log::info!("reporting metrics to statsd at {}", addrs[0]);
+        log::info!("Reporting metrics to statsd at {}", addrs[0]);
     }
     set_client(StatsdClient::from_udp_host(prefix, &addrs[..]).unwrap());
 }
