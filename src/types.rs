@@ -518,17 +518,17 @@ pub struct CompleteObjectInfo {
 
 impl From<RawObjectInfo> for CompleteObjectInfo {
     fn from(mut raw: RawObjectInfo) -> Self {
-        if let Some(ref raw_id) = raw.debug_id {
-            if let Ok(id) = DebugId::from_breakpad(raw_id.as_str()) {
-                raw.debug_id = Some(id.to_string());
-            }
-        }
+        raw.debug_id = raw
+            .debug_id
+            .filter(|id| !id.is_empty())
+            .and_then(|id| id.parse::<DebugId>().ok())
+            .map(|id| id.to_string());
 
-        if let Some(ref raw_id) = raw.code_id {
-            if let Ok(id) = raw_id.parse::<CodeId>() {
-                raw.code_id = Some(id.to_string());
-            }
-        }
+        raw.code_id = raw
+            .code_id
+            .filter(|id| !id.is_empty())
+            .and_then(|id| id.parse::<CodeId>().ok())
+            .map(|id| id.to_string());
 
         CompleteObjectInfo {
             debug_status: Default::default(),
