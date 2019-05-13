@@ -12,16 +12,17 @@ use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
-use symbolic::debuginfo::Object;
+use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::cache::{Cache, CacheKey};
+use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
+use crate::utils::objects;
 
 mod common;
 mod http;
@@ -149,6 +150,8 @@ impl CacheItemRequest for FetchFileRequest {
         let mut cache_key = self.get_cache_key();
         cache_key.scope = final_scope.clone();
 
+        let object_id = self.object_id.clone();
+
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
             self.request.write_sentry_scope(scope);
@@ -160,6 +163,8 @@ impl CacheItemRequest for FetchFileRequest {
 
                 let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir));
                 let download_file = tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
+                let mut extract_file =
+                    tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
 
                 let future = payload
                     .fold(
@@ -199,13 +204,16 @@ impl CacheItemRequest for FetchFileRequest {
                             // wrapper around a Write. Only zstd doesn't. If we can get this into
                             // zstd we could save one tempfile and especially avoid the io::copy
                             // for downloads that were not compressed.
-                            match magic_bytes {
+                            let mut decompressed = match magic_bytes {
                                 // Magic bytes for zstd
                                 // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
                                 [0x28, 0xb5, 0x2f, 0xfd] => {
                                     log::trace!("Decompressing (zstd): {}", cache_key);
-                                    zstd::stream::copy_decode(download_file, persist_file)
+
+                                    zstd::stream::copy_decode(download_file, &mut extract_file)
                                         .context(ObjectErrorKind::Parsing)?;
+
+                                    extract_file
                                 }
                                 // Magic bytes for gzip
                                 // https://tools.ietf.org/html/rfc1952#section-2.3.1
@@ -216,22 +224,77 @@ impl CacheItemRequest for FetchFileRequest {
                                     // values compared to GzDecoder.
                                     let mut reader =
                                         flate2::read::MultiGzDecoder::new(download_file);
-                                    io::copy(&mut reader, &mut persist_file)
+                                    io::copy(&mut reader, &mut extract_file)
                                         .context(ObjectErrorKind::Io)?;
+
+                                    extract_file
                                 }
                                 // Magic bytes for zlib
                                 [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
                                     log::trace!("Decompressing (zlib): {}", cache_key);
+
                                     let mut reader = flate2::read::ZlibDecoder::new(download_file);
-                                    io::copy(&mut reader, &mut persist_file)
+                                    io::copy(&mut reader, &mut extract_file)
                                         .context(ObjectErrorKind::Io)?;
+
+                                    extract_file
                                 }
                                 // Probably not compressed
                                 _ => {
-                                    log::trace!("Moving to cache: {}", cache_key);
-                                    io::copy(&mut download_file, &mut persist_file)
-                                        .context(ObjectErrorKind::Io)?;
+                                    log::trace!("No compression detected: {}", cache_key);
+                                    download_file
                                 }
+                            };
+
+                            // Seek back to the start and parse this object to we can deal with it.
+                            // Since objects in Sentry (and potentially also other sources) might be
+                            // multi-arch files (e.g. FatMach), we parse as Archive and try to
+                            // extract the wanted file.
+                            decompressed
+                                .seek(SeekFrom::Start(0))
+                                .context(ObjectErrorKind::Io)?;
+                            let view = ByteView::map_file(decompressed)?;
+                            let archive = match Archive::parse(&view) {
+                                Ok(archive) => archive,
+                                Err(_) => {
+                                    persist_file
+                                        .write_all(MALFORMED_MARKER)
+                                        .context(ObjectErrorKind::Io)?;
+                                    return Ok(final_scope);
+                                }
+                            };
+
+                            if archive.is_multi() {
+                                let object_opt = archive
+                                    .objects()
+                                    .filter_map(Result::ok)
+                                    .find(|object| objects::match_id(&object, &object_id));
+
+                                // If we do not find the desired object in this archive - either
+                                // because we can't parse any of the objects within, or because none
+                                // of the objects match the identifier we're looking for - we return
+                                // early. This will create an empty file, indicating a negative
+                                // cache.
+                                // TODO(markus): Make this more explicit.
+                                let object = match object_opt {
+                                    Some(object) => object,
+                                    None => return Ok(final_scope),
+                                };
+
+                                io::copy(&mut object.data(), &mut persist_file)
+                                    .context(ObjectErrorKind::Io)?;
+                            } else {
+                                // Attempt to parse the object to capture errors. The result can be
+                                // discarded as the object's data is the entire ByteView.
+                                if archive.object_by_index(0).is_err() {
+                                    persist_file
+                                        .write_all(MALFORMED_MARKER)
+                                        .context(ObjectErrorKind::Io)?;
+                                    return Ok(final_scope);
+                                }
+
+                                io::copy(&mut view.as_ref(), &mut persist_file)
+                                    .context(ObjectErrorKind::Io)?;
                             }
 
                             Ok(final_scope)
