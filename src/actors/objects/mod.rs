@@ -38,10 +38,10 @@ pub enum ObjectErrorKind {
     #[fail(display = "unable to get directory for tempfiles")]
     NoTempDir,
 
-    #[fail(display = "failed sending message to actor")]
+    #[fail(display = "failed dispatch internal message")]
     Mailbox,
 
-    #[fail(display = "failed parsing object")]
+    #[fail(display = "failed to parse object")]
     Parsing,
 
     #[fail(display = "mismatching IDs")]
@@ -50,7 +50,7 @@ pub enum ObjectErrorKind {
     #[fail(display = "bad status code")]
     BadStatusCode,
 
-    #[fail(display = "failed sending request to source")]
+    #[fail(display = "failed to send request to source")]
     SendRequest,
 
     #[fail(display = "failed to look into cache")]
@@ -59,7 +59,7 @@ pub enum ObjectErrorKind {
     #[fail(display = "object download took too long")]
     Timeout,
 
-    #[fail(display = "failed fetching data from Sentry")]
+    #[fail(display = "failed to fetch data from Sentry")]
     Sentry,
 }
 
