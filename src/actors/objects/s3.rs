@@ -90,7 +90,7 @@ pub fn prepare_downloads(
 }
 
 pub fn download_from_source(
-    source: &S3SourceConfig,
+    source: Arc<S3SourceConfig>,
     download_path: &DownloadPath,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let key = {

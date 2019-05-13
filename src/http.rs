@@ -8,10 +8,10 @@ use actix_web::{FutureResponse, HttpMessage};
 use futures::future::{Either, Future, IntoFuture};
 
 pub fn follow_redirects(
-    req: ClientRequest,
+    make_request: Box<dyn Fn() -> ClientRequest>,
     max_redirects: usize,
 ) -> FutureResponse<ClientResponse, SendRequestError> {
-    let headers_bak = req.headers().clone();
+    let req = make_request();
     let base = Url::parse(&req.uri().to_string());
 
     Box::new(req.send().and_then(move |response| {
@@ -48,19 +48,16 @@ pub fn follow_redirects(
                 let same_host = target_uri.origin() == base.origin();
 
                 log::trace!("Following redirect: {:?}", &target_uri);
-                let mut builder = ClientRequest::get(&target_uri);
-                for (k, v) in headers_bak {
-                    if let Some(k) = k {
-                        if k == "host" || (!same_host && (k == "authorization" || k == "cookie")) {
-                            log::trace!("Dropping header: {:?}: {:?}", k, v);
-                        } else {
-                            log::trace!("Preserving header: {:?}: {:?}", k, v);
-                            builder.header(k, v);
-                        }
-                    }
-                }
+
                 return Either::A(follow_redirects(
-                    builder.finish().unwrap(),
+                    Box::new(move || {
+                        let mut req = make_request();
+                        if !same_host {
+                            req.headers_mut().remove("authorization");
+                            req.headers_mut().remove("cookie");
+                        }
+                        req
+                    }),
                     max_redirects - 1,
                 ));
             }

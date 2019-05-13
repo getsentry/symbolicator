@@ -524,11 +524,13 @@ fn download_from_source(
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *request {
         FetchFileInner::Sentry(ref source, ref file_id) => {
-            sentry::download_from_source(source, file_id)
+            sentry::download_from_source(source.clone(), file_id)
         }
         FetchFileInner::Http(ref source, ref file_id) => {
-            http::download_from_source(source, file_id)
+            http::download_from_source(source.clone(), file_id)
         }
-        FetchFileInner::S3(ref source, ref file_id) => s3::download_from_source(source, file_id),
+        FetchFileInner::S3(ref source, ref file_id) => {
+            s3::download_from_source(source.clone(), file_id)
+        }
     }
 }

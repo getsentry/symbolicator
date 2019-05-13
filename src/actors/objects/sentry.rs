@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::{client, HttpMessage};
 
@@ -120,7 +121,7 @@ pub fn prepare_downloads(
 }
 
 pub fn download_from_source(
-    source: &SentrySourceConfig,
+    source: Arc<SentrySourceConfig>,
     file_id: &SentryFileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let download_url = {
@@ -135,6 +136,12 @@ pub fn download_from_source(
         client::get(&download_url)
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", token))
+            // This timeout is for the entire HTTP download *including* the response stream
+            // itself, in contrast to what the Actix-Web docs say. We have tested this
+            // manually.
+            //
+            // The intent is to disable the timeout entirely, but there is no API for that.
+            .timeout(Duration::from_secs(9999))
             .finish()
             .unwrap()
             .send()

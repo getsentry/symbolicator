@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::http::header::HeaderName;
 use actix_web::{client, HttpMessage};
@@ -52,7 +53,7 @@ pub fn prepare_downloads(
 }
 
 pub fn download_from_source(
-    source: &HttpSourceConfig,
+    source: Arc<HttpSourceConfig>,
     download_path: &DownloadPath,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     // XXX: Probably should send an error if the URL turns out to be invalid
@@ -64,7 +65,7 @@ pub fn download_from_source(
     log::debug!("Fetching debug file from {}", download_url);
     let response = clone!(download_url, source, || {
         http::follow_redirects(
-            {
+            Box::new(clone!(download_url, source, || {
                 let mut builder = client::get(&download_url);
                 for (key, value) in source.headers.iter() {
                     if let Ok(key) = HeaderName::from_bytes(key.as_bytes()) {
@@ -72,8 +73,14 @@ pub fn download_from_source(
                     }
                 }
                 builder.header("user-agent", USER_AGENT);
+                // This timeout is for the entire HTTP download *including* the response stream
+                // itself, in contrast to what the Actix-Web docs say. We have tested this
+                // manually.
+                //
+                // The intent is to disable the timeout entirely, but there is no API for that.
+                builder.timeout(Duration::from_secs(9999));
                 builder.finish().unwrap()
-            },
+            })),
             10,
         )
     });
