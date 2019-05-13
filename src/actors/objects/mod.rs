@@ -17,7 +17,7 @@ use tempfile::tempfile_in;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::cache::{Cache, CacheKey};
+use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
@@ -254,8 +254,15 @@ impl CacheItemRequest for FetchFileRequest {
                                 .seek(SeekFrom::Start(0))
                                 .context(ObjectErrorKind::Io)?;
                             let view = ByteView::map_file(decompressed)?;
-                            let archive =
-                                Archive::parse(&view).context(ObjectErrorKind::Parsing)?;
+                            let archive = match Archive::parse(&view) {
+                                Ok(archive) => archive,
+                                Err(_) => {
+                                    persist_file
+                                        .write_all(MALFORMED_MARKER)
+                                        .context(ObjectErrorKind::Io)?;
+                                    return Ok(final_scope);
+                                }
+                            };
 
                             if archive.is_multi() {
                                 let object_opt = archive
@@ -277,6 +284,15 @@ impl CacheItemRequest for FetchFileRequest {
                                 io::copy(&mut object.data(), &mut persist_file)
                                     .context(ObjectErrorKind::Io)?;
                             } else {
+                                // Attempt to parse the object to capture errors. The result can be
+                                // discarded as the object's data is the entire ByteView.
+                                if archive.object_by_index(0).is_err() {
+                                    persist_file
+                                        .write_all(MALFORMED_MARKER)
+                                        .context(ObjectErrorKind::Io)?;
+                                    return Ok(final_scope);
+                                }
+
                                 io::copy(&mut view.as_ref(), &mut persist_file)
                                     .context(ObjectErrorKind::Io)?;
                             }
