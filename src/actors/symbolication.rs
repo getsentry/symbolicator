@@ -732,12 +732,7 @@ fn symbolize_thread(
             }
 
             if rv.is_empty() {
-                rv.push(SymbolicatedFrame {
-                    status: FrameStatus::MissingSymbol,
-                    original_index: Some(i),
-                    raw: frame.clone(),
-                    ..Default::default()
-                });
+                return Err(FrameStatus::MissingSymbol);
             }
 
             Ok(rv)
