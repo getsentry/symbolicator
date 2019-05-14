@@ -343,10 +343,14 @@ impl CacheItemRequest for FetchFileRequest {
 /// Handle to local cache file.
 #[derive(Debug, Clone)]
 pub struct ObjectFile {
-    /// The original request. This can be `None` if we
+    /// The original request. This can be `None` if we never decided to actually do a request to a
+    /// bucket (e.g. because there are no sources, or we lack information in the `ObjectId` to
+    /// build filepaths)
     request: Option<FetchFileRequest>,
 
     scope: Scope,
+
+    /// The mmapped object. This can be `None` if we didn't manage to download a file.
     object: Option<ByteView<'static>>,
 }
 
