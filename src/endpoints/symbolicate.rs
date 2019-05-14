@@ -4,11 +4,12 @@ use actix::ResponseFuture;
 use actix_web::{http::Method, Json, Query, State};
 use failure::Error;
 use futures::Future;
+use sentry::configure_scope;
 use serde::Deserialize;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
 use crate::app::{ServiceApp, ServiceState};
-use crate::sentry::SentryFutureExt;
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
 };
@@ -20,6 +21,17 @@ pub struct SymbolicationRequestQueryParams {
     pub timeout: Option<u64>,
     #[serde(default)]
     pub scope: Scope,
+}
+
+impl WriteSentryScope for SymbolicationRequestQueryParams {
+    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+        scope.set_tag("request.scope", &self.scope);
+        if let Some(timeout) = self.timeout {
+            scope.set_tag("request.timeout", timeout);
+        } else {
+            scope.set_tag("request.timeout", "none");
+        }
+    }
 }
 
 /// JSON body of the symbolication request.
@@ -46,6 +58,10 @@ fn symbolicate_frames(
         Some(sources) => Arc::new(sources),
         None => state.config.sources.clone(),
     };
+
+    configure_scope(|scope| {
+        params.write_sentry_scope(scope);
+    });
 
     let message = SymbolicateStacktraces {
         signal: body.signal,
