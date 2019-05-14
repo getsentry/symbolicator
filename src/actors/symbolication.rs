@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::fs::File;
 use std::iter::FromIterator;
-use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,7 +16,6 @@ use symbolic::minidump::processor::{CodeModule, FrameInfoMap, FrameTrust, Proces
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
-use void::Void;
 
 use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheErrorKind, FetchCfiCache};
 use crate::actors::symcaches::{
@@ -37,6 +35,53 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     format: DemangleFormat::Short,
 };
 
+/// Placeholder for future
+/// /// Placeholder for future
+#[derive(Debug, Fail)]
+pub enum InternalError {
+    #[fail(display = "Channel canceled! Race condition or system shutting down.")]
+    CanceledChannel,
+}
+
+/// Errors during symbolication
+#[derive(Debug, Fail)]
+enum SymbolicationError {
+    #[fail(display = "symbolication took too long")]
+    Timeout,
+
+    #[fail(display = "internal IO failed: {}", _0)]
+    Io(#[cause] std::io::Error),
+
+    #[fail(display = "failed to process minidump")]
+    Minidump(#[cause] symbolic::minidump::processor::ProcessMinidumpError),
+}
+
+impl From<std::io::Error> for SymbolicationError {
+    fn from(err: std::io::Error) -> SymbolicationError {
+        SymbolicationError::Io(err)
+    }
+}
+
+impl From<symbolic::minidump::processor::ProcessMinidumpError> for SymbolicationError {
+    fn from(err: symbolic::minidump::processor::ProcessMinidumpError) -> SymbolicationError {
+        SymbolicationError::Minidump(err)
+    }
+}
+
+impl From<&SymbolicationError> for SymbolicationResponse {
+    fn from(err: &SymbolicationError) -> SymbolicationResponse {
+        match *err {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
+                message: err.to_string(),
+            },
+        }
+    }
+}
+
+// We probably want a shared future here because otherwise polling for a response would acquire the
+// global write lock.
 type ComputationChannel<T> = Shared<oneshot::Receiver<T>>;
 
 type ComputationMap<T> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T>>>>;
@@ -70,13 +115,10 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
         channel: ComputationChannel<SymbolicationResponse>,
-    ) -> impl Future<Item = SymbolicationResponse, Error = Void> {
-        let rv =
-            channel
-                .map(|item| (*item).clone())
-                .map_err(|_: SharedError<oneshot::Canceled>| {
-                    panic!("Oneshot channel cancelled! Race condition or system shutting down")
-                });
+    ) -> impl Future<Item = SymbolicationResponse, Error = InternalError> {
+        let rv = channel
+            .map(|item| (*item).clone())
+            .map_err(|_: SharedError<oneshot::Canceled>| InternalError::CanceledChannel);
 
         let requests = &self.requests;
 
@@ -760,7 +802,10 @@ pub struct SymbolicateStacktraces {
 }
 
 impl SymbolicationActor {
-    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
+    pub fn symbolicate_stacktraces(
+        &self,
+        request: SymbolicateStacktraces,
+    ) -> Result<RequestId, InternalError> {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.read().contains_key(&request_id) {
@@ -786,10 +831,11 @@ impl SymbolicationActor {
                 .sentry_hub_new_from_current(),
         );
 
-        let channel = rx.shared();
-        self.requests.write().insert(request_id.clone(), channel);
+        self.requests
+            .write()
+            .insert(request_id.clone(), rx.shared());
 
-        request_id
+        Ok(request_id)
     }
 }
 
@@ -809,7 +855,7 @@ impl SymbolicationActor {
     pub fn get_symbolication_status(
         &self,
         request: GetSymbolicationStatus,
-    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = Void> {
+    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = InternalError> {
         let request_id = request.request_id;
 
         if let Some(channel) = self.requests.read().get(&request_id) {
@@ -851,7 +897,7 @@ struct MinidumpState {
 }
 
 impl SymbolicationActor {
-    pub fn process_minidump(&self, request: ProcessMinidump) -> RequestId {
+    pub fn process_minidump(&self, request: ProcessMinidump) -> Result<RequestId, InternalError> {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.read().contains_key(&request_id) {
@@ -876,10 +922,11 @@ impl SymbolicationActor {
                 }),
         );
 
-        let channel = rx.shared();
-        self.requests.write().insert(request_id.clone(), channel);
+        self.requests
+            .write()
+            .insert(request_id.clone(), rx.shared());
 
-        request_id
+        Ok(request_id)
     }
 }
 
@@ -936,43 +983,6 @@ impl From<&SymCacheError> for ObjectFileStatus {
                 capture_fail(e);
                 ObjectFileStatus::Other
             }
-        }
-    }
-}
-
-/// Errors during symbolication
-#[derive(Debug, Fail)]
-enum SymbolicationError {
-    #[fail(display = "symbolication took too long")]
-    Timeout,
-
-    #[fail(display = "internal IO failed: {}", _0)]
-    Io(#[cause] std::io::Error),
-
-    #[fail(display = "failed to process minidump")]
-    Minidump(#[cause] symbolic::minidump::processor::ProcessMinidumpError),
-}
-
-impl From<std::io::Error> for SymbolicationError {
-    fn from(err: std::io::Error) -> SymbolicationError {
-        SymbolicationError::Io(err)
-    }
-}
-
-impl From<symbolic::minidump::processor::ProcessMinidumpError> for SymbolicationError {
-    fn from(err: symbolic::minidump::processor::ProcessMinidumpError) -> SymbolicationError {
-        SymbolicationError::Minidump(err)
-    }
-}
-
-impl From<&SymbolicationError> for SymbolicationResponse {
-    fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match *err {
-            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
-                message: err.to_string(),
-            },
         }
     }
 }
