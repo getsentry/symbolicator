@@ -2,17 +2,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::fs::File;
 use std::iter::FromIterator;
-use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
+use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
-use symbolic::minidump::processor::{CodeModule, FrameInfoMap, FrameTrust, ProcessState, RegVal};
+use symbolic::minidump::processor::{
+    CodeModule, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
+};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
@@ -27,8 +29,7 @@ use crate::sentry::SentryFutureExt;
 use crate::types::{
     ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, RequestId,
-    Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationError, SymbolicationResponse,
-    SystemInfo,
+    Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -36,18 +37,60 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     format: DemangleFormat::Short,
 };
 
-// Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
-// newtype around it.
-type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
+/// Errors during symbolication
+#[derive(Debug, Fail)]
+pub enum SymbolicationError {
+    #[fail(display = "symbolication took too long")]
+    Timeout,
 
-type ComputationMap<T, E> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T, E>>>>;
+    #[fail(display = "internal IO failed: {}", _0)]
+    Io(#[cause] std::io::Error),
+
+    /// Unclear when this can happen. Potentially when the system is shutting down.
+    #[fail(display = "response channel unexpectedly canceled")]
+    CanceledChannel,
+
+    #[fail(display = "failed to process minidump")]
+    Minidump(#[cause] ProcessMinidumpError),
+}
+
+impl From<std::io::Error> for SymbolicationError {
+    fn from(err: std::io::Error) -> SymbolicationError {
+        SymbolicationError::Io(err)
+    }
+}
+
+impl From<ProcessMinidumpError> for SymbolicationError {
+    fn from(err: ProcessMinidumpError) -> SymbolicationError {
+        SymbolicationError::Minidump(err)
+    }
+}
+
+impl From<&SymbolicationError> for SymbolicationResponse {
+    fn from(err: &SymbolicationError) -> SymbolicationResponse {
+        match *err {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
+                message: err.to_string(),
+            },
+            SymbolicationError::CanceledChannel => SymbolicationResponse::InternalError,
+        }
+    }
+}
+
+// We probably want a shared future here because otherwise polling for a response would acquire the
+// global write lock.
+type ComputationChannel<T> = Shared<oneshot::Receiver<T>>;
+
+type ComputationMap<T> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T>>>>;
 
 #[derive(Clone)]
 pub struct SymbolicationActor {
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests: ComputationMap<CompletedSymbolicationResponse, SymbolicationError>,
+    requests: ComputationMap<SymbolicationResponse>,
 }
 
 impl SymbolicationActor {
@@ -70,18 +113,11 @@ impl SymbolicationActor {
         &self,
         request_id: RequestId,
         timeout: Option<u64>,
-        channel: ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>,
+        channel: ComputationChannel<SymbolicationResponse>,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
-            .map_err(|_: SharedError<oneshot::Canceled>| {
-                panic!("Oneshot channel cancelled! Race condition or system shutting down")
-            })
-            .and_then(|result| (*result).clone())
-            .map(|x| (*x).clone())
-            .map_err(|e| {
-                capture_fail(&*e);
-                SymbolicationError::Mailbox
-            });
+            .map(|item| (*item).clone())
+            .map_err(|_: SharedError<oneshot::Canceled>| SymbolicationError::CanceledChannel);
 
         let requests = &self.requests;
 
@@ -92,11 +128,10 @@ impl SymbolicationActor {
                         match result {
                             Ok(x) => {
                                 requests.write().remove(&request_id);
-                                Ok(SymbolicationResponse::Completed(x))
+                                Ok(x)
                             }
                             Err(e) => {
                                 if let Some(inner) = e.into_inner() {
-                                    requests.write().remove(&request_id);
                                     Err(inner)
                                 } else {
                                     Ok(SymbolicationResponse::Pending {
@@ -113,7 +148,7 @@ impl SymbolicationActor {
         } else {
             Either::B(rv.then(clone!(requests, |result| {
                 requests.write().remove(&request_id);
-                result.map(SymbolicationResponse::Completed)
+                result
             })))
         }
     }
@@ -174,14 +209,13 @@ impl SymbolicationActor {
             sources,
         } = request;
 
-        let byteview = tryf!(ByteView::map_file(file).map_err(|_| SymbolicationError::Minidump));
+        let byteview = tryf!(ByteView::map_file(file));
 
         let cfi_to_fetch = self.threadpool.spawn_handle(
             future::lazy(move || {
                 log::debug!("Processing minidump ({} bytes)", byteview.len());
                 metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
-                let state = ProcessState::from_minidump(&byteview, None)
-                    .map_err(|_| SymbolicationError::Minidump)?;
+                let state = ProcessState::from_minidump(&byteview, None)?;
 
                 let os_name = state.system_info().os_name();
 
@@ -271,8 +305,7 @@ impl SymbolicationActor {
                         }
 
                         let process_state =
-                            ProcessState::from_minidump(&byteview, Some(&frame_info_map))
-                                .map_err(|_| SymbolicationError::Minidump)?;
+                            ProcessState::from_minidump(&byteview, Some(&frame_info_map))?;
 
                         let minidump_system_info = process_state.system_info();
                         let os_name = minidump_system_info.os_name();
@@ -785,8 +818,11 @@ impl SymbolicationActor {
             self.do_symbolicate(request)
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => Ok(Arc::new(x)),
-                        Err(e) => Err(Arc::new(e)),
+                        Ok(x) => SymbolicationResponse::Completed(x),
+                        Err(ref e) => {
+                            capture_fail(e.cause().unwrap_or(e));
+                            e.into()
+                        }
                     })
                     .map_err(|_| ())
                 })
@@ -794,8 +830,9 @@ impl SymbolicationActor {
                 .sentry_hub_new_from_current(),
         );
 
-        let channel = rx.shared();
-        self.requests.write().insert(request_id.clone(), channel);
+        self.requests
+            .write()
+            .insert(request_id.clone(), rx.shared());
 
         Ok(request_id)
     }
@@ -877,15 +914,19 @@ impl SymbolicationActor {
                 .sentry_hub_new_from_current()
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => Ok(Arc::new(x)),
-                        Err(e) => Err(Arc::new(e)),
+                        Ok(x) => SymbolicationResponse::Completed(x),
+                        Err(ref e) => {
+                            capture_fail(e.cause().unwrap_or(e));
+                            e.into()
+                        }
                     })
                     .map_err(|_| ())
                 }),
         );
 
-        let channel = rx.shared();
-        self.requests.write().insert(request_id.clone(), channel);
+        self.requests
+            .write()
+            .insert(request_id.clone(), rx.shared());
 
         Ok(request_id)
     }

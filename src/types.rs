@@ -551,6 +551,11 @@ pub enum SymbolicationResponse {
         retry_after: usize,
     },
     Completed(CompletedSymbolicationResponse),
+    Failed {
+        message: String,
+    },
+    Timeout,
+    InternalError,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -600,22 +605,6 @@ pub struct SystemInfo {
 
     /// OS architecture
     pub cpu_arch: Arch,
-}
-
-/// Errors during symbolication
-#[derive(Debug, Fail)]
-pub enum SymbolicationError {
-    #[fail(display = "failed sending message to symcache actor")]
-    Mailbox,
-
-    #[fail(display = "symbolication took too long")]
-    Timeout,
-
-    #[fail(display = "server panicked (see system log)")]
-    Panic,
-
-    #[fail(display = "failed to process minidump")]
-    Minidump,
 }
 
 /// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot

@@ -13,12 +13,13 @@ use futures::{
     future::{self, IntoFuture},
     Future, Stream,
 };
+use sentry::configure_scope;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::sentry::SentryFutureExt;
+use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{SourceConfig, SymbolicationResponse};
 
 enum MultipartItem {
@@ -111,7 +112,13 @@ fn process_minidump(
     let symbolication = state.symbolication.clone();
     let default_sources = state.config.sources.clone();
 
-    let SymbolicationRequestQueryParams { scope, timeout } = params.into_inner();
+    let params = params.into_inner();
+
+    configure_scope(|scope| {
+        params.write_sentry_scope(scope);
+    });
+
+    let SymbolicationRequestQueryParams { scope, timeout } = params;
 
     let request = request
         .multipart()
