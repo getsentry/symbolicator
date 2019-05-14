@@ -551,7 +551,7 @@ pub enum SymbolicationResponse {
         retry_after: usize,
     },
     Completed(CompletedSymbolicationResponse),
-    MalformedMinidump {
+    Failed {
         message: String,
     },
     Timeout,

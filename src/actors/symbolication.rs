@@ -970,7 +970,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
         match *err {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
             SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::Minidump(err) => SymbolicationResponse::MalformedMinidump {
+            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
         }
