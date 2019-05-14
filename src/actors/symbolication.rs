@@ -29,8 +29,7 @@ use crate::sentry::SentryFutureExt;
 use crate::types::{
     ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, RequestId,
-    Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationError, SymbolicationResponse,
-    SystemInfo,
+    Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -939,6 +938,43 @@ impl From<&SymCacheError> for ObjectFileStatus {
                 capture_fail(e);
                 ObjectFileStatus::Other
             }
+        }
+    }
+}
+
+/// Errors during symbolication
+#[derive(Debug, Fail)]
+enum SymbolicationError {
+    #[fail(display = "symbolication took too long")]
+    Timeout,
+
+    #[fail(display = "internal IO failed: {}", _0)]
+    Io(#[cause] std::io::Error),
+
+    #[fail(display = "failed to process minidump")]
+    Minidump(#[cause] symbolic::minidump::processor::ProcessMinidumpError),
+}
+
+impl From<std::io::Error> for SymbolicationError {
+    fn from(err: std::io::Error) -> SymbolicationError {
+        SymbolicationError::Io(err)
+    }
+}
+
+impl From<symbolic::minidump::processor::ProcessMinidumpError> for SymbolicationError {
+    fn from(err: symbolic::minidump::processor::ProcessMinidumpError) -> SymbolicationError {
+        SymbolicationError::Minidump(err)
+    }
+}
+
+impl From<&SymbolicationError> for SymbolicationResponse {
+    fn from(err: &SymbolicationError) -> SymbolicationResponse {
+        match *err {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Minidump(err) => SymbolicationResponse::MalformedMinidump {
+                message: err.to_string(),
+            },
         }
     }
 }
