@@ -319,7 +319,8 @@ impl SymbolicationActor {
                                 let mut info: CompleteObjectInfo =
                                     object_info_from_minidump_module(&os_name, code_module).into();
                                 info.unwind_status = Some(
-                                    unwind_statuses.get(&code_module.id()?)
+                                    unwind_statuses
+                                        .get(&code_module.id()?)
                                         .cloned()
                                         .unwrap_or(ObjectFileStatus::Unused),
                                 );
@@ -750,10 +751,9 @@ fn symbolize_thread(
                 //
                 // Here, we fix this after the fact. If symbolication failed for a scanned frame
                 // where we *know* we have a debug info, but the lookup inside that file failed.
-                if frame.trust == FrameTrust::Scan && (
-                     status == FrameStatus::MissingSymbol ||
-                     status == FrameStatus::UnknownImage
-                ) {
+                if frame.trust == FrameTrust::Scan
+                    && (status == FrameStatus::MissingSymbol || status == FrameStatus::UnknownImage)
+                {
                     continue;
                 }
 
