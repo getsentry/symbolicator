@@ -46,7 +46,8 @@ pub enum SymbolicationError {
     #[fail(display = "internal IO failed: {}", _0)]
     Io(#[cause] std::io::Error),
 
-    #[fail(display = "channel canceled: race condition or system shutting down.")]
+    /// Unclear when this can happen. Potentially when the system is shutting down.
+    #[fail(display = "response channel unexpectedly canceled")]
     CanceledChannel,
 
     #[fail(display = "failed to process minidump")]
