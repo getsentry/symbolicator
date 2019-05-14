@@ -12,7 +12,9 @@ use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
-use symbolic::minidump::processor::{CodeModule, FrameInfoMap, FrameTrust, ProcessState, RegVal};
+use symbolic::minidump::processor::{
+    CodeModule, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
+};
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
@@ -48,7 +50,7 @@ pub enum SymbolicationError {
     CanceledChannel,
 
     #[fail(display = "failed to process minidump")]
-    Minidump(#[cause] symbolic::minidump::processor::ProcessMinidumpError),
+    Minidump(#[cause] ProcessMinidumpError),
 }
 
 impl From<std::io::Error> for SymbolicationError {
@@ -57,8 +59,8 @@ impl From<std::io::Error> for SymbolicationError {
     }
 }
 
-impl From<symbolic::minidump::processor::ProcessMinidumpError> for SymbolicationError {
-    fn from(err: symbolic::minidump::processor::ProcessMinidumpError) -> SymbolicationError {
+impl From<ProcessMinidumpError> for SymbolicationError {
+    fn from(err: ProcessMinidumpError) -> SymbolicationError {
         SymbolicationError::Minidump(err)
     }
 }
