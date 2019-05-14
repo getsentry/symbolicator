@@ -37,8 +37,6 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     format: DemangleFormat::Short,
 };
 
-// Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
-// newtype around it.
 type ComputationChannel<T> = Shared<oneshot::Receiver<T>>;
 
 type ComputationMap<T> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T>>>>;
