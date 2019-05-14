@@ -459,7 +459,6 @@ fn get_image_type_from_minidump(minidump_os_name: &str) -> &'static str {
 }
 
 fn object_info_from_minidump_module(minidump_os_name: &str, module: &CodeModule) -> RawObjectInfo {
-    // TODO: should we also add `module.id()` somewhere?
     RawObjectInfo {
         ty: ObjectType(get_image_type_from_minidump(minidump_os_name).to_owned()),
         code_id: Some(module.code_identifier()),

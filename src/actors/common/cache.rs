@@ -12,7 +12,7 @@ use sentry::configure_scope;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::cache::{get_scope_path, Cache, CacheKey};
+use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
 
@@ -64,8 +64,16 @@ pub trait CacheItemRequest: 'static + Send {
     type Error: 'static + From<io::Error> + Send;
 
     fn get_cache_key(&self) -> CacheKey;
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>>;
-    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error>;
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>>;
+    fn load(
+        self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Result<Self::Item, Self::Error>;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -103,48 +111,53 @@ impl<T: CacheItemRequest> Cacher<T> {
         .map_err(T::Error::from)
         .into_future();
 
-        let result = file.and_then(clone!(key, |file| {
-            for &scope in &[&key.scope, &Scope::Global] {
-                let path = tryf!(get_scope_path(config.cache_dir(), &scope, &key.cache_key));
+        let result =
+            file.and_then(clone!(key, |file| {
+                for &scope in &[&key.scope, &Scope::Global] {
+                    let path = tryf!(get_scope_path(config.cache_dir(), &scope, &key.cache_key));
 
-                let path = match path {
-                    Some(x) => x,
-                    None => continue,
-                };
+                    let path = match path {
+                        Some(x) => x,
+                        None => continue,
+                    };
 
-                let byteview = match tryf!(config.open_cachefile(&path)) {
-                    Some(x) => x,
-                    None => continue,
-                };
+                    let byteview = match tryf!(config.open_cachefile(&path)) {
+                        Some(x) => x,
+                        None => continue,
+                    };
 
-                // This is also reported for "negative cache hits": When we cached the 404 response from a
-                // server as empty file.
-                metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+                    // This is also reported for "negative cache hits": When we cached the 404 response from a
+                    // server as empty file.
+                    metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
 
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                    "hit" => "true"
-                );
-
-                configure_scope(|scope| {
-                    scope.set_extra(
-                        &format!("cache.{}.cache_path", name),
-                        format!("{:?}", path).into(),
+                    metric!(
+                        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                        "hit" => "true"
                     );
-                });
 
-                log::trace!("Loading {} at path {:?}", name, path);
+                    configure_scope(|scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            format!("{:?}", path).into(),
+                        );
+                    });
 
-                let item = tryf!(request.load(scope.clone(), byteview));
-                return Box::new(Ok(item).into_future());
-            }
+                    log::trace!("Loading {} at path {:?}", name, path);
 
-            // A file was not found. If this spikes, it's possible that the filesystem cache
-            // just got pruned.
-            metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+                    let item = tryf!(request.load(
+                        scope.clone(),
+                        CacheStatus::from_content(&byteview),
+                        byteview
+                    ));
+                    return Box::new(Ok(item).into_future());
+                }
 
-            // XXX: Unsure if we need SyncArbiter here
-            Box::new(request.compute(file.path()).and_then(move |new_scope| {
+                // A file was not found. If this spikes, it's possible that the filesystem cache
+                // just got pruned.
+                metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+
+                // XXX: Unsure if we need SyncArbiter here
+                Box::new(request.compute(file.path()).and_then(move |(status, new_scope)| {
                 let new_cache_path = tryf!(get_scope_path(
                     config.cache_dir(),
                     &new_scope,
@@ -169,15 +182,15 @@ impl<T: CacheItemRequest> Cacher<T> {
                     "hit" => "false"
                 );
 
-                let item = tryf!(request.load(new_scope, byteview));
+                let item = tryf!(request.load(new_scope, status, byteview));
 
                 if let Some(ref cache_path) = new_cache_path {
-                    tryf!(file.persist(cache_path).map_err(|x| x.error));
+                    tryf!(status.persist_item(cache_path, file));
                 }
 
                 Box::new(Ok(item).into_future())
             })) as Box<dyn Future<Item = T::Item, Error = T::Error>>
-        }));
+            }));
 
         let current_computations = &self.current_computations;
 

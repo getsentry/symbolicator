@@ -1,27 +1,22 @@
 /// Core logic for cache files. Used by `crate::actors::common::cache`.
 ///
-/// Terminology:
-/// - positive cache item: A cache item that represents the presence of something. E.g. we
-///   succeeded in downloading an object file and cached that file.
-/// - Negative cache item: A cache item that represents the absence of something. E.g. we encountered a 404 while trying to download a file, and cached that fact. Represented by an empty file.
-///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use failure::Fail;
-
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::ByteView;
+use tempfile::NamedTempFile;
 
 use crate::config::CacheConfig;
 use crate::logging::LogError;
 use crate::types::Scope;
 
-/// Content of symcaches/cficaches whose writing failed.
+/// Content of cache items whose writing failed.
 ///
 /// Items with this value will be considered expired after the next process restart, or will be
 /// pruned once `symbolicator cleanup` runs. Independently of any `max_age` or `max_last_used`.
@@ -29,7 +24,50 @@ use crate::types::Scope;
 /// The malformed state is useful for failed computations that are unlikely to succeed before the
 /// next deploy. For example, symcache writing may fail due to an object file symbolic can't parse
 /// yet.
-pub const MALFORMED_MARKER: &[u8] = b"malformed";
+const MALFORMED_MARKER: &[u8] = b"malformed";
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CacheStatus {
+    /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
+    /// object file and cached that file.
+    Positive,
+    /// A cache item that represents the absence of something. E.g. we encountered a 404 while
+    /// trying to download a file, and cached that fact. Represented by an empty file.
+    Negative,
+    /// We are unable to create or use the cache item. E.g. we failed to create a symcache. See
+    /// docs for `MALFORMED_MARKER`.
+    Malformed,
+}
+
+impl CacheStatus {
+    pub fn from_content(s: &[u8]) -> CacheStatus {
+        println!("len {}", s.len());
+        if s == MALFORMED_MARKER {
+            CacheStatus::Malformed
+        } else if s.is_empty() {
+            CacheStatus::Negative
+        } else {
+            CacheStatus::Positive
+        }
+    }
+
+    pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
+        match self {
+            CacheStatus::Positive => {
+                file.persist(path).map_err(|x| x.error)?;
+            }
+            CacheStatus::Negative => {
+                File::create(path)?;
+            }
+            CacheStatus::Malformed => {
+                let mut f = File::create(path)?;
+                f.write_all(MALFORMED_MARKER)?;
+            }
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug, Fail, derive_more::From)]
 pub enum CleanupError {
