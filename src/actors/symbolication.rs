@@ -35,22 +35,17 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     format: DemangleFormat::Short,
 };
 
-/// Placeholder for future
-/// /// Placeholder for future
-#[derive(Debug, Fail)]
-pub enum InternalError {
-    #[fail(display = "Channel canceled! Race condition or system shutting down.")]
-    CanceledChannel,
-}
-
 /// Errors during symbolication
 #[derive(Debug, Fail)]
-enum SymbolicationError {
+pub enum SymbolicationError {
     #[fail(display = "symbolication took too long")]
     Timeout,
 
     #[fail(display = "internal IO failed: {}", _0)]
     Io(#[cause] std::io::Error),
+
+    #[fail(display = "Channel canceled! Race condition or system shutting down.")]
+    CanceledChannel,
 
     #[fail(display = "failed to process minidump")]
     Minidump(#[cause] symbolic::minidump::processor::ProcessMinidumpError),
@@ -76,6 +71,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
             SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
+            SymbolicationError::CanceledChannel => SymbolicationResponse::InternalError,
         }
     }
 }
@@ -115,10 +111,10 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
         channel: ComputationChannel<SymbolicationResponse>,
-    ) -> impl Future<Item = SymbolicationResponse, Error = InternalError> {
+    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_: SharedError<oneshot::Canceled>| InternalError::CanceledChannel);
+            .map_err(|_: SharedError<oneshot::Canceled>| SymbolicationError::CanceledChannel);
 
         let requests = &self.requests;
 
@@ -805,7 +801,7 @@ impl SymbolicationActor {
     pub fn symbolicate_stacktraces(
         &self,
         request: SymbolicateStacktraces,
-    ) -> Result<RequestId, InternalError> {
+    ) -> Result<RequestId, SymbolicationError> {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.read().contains_key(&request_id) {
@@ -855,7 +851,7 @@ impl SymbolicationActor {
     pub fn get_symbolication_status(
         &self,
         request: GetSymbolicationStatus,
-    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = InternalError> {
+    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = SymbolicationError> {
         let request_id = request.request_id;
 
         if let Some(channel) = self.requests.read().get(&request_id) {
@@ -897,7 +893,10 @@ struct MinidumpState {
 }
 
 impl SymbolicationActor {
-    pub fn process_minidump(&self, request: ProcessMinidump) -> Result<RequestId, InternalError> {
+    pub fn process_minidump(
+        &self,
+        request: ProcessMinidump,
+    ) -> Result<RequestId, SymbolicationError> {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.read().contains_key(&request_id) {
