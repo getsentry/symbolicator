@@ -145,10 +145,8 @@ fn process_minidump(
             _ => Err(error::ErrorBadRequest("missing formdata fields")),
         });
 
-    let request_id = request.and_then(clone!(symbolication, |request| {
-        symbolication
-            .process_minidump(request)
-            .map_err(error::ErrorInternalServerError)
+    let request_id = request.map(clone!(symbolication, |request| {
+        symbolication.process_minidump(request)
     }));
 
     let response = request_id

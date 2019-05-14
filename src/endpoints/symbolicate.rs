@@ -55,7 +55,7 @@ fn symbolicate_frames(
         scope: params.scope,
     };
 
-    let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
+    let request_id = state.symbolication.symbolicate_stacktraces(message);
 
     let timeout = params.timeout;
     let response = state

@@ -768,10 +768,7 @@ pub struct SymbolicateStacktraces {
 }
 
 impl SymbolicationActor {
-    pub fn symbolicate_stacktraces(
-        &self,
-        request: SymbolicateStacktraces,
-    ) -> Result<RequestId, SymbolicationError> {
+    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.read().contains_key(&request_id) {
@@ -797,7 +794,7 @@ impl SymbolicationActor {
         let channel = rx.shared();
         self.requests.write().insert(request_id.clone(), channel);
 
-        Ok(request_id)
+        request_id
     }
 }
 
@@ -859,10 +856,7 @@ struct MinidumpState {
 }
 
 impl SymbolicationActor {
-    pub fn process_minidump(
-        &self,
-        request: ProcessMinidump,
-    ) -> Result<RequestId, SymbolicationError> {
+    pub fn process_minidump(&self, request: ProcessMinidump) -> RequestId {
         let request_id = loop {
             let request_id = RequestId(uuid::Uuid::new_v4().to_string());
             if !self.requests.read().contains_key(&request_id) {
@@ -887,7 +881,7 @@ impl SymbolicationActor {
         let channel = rx.shared();
         self.requests.write().insert(request_id.clone(), channel);
 
-        Ok(request_id)
+        request_id
     }
 }
 
