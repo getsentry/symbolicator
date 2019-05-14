@@ -13,7 +13,7 @@ RUN mkdir -p src \
     && cargo build --release --locked
 
 COPY . .
-RUN cargo build --release --locked
+RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
 # Copy the compiled binary to a clean image
