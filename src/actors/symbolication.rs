@@ -750,7 +750,10 @@ fn symbolize_thread(
                 //
                 // Here, we fix this after the fact. If symbolication failed for a scanned frame
                 // where we *know* we have a debug info, but the lookup inside that file failed.
-                if frame.trust == FrameTrust::Scan && status == FrameStatus::MissingSymbol {
+                if frame.trust == FrameTrust::Scan && (
+                     status == FrameStatus::MissingSymbol ||
+                     status == FrameStatus::UnknownImage
+                ) {
                     continue;
                 }
 
