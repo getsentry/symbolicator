@@ -315,17 +315,15 @@ impl SymbolicationActor {
                         let modules = process_state
                             .modules()
                             .into_iter()
-                            .map(|code_module| {
+                            .filter_map(|code_module| {
                                 let mut info: CompleteObjectInfo =
                                     object_info_from_minidump_module(&os_name, code_module).into();
                                 info.unwind_status = Some(
-                                    code_module
-                                        .id()
-                                        .and_then(|id| unwind_statuses.get(&id))
+                                    unwind_statuses.get(&code_module.id()?)
                                         .cloned()
                                         .unwrap_or(ObjectFileStatus::Unused),
                                 );
-                                info
+                                Some(info)
                             })
                             .collect();
 
