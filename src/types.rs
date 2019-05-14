@@ -551,6 +551,11 @@ pub enum SymbolicationResponse {
         retry_after: usize,
     },
     Completed(CompletedSymbolicationResponse),
+    MalformedMinidump {
+        message: String,
+    },
+    Timeout,
+    InternalError,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -605,17 +610,38 @@ pub struct SystemInfo {
 /// Errors during symbolication
 #[derive(Debug, Fail)]
 pub enum SymbolicationError {
-    #[fail(display = "failed sending message to symcache actor")]
-    Mailbox,
-
     #[fail(display = "symbolication took too long")]
     Timeout,
 
-    #[fail(display = "server panicked (see system log)")]
-    Panic,
+    #[fail(display = "internal IO failed: {}", _0)]
+    Io(#[cause] std::io::Error),
 
     #[fail(display = "failed to process minidump")]
-    Minidump,
+    Minidump(#[cause] symbolic::minidump::processor::ProcessMinidumpError),
+}
+
+impl From<std::io::Error> for SymbolicationError {
+    fn from(err: std::io::Error) -> SymbolicationError {
+        SymbolicationError::Io(err)
+    }
+}
+
+impl From<symbolic::minidump::processor::ProcessMinidumpError> for SymbolicationError {
+    fn from(err: symbolic::minidump::processor::ProcessMinidumpError) -> SymbolicationError {
+        SymbolicationError::Minidump(err)
+    }
+}
+
+impl From<&SymbolicationError> for SymbolicationResponse {
+    fn from(err: &SymbolicationError) -> SymbolicationResponse {
+        match *err {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Minidump(err) => SymbolicationResponse::MalformedMinidump {
+                message: err.to_string(),
+            },
+        }
+    }
 }
 
 /// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot

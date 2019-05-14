@@ -6,6 +6,7 @@ use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
+use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
@@ -16,6 +17,7 @@ use symbolic::minidump::processor::{CodeModule, FrameInfoMap, FrameTrust, Proces
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
+use void::Void;
 
 use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheErrorKind, FetchCfiCache};
 use crate::actors::symcaches::{
@@ -38,16 +40,16 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
-type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
+type ComputationChannel<T> = Shared<oneshot::Receiver<T>>;
 
-type ComputationMap<T, E> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T, E>>>>;
+type ComputationMap<T> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T>>>>;
 
 #[derive(Clone)]
 pub struct SymbolicationActor {
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests: ComputationMap<CompletedSymbolicationResponse, SymbolicationError>,
+    requests: ComputationMap<SymbolicationResponse>,
 }
 
 impl SymbolicationActor {
@@ -70,18 +72,14 @@ impl SymbolicationActor {
         &self,
         request_id: RequestId,
         timeout: Option<u64>,
-        channel: ComputationChannel<CompletedSymbolicationResponse, SymbolicationError>,
-    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let rv = channel
-            .map_err(|_: SharedError<oneshot::Canceled>| {
-                panic!("Oneshot channel cancelled! Race condition or system shutting down")
-            })
-            .and_then(|result| (*result).clone())
-            .map(|x| (*x).clone())
-            .map_err(|e| {
-                capture_fail(&*e);
-                SymbolicationError::Mailbox
-            });
+        channel: ComputationChannel<SymbolicationResponse>,
+    ) -> impl Future<Item = SymbolicationResponse, Error = Void> {
+        let rv =
+            channel
+                .map(|item| (*item).clone())
+                .map_err(|_: SharedError<oneshot::Canceled>| {
+                    panic!("Oneshot channel cancelled! Race condition or system shutting down")
+                });
 
         let requests = &self.requests;
 
@@ -92,11 +90,10 @@ impl SymbolicationActor {
                         match result {
                             Ok(x) => {
                                 requests.write().remove(&request_id);
-                                Ok(SymbolicationResponse::Completed(x))
+                                Ok(x)
                             }
                             Err(e) => {
                                 if let Some(inner) = e.into_inner() {
-                                    requests.write().remove(&request_id);
                                     Err(inner)
                                 } else {
                                     Ok(SymbolicationResponse::Pending {
@@ -113,7 +110,7 @@ impl SymbolicationActor {
         } else {
             Either::B(rv.then(clone!(requests, |result| {
                 requests.write().remove(&request_id);
-                result.map(SymbolicationResponse::Completed)
+                result
             })))
         }
     }
@@ -174,14 +171,13 @@ impl SymbolicationActor {
             sources,
         } = request;
 
-        let byteview = tryf!(ByteView::map_file(file).map_err(|_| SymbolicationError::Minidump));
+        let byteview = tryf!(ByteView::map_file(file));
 
         let cfi_to_fetch = self.threadpool.spawn_handle(
             future::lazy(move || {
                 log::debug!("Processing minidump ({} bytes)", byteview.len());
                 metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
-                let state = ProcessState::from_minidump(&byteview, None)
-                    .map_err(|_| SymbolicationError::Minidump)?;
+                let state = ProcessState::from_minidump(&byteview, None)?;
 
                 let os_name = state.system_info().os_name();
 
@@ -271,8 +267,7 @@ impl SymbolicationActor {
                         }
 
                         let process_state =
-                            ProcessState::from_minidump(&byteview, Some(&frame_info_map))
-                                .map_err(|_| SymbolicationError::Minidump)?;
+                            ProcessState::from_minidump(&byteview, Some(&frame_info_map))?;
 
                         let minidump_system_info = process_state.system_info();
                         let os_name = minidump_system_info.os_name();
@@ -782,8 +777,11 @@ impl SymbolicationActor {
             self.do_symbolicate(request)
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => Ok(Arc::new(x)),
-                        Err(e) => Err(Arc::new(e)),
+                        Ok(x) => SymbolicationResponse::Completed(x),
+                        Err(ref e) => {
+                            capture_fail(e.cause().unwrap_or(e));
+                            e.into()
+                        }
                     })
                     .map_err(|_| ())
                 })
@@ -814,7 +812,7 @@ impl SymbolicationActor {
     pub fn get_symbolication_status(
         &self,
         request: GetSymbolicationStatus,
-    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = SymbolicationError> {
+    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = Void> {
         let request_id = request.request_id;
 
         if let Some(channel) = self.requests.read().get(&request_id) {
@@ -871,8 +869,11 @@ impl SymbolicationActor {
                 .sentry_hub_new_from_current()
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => Ok(Arc::new(x)),
-                        Err(e) => Err(Arc::new(e)),
+                        Ok(x) => SymbolicationResponse::Completed(x),
+                        Err(ref e) => {
+                            capture_fail(e.cause().unwrap_or(e));
+                            e.into()
+                        }
                     })
                     .map_err(|_| ())
                 }),
