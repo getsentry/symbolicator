@@ -209,10 +209,9 @@ impl SymbolicationActor {
             sources,
         } = request;
 
-        let byteview = tryf!(ByteView::map_file(file));
-
         let cfi_to_fetch = self.threadpool.spawn_handle(
             future::lazy(move || {
+                let byteview = ByteView::map_file(file)?;
                 log::debug!("Processing minidump ({} bytes)", byteview.len());
                 metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
                 let state = ProcessState::from_minidump(&byteview, None)?;
