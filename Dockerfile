@@ -10,7 +10,7 @@ RUN apt-get update \
 ADD Cargo.toml Cargo.lock ./
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
-    && cargo build --release --locked
+    && RUSTFLAGS=-g cargo build --release --locked
 
 COPY . .
 RUN RUSTFLAGS=-g cargo build --release --locked
