@@ -41,7 +41,6 @@ pub enum CacheStatus {
 
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
-        println!("len {}", s.len());
         if s == MALFORMED_MARKER {
             CacheStatus::Malformed
         } else if s.is_empty() {
