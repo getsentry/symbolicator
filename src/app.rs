@@ -161,9 +161,9 @@ fn cleanup_caches(config: Config) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Starts all actors and HTTP server based on loaded config.
-fn run_server(config: Config) -> Result<(), CliError> {
+fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
     let config = Arc::new(config);
+
     if let Some(ref statsd) = config.metrics.statsd {
         metrics::configure_statsd(&config.metrics.prefix, statsd);
     }
@@ -202,6 +202,18 @@ fn run_server(config: Config) -> Result<(), CliError> {
         config: config.clone(),
     };
 
+    (sys, state)
+}
+
+#[cfg(test)]
+pub(crate) fn get_test_system() -> (actix::SystemRunner, ServiceState) {
+    get_system(Default::default())
+}
+
+/// Starts all actors and HTTP server based on loaded config.
+fn run_server(config: Config) -> Result<(), CliError> {
+    let (sys, state) = get_system(config);
+
     fn get_app(state: ServiceState) -> ServiceApp {
         let mut app = App::with_state(state)
             .middleware(Metrics)
@@ -216,11 +228,11 @@ fn run_server(config: Config) -> Result<(), CliError> {
         app
     }
 
-    server::new(move || get_app(state.clone()))
-        .bind(&config.bind)?
+    server::new(clone!(state, || get_app(state.clone())))
+        .bind(&state.config.bind)?
         .start();
 
-    log::info!("Started http server: {}", config.bind);
+    log::info!("Started http server: {}", state.config.bind);
     let _ = sys.run();
     Ok(())
 }

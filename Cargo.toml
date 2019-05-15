@@ -45,3 +45,6 @@ flate2 = "1.0.7"
 glob = "0.3.0"
 itertools = "0.8.0"
 tokio-retry = "0.2.0"
+
+[dev-dependencies]
+insta = "0.8.1"

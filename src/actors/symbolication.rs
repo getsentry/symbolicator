@@ -872,6 +872,7 @@ impl SymbolicationActor {
 
 /// A request for a minidump to be stackwalked and symbolicated. Internally this will basically be
 /// converted into a `SymbolicateStacktraces`
+#[derive(Debug)]
 pub struct ProcessMinidump {
     /// The scope of this request which determines access to cached files.
     pub scope: Scope,
@@ -985,4 +986,48 @@ impl From<&SymCacheError> for ObjectFileStatus {
             }
         }
     }
+}
+
+#[cfg(test)]
+fn stackwalk_minidump(path: &str) -> Result<(), failure::Error> {
+    use crate::app::get_test_system;
+
+    let request = ProcessMinidump {
+        file: File::open(path)?,
+        scope: Scope::Global,
+        sources: Arc::new(vec![]),
+    };
+
+    let (mut sys, state) = get_test_system();
+
+    let request_id = state.symbolication.process_minidump(request)?;
+
+    let response = sys
+        .block_on(
+            state
+                .symbolication
+                .get_symbolication_status(GetSymbolicationStatus {
+                    request_id,
+                    timeout: None,
+                }),
+        )?
+        .unwrap();
+
+    insta::assert_yaml_snapshot_matches!(response);
+    Ok(())
+}
+
+#[test]
+fn test_minidump_windows() -> Result<(), failure::Error> {
+    stackwalk_minidump("./tests/fixtures/windows.dmp")
+}
+
+#[test]
+fn test_minidump_macos() -> Result<(), failure::Error> {
+    stackwalk_minidump("./tests/fixtures/macos.dmp")
+}
+
+#[test]
+fn test_minidump_linux() -> Result<(), failure::Error> {
+    stackwalk_minidump("./tests/fixtures/linux.dmp")
 }
