@@ -749,8 +749,14 @@ fn symbolize_thread(
                 // without function records. This breaks its original heuristic, since it would now
                 // *always* skip scan frames. Our patch in breakpad omits this check.
                 //
-                // Here, we fix this after the fact. If symbolication failed for a scanned frame
-                // where we *know* we have a debug info, but the lookup inside that file failed.
+                // Here, we fix this after the fact.
+                //
+                // - MissingSymbol: If symbolication failed for a scanned frame where we *know* we
+                //   have a debug info, but the lookup inside that file failed.
+                // - UnknownImage: If symbolication failed because the stackscanner found an
+                //   instruction_addr that is not in any image *we* consider valid. We discard
+                //   images which do not have a debug id, while the stackscanner considers them
+                //   perfectly fine.
                 if frame.trust == FrameTrust::Scan
                     && (status == FrameStatus::MissingSymbol || status == FrameStatus::UnknownImage)
                 {
