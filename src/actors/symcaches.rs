@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,7 +14,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
-use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
+use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
@@ -69,26 +69,22 @@ impl SymCacheActor {
 
 #[derive(Clone)]
 pub struct SymCacheFile {
-    inner: Option<ByteView<'static>>,
+    data: ByteView<'static>,
     scope: Scope,
     request: FetchSymCacheInternal,
+    status: CacheStatus,
     arch: Arch,
 }
 
 impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        let bytes = match self.inner {
-            Some(ref x) => x,
-            None => return Ok(None),
-        };
-
-        if &bytes[..] == MALFORMED_MARKER {
-            return Err(SymCacheErrorKind::ObjectParsing.into());
+        match self.status {
+            CacheStatus::Negative => Ok(None),
+            CacheStatus::Malformed => Err(SymCacheErrorKind::ObjectParsing.into()),
+            CacheStatus::Positive => Ok(Some(
+                SymCache::parse(&self.data).context(SymCacheErrorKind::Parsing)?,
+            )),
         }
-
-        Ok(Some(
-            SymCache::parse(bytes).context(SymCacheErrorKind::Parsing)?,
-        ))
     }
 
     /// Returns the architecture of this symcache.
@@ -115,14 +111,15 @@ impl CacheItemRequest for FetchSymCacheInternal {
         }
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
         let objects = self.objects.clone();
 
         let path = path.to_owned();
         let threadpool = self.threadpool.clone();
 
-        // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
-        // in Sentry itself?
         let result = objects
             .fetch(FetchObject {
                 filetypes: FileType::from_object_type(&self.request.object_type),
@@ -135,18 +132,20 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .and_then(move |object| {
                 threadpool.spawn_handle(
                     futures::lazy(move || {
-                        if let Err(e) = write_symcache(&path, &*object) {
+                        if object.status() != CacheStatus::Positive {
+                            return Ok((object.status(), object.scope().clone()));
+                        }
+
+                        let status = if let Err(e) = write_symcache(&path, &*object) {
                             log::warn!("Failed to write symcache: {}", e);
                             capture_fail(e.cause().unwrap_or(&e));
 
-                            let mut file = File::create(&path).context(SymCacheErrorKind::Io)?;
-                            file.write_all(MALFORMED_MARKER)
-                                .context(SymCacheErrorKind::Io)?;
+                            CacheStatus::Malformed
+                        } else {
+                            CacheStatus::Positive
+                        };
 
-                            file.sync_all().context(SymCacheErrorKind::Io)?;
-                        }
-
-                        Ok(object.scope().clone())
+                        Ok((status, object.scope().clone()))
                     })
                     .sentry_hub_current(),
                 )
@@ -163,7 +162,12 @@ impl CacheItemRequest for FetchSymCacheInternal {
         ))
     }
 
-    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+    fn load(
+        self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Result<Self::Item, Self::Error> {
         // TODO: Figure out if this double-parsing could be avoided
         let arch = SymCache::parse(&data)
             .map(|cache| cache.arch())
@@ -171,8 +175,9 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         Ok(SymCacheFile {
             request: self,
+            status,
             scope,
-            inner: if !data.is_empty() { Some(data) } else { None },
+            data,
             arch,
         })
     }
@@ -206,11 +211,10 @@ fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError>
         object.write_sentry_scope(scope);
     });
 
-    let object_opt = object.parse().context(SymCacheErrorKind::ObjectParsing)?;
-    let symbolic_object = match object_opt {
-        Some(object) => object,
-        None => return Ok(()),
-    };
+    let symbolic_object = object
+        .parse()
+        .context(SymCacheErrorKind::ObjectParsing)?
+        .unwrap();
 
     let file = File::create(&path).context(SymCacheErrorKind::Io)?;
     let mut writer = BufWriter::new(file);

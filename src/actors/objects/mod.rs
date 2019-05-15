@@ -17,7 +17,7 @@ use tempfile::tempfile_in;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
+use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
@@ -135,7 +135,10 @@ impl CacheItemRequest for FetchFileRequest {
         }
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
         let request = download_from_source(&self.request);
         let path = path.to_owned();
         let request_scope = self.scope.clone();
@@ -257,10 +260,7 @@ impl CacheItemRequest for FetchFileRequest {
                             let archive = match Archive::parse(&view) {
                                 Ok(archive) => archive,
                                 Err(_) => {
-                                    persist_file
-                                        .write_all(MALFORMED_MARKER)
-                                        .context(ObjectErrorKind::Io)?;
-                                    return Ok(final_scope);
+                                    return Ok((CacheStatus::Malformed, final_scope));
                                 }
                             };
 
@@ -273,12 +273,10 @@ impl CacheItemRequest for FetchFileRequest {
                                 // If we do not find the desired object in this archive - either
                                 // because we can't parse any of the objects within, or because none
                                 // of the objects match the identifier we're looking for - we return
-                                // early. This will create an empty file, indicating a negative
-                                // cache.
-                                // TODO(markus): Make this more explicit.
+                                // early.
                                 let object = match object_opt {
                                     Some(object) => object,
-                                    None => return Ok(final_scope),
+                                    None => return Ok((CacheStatus::Negative, final_scope)),
                                 };
 
                                 io::copy(&mut object.data(), &mut persist_file)
@@ -287,24 +285,22 @@ impl CacheItemRequest for FetchFileRequest {
                                 // Attempt to parse the object to capture errors. The result can be
                                 // discarded as the object's data is the entire ByteView.
                                 if archive.object_by_index(0).is_err() {
-                                    persist_file
-                                        .write_all(MALFORMED_MARKER)
-                                        .context(ObjectErrorKind::Io)?;
-                                    return Ok(final_scope);
+                                    return Ok((CacheStatus::Malformed, final_scope));
                                 }
 
                                 io::copy(&mut view.as_ref(), &mut persist_file)
                                     .context(ObjectErrorKind::Io)?;
                             }
 
-                            Ok(final_scope)
+                            Ok((CacheStatus::Positive, final_scope))
                         }))
                     }));
 
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
             } else {
                 log::debug!("No debug file found for {}", cache_key);
-                Box::new(Ok(final_scope).into_future()) as Box<dyn Future<Item = _, Error = _>>
+                Box::new(Ok((CacheStatus::Negative, final_scope)).into_future())
+                    as Box<dyn Future<Item = _, Error = _>>
             }
         });
 
@@ -325,11 +321,17 @@ impl CacheItemRequest for FetchFileRequest {
         ))
     }
 
-    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+    fn load(
+        self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Result<Self::Item, Self::Error> {
         let rv = ObjectFile {
             request: Some(self),
+            status,
             scope,
-            object: if data.is_empty() { None } else { Some(data) },
+            data: Some(data),
         };
 
         configure_scope(|scope| {
@@ -343,35 +345,47 @@ impl CacheItemRequest for FetchFileRequest {
 /// Handle to local cache file.
 #[derive(Debug, Clone)]
 pub struct ObjectFile {
-    /// The original request. This can be `None` if we
+    /// The original request. This can be `None` if we never decided to actually do a request to a
+    /// bucket (e.g. because there are no sources, or we lack information in the `ObjectId` to
+    /// build filepaths)
     request: Option<FetchFileRequest>,
 
     scope: Scope,
-    object: Option<ByteView<'static>>,
+
+    /// The mmapped object.
+    data: Option<ByteView<'static>>,
+    status: CacheStatus,
 }
 
 pub struct ObjectFileBytes(pub Arc<ObjectFile>);
 
 impl AsRef<[u8]> for ObjectFileBytes {
     fn as_ref(&self) -> &[u8] {
-        self.0.object.as_ref().map_or(&[][..], |x| &x[..])
+        self.0.data.as_ref().map_or(&[][..], |x| &x[..])
     }
 }
 
 impl ObjectFile {
     pub fn len(&self) -> u64 {
-        self.object.as_ref().map_or(0, |x| x.len() as u64)
+        self.data.as_ref().map_or(0, |x| x.len() as u64)
     }
 
     pub fn has_object(&self) -> bool {
-        self.object.is_some()
+        self.status == CacheStatus::Positive
     }
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        Ok(match self.object {
-            Some(ref data) => Some(Object::parse(&data).context(ObjectErrorKind::Parsing)?),
-            None => None,
-        })
+        match self.status {
+            CacheStatus::Positive => Ok(Some(
+                Object::parse(&self.data.as_ref().unwrap()).context(ObjectErrorKind::Parsing)?,
+            )),
+            CacheStatus::Negative => Ok(None),
+            CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
+        }
+    }
+
+    pub fn status(&self) -> CacheStatus {
+        self.status
     }
 
     pub fn scope(&self) -> &Scope {
@@ -392,7 +406,7 @@ impl WriteSentryScope for ObjectFile {
             request.request.write_sentry_scope(scope);
         }
 
-        if let Some(ref data) = self.object {
+        if let Some(ref data) = self.data {
             scope.set_extra(
                 "object_file.first_16_bytes",
                 format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
@@ -488,7 +502,8 @@ impl ObjectsActor {
                     Ok(Arc::new(ObjectFile {
                         request: None,
                         scope,
-                        object: None,
+                        data: None,
+                        status: CacheStatus::Negative,
                     }))
                 })
         })

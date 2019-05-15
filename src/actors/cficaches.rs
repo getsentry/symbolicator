@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +13,7 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
-use crate::cache::{Cache, CacheKey, MALFORMED_MARKER};
+use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 
@@ -68,26 +68,22 @@ impl CfiCacheActor {
 
 #[derive(Clone)]
 pub struct CfiCacheFile {
-    inner: Option<ByteView<'static>>,
+    data: ByteView<'static>,
+    status: CacheStatus,
     scope: Scope,
     request: FetchCfiCacheInternal,
 }
 
 impl CfiCacheFile {
     pub fn parse(&self) -> Result<Option<minidump::cfi::CfiCache<'_>>, CfiCacheError> {
-        let bytes = match self.inner {
-            Some(ref x) => x,
-            None => return Ok(None),
-        };
-
-        if &bytes[..] == MALFORMED_MARKER {
-            return Err(CfiCacheErrorKind::ObjectParsing.into());
+        match self.status {
+            CacheStatus::Negative => Ok(None),
+            CacheStatus::Malformed => Err(CfiCacheErrorKind::ObjectParsing.into()),
+            CacheStatus::Positive => Ok(Some(
+                minidump::cfi::CfiCache::from_bytes(self.data.clone())
+                    .context(CfiCacheErrorKind::Parsing)?,
+            )),
         }
-
-        Ok(Some(
-            minidump::cfi::CfiCache::from_bytes(bytes.clone())
-                .context(CfiCacheErrorKind::Parsing)?,
-        ))
     }
 }
 
@@ -109,14 +105,15 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         }
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = Scope, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
         let objects = self.objects.clone();
 
         let path = path.to_owned();
         let threadpool = self.threadpool.clone();
 
-        // TODO: Backoff + retry when download is interrupted? Or should we just have retry logic
-        // in Sentry itself?
         let result = objects
             .fetch(FetchObject {
                 filetypes: FileType::from_object_type(&self.request.object_type),
@@ -129,18 +126,20 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .and_then(move |object| {
                 threadpool.spawn_handle(
                     futures::lazy(move || {
-                        if let Err(e) = write_cficache(&path, &*object) {
+                        if object.status() != CacheStatus::Positive {
+                            return Ok((object.status(), object.scope().clone()));
+                        }
+
+                        let status = if let Err(e) = write_cficache(&path, &*object) {
                             log::warn!("Could not write cficache: {}", e);
                             capture_fail(e.cause().unwrap_or(&e));
 
-                            let mut file = File::create(&path).context(CfiCacheErrorKind::Io)?;
-                            file.write_all(MALFORMED_MARKER)
-                                .context(CfiCacheErrorKind::Io)?;
+                            CacheStatus::Malformed
+                        } else {
+                            CacheStatus::Positive
+                        };
 
-                            file.sync_all().context(CfiCacheErrorKind::Io)?;
-                        }
-
-                        Ok(object.scope().clone())
+                        Ok((status, object.scope().clone()))
                     })
                     .sentry_hub_current(),
                 )
@@ -157,11 +156,17 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         ))
     }
 
-    fn load(self, scope: Scope, data: ByteView<'static>) -> Result<Self::Item, Self::Error> {
+    fn load(
+        self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Result<Self::Item, Self::Error> {
         Ok(CfiCacheFile {
             request: self,
+            status,
             scope,
-            inner: if !data.is_empty() { Some(data) } else { None },
+            data,
         })
     }
 }
@@ -194,23 +199,22 @@ fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheE
         object_file.write_sentry_scope(scope);
     });
 
-    let object_opt = object_file
+    let object = object_file
         .parse()
-        .context(CfiCacheErrorKind::ObjectParsing)?;
+        .context(CfiCacheErrorKind::ObjectParsing)?
+        .unwrap();
 
-    if let Some(object) = object_opt {
-        let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
-        let writer = BufWriter::new(file);
+    let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
+    let writer = BufWriter::new(file);
 
-        if let Some(cache_key) = object_file.cache_key() {
-            log::debug!("Converting cficache for {}", cache_key);
-        }
-
-        minidump::cfi::CfiCache::from_object(&object)
-            .context(CfiCacheErrorKind::ObjectParsing)?
-            .write_to(writer)
-            .context(CfiCacheErrorKind::Io)?;
+    if let Some(cache_key) = object_file.cache_key() {
+        log::debug!("Converting cficache for {}", cache_key);
     }
+
+    minidump::cfi::CfiCache::from_object(&object)
+        .context(CfiCacheErrorKind::ObjectParsing)?
+        .write_to(writer)
+        .context(CfiCacheErrorKind::Io)?;
 
     Ok(())
 }
