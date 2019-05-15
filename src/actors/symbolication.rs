@@ -821,7 +821,7 @@ impl SymbolicationActor {
             self.do_symbolicate(request)
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => SymbolicationResponse::Completed(x),
+                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
                         Err(ref e) => {
                             capture_fail(e.cause().unwrap_or(e));
                             e.into()
@@ -919,7 +919,7 @@ impl SymbolicationActor {
                 .sentry_hub_new_from_current()
                 .then(move |result| {
                     tx.send(match result {
-                        Ok(x) => SymbolicationResponse::Completed(x),
+                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
                         Err(ref e) => {
                             capture_fail(e.cause().unwrap_or(e));
                             e.into()

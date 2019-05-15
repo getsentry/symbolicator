@@ -2,6 +2,7 @@ import json
 
 MINIDUMP_SUCCESS = {
     "status": "completed",
+    "timestamp": 1521713273,
     "system_info": {
         "os_name": "Windows NT",
         "os_version": "10.0.14393",

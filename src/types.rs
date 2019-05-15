@@ -550,7 +550,7 @@ pub enum SymbolicationResponse {
         /// An indication when the next poll would be suitable.
         retry_after: usize,
     },
-    Completed(CompletedSymbolicationResponse),
+    Completed(Box<CompletedSymbolicationResponse>),
     Failed {
         message: String,
     },
