@@ -330,6 +330,7 @@ impl SymbolicationActor {
 
                         // This type only exists because ProcessState is not Send
                         let mut minidump_state = MinidumpState {
+                            timestamp: process_state.timestamp(),
                             system_info: SystemInfo {
                                 os_name,
                                 os_version,
@@ -411,6 +412,7 @@ impl SymbolicationActor {
             })
             .map(|(mut response, minidump_state)| {
                 let MinidumpState {
+                    timestamp,
                     requesting_thread_index,
                     system_info,
                     crashed,
@@ -419,6 +421,7 @@ impl SymbolicationActor {
                     thread_ids,
                 } = minidump_state;
 
+                response.timestamp = Some(timestamp);
                 response.system_info = Some(system_info);
                 response.crashed = Some(crashed);
                 response.crash_reason = Some(crash_reason);
@@ -888,6 +891,7 @@ pub struct ProcessMinidump {
 }
 
 struct MinidumpState {
+    timestamp: u64,
     system_info: SystemInfo,
     crashed: bool,
     crash_reason: String,

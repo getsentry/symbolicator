@@ -1,10 +1,11 @@
 ---
-created: "2019-05-15T08:29:01.900037Z"
+created: "2019-05-15T11:57:08.233188Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
 ---
 status: completed
+timestamp: 1521713398
 system_info:
   os_name: Mac OS X
   os_version: 10.12.6

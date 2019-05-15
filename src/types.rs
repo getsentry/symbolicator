@@ -560,6 +560,10 @@ pub enum SymbolicationResponse {
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct CompletedSymbolicationResponse {
+    /// When the crash occurred.
+    #[serde(skip_serializing_if = "is_default")]
+    pub timestamp: Option<u64>,
+
     /// The signal that caused this crash.
     #[serde(skip_serializing_if = "is_default")]
     pub signal: Option<Signal>,
