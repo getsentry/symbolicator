@@ -731,22 +731,22 @@ impl WriteSentryScope for ObjectId {
             self.code_id
                 .as_ref()
                 .map(ToString::to_string)
-                .unwrap_or_else(|| "none".to_string()),
+                .unwrap_or_else(|| "None".to_string()),
         );
         scope.set_tag(
             "object_id.code_file_basename",
-            self.code_file_basename().unwrap_or("none"),
+            self.code_file_basename().unwrap_or("None"),
         );
         scope.set_tag(
             "object_id.debug_id",
             self.debug_id
                 .as_ref()
                 .map(ToString::to_string)
-                .unwrap_or_else(|| "none".to_string()),
+                .unwrap_or_else(|| "None".to_string()),
         );
         scope.set_tag(
             "object_id.debug_file_basename",
-            self.debug_file_basename().unwrap_or("none"),
+            self.debug_file_basename().unwrap_or("None"),
         );
     }
 }
