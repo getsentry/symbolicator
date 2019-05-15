@@ -315,17 +315,16 @@ impl SymbolicationActor {
                         let modules = process_state
                             .modules()
                             .into_iter()
-                            .map(|code_module| {
+                            .filter_map(|code_module| {
                                 let mut info: CompleteObjectInfo =
                                     object_info_from_minidump_module(&os_name, code_module).into();
                                 info.unwind_status = Some(
-                                    code_module
-                                        .id()
-                                        .and_then(|id| unwind_statuses.get(&id))
+                                    unwind_statuses
+                                        .get(&code_module.id()?)
                                         .cloned()
                                         .unwrap_or(ObjectFileStatus::Unused),
                                 );
-                                info
+                                Some(info)
                             })
                             .collect();
 
@@ -731,12 +730,7 @@ fn symbolize_thread(
             }
 
             if rv.is_empty() {
-                rv.push(SymbolicatedFrame {
-                    status: FrameStatus::MissingSymbol,
-                    original_index: Some(i),
-                    raw: frame.clone(),
-                    ..Default::default()
-                });
+                return Err(FrameStatus::MissingSymbol);
             }
 
             Ok(rv)
@@ -754,9 +748,17 @@ fn symbolize_thread(
                 // without function records. This breaks its original heuristic, since it would now
                 // *always* skip scan frames. Our patch in breakpad omits this check.
                 //
-                // Here, we fix this after the fact. If symbolication failed for a scanned frame
-                // where we *know* we have a debug info, but the lookup inside that file failed.
-                if frame.trust == FrameTrust::Scan && status == FrameStatus::MissingSymbol {
+                // Here, we fix this after the fact.
+                //
+                // - MissingSymbol: If symbolication failed for a scanned frame where we *know* we
+                //   have a debug info, but the lookup inside that file failed.
+                // - UnknownImage: If symbolication failed because the stackscanner found an
+                //   instruction_addr that is not in any image *we* consider valid. We discard
+                //   images which do not have a debug id, while the stackscanner considers them
+                //   perfectly fine.
+                if frame.trust == FrameTrust::Scan
+                    && (status == FrameStatus::MissingSymbol || status == FrameStatus::UnknownImage)
+                {
                     continue;
                 }
 
