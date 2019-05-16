@@ -15,7 +15,7 @@ Symbolicator can be configured to work as a standalone system or to fit into
 a Sentry installation.  The latter requires a recent git version of Sentry
 to work and is not yet documented for general use.
 
-> Using Sentry and just want to get this dependency running? Skip to [the bottom of the page](#sentry).
+> Using Sentry and just want to get this dependency running? Skip to [the bottom of the page](#ref-sentry).
 
 ### Config
 
@@ -255,6 +255,8 @@ date: Fri, 19 Apr 2019 22:47:54 GMT
 ```
 
 ## Usage with Sentry
+
+<a name=ref-sentry />
 
 While Symbolicator aims to not be tied to Sentry's usecases, [Sentry](https://github.com/getsentry/sentry) has a hard dependency on Symbolicator to process native stacktraces. To get it running for local development:
 
