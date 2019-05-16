@@ -15,6 +15,8 @@ Symbolicator can be configured to work as a standalone system or to fit into
 a Sentry installation.  The latter requires a recent git version of Sentry
 to work and is not yet documented for general use.
 
+> Using Sentry and just want to get this dependency running? Skip to [the bottom of the page](#sentry).
+
 ### Config
 
 Write this to a file (`config.yml`):
@@ -251,3 +253,22 @@ content-length: 846848
 content-type: application/octet-stream
 date: Fri, 19 Apr 2019 22:47:54 GMT
 ```
+
+## Usage with Sentry
+
+While Symbolicator aims to not be tied to Sentry's usecases, [Sentry](https://github.com/getsentry/sentry) has a hard dependency on Symbolicator to process native stacktraces. To get it running for local development:
+
+- In your `~/.sentry/sentry.conf.py`:
+
+  ```python
+  # Whitelist Symbolicator's request IP to fetch debug symbols from Sentry.
+  INTERNAL_SYSTEM_IPS = ["127.0.0.1"]
+  ```
+
+- In your `~/.sentry/config.yml`:
+
+  ```yaml
+  symbolicator.enabled: true
+  ```
+
+Then run `sentry devservices up` to download and start Symbolicator.
