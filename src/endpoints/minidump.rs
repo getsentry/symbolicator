@@ -13,7 +13,8 @@ use futures::{
     future::{self, IntoFuture},
     Future, Stream,
 };
-use sentry::configure_scope;
+use sentry::{configure_scope, Hub};
+use sentry_actix::ActixWebHubExt;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
@@ -120,7 +121,7 @@ fn process_minidump(
 
     let SymbolicationRequestQueryParams { scope, timeout } = params;
 
-    let request = request
+    let internal_request = request
         .multipart()
         .map_err(Error::from)
         .map(clone!(threadpool, |x| handle_multipart_item(
@@ -152,7 +153,7 @@ fn process_minidump(
             _ => Err(error::ErrorBadRequest("missing formdata fields")),
         });
 
-    let request_id = request.and_then(clone!(symbolication, |request| {
+    let request_id = internal_request.and_then(clone!(symbolication, |request| {
         symbolication
             .process_minidump(request)
             .map_err(error::ErrorInternalServerError)
@@ -170,7 +171,7 @@ fn process_minidump(
         .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
         .map_err(Error::from);
 
-    Box::new(response.sentry_hub_new_from_current())
+    Box::new(response.sentry_hub(Hub::from_request(&request)))
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {

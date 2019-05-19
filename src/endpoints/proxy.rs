@@ -5,10 +5,13 @@ use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
 use futures::{Future, IntoFuture, Stream};
+use sentry::Hub;
+use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::{FetchObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
+use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
 
@@ -29,10 +32,10 @@ symbolic::common::derive_failure!(
 
 fn proxy_symstore_request(
     state: State<ServiceState>,
-    req: HttpRequest<ServiceState>,
+    request: HttpRequest<ServiceState>,
     path: Path<(String,)>,
 ) -> ResponseFuture<HttpResponse, Error> {
-    let is_head = req.method() == Method::HEAD;
+    let is_head = request.method() == Method::HEAD;
 
     if !state.config.symstore_proxy {
         return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
@@ -73,7 +76,8 @@ fn proxy_symstore_request(
                         .map_err(Error::from);
                     Ok(response.streaming(async_bytes))
                 }
-            }),
+            })
+            .sentry_hub(Hub::from_request(&request)),
     )
 }
 

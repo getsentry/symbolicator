@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use actix::ResponseFuture;
-use actix_web::{http::Method, Json, Query, State};
+use actix_web::{http::Method, HttpRequest, Json, Query, State};
 use failure::Error;
 use futures::Future;
-use sentry::configure_scope;
+use sentry::{configure_scope, Hub};
+use sentry_actix::ActixWebHubExt;
 use serde::Deserialize;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
@@ -51,6 +52,7 @@ fn symbolicate_frames(
     state: State<ServiceState>,
     params: Query<SymbolicationRequestQueryParams>,
     body: Json<SymbolicationRequestBody>,
+    request: HttpRequest<ServiceState>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     let params = params.into_inner();
     let body = body.into_inner();
@@ -83,14 +85,16 @@ fn symbolicate_frames(
         .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
         .map_err(Error::from);
 
-    Box::new(response.sentry_hub_new_from_current())
+    Box::new(response.sentry_hub(Hub::from_request(&request)))
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {
     app.resource("/symbolicate", |r| {
-        r.method(Method::POST)
-            .with_config(symbolicate_frames, |(_state, _params, body)| {
+        r.method(Method::POST).with_config(
+            symbolicate_frames,
+            |(_state, _params, body, _request)| {
                 body.limit(5_000_000);
-            });
+            },
+        );
     })
 }
