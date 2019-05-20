@@ -37,17 +37,18 @@ fn proxy_symstore_request(
 ) -> ResponseFuture<HttpResponse, Error> {
     let hub = Hub::from_request(&request);
 
+    let is_head = request.method() == Method::HEAD;
+
+    if !state.config.symstore_proxy {
+        return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
+    }
+
+    let (filetypes, object_id) = match parse_symstore_path(&path.0) {
+        Some(x) => x,
+        None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
+    };
+
     Hub::run(hub, || {
-        let is_head = request.method() == Method::HEAD;
-
-        if !state.config.symstore_proxy {
-            return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
-        }
-
-        let (filetypes, object_id) = match parse_symstore_path(&path.0) {
-            Some(x) => x,
-            None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
-        };
         log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
         Box::new(
             state
