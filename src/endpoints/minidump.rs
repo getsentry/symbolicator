@@ -13,7 +13,8 @@ use futures::{
     future::{self, IntoFuture},
     Future, Stream,
 };
-use sentry::configure_scope;
+use sentry::{configure_scope, Hub};
+use sentry_actix::ActixWebHubExt;
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, ProcessMinidump};
@@ -108,69 +109,73 @@ fn process_minidump(
     params: Query<SymbolicationRequestQueryParams>,
     request: HttpRequest<ServiceState>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
-    let threadpool = state.io_threadpool.clone();
-    let symbolication = state.symbolication.clone();
-    let default_sources = state.config.sources.clone();
+    let hub = Hub::from_request(&request);
 
-    let params = params.into_inner();
+    Hub::run(hub, || {
+        let threadpool = state.io_threadpool.clone();
+        let symbolication = state.symbolication.clone();
+        let default_sources = state.config.sources.clone();
 
-    configure_scope(|scope| {
-        params.write_sentry_scope(scope);
-    });
+        let params = params.into_inner();
 
-    let SymbolicationRequestQueryParams { scope, timeout } = params;
-
-    let request = request
-        .multipart()
-        .map_err(Error::from)
-        .map(clone!(threadpool, |x| handle_multipart_item(
-            threadpool.clone(),
-            x
-        )))
-        .flatten()
-        .take(2)
-        .fold((None, None), |(mut file_opt, mut sources_opt), field| {
-            match (field, &file_opt, &sources_opt) {
-                (MultipartItem::MinidumpFile(file), None, _) => file_opt = Some(file),
-                (MultipartItem::Sources(sources), _, None) => sources_opt = Some(sources),
-                _ => {
-                    return Err(error::ErrorBadRequest("missing formdata fields"));
-                }
-            }
-
-            Ok((file_opt, sources_opt))
-        })
-        .and_then(move |collect_state| match collect_state {
-            (Some(file), requested_sources) => Ok(ProcessMinidump {
-                file,
-                sources: match requested_sources {
-                    Some(sources) => Arc::new(sources),
-                    None => default_sources,
-                },
-                scope,
-            }),
-            _ => Err(error::ErrorBadRequest("missing formdata fields")),
+        configure_scope(|scope| {
+            params.write_sentry_scope(scope);
         });
 
-    let request_id = request.and_then(clone!(symbolication, |request| {
-        symbolication
-            .process_minidump(request)
-            .map_err(error::ErrorInternalServerError)
-    }));
+        let SymbolicationRequestQueryParams { scope, timeout } = params;
 
-    let response = request_id
-        .and_then(clone!(symbolication, |request_id| {
+        let internal_request = request
+            .multipart()
+            .map_err(Error::from)
+            .map(clone!(threadpool, |x| handle_multipart_item(
+                threadpool.clone(),
+                x
+            )))
+            .flatten()
+            .take(2)
+            .fold((None, None), |(mut file_opt, mut sources_opt), field| {
+                match (field, &file_opt, &sources_opt) {
+                    (MultipartItem::MinidumpFile(file), None, _) => file_opt = Some(file),
+                    (MultipartItem::Sources(sources), _, None) => sources_opt = Some(sources),
+                    _ => {
+                        return Err(error::ErrorBadRequest("missing formdata fields"));
+                    }
+                }
+
+                Ok((file_opt, sources_opt))
+            })
+            .and_then(move |collect_state| match collect_state {
+                (Some(file), requested_sources) => Ok(ProcessMinidump {
+                    file,
+                    sources: match requested_sources {
+                        Some(sources) => Arc::new(sources),
+                        None => default_sources,
+                    },
+                    scope,
+                }),
+                _ => Err(error::ErrorBadRequest("missing formdata fields")),
+            });
+
+        let request_id = internal_request.and_then(clone!(symbolication, |request| {
             symbolication
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout,
-                })
+                .process_minidump(request)
                 .map_err(error::ErrorInternalServerError)
-        }))
-        .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
-        .map_err(Error::from);
+        }));
 
-    Box::new(response.sentry_hub_new_from_current())
+        let response = request_id
+            .and_then(clone!(symbolication, |request_id| {
+                symbolication
+                    .get_symbolication_status(GetSymbolicationStatus {
+                        request_id,
+                        timeout,
+                    })
+                    .map_err(error::ErrorInternalServerError)
+            }))
+            .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
+            .map_err(Error::from);
+
+        Box::new(response.sentry_hub_current())
+    })
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {

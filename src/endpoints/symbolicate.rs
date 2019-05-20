@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use actix::ResponseFuture;
-use actix_web::{http::Method, Json, Query, State};
+use actix_web::{http::Method, HttpRequest, Json, Query, State};
 use failure::Error;
 use futures::Future;
-use sentry::configure_scope;
+use sentry::{configure_scope, Hub};
+use sentry_actix::ActixWebHubExt;
 use serde::Deserialize;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
@@ -51,46 +52,53 @@ fn symbolicate_frames(
     state: State<ServiceState>,
     params: Query<SymbolicationRequestQueryParams>,
     body: Json<SymbolicationRequestBody>,
+    request: HttpRequest<ServiceState>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
-    let params = params.into_inner();
-    let body = body.into_inner();
-    let sources = match body.sources {
-        Some(sources) => Arc::new(sources),
-        None => state.config.sources.clone(),
-    };
+    let hub = Hub::from_request(&request);
 
-    configure_scope(|scope| {
-        params.write_sentry_scope(scope);
-    });
+    Hub::run(hub, || {
+        let params = params.into_inner();
+        let body = body.into_inner();
+        let sources = match body.sources {
+            Some(sources) => Arc::new(sources),
+            None => state.config.sources.clone(),
+        };
 
-    let message = SymbolicateStacktraces {
-        signal: body.signal,
-        sources,
-        stacktraces: body.stacktraces,
-        modules: body.modules.into_iter().map(From::from).collect(),
-        scope: params.scope,
-    };
+        configure_scope(|scope| {
+            params.write_sentry_scope(scope);
+        });
 
-    let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
+        let message = SymbolicateStacktraces {
+            signal: body.signal,
+            sources,
+            stacktraces: body.stacktraces,
+            modules: body.modules.into_iter().map(From::from).collect(),
+            scope: params.scope,
+        };
 
-    let timeout = params.timeout;
-    let response = state
-        .symbolication
-        .get_symbolication_status(GetSymbolicationStatus {
-            request_id,
-            timeout,
-        })
-        .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
-        .map_err(Error::from);
+        let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
 
-    Box::new(response.sentry_hub_new_from_current())
+        let timeout = params.timeout;
+        let response = state
+            .symbolication
+            .get_symbolication_status(GetSymbolicationStatus {
+                request_id,
+                timeout,
+            })
+            .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
+            .map_err(Error::from);
+
+        Box::new(response.sentry_hub_current())
+    })
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {
     app.resource("/symbolicate", |r| {
-        r.method(Method::POST)
-            .with_config(symbolicate_frames, |(_state, _params, body)| {
+        r.method(Method::POST).with_config(
+            symbolicate_frames,
+            |(_state, _params, body, _request)| {
                 body.limit(5_000_000);
-            });
+            },
+        );
     })
 }
