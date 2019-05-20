@@ -54,38 +54,42 @@ fn symbolicate_frames(
     body: Json<SymbolicationRequestBody>,
     request: HttpRequest<ServiceState>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
-    let params = params.into_inner();
-    let body = body.into_inner();
-    let sources = match body.sources {
-        Some(sources) => Arc::new(sources),
-        None => state.config.sources.clone(),
-    };
+    let hub = Hub::from_request(&request);
 
-    configure_scope(|scope| {
-        params.write_sentry_scope(scope);
-    });
+    Hub::run(hub, || {
+        let params = params.into_inner();
+        let body = body.into_inner();
+        let sources = match body.sources {
+            Some(sources) => Arc::new(sources),
+            None => state.config.sources.clone(),
+        };
 
-    let message = SymbolicateStacktraces {
-        signal: body.signal,
-        sources,
-        stacktraces: body.stacktraces,
-        modules: body.modules.into_iter().map(From::from).collect(),
-        scope: params.scope,
-    };
+        configure_scope(|scope| {
+            params.write_sentry_scope(scope);
+        });
 
-    let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
+        let message = SymbolicateStacktraces {
+            signal: body.signal,
+            sources,
+            stacktraces: body.stacktraces,
+            modules: body.modules.into_iter().map(From::from).collect(),
+            scope: params.scope,
+        };
 
-    let timeout = params.timeout;
-    let response = state
-        .symbolication
-        .get_symbolication_status(GetSymbolicationStatus {
-            request_id,
-            timeout,
-        })
-        .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
-        .map_err(Error::from);
+        let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
 
-    Box::new(response.sentry_hub(Hub::from_request(&request)))
+        let timeout = params.timeout;
+        let response = state
+            .symbolication
+            .get_symbolication_status(GetSymbolicationStatus {
+                request_id,
+                timeout,
+            })
+            .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
+            .map_err(Error::from);
+
+        Box::new(response.sentry_hub_current())
+    })
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {

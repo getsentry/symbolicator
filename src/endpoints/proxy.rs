@@ -35,50 +35,54 @@ fn proxy_symstore_request(
     request: HttpRequest<ServiceState>,
     path: Path<(String,)>,
 ) -> ResponseFuture<HttpResponse, Error> {
-    let is_head = request.method() == Method::HEAD;
+    let hub = Hub::from_request(&request);
 
-    if !state.config.symstore_proxy {
-        return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
-    }
+    Hub::run(hub, || {
+        let is_head = request.method() == Method::HEAD;
 
-    let (filetypes, object_id) = match parse_symstore_path(&path.0) {
-        Some(x) => x,
-        None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
-    };
-    log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
-    Box::new(
-        state
-            .objects
-            .fetch(FetchObject {
-                filetypes,
-                identifier: object_id,
-                sources: state.config.sources.clone(),
-                scope: Scope::Global,
-                purpose: ObjectPurpose::Debug,
-            })
-            .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
-            .and_then(move |object_file| {
-                if !object_file.has_object() {
-                    return Ok(HttpResponse::NotFound().finish());
-                }
-                let length = object_file.len();
-                let mut response = HttpResponse::Ok();
-                response
-                    .content_length(length)
-                    .header("content-type", "application/octet-stream");
-                if is_head {
-                    Ok(response.finish())
-                } else {
-                    let bytes = Cursor::new(ObjectFileBytes(object_file));
-                    let async_bytes = FramedRead::new(bytes, BytesCodec::new())
-                        .map(BytesMut::freeze)
-                        .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
-                        .map_err(Error::from);
-                    Ok(response.streaming(async_bytes))
-                }
-            })
-            .sentry_hub(Hub::from_request(&request)),
-    )
+        if !state.config.symstore_proxy {
+            return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
+        }
+
+        let (filetypes, object_id) = match parse_symstore_path(&path.0) {
+            Some(x) => x,
+            None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
+        };
+        log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
+        Box::new(
+            state
+                .objects
+                .fetch(FetchObject {
+                    filetypes,
+                    identifier: object_id,
+                    sources: state.config.sources.clone(),
+                    scope: Scope::Global,
+                    purpose: ObjectPurpose::Debug,
+                })
+                .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
+                .and_then(move |object_file| {
+                    if !object_file.has_object() {
+                        return Ok(HttpResponse::NotFound().finish());
+                    }
+                    let length = object_file.len();
+                    let mut response = HttpResponse::Ok();
+                    response
+                        .content_length(length)
+                        .header("content-type", "application/octet-stream");
+                    if is_head {
+                        Ok(response.finish())
+                    } else {
+                        let bytes = Cursor::new(ObjectFileBytes(object_file));
+                        let async_bytes = FramedRead::new(bytes, BytesCodec::new())
+                            .map(BytesMut::freeze)
+                            .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
+                            .map_err(Error::from);
+                        Ok(response.streaming(async_bytes))
+                    }
+                })
+                .sentry_hub_current(),
+        )
+    })
 }
 
 pub fn register(app: ServiceApp) -> ServiceApp {
