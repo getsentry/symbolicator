@@ -323,7 +323,7 @@ fn test_max_unused_for() -> Result<(), CleanupError> {
         Some(tempdir.path()),
         CacheConfig {
             max_unused_for: Some(Duration::from_millis(10)),
-            ..Default::default()
+            ..CacheConfig::default_derived()
         },
     );
 
@@ -358,7 +358,7 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
         Some(tempdir.path()),
         CacheConfig {
             retry_misses_after: Some(Duration::from_millis(20)),
-            ..Default::default()
+            ..CacheConfig::default_derived()
         },
     );
 
@@ -397,7 +397,7 @@ fn test_cleanup_malformed() -> Result<(), CleanupError> {
     sleep(Duration::from_millis(10));
 
     // Creation of this struct == "process startup"
-    let cache = Cache::new("test", Some(tempdir.path()), Default::default());
+    let cache = Cache::new("test", Some(tempdir.path()), CacheConfig::default_derived());
 
     cache.cleanup()?;
 
