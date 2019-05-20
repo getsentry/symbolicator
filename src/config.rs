@@ -88,23 +88,40 @@ pub struct CacheConfig {
     pub retry_malformed_after: Option<Duration>,
 }
 
-impl Default for CacheConfig {
-    fn default() -> Self {
+impl CacheConfig {
+    pub fn default_derived() -> Self {
         CacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
         }
     }
+
+    pub fn default_downloaded() -> Self {
+        CacheConfig {
+            max_unused_for: Some(Duration::from_secs(3600 * 24)),
+            retry_misses_after: Some(Duration::from_secs(3600)),
+            retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+        }
+    }
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct CacheConfigs {
     /// Configure how long downloads are cached for.
     pub downloaded: CacheConfig,
     /// Configure how long caches derived from downloads are cached for.
     pub derived: CacheConfig,
+}
+
+impl Default for CacheConfigs {
+    fn default() -> CacheConfigs {
+        CacheConfigs {
+            downloaded: CacheConfig::default_downloaded(),
+            derived: CacheConfig::default_derived(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
