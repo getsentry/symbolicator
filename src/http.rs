@@ -45,7 +45,21 @@ pub fn follow_redirects(
                         );
                     }
                 };
+
                 let same_host = target_uri.origin() == base.origin();
+
+                let target_uri: actix_web::http::Uri = match target_uri.to_string().parse() {
+                    Ok(uri) => uri,
+                    Err(_) => {
+                        return Either::B(
+                            Err(SendRequestError::Io(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("bad redirect uri: {}", target_uri),
+                            )))
+                            .into_future(),
+                        );
+                    }
+                };
 
                 log::trace!("Following redirect: {:?}", &target_uri);
 
@@ -56,6 +70,7 @@ pub fn follow_redirects(
                             req.headers_mut().remove("authorization");
                             req.headers_mut().remove("cookie");
                         }
+                        req.set_uri(target_uri.clone());
                         req
                     }),
                     max_redirects - 1,
