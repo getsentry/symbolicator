@@ -12,7 +12,7 @@ actix-web = { version = "0.7.19", features = ["tls"] }
 actix = "0.7.9"
 failure = "0.1.5"
 serde = { version = "1.0.91", features = ["derive", "rc"] }
-futures = "0.1.26"
+futures = "0.1.27"
 bytes = "0.4.12"
 url = "1.7.2"
 derive_more = "0.14.0"
@@ -29,7 +29,7 @@ lazy_static = "1.3.0"
 parking_lot = "0.8.0"
 tokio = "0.1.20"
 uuid = "0.7.4"
-symbolic = { version = "6.1.2", git = "https://github.com/getsentry/symbolic", rev = "efb3e23a1604157b0c79a97c7dcef8b779265fcc", features = ["common-serde", "demangle", "minidump", "minidump-serde", "symcache"] }
+symbolic = { version="6.1.3", features = ["common-serde", "demangle", "minidump", "minidump-serde", "symcache"] }
 sentry = "0.15.5"
 sentry-actix = "0.15.5"
 rusoto_s3 = "0.38.0"
