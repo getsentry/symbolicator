@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
@@ -81,16 +81,16 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 
 // We probably want a shared future here because otherwise polling for a response would acquire the
 // global write lock.
-type ComputationChannel<T> = Shared<oneshot::Receiver<T>>;
+type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
-type ComputationMap<T> = Arc<RwLock<BTreeMap<RequestId, ComputationChannel<T>>>>;
+type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
 
 #[derive(Clone)]
 pub struct SymbolicationActor {
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
-    requests: ComputationMap<SymbolicationResponse>,
+    requests: ComputationMap,
 }
 
 impl SymbolicationActor {
@@ -113,7 +113,7 @@ impl SymbolicationActor {
         &self,
         request_id: RequestId,
         timeout: Option<u64>,
-        channel: ComputationChannel<SymbolicationResponse>,
+        channel: ComputationChannel,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
@@ -126,8 +126,9 @@ impl SymbolicationActor {
                 rv.timeout(Duration::from_secs(timeout))
                     .then(clone!(requests, |result| {
                         match result {
-                            Ok(x) => {
+                            Ok((finished_at, x)) => {
                                 requests.write().remove(&request_id);
+                                metric!(timer("requests.response_idling") = finished_at.elapsed());
                                 Ok(x)
                             }
                             Err(e) => {
@@ -148,7 +149,9 @@ impl SymbolicationActor {
         } else {
             Either::B(rv.then(clone!(requests, |result| {
                 requests.write().remove(&request_id);
-                result
+                let (finished_at, x) = result?;
+                metric!(timer("requests.response_idling") = finished_at.elapsed());
+                Ok(x)
             })))
         }
     }
@@ -828,13 +831,16 @@ impl SymbolicationActor {
         actix::spawn(
             self.do_symbolicate(request)
                 .then(move |result| {
-                    tx.send(match result {
-                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
-                        Err(ref e) => {
-                            capture_fail(e.cause().unwrap_or(e));
-                            e.into()
-                        }
-                    })
+                    tx.send((
+                        Instant::now(),
+                        match result {
+                            Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
+                            Err(ref e) => {
+                                capture_fail(e.cause().unwrap_or(e));
+                                e.into()
+                            }
+                        },
+                    ))
                     .map_err(|_| ())
                 })
                 // Clone hub because of `actix::spawn`
@@ -926,13 +932,16 @@ impl SymbolicationActor {
             self.do_process_minidump(request)
                 .sentry_hub_new_from_current()
                 .then(move |result| {
-                    tx.send(match result {
-                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
-                        Err(ref e) => {
-                            capture_fail(e.cause().unwrap_or(e));
-                            e.into()
-                        }
-                    })
+                    tx.send((
+                        Instant::now(),
+                        match result {
+                            Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
+                            Err(ref e) => {
+                                capture_fail(e.cause().unwrap_or(e));
+                                e.into()
+                            }
+                        },
+                    ))
                     .map_err(|_| ())
                 }),
         );
