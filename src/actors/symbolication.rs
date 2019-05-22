@@ -332,7 +332,7 @@ impl SymbolicationActor {
                         let mut minidump_state = MinidumpState {
                             timestamp: process_state.timestamp(),
                             system_info: SystemInfo {
-                                os_name,
+                                os_name: normalize_minidump_os_name(&os_name).to_owned(),
                                 os_version,
                                 os_build,
                                 cpu_arch,
@@ -457,6 +457,14 @@ fn get_image_type_from_minidump(minidump_os_name: &str) -> &'static str {
         "iOS" | "Mac OS X" => "macho",
         "Linux" | "Solaris" | "Android" => "elf",
         _ => "unknown",
+    }
+}
+
+fn normalize_minidump_os_name(minidump_os_name: &str) -> &str {
+    match minidump_os_name {
+        "Windows NT" => "Windows",
+        "Mac OS X" => "macOS",
+        _ => minidump_os_name,
     }
 }
 
