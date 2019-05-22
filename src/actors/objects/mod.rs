@@ -211,6 +211,7 @@ impl CacheItemRequest for FetchFileRequest {
                                 // Magic bytes for zstd
                                 // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
                                 [0x28, 0xb5, 0x2f, 0xfd] => {
+                                    metric!(counter("symbolicator.compression") += 1, "type" => "zstd");
                                     log::trace!("Decompressing (zstd): {}", cache_key);
 
                                     zstd::stream::copy_decode(download_file, &mut extract_file)
@@ -221,6 +222,7 @@ impl CacheItemRequest for FetchFileRequest {
                                 // Magic bytes for gzip
                                 // https://tools.ietf.org/html/rfc1952#section-2.3.1
                                 [0x1f, 0x8b, _, _] => {
+                                    metric!(counter("symbolicator.compression") += 1, "type" => "gz");
                                     log::trace!("Decompressing (gz): {}", cache_key);
 
                                     // We assume MultiGzDecoder accepts a strict superset of input
@@ -234,6 +236,7 @@ impl CacheItemRequest for FetchFileRequest {
                                 }
                                 // Magic bytes for zlib
                                 [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
+                                    metric!(counter("symbolicator.compression") += 1, "type" => "zlib");
                                     log::trace!("Decompressing (zlib): {}", cache_key);
 
                                     let mut reader = flate2::read::ZlibDecoder::new(download_file);
@@ -244,6 +247,7 @@ impl CacheItemRequest for FetchFileRequest {
                                 }
                                 // Probably not compressed
                                 _ => {
+                                    metric!(counter("symbolicator.compression") += 1, "type" => "none");
                                     log::trace!("No compression detected: {}", cache_key);
                                     download_file
                                 }
