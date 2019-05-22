@@ -1,5 +1,5 @@
 ---
-created: "2019-05-15T11:57:08.232941Z"
+created: "2019-05-22T09:44:27.365260Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -7,7 +7,7 @@ expression: response
 status: completed
 timestamp: 1521713273
 system_info:
-  os_name: Windows NT
+  os_name: Windows
   os_version: 10.0.14393
   os_build: ""
   cpu_arch: x86
