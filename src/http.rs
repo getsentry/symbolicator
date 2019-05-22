@@ -8,11 +8,12 @@ use actix_web::{FutureResponse, HttpMessage};
 use futures::future::{Either, Future, IntoFuture};
 
 pub fn follow_redirects(
-    make_request: Box<dyn Fn() -> ClientRequest>,
+    uri: Url,
+    make_request: Box<dyn Fn(Url) -> ClientRequest>,
     max_redirects: usize,
 ) -> FutureResponse<ClientResponse, SendRequestError> {
-    let req = make_request();
-    let base = Url::parse(&req.uri().to_string());
+    let base = Url::parse(&uri.to_string());
+    let req = make_request(uri);
 
     Box::new(req.send().and_then(move |response| {
         if response.status().is_redirection() && max_redirects > 0 {
@@ -45,13 +46,15 @@ pub fn follow_redirects(
                         );
                     }
                 };
+
                 let same_host = target_uri.origin() == base.origin();
 
                 log::trace!("Following redirect: {:?}", &target_uri);
 
                 return Either::A(follow_redirects(
-                    Box::new(move || {
-                        let mut req = make_request();
+                    target_uri,
+                    Box::new(move |uri| {
+                        let mut req = make_request(uri);
                         if !same_host {
                             req.headers_mut().remove("authorization");
                             req.headers_mut().remove("cookie");

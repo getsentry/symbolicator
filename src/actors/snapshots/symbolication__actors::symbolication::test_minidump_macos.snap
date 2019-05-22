@@ -1,5 +1,5 @@
 ---
-created: "2019-05-15T11:57:08.233188Z"
+created: "2019-05-22T09:44:27.365538Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -7,7 +7,7 @@ expression: response
 status: completed
 timestamp: 1521713398
 system_info:
-  os_name: Mac OS X
+  os_name: macOS
   os_version: 10.12.6
   os_build: 16G29
   cpu_arch: x86_64
