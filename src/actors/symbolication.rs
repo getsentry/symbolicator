@@ -313,7 +313,15 @@ impl SymbolicationActor {
                         let os_name = minidump_system_info.os_name();
                         let os_version = minidump_system_info.os_version();
                         let os_build = minidump_system_info.os_build();
-                        let cpu_arch = minidump_system_info.cpu_arch();
+                        let cpu_family = minidump_system_info.cpu_family();
+                        let cpu_arch = match cpu_family.parse() {
+                            Ok(arch) => arch,
+                            Err(_) => {
+                                let msg = format!("unknown minidump architecture: {}", cpu_family);
+                                sentry::capture_message(&msg, sentry::Level::Error);
+                                Default::default()
+                            }
+                        };
 
                         let modules = process_state
                             .modules()
