@@ -236,6 +236,13 @@ In simple terms this means that
 ELF executable and `/symbols/_.debug/elf-buildid-sym-180a373d6afbabf0eb1f09be1bc45bd796a71085/_.debug`
 is a valid query for an ELF debug symbol.
 
+## Compression Support
+
+Symbolicator supports a range of compression formats (zlib, gzip, zstd and
+cab). For cab compression the `cabextract` binary needs to be installed.  If the debug info file
+is already compressed it will be auto detected and extracted.  For PE/PDB files symbolicator also
+supports the Microsoft convention of replacing the last character in the filename with an underscore.
+
 ## Symbol Server Proxy
 
 If the symstore proxy is enabled the symbolicator also acts as a symbol proxy.  This means that
