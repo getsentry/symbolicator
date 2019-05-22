@@ -19,7 +19,7 @@ RUN cp ./target/release/symbolicator /usr/local/bin
 # Copy the compiled binary to a clean image
 FROM debian:stretch-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl ca-certificates gosu \
+    && apt-get install -y --no-install-recommends openssl ca-certificates gosu cabextract \
     && rm -rf /var/lib/apt/lists/*
 
 ENV \

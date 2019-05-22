@@ -113,7 +113,8 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
                 o.basename: o.size()
                 for o in cache_dir_param.join("objects").join(stored_in_scope).listdir()
             } == {
-                "microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb": 846_848
+                "microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pd_": 0,
+                "microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb": 846_848,
             }
 
             symcache, = (
@@ -122,10 +123,11 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
             assert symcache.size() > 0
 
+        count = 1 if cache_dir_param else (i + 1)
+
         assert hitcounter.hits == {
-            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
-            if cache_dir_param
-            else (i + 1)
+            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": count,
+            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": count,
         }
 
 
@@ -184,7 +186,8 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
     assert responses == [SUCCESS_WINDOWS] * 20
 
     assert hitcounter.hits == {
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": 1,
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1,
     }
 
 
@@ -258,7 +261,8 @@ def test_timeouts(symbolicator, hitcounter):
     assert len(responses) > 1
 
     assert hitcounter.hits == {
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": 1,
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1,
     }
 
 
