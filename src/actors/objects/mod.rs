@@ -251,6 +251,7 @@ impl CacheItemRequest for FetchFileRequest {
                                 }
                                 // Magic bytes for CAB
                                 [77, 83, 67, 70] => {
+                                    metric!(counter("compression") += 1, "type" => "cab");
                                     log::trace!("Decompressing (cab): {}", cache_key);
 
                                     let status = process::Command::new("cabextract")
