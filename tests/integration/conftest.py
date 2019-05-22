@@ -137,7 +137,7 @@ def hitcounter(request):
 
                 with requests.get(
                     f"https://msdl.microsoft.com/download/symbols/{path}",
-                    allow_redirects=False  # test redirects with msdl
+                    allow_redirects=False,  # test redirects with msdl
                 ) as r:
                     start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
                     yield r.content
