@@ -20,16 +20,26 @@ pub fn prepare_download_paths<'a>(
     filters: &'a SourceFilters,
     layout: DirectoryLayout,
 ) -> impl Iterator<Item = DownloadPath> + 'a {
-    filetypes.iter().filter_map(move |&filetype| {
+    filetypes.iter().flat_map(move |&filetype| {
         if (filters.filetypes.is_empty() || filters.filetypes.contains(&filetype))
             && matches_path_patterns(object_id, &filters.path_patterns)
         {
-            Some(DownloadPath(get_directory_path(
-                layout, filetype, &object_id,
-            )?))
-        } else {
-            None
+            if let Some(path) = get_directory_path(layout, filetype, &object_id) {
+                return if filetype == FileType::Pdb || filetype == FileType::Pe {
+                    let mut compressed_path = path.clone();
+                    compressed_path.pop();
+                    compressed_path.push('_');
+                    itertools::Either::Left(
+                        Some(DownloadPath(path))
+                            .into_iter()
+                            .chain(Some(DownloadPath(compressed_path))),
+                    )
+                } else {
+                    itertools::Either::Right(Some(DownloadPath(path)).into_iter())
+                };
+            }
         }
+        itertools::Either::Right(None.into_iter())
     })
 }
 

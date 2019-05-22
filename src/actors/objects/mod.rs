@@ -2,6 +2,7 @@ use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ use ::sentry::integrations::failure::capture_fail;
 use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
-use tempfile::tempfile_in;
+use tempfile::{tempfile_in, NamedTempFile};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
@@ -165,7 +166,10 @@ impl CacheItemRequest for FetchFileRequest {
                 log::debug!("Fetching debug file for {}", cache_key);
 
                 let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir));
-                let download_file = tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
+                let named_download_file =
+                    tryf!(NamedTempFile::new_in(download_dir).context(ObjectErrorKind::Io));
+                let download_file =
+                    tryf!(named_download_file.reopen().context(ObjectErrorKind::Io));
                 let mut extract_file =
                     tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
 
@@ -239,6 +243,32 @@ impl CacheItemRequest for FetchFileRequest {
                                     let mut reader = flate2::read::ZlibDecoder::new(download_file);
                                     io::copy(&mut reader, &mut extract_file)
                                         .context(ObjectErrorKind::Io)?;
+
+                                    extract_file
+                                }
+                                // Magic bytes for CAB
+                                [77, 83, 67, 70] => {
+                                    log::trace!("Decompressing (cab): {}", cache_key);
+
+                                    let status = process::Command::new("cabextract")
+                                        .arg("-sfqp")
+                                        .arg(named_download_file.path())
+                                        .stdout(process::Stdio::from(
+                                            extract_file
+                                                .try_clone()
+                                                .context(ObjectErrorKind::Io)?,
+                                        ))
+                                        .stderr(process::Stdio::null())
+                                        .status()
+                                        .context(ObjectErrorKind::Io)?;
+
+                                    if !status.success() {
+                                        Err(std::io::Error::new(
+                                            std::io::ErrorKind::InvalidData,
+                                            "failed to decompress cab file",
+                                        )
+                                        .context(ObjectErrorKind::Io))?;
+                                    }
 
                                     extract_file
                                 }
