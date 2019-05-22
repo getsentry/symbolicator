@@ -128,10 +128,16 @@ def hitcounter(request):
                 hits.setdefault(path, 0)
                 hits[path] += 1
 
-            if path.startswith("/msdl/"):
+            if path.startswith("/redirect/"):
+                path = path[len("/redirect") :]
+                start_response("302 Found", [("Location", path)])
+                yield b""
+            elif path.startswith("/msdl/"):
                 path = path[len("/msdl/") :]
+
                 with requests.get(
-                    f"https://msdl.microsoft.com/download/symbols/{path}"
+                    f"https://msdl.microsoft.com/download/symbols/{path}",
+                    allow_redirects=False  # test redirects with msdl
                 ) as r:
                     start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
                     yield r.content
