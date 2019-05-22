@@ -339,3 +339,25 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
     response.raise_for_status()
 
     assert response.json() == output
+
+
+def test_redirects(symbolicator, hitcounter):
+    input = dict(
+        sources=[
+            {
+                "type": "http",
+                "id": "microsoft",
+                "layout": {"type": "symstore"},
+                "url": f"{hitcounter.url}/redirect/msdl/",
+            }
+        ],
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+
+    assert response.json() == SUCCESS_WINDOWS

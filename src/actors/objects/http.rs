@@ -65,8 +65,9 @@ pub fn download_from_source(
     log::debug!("Fetching debug file from {}", download_url);
     let response = clone!(download_url, source, || {
         http::follow_redirects(
-            Box::new(clone!(download_url, source, || {
-                let mut builder = client::get(&download_url);
+            download_url.clone(),
+            Box::new(clone!(source, |url| {
+                let mut builder = client::get(&url);
                 for (key, value) in source.headers.iter() {
                     if let Ok(key) = HeaderName::from_bytes(key.as_bytes()) {
                         builder.header(key, value.as_str());
