@@ -10,7 +10,7 @@ use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, Shared
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{join_path, ByteView, InstructionInfo, Language};
+use symbolic::common::{join_path, Arch, ByteView, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
     CodeModule, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
@@ -317,8 +317,11 @@ impl SymbolicationActor {
                         let cpu_arch = match cpu_family.parse() {
                             Ok(arch) => arch,
                             Err(_) => {
-                                let msg = format!("unknown minidump architecture: {}", cpu_family);
-                                sentry::capture_message(&msg, sentry::Level::Error);
+                                if !cpu_family.is_empty() {
+                                    let msg = format!("Unknown minidump arch: {}", cpu_family);
+                                    sentry::capture_message(&msg, sentry::Level::Error);
+                                }
+
                                 Default::default()
                             }
                         };
@@ -425,12 +428,21 @@ impl SymbolicationActor {
                 let MinidumpState {
                     timestamp,
                     requesting_thread_index,
-                    system_info,
+                    mut system_info,
                     crashed,
                     crash_reason,
                     assertion,
                     thread_ids,
                 } = minidump_state;
+
+                if system_info.cpu_arch == Arch::Unknown {
+                    system_info.cpu_arch = response
+                        .modules
+                        .iter()
+                        .map(|object| object.arch)
+                        .find(|arch| *arch != Arch::Unknown)
+                        .unwrap_or_default();
+                }
 
                 response.timestamp = Some(timestamp);
                 response.system_info = Some(system_info);
