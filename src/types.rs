@@ -346,7 +346,7 @@ pub struct RawStacktrace {
 }
 
 /// Specification of an image loaded into the process.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct RawObjectInfo {
     /// Platform image file type (container format).
     #[serde(rename = "type")]
@@ -502,7 +502,7 @@ impl Default for ObjectFileStatus {
 /// Normalized RawObjectInfo with status attached.
 ///
 /// RawObjectInfo is what the user sends and CompleteObjectInfo is what the user gets.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Eq, PartialEq)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
     pub debug_status: ObjectFileStatus,
