@@ -521,7 +521,9 @@ impl SymCacheLookup {
         self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
             // If this underflows we didn't sort properly.
             let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
-            info1.raw.image_size.get_or_insert(size);
+            if info1.raw.image_size.unwrap_or(0) == 0 {
+                info1.raw.image_size = Some(size);
+            }
 
             false
         });
@@ -585,23 +587,23 @@ impl SymCacheLookup {
         addr: u64,
     ) -> Option<(usize, &CompleteObjectInfo, Option<&SymCacheFile>)> {
         for (i, (info, cache)) in self.inner.iter().enumerate() {
-            let addr_smaller_than_end = if let Some(size) = info.raw.image_size {
-                if let Some(end) = info.raw.image_addr.0.checked_add(size) {
-                    addr < end
-                } else {
-                    // Image end addr is larger than u64::max, therefore addr (also u64) is smaller
-                    // for sure.
-                    true
-                }
-            } else {
-                // The `size` is None (last image in array) and so we can't ensure it is within the
-                // range.
-                continue;
-            };
+            let start_addr = info.raw.image_addr.0;
 
-            if info.raw.image_addr.0 <= addr && addr_smaller_than_end {
-                return Some((i, info, cache.as_ref().map(|x| &**x)));
+            if start_addr > addr {
+                // The debug image starts at a too high address
+                continue;
             }
+
+            let size = info.raw.image_size.unwrap_or(0);
+            if let Some(end_addr) = start_addr.checked_add(size) {
+                if end_addr < addr && size != 0 {
+                    // The debug image ends at a too low address and we're also confident that
+                    // end_addr is accurate (size != 0)
+                    continue;
+                }
+            }
+
+            return Some((i, info, cache.as_ref().map(|x| &**x)));
         }
 
         None
@@ -1061,4 +1063,27 @@ fn test_minidump_macos() -> Result<(), failure::Error> {
 #[test]
 fn test_minidump_linux() -> Result<(), failure::Error> {
     stackwalk_minidump("./tests/fixtures/linux.dmp")
+}
+
+#[test]
+fn test_symcache_lookup_open_end_addr() {
+    // The Rust SDK and some other clients sometimes send zero-sized images when no end addr could
+    // be determined. Symbolicator should still resolve such images.
+    let info: CompleteObjectInfo = RawObjectInfo {
+        ty: ObjectType(Default::default()),
+        code_id: None,
+        debug_id: None,
+        code_file: None,
+        debug_file: None,
+        image_addr: HexValue(42),
+        image_size: Some(0),
+    }
+    .into();
+
+    let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
+
+    let (a, b, c) = lookup.lookup_symcache(43).unwrap();
+    assert_eq!(a, 0);
+    assert_eq!(b, &info);
+    assert!(c.is_none());
 }
