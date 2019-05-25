@@ -1,0 +1,20 @@
+[package]
+name = "symsorter"
+version = "0.1.0"
+authors = ["Armin Ronacher <armin.ronacher@active-4.com>"]
+edition = "2018"
+
+[dependencies]
+structopt = "0.2.15"
+clap = "2.33.0"
+failure = "0.1.5"
+walkdir = "2.2.7"
+symbolic = { version = "6.1.0", features = ["debuginfo-serde"] }
+console = "0.7.5"
+zstd = "0.4.24+zstd.1.4.0"
+rayon = "1.0.3"
+itertools = "0.8.0"
+crossbeam = "0.7.1"
+
+[profile.release]
+debug = true
