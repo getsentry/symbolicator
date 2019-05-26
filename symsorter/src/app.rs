@@ -19,9 +19,15 @@ struct Cli {
     #[structopt(long = "output", short = "o", value_name = "PATH")]
     pub output: PathBuf,
 
-    /// If enabled debug symbols will be zstd compressed.
-    #[structopt(long = "compress", short = "z")]
-    pub compress: bool,
+    /// If enabled debug symbols will be zstd compressed (repeat to increase compression)
+    #[structopt(
+        long = "compress",
+        short = "z",
+        multiple = true,
+        parse(from_occurrences),
+        raw(takes_value = "false")
+    )]
+    pub compression_level: usize,
 
     /// If enabled output will be suppressed
     #[structopt(long = "quiet", short = "q")]
@@ -34,9 +40,15 @@ struct Cli {
 
 fn execute() -> Result<(), Error> {
     let cli = Cli::from_args();
+    let compression_level = match cli.compression_level {
+        0 => 0,
+        1 => 3,
+        2 => 10,
+        3 => 19,
+        _ => 22,
+    };
 
     let (tx, rx) = channel::bounded::<(ByteView<'static>, String)>(30);
-
     let mut reader_rv = None;
     let mut processor_rv = None;
     rayon::scope(|s| {
@@ -104,8 +116,8 @@ fn execute() -> Result<(), Error> {
                                 );
                             }
                             let mut out = fs::File::create(&new_filename)?;
-                            if cli.compress {
-                                copy_encode(obj.data(), &mut out, 3)?;
+                            if compression_level > 0 {
+                                copy_encode(obj.data(), &mut out, compression_level)?;
                             } else {
                                 io::copy(&mut obj.data(), &mut out)?;
                             }
