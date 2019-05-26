@@ -10,6 +10,7 @@ use structopt::StructOpt;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, FileFormat};
 use walkdir::WalkDir;
+use zip::ZipArchive;
 use zstd::stream::copy_encode;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, StructOpt, Debug)]
@@ -51,7 +52,22 @@ fn execute() -> Result<(), Error> {
 
                             let path = entry.path();
                             let bv = ByteView::open(path)?;
-                            if Archive::peek(&bv) != FileFormat::Unknown {
+
+                            // zip archive
+                            if bv.get(..2) == Some(b"PK") {
+                                let mut zip = ZipArchive::new(io::Cursor::new(&bv[..]))?;
+                                for index in 0..zip.len() {
+                                    let zip_file = zip.by_index(index)?;
+                                    let name =
+                                        zip_file.name().rsplit('/').next().unwrap().to_string();
+                                    let bv = ByteView::read(zip_file)?;
+                                    if Archive::peek(&bv) != FileFormat::Unknown {
+                                        tx.send((bv, name)).unwrap();
+                                    }
+                                }
+
+                            // object file directly
+                            } else if Archive::peek(&bv) != FileFormat::Unknown {
                                 tx.send((
                                     bv,
                                     path.file_name().unwrap().to_string_lossy().to_string(),

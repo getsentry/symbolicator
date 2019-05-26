@@ -7,6 +7,9 @@ license = "MIT"
 include = ["src/**/*", "Cargo.toml", "README.md"]
 readme = "README.md"
 
+[workspace]
+members = [".", "symsorter"]
+
 [dependencies]
 actix-web = { version = "0.7.19", features = ["tls"] }
 actix = "0.7.9"
