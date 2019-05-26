@@ -13,6 +13,7 @@ use walkdir::WalkDir;
 use zip::ZipArchive;
 use zstd::stream::copy_encode;
 
+/// Sorts debug symbols into the right structure for symbolicator.
 #[derive(PartialEq, Eq, PartialOrd, Ord, StructOpt, Debug)]
 struct Cli {
     /// Path to the output folder structure
