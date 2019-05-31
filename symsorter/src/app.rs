@@ -6,6 +6,7 @@ use console::style;
 use crossbeam::{self, channel};
 use failure::Error;
 use rayon::prelude::*;
+use rayon::ThreadPoolBuilder;
 use structopt::StructOpt;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, FileFormat};
@@ -30,6 +31,10 @@ struct Cli {
     )]
     pub compression_level: usize,
 
+    /// Controls how many threads should be used for conversion.
+    #[structopt(long = "threads", short = "t", value_name = "NUM")]
+    pub threads: Option<usize>,
+
     /// If enabled output will be suppressed
     #[structopt(long = "quiet", short = "q")]
     pub quiet: bool,
@@ -49,15 +54,23 @@ fn execute() -> Result<(), Error> {
         _ => 22,
     };
 
-    let (tx, rx) = channel::bounded::<(ByteView<'static>, String)>(30);
+    if let Some(threads) = cli.threads {
+        ThreadPoolBuilder::new()
+            .num_threads(threads.max(2))
+            .build_global()
+            .unwrap();
+    }
+
     let mut reader_rv = None;
     let mut processor_rv = None;
+
     rayon::scope(|s| {
+        let (tx, rx) = channel::bounded::<(ByteView<'static>, String)>(100);
         s.spawn(|_| {
             reader_rv = Some(
                 cli.input
                     .par_iter()
-                    .map(|path| -> Result<(), Error> {
+                    .try_for_each(|path| -> Result<(), Error> {
                         for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
                             if !entry.metadata()?.is_file() {
                                 continue;
@@ -89,8 +102,7 @@ fn execute() -> Result<(), Error> {
                             }
                         }
                         Ok(())
-                    })
-                    .collect::<Result<Vec<_>, _>>(),
+                    }),
             );
             drop(tx);
         });
@@ -99,9 +111,8 @@ fn execute() -> Result<(), Error> {
             processor_rv = Some(
                 rx.into_iter()
                     .par_bridge()
-                    .map(|(bv, filename)| -> Result<usize, Error> {
+                    .try_fold_with(0usize, |mut rv, (bv, filename)| -> Result<usize, Error> {
                         let archive = Archive::parse(&bv)?;
-                        let mut rv = 0;
                         for obj in archive.objects() {
                             let obj = obj?;
                             let debug_id = obj.debug_id().breakpad().to_string().to_lowercase();
@@ -117,6 +128,7 @@ fn execute() -> Result<(), Error> {
                                 );
                             }
                             let mut out = fs::File::create(&new_filename)?;
+
                             if compression_level > 0 {
                                 copy_encode(obj.data(), &mut out, compression_level)?;
                             } else {
@@ -126,15 +138,16 @@ fn execute() -> Result<(), Error> {
                         }
                         Ok(rv)
                     })
-                    .collect::<Result<Vec<_>, _>>(),
+                    .try_reduce(|| 0, |a, b| Ok(a + b)),
             );
         });
     });
 
     reader_rv.unwrap()?;
-    let total = processor_rv.unwrap()?.into_iter().sum::<usize>();
+    let total = processor_rv.unwrap()?;
 
     if !cli.quiet {
+        println!();
         println!("Done: sorted {} debug files", style(total).yellow().bold());
     }
 
