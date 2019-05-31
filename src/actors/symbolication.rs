@@ -952,7 +952,6 @@ impl SymbolicationActor {
 
         actix::spawn(
             self.do_process_minidump(request)
-                .sentry_hub_new_from_current()
                 .then(move |result| {
                     tx.send((
                         Instant::now(),
@@ -965,7 +964,9 @@ impl SymbolicationActor {
                         },
                     ))
                     .map_err(|_| ())
-                }),
+                })
+                // Clone hub because of `actix::spawn`
+                .sentry_hub_new_from_current(),
         );
 
         self.requests
