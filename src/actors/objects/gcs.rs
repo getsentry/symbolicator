@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use tokio_threadpool::ThreadPool;
-use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET, QUERY_ENCODE_SET};
+use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use crate::actors::common::cache::Cacher;
 use crate::actors::objects::common::prepare_download_paths;
@@ -49,6 +49,7 @@ struct GcsTokenResponse {
     access_token: String,
 }
 
+#[derive(Debug)]
 struct GcsToken {
     access_token: String,
     expires_at: DateTime<Utc>,
@@ -57,7 +58,7 @@ struct GcsToken {
 fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, ObjectError> {
     let jwt_claims = JwtClaims {
         issuer: source_key.client_email.clone(),
-        scope: "https://www.googleapis.com/auth/devstorage.readonly".into(),
+        scope: "https://www.googleapis.com/auth/devstorage.read_only".into(),
         audience: "https://www.googleapis.com/oauth2/v4/token".into(),
         expiration,
         issued_at: Utc::now().timestamp(),
@@ -67,13 +68,13 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
     if key_string.starts_with("-----BEGIN PRIVATE KEY-----") {
         key_string = key_string.splitn(5, "-----").nth(2).unwrap();
     }
-    let key_bytes = base64::decode_config(key_string.trim().as_bytes(), base64::CRYPT)
+    let key_bytes = base64::decode_config(key_string.trim().as_bytes(), base64::MIME)
         .context(ObjectErrorKind::Io)?;
 
     Ok(jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
         &jwt_claims,
-        &key_bytes,
+        jsonwebtoken::Pkcs8::from(&key_bytes),
     )
     .context(ObjectErrorKind::Io)?)
 }
@@ -88,7 +89,9 @@ fn request_new_token(
     };
 
     let mut builder = client::post("https://www.googleapis.com/oauth2/v4/token");
-    builder.header("content-type", "application/x-www-form-urlencoded");
+    // for some inexplicable reason we otherwise get gzipped data back that actix-web
+    // client has no idea what to do with.
+    builder.header("accept-encoding", "identity");
     let response = builder
         .form(&OAuth2Grant {
             grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
@@ -127,7 +130,7 @@ fn get_token(
     Box::new(request_new_token(&source_key).map(move |token| {
         let token = Arc::new(token);
         GCS_TOKENS.lock().put(source_key, token.clone());
-        return token;
+        token
     }))
 }
 
@@ -182,15 +185,15 @@ pub fn download_from_source(
         let source = source.clone();
         let key = key.clone();
         let url = format!(
-            "https://www.googleapis.com/upload/storage/v1/b/{}/o?name={}&uploadType={}",
+            "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
             percent_encode(source.bucket.as_bytes(), PATH_SEGMENT_ENCODE_SET),
-            percent_encode(key.as_bytes(), QUERY_ENCODE_SET),
-            "media"
+            percent_encode(key.as_bytes(), PATH_SEGMENT_ENCODE_SET),
         );
         get_token(&source.source_key)
             .and_then(move |token| {
+                log::debug!("Got valid GCS token: {:?}", &token);
                 let mut builder = client::get(&url);
-                builder.header("authorization", format!("bearer {}", token.access_token));
+                builder.header("authorization", format!("Bearer {}", token.access_token));
                 builder
                     .finish()
                     .unwrap()
@@ -219,10 +222,11 @@ pub fn download_from_source(
                 }
                 Err(e) => {
                     log::trace!(
-                        "Skipping response from GCS {} (from {}): {}",
+                        "Skipping response from GCS {} (from {}): {} ({:?})",
                         &key,
                         source.bucket,
-                        e
+                        &e,
+                        &e
                     );
                     Ok(None)
                 }
