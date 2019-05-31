@@ -89,7 +89,7 @@ pub fn prepare_downloads(
     Box::new(future::join_all(requests))
 }
 
-pub fn download_from_source(
+pub(super) fn download_from_source(
     source: Arc<S3SourceConfig>,
     download_path: &DownloadPath,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
@@ -126,7 +126,9 @@ pub fn download_from_source(
                 .map(BytesMut::freeze)
                 .map_err(|_err| ObjectError::from(ObjectErrorKind::Io));
 
-            Ok(Some(Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>))
+            Ok(Some(DownloadStream::FutureStream(
+                Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>
+            )))
         }
         Err(err) => {
             log::debug!("Skipping response from s3:{}{}: {}", bucket, &key, err);

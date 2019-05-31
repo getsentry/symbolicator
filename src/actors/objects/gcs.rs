@@ -174,7 +174,7 @@ pub fn prepare_downloads(
     Box::new(future::join_all(requests))
 }
 
-pub fn download_from_source(
+pub(super) fn download_from_source(
     source: Arc<GcsSourceConfig>,
     download_path: &DownloadPath,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
@@ -211,12 +211,12 @@ pub fn download_from_source(
                 Ok(response) => {
                     if response.status().is_success() {
                         log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                        Ok(Some(Box::new(
+                        Ok(Some(DownloadStream::FutureStream(Box::new(
                             response
                                 .payload()
                                 .map_err(|e| e.context(ObjectErrorKind::Io).into()),
                         )
-                            as Box<dyn Stream<Item = _, Error = _>>))
+                            as Box<dyn Stream<Item = _, Error = _>>)))
                     } else {
                         log::trace!(
                             "Unexpected status code from GCS {} (from {}): {}",

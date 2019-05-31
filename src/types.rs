@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{self, Write};
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::hex::HexValue;
@@ -38,6 +39,8 @@ pub enum SourceConfig {
     S3(Arc<S3SourceConfig>),
     /// A google cloud storage bucket.
     Gcs(Arc<GcsSourceConfig>),
+    /// Local file system.
+    Filesystem(Arc<FilesystemSourceConfig>),
 }
 
 /// Configuration for the Sentry-internal debug files endpoint.
@@ -67,6 +70,19 @@ pub struct HttpSourceConfig {
     /// Additional headers to be sent to the symbol server with every request.
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
+
+    #[serde(flatten)]
+    pub files: ExternalSourceConfigBase,
+}
+
+/// Configuration for reading from the local file system.
+#[derive(Deserialize, Clone, Debug)]
+pub struct FilesystemSourceConfig {
+    /// Unique source identifier.
+    pub id: String,
+
+    /// Path to symbol directory.
+    pub path: PathBuf,
 
     #[serde(flatten)]
     pub files: ExternalSourceConfigBase,
@@ -171,18 +187,16 @@ pub struct S3SourceConfig {
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
 pub struct ExternalSourceConfigBase {
     /// Influence whether this source will be selected
-    #[serde(default)]
     pub filters: SourceFilters,
 
     /// How files are laid out in this storage.
-    #[serde(default)]
     pub layout: DirectoryLayout,
 
     /// Whether debug files are shared across scopes.
-    #[serde(default)]
     pub is_public: bool,
 }
 
@@ -289,6 +303,7 @@ impl SourceConfig {
             SourceConfig::S3(ref x) => &x.id,
             SourceConfig::Gcs(ref x) => &x.id,
             SourceConfig::Sentry(ref x) => &x.id,
+            SourceConfig::Filesystem(ref x) => &x.id,
         }
     }
 
@@ -298,6 +313,7 @@ impl SourceConfig {
             SourceConfig::S3(..) => "s3",
             SourceConfig::Gcs(..) => "gcs",
             SourceConfig::Http(..) => "http",
+            SourceConfig::Filesystem(..) => "filesystem",
         }
     }
 
@@ -308,6 +324,7 @@ impl SourceConfig {
             SourceConfig::S3(ref x) => x.files.is_public,
             SourceConfig::Gcs(ref x) => x.files.is_public,
             SourceConfig::Sentry(_) => false,
+            SourceConfig::Filesystem(ref x) => x.files.is_public,
         }
     }
 }

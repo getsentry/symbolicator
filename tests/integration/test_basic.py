@@ -131,6 +131,37 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
         }
 
 
+def test_global_symcache_leak(symbolicator, hitcounter, tmpdir):
+    input = dict(
+        **WINDOWS_DATA,
+        sources=[
+            {
+                "type": "http",
+                "id": "microsoft",
+                "layout": {"type": "symstore"},
+                "filters": {"filetypes": ["pdb", "pe"]},
+                "url": f"{hitcounter.url}/msdl/",
+                "is_public": True,
+            }
+        ]
+    )
+
+    service = symbolicator(cache_dir=tmpdir.mkdir("caches"))
+    service.wait_healthcheck()
+
+    response  =service.post("/symbolicate?scope=123", json=input)
+    response.raise_for_status()
+
+    assert response.json() == SUCCESS_WINDOWS
+
+    input['sources'] = []
+
+    response  =service.post("/symbolicate?scope=123", json=input)
+    response.raise_for_status()
+
+    assert response.json() == MISSING_FILE
+
+
 def test_no_sources(symbolicator, cache_dir_param):
     input = dict(**WINDOWS_DATA, sources=[])
 
