@@ -73,6 +73,11 @@ pub trait CacheItemRequest: 'static + Send {
         path: &Path,
     ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>>;
 
+    /// Determines whether this item should be loaded.
+    fn should_load(&self, _data: &[u8]) -> bool {
+        true
+    }
+
     /// Loads an existing element from the cache.
     ///
     /// This may return `Ok(None)` if the cached item is no longer valid, or `Err` if the item is
@@ -135,6 +140,12 @@ impl<T: CacheItemRequest> Cacher<T> {
                         Some(x) => x,
                         None => continue,
                     };
+
+                    if !request.should_load(&byteview) {
+                        log::trace!("Discarding {} at path {:?}", name, path);
+                        metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+                        continue;
+                    }
 
                     // This is also reported for "negative cache hits": When we cached the 404 response from a
                     // server as empty file.

@@ -377,6 +377,14 @@ impl CacheItemRequest for FetchFileRequest {
     }
 }
 
+pub struct ObjectFileBytes(pub Arc<ObjectFile>);
+
+impl AsRef<[u8]> for ObjectFileBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.data.as_ref().map_or(&[][..], |x| &x[..])
+    }
+}
+
 /// Handle to local cache file.
 #[derive(Debug, Clone)]
 pub struct ObjectFile {
@@ -390,14 +398,6 @@ pub struct ObjectFile {
     /// The mmapped object.
     data: Option<ByteView<'static>>,
     status: CacheStatus,
-}
-
-pub struct ObjectFileBytes(pub Arc<ObjectFile>);
-
-impl AsRef<[u8]> for ObjectFileBytes {
-    fn as_ref(&self) -> &[u8] {
-        self.0.data.as_ref().map_or(&[][..], |x| &x[..])
-    }
 }
 
 impl ObjectFile {

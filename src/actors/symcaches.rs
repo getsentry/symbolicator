@@ -162,6 +162,12 @@ impl CacheItemRequest for FetchSymCacheInternal {
         ))
     }
 
+    fn should_load(&self, data: &[u8]) -> bool {
+        SymCache::parse(data)
+            .map(|symcache| symcache.is_latest())
+            .unwrap_or(false)
+    }
+
     fn load(
         self,
         scope: Scope,
