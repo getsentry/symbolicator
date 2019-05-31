@@ -168,24 +168,19 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(
-        self,
-        scope: Scope,
-        status: CacheStatus,
-        data: ByteView<'static>,
-    ) -> Result<Self::Item, Self::Error> {
+    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
         // TODO: Figure out if this double-parsing could be avoided
         let arch = SymCache::parse(&data)
             .map(|cache| cache.arch())
             .unwrap_or_default();
 
-        Ok(SymCacheFile {
-            request: self,
+        SymCacheFile {
+            request: self.clone(),
             status,
             scope,
             data,
             arch,
-        })
+        }
     }
 }
 

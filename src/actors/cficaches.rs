@@ -161,18 +161,13 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(
-        self,
-        scope: Scope,
-        status: CacheStatus,
-        data: ByteView<'static>,
-    ) -> Result<Self::Item, Self::Error> {
-        Ok(CfiCacheFile {
-            request: self,
+    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+        CfiCacheFile {
+            request: self.clone(),
             status,
             scope,
             data,
-        })
+        }
     }
 }
 
