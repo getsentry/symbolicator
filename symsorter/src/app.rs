@@ -1,6 +1,6 @@
+use std::fmt::Write;
 use std::fs;
 use std::io;
-use std::fmt::Write;
 use std::path::PathBuf;
 
 use console::style;
@@ -130,7 +130,8 @@ fn execute() -> Result<(), Error> {
                         let archive = Archive::parse(&bv)?;
                         for obj in archive.objects() {
                             let obj = obj?;
-                            let new_filename = cli.output.join(get_target_filename(&obj.debug_id()));
+                            let new_filename =
+                                cli.output.join(get_target_filename(&obj.debug_id()));
                             fs::create_dir_all(new_filename.parent().unwrap())?;
                             if !cli.quiet {
                                 println!(
