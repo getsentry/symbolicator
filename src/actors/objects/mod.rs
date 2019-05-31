@@ -362,7 +362,7 @@ impl CacheItemRequest for FetchFileRequest {
         status: CacheStatus,
         data: ByteView<'static>,
     ) -> Result<Self::Item, Self::Error> {
-        let rv = ObjectFile {
+        let object = ObjectFile {
             request: Some(self),
             status,
             scope,
@@ -370,10 +370,10 @@ impl CacheItemRequest for FetchFileRequest {
         };
 
         configure_scope(|scope| {
-            rv.write_sentry_scope(scope);
+            object.write_sentry_scope(scope);
         });
 
-        Ok(rv)
+        Ok(object)
     }
 }
 
