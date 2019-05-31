@@ -80,8 +80,7 @@ impl CfiCacheFile {
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(CfiCacheErrorKind::ObjectParsing.into()),
             CacheStatus::Positive => Ok(Some(
-                CfiCache::from_bytes(self.data.clone())
-                    .context(CfiCacheErrorKind::Parsing)?,
+                CfiCache::from_bytes(self.data.clone()).context(CfiCacheErrorKind::Parsing)?,
             )),
         }
     }

@@ -141,7 +141,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                         None => continue,
                     };
 
-                    if !request.should_load(&byteview) {
+                    let status = CacheStatus::from_content(&byteview);
+                    if status == CacheStatus::Positive && !request.should_load(&byteview) {
                         log::trace!("Discarding {} at path {:?}", name, path);
                         metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
                         continue;
@@ -164,13 +165,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     });
 
                     log::trace!("Loading {} at path {:?}", name, path);
-
-                    let item = tryf!(request.load(
-                        scope.clone(),
-                        CacheStatus::from_content(&byteview),
-                        byteview
-                    ));
-
+                    let item = tryf!(request.load(scope.clone(), status, byteview));
                     return Box::new(Ok(item).into_future());
                 }
 
