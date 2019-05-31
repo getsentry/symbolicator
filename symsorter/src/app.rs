@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use console::style;
@@ -8,7 +9,7 @@ use failure::Error;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use structopt::StructOpt;
-use symbolic::common::ByteView;
+use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::{Archive, FileFormat};
 use walkdir::WalkDir;
 use zip::ZipArchive;
@@ -42,6 +43,20 @@ struct Cli {
     /// Path to input files.
     #[structopt(index = 1)]
     pub input: Vec<PathBuf>,
+}
+
+fn get_target_filename(debug_id: &DebugId) -> PathBuf {
+    // Format the UUID as "xxxx/xxxx/xxxx/xxxx/xxxx/xxxxxxxxxxxx"
+    let uuid = debug_id.uuid();
+    let slice = uuid.as_bytes();
+    let mut path = String::with_capacity(37);
+    for (i, byte) in slice.iter().enumerate() {
+        write!(path, "{:02X}", byte).ok();
+        if i % 2 == 1 && i <= 9 {
+            path.push('/');
+        }
+    }
+    path.into()
 }
 
 fn execute() -> Result<(), Error> {
@@ -115,10 +130,8 @@ fn execute() -> Result<(), Error> {
                         let archive = Archive::parse(&bv)?;
                         for obj in archive.objects() {
                             let obj = obj?;
-                            let debug_id = obj.debug_id().breakpad().to_string().to_lowercase();
-                            let dir = cli.output.join(&debug_id[..2]);
-                            let new_filename = dir.join(&debug_id[2..]);
-                            fs::create_dir_all(dir)?;
+                            let new_filename = cli.output.join(get_target_filename(&obj.debug_id()));
+                            fs::create_dir_all(new_filename.parent().unwrap())?;
                             if !cli.quiet {
                                 println!(
                                     "{} ({}) -> {}",
