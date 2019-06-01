@@ -55,6 +55,20 @@ struct GcsToken {
     expires_at: DateTime<Utc>,
 }
 
+fn key_from_string(mut s: &str) -> Result<Vec<u8>, ObjectError> {
+    if s.starts_with("-----BEGIN PRIVATE KEY-----") {
+        s = s.splitn(5, "-----").nth(2).unwrap();
+    }
+    Ok(base64::decode(
+        &s.as_bytes()
+            .iter()
+            .cloned()
+            .filter(|b| !b.is_ascii_whitespace())
+            .collect::<Vec<u8>>(),
+    )
+    .context(ObjectErrorKind::Io)?)
+}
+
 fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, ObjectError> {
     let jwt_claims = JwtClaims {
         issuer: source_key.client_email.clone(),
@@ -64,17 +78,10 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
         issued_at: Utc::now().timestamp(),
     };
 
-    let mut key_string = source_key.private_key.as_str();
-    if key_string.starts_with("-----BEGIN PRIVATE KEY-----") {
-        key_string = key_string.splitn(5, "-----").nth(2).unwrap();
-    }
-    let key_bytes = base64::decode_config(key_string.trim().as_bytes(), base64::MIME)
-        .context(ObjectErrorKind::Io)?;
-
     Ok(jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
         &jwt_claims,
-        jsonwebtoken::Pkcs8::from(&key_bytes),
+        jsonwebtoken::Pkcs8::from(&key_from_string(&source_key.private_key)?),
     )
     .context(ObjectErrorKind::Io)?)
 }
