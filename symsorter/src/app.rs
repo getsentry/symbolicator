@@ -4,10 +4,7 @@ use std::io;
 use std::path::PathBuf;
 
 use console::style;
-use crossbeam::{self, channel};
 use failure::Error;
-use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
 use structopt::StructOpt;
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::{Archive, FileFormat};
@@ -32,10 +29,6 @@ struct Cli {
     )]
     pub compression_level: usize,
 
-    /// Controls how many threads should be used for conversion.
-    #[structopt(long = "threads", short = "t", value_name = "NUM")]
-    pub threads: Option<usize>,
-
     /// If enabled output will be suppressed
     #[structopt(long = "quiet", short = "q")]
     pub quiet: bool,
@@ -59,8 +52,7 @@ fn get_target_filename(debug_id: &DebugId) -> PathBuf {
     path.into()
 }
 
-fn execute() -> Result<(), Error> {
-    let cli = Cli::from_args();
+fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<usize, Error> {
     let compression_level = match cli.compression_level {
         0 => 0,
         1 => 3,
@@ -68,97 +60,67 @@ fn execute() -> Result<(), Error> {
         3 => 19,
         _ => 22,
     };
+    let mut rv = 0;
+    let archive = Archive::parse(&bv)?;
+    for obj in archive.objects() {
+        let obj = obj?;
+        let new_filename = cli.output.join(get_target_filename(&obj.debug_id()));
+        fs::create_dir_all(new_filename.parent().unwrap())?;
+        if !cli.quiet {
+            println!(
+                "{} ({}) -> {}",
+                style(&filename).dim(),
+                style(obj.arch().to_string()).yellow(),
+                style(new_filename.display()).cyan()
+            );
+        }
+        let mut out = fs::File::create(&new_filename)?;
 
-    if let Some(threads) = cli.threads {
-        ThreadPoolBuilder::new()
-            .num_threads(threads.max(2))
-            .build_global()
-            .unwrap();
+        if compression_level > 0 {
+            copy_encode(obj.data(), &mut out, compression_level)?;
+        } else {
+            io::copy(&mut obj.data(), &mut out)?;
+        }
+        rv += 1;
     }
+    Ok(rv)
+}
 
-    let mut reader_rv = None;
-    let mut processor_rv = None;
+fn execute() -> Result<(), Error> {
+    let cli = Cli::from_args();
 
-    rayon::scope(|s| {
-        let (tx, rx) = channel::bounded::<(ByteView<'static>, String)>(100);
-        s.spawn(|_| {
-            reader_rv = Some(
-                cli.input
-                    .par_iter()
-                    .try_for_each(|path| -> Result<(), Error> {
-                        for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
-                            if !entry.metadata()?.is_file() {
-                                continue;
-                            }
+    let mut total = 0;
+    for path in cli.input.iter() {
+        for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
+            if !entry.metadata()?.is_file() {
+                continue;
+            }
 
-                            let path = entry.path();
-                            let bv = ByteView::open(path)?;
+            let path = entry.path();
+            let bv = ByteView::open(path)?;
 
-                            // zip archive
-                            if bv.get(..2) == Some(b"PK") {
-                                let mut zip = ZipArchive::new(io::Cursor::new(&bv[..]))?;
-                                for index in 0..zip.len() {
-                                    let zip_file = zip.by_index(index)?;
-                                    let name =
-                                        zip_file.name().rsplit('/').next().unwrap().to_string();
-                                    let bv = ByteView::read(zip_file)?;
-                                    if Archive::peek(&bv) != FileFormat::Unknown {
-                                        tx.send((bv, name)).unwrap();
-                                    }
-                                }
+            // zip archive
+            if bv.get(..2) == Some(b"PK") {
+                let mut zip = ZipArchive::new(io::Cursor::new(&bv[..]))?;
+                for index in 0..zip.len() {
+                    let zip_file = zip.by_index(index)?;
+                    let name = zip_file.name().rsplit('/').next().unwrap().to_string();
+                    let bv = ByteView::read(zip_file)?;
+                    if Archive::peek(&bv) != FileFormat::Unknown {
+                        total += process_file(&cli, bv, name)?;
+                    }
+                }
 
-                            // object file directly
-                            } else if Archive::peek(&bv) != FileFormat::Unknown {
-                                tx.send((
-                                    bv,
-                                    path.file_name().unwrap().to_string_lossy().to_string(),
-                                ))
-                                .unwrap();
-                            }
-                        }
-                        Ok(())
-                    }),
-            );
-            drop(tx);
-        });
-
-        s.spawn(|_| {
-            processor_rv = Some(
-                rx.into_iter()
-                    .par_bridge()
-                    .try_fold_with(0usize, |mut rv, (bv, filename)| -> Result<usize, Error> {
-                        let archive = Archive::parse(&bv)?;
-                        for obj in archive.objects() {
-                            let obj = obj?;
-                            let new_filename =
-                                cli.output.join(get_target_filename(&obj.debug_id()));
-                            fs::create_dir_all(new_filename.parent().unwrap())?;
-                            if !cli.quiet {
-                                println!(
-                                    "{} ({}) -> {}",
-                                    style(&filename).dim(),
-                                    style(obj.arch().to_string()).yellow(),
-                                    style(new_filename.display()).cyan()
-                                );
-                            }
-                            let mut out = fs::File::create(&new_filename)?;
-
-                            if compression_level > 0 {
-                                copy_encode(obj.data(), &mut out, compression_level)?;
-                            } else {
-                                io::copy(&mut obj.data(), &mut out)?;
-                            }
-                            rv += 1;
-                        }
-                        Ok(rv)
-                    })
-                    .try_reduce(|| 0, |a, b| Ok(a + b)),
-            );
-        });
-    });
-
-    reader_rv.unwrap()?;
-    let total = processor_rv.unwrap()?;
+            // object file directly
+            } else if Archive::peek(&bv) != FileFormat::Unknown {
+                total += process_file(
+                    &cli,
+                    bv,
+                    path.file_name().unwrap().to_string_lossy().to_string(),
+                )?;
+            }
+        }
+    }
 
     if !cli.quiet {
         println!();
