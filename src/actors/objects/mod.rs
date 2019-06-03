@@ -176,14 +176,14 @@ impl CacheItemRequest for FetchFileRequest {
             if let Some(payload) = payload {
                 log::debug!("Fetching debug file for {}", cache_key);
 
-                let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir));
-                let mut extract_file =
-                    tryf!(tempfile_in(download_dir).context(ObjectErrorKind::Io));
+                let download_dir =
+                    tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
 
                 let (download_file_path, download_file) = match payload {
                     DownloadStream::FutureStream(stream) => {
-                        let named_download_file =
-                            tryf!(NamedTempFile::new_in(download_dir).context(ObjectErrorKind::Io));
+                        let named_download_file = tryf!(
+                            NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io)
+                        );
 
                         (
                             named_download_file.path().to_owned(),
@@ -206,106 +206,16 @@ impl CacheItemRequest for FetchFileRequest {
                     ),
                 };
 
-                let future = download_file.and_then(clone!(threadpool, |mut download_file| {
+                let future = download_file.and_then(clone!(threadpool, |download_file| {
                     log::trace!("Finished download of {}", cache_key);
                     threadpool.spawn_handle(future::lazy(move || {
-                        // Ensure that both meta data and file contents are available to the
-                        // subsequent reads of the file metadata and reads from other threads.
-                        download_file.sync_all().context(ObjectErrorKind::Io)?;
-
-                        let metadata = download_file.metadata().context(ObjectErrorKind::Io)?;
-                        metric!(time_raw("objects.size") = metadata.len());
-
-                        download_file
-                            .seek(SeekFrom::Start(0))
-                            .context(ObjectErrorKind::Io)?;
-                        let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
-                        download_file
-                            .read_exact(&mut magic_bytes)
-                            .context(ObjectErrorKind::Io)?;
-                        download_file
-                            .seek(SeekFrom::Start(0))
-                            .context(ObjectErrorKind::Io)?;
-
-                        let mut persist_file =
-                            fs::File::create(&path).context(ObjectErrorKind::Io)?;
-
-                        // For a comprehensive list also refer to
-                        // https://en.wikipedia.org/wiki/List_of_file_signatures
-                        //
-                        // XXX: The decoders in the flate2 crate also support being used as a
-                        // wrapper around a Write. Only zstd doesn't. If we can get this into
-                        // zstd we could save one tempfile and especially avoid the io::copy
-                        // for downloads that were not compressed.
-                        let mut decompressed = match magic_bytes {
-                            // Magic bytes for zstd
-                            // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
-                            [0x28, 0xb5, 0x2f, 0xfd] => {
-                                metric!(counter("compression") += 1, "type" => "zstd");
-                                log::trace!("Decompressing (zstd): {}", cache_key);
-
-                                zstd::stream::copy_decode(download_file, &mut extract_file)
-                                    .context(ObjectErrorKind::Parsing)?;
-
-                                extract_file
-                            }
-                            // Magic bytes for gzip
-                            // https://tools.ietf.org/html/rfc1952#section-2.3.1
-                            [0x1f, 0x8b, _, _] => {
-                                metric!(counter("compression") += 1, "type" => "gz");
-                                log::trace!("Decompressing (gz): {}", cache_key);
-
-                                // We assume MultiGzDecoder accepts a strict superset of input
-                                // values compared to GzDecoder.
-                                let mut reader = flate2::read::MultiGzDecoder::new(download_file);
-                                io::copy(&mut reader, &mut extract_file)
-                                    .context(ObjectErrorKind::Io)?;
-
-                                extract_file
-                            }
-                            // Magic bytes for zlib
-                            [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
-                                metric!(counter("compression") += 1, "type" => "zlib");
-                                log::trace!("Decompressing (zlib): {}", cache_key);
-
-                                let mut reader = flate2::read::ZlibDecoder::new(download_file);
-                                io::copy(&mut reader, &mut extract_file)
-                                    .context(ObjectErrorKind::Io)?;
-
-                                extract_file
-                            }
-                            // Magic bytes for CAB
-                            [77, 83, 67, 70] => {
-                                metric!(counter("compression") += 1, "type" => "cab");
-                                log::trace!("Decompressing (cab): {}", cache_key);
-
-                                let status = process::Command::new("cabextract")
-                                    .arg("-sfqp")
-                                    .arg(&download_file_path)
-                                    .stdout(process::Stdio::from(
-                                        extract_file.try_clone().context(ObjectErrorKind::Io)?,
-                                    ))
-                                    .stderr(process::Stdio::null())
-                                    .status()
-                                    .context(ObjectErrorKind::Io)?;
-
-                                if !status.success() {
-                                    Err(std::io::Error::new(
-                                        std::io::ErrorKind::InvalidData,
-                                        "failed to decompress cab file",
-                                    )
-                                    .context(ObjectErrorKind::Io))?;
-                                }
-
-                                extract_file
-                            }
-                            // Probably not compressed
-                            _ => {
-                                metric!(counter("compression") += 1, "type" => "none");
-                                log::trace!("No compression detected: {}", cache_key);
-                                download_file
-                            }
-                        };
+                        let mut decompressed = decompress_object_file(
+                            &cache_key,
+                            &download_file_path,
+                            download_file,
+                            tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
+                        )
+                        .context(ObjectErrorKind::Io)?;
 
                         // Seek back to the start and parse this object to we can deal with it.
                         // Since objects in Sentry (and potentially also other sources) might be
@@ -321,6 +231,9 @@ impl CacheItemRequest for FetchFileRequest {
                                 return Ok((CacheStatus::Malformed, final_scope));
                             }
                         };
+
+                        let mut persist_file =
+                            fs::File::create(&path).context(ObjectErrorKind::Io)?;
 
                         if archive.is_multi() {
                             let object_opt = archive
@@ -620,6 +533,95 @@ fn download_from_source(
         }
         FetchFileInner::Filesystem(ref source, ref file_id) => {
             filesystem::download_from_source(source.clone(), file_id)
+        }
+    }
+}
+
+fn decompress_object_file(
+    cache_key: &CacheKey,
+    download_file_path: &Path,
+    mut download_file: fs::File,
+    mut extract_file: fs::File,
+) -> io::Result<fs::File> {
+    // Ensure that both meta data and file contents are available to the
+    // subsequent reads of the file metadata and reads from other threads.
+    download_file.sync_all()?;
+
+    let metadata = download_file.metadata()?;
+    metric!(time_raw("objects.size") = metadata.len());
+
+    download_file.seek(SeekFrom::Start(0))?;
+    let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
+    download_file.read_exact(&mut magic_bytes)?;
+    download_file.seek(SeekFrom::Start(0))?;
+
+    // For a comprehensive list also refer to
+    // https://en.wikipedia.org/wiki/List_of_file_signatures
+    //
+    // XXX: The decoders in the flate2 crate also support being used as a
+    // wrapper around a Write. Only zstd doesn't. If we can get this into
+    // zstd we could save one tempfile and especially avoid the io::copy
+    // for downloads that were not compressed.
+    match magic_bytes {
+        // Magic bytes for zstd
+        // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
+        [0x28, 0xb5, 0x2f, 0xfd] => {
+            metric!(counter("compression") += 1, "type" => "zstd");
+            log::trace!("Decompressing (zstd): {}", cache_key);
+
+            zstd::stream::copy_decode(download_file, &mut extract_file)?;
+
+            Ok(extract_file)
+        }
+        // Magic bytes for gzip
+        // https://tools.ietf.org/html/rfc1952#section-2.3.1
+        [0x1f, 0x8b, _, _] => {
+            metric!(counter("compression") += 1, "type" => "gz");
+            log::trace!("Decompressing (gz): {}", cache_key);
+
+            // We assume MultiGzDecoder accepts a strict superset of input
+            // values compared to GzDecoder.
+            let mut reader = flate2::read::MultiGzDecoder::new(download_file);
+            io::copy(&mut reader, &mut extract_file)?;
+
+            Ok(extract_file)
+        }
+        // Magic bytes for zlib
+        [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
+            metric!(counter("compression") += 1, "type" => "zlib");
+            log::trace!("Decompressing (zlib): {}", cache_key);
+
+            let mut reader = flate2::read::ZlibDecoder::new(download_file);
+            io::copy(&mut reader, &mut extract_file)?;
+
+            Ok(extract_file)
+        }
+        // Magic bytes for CAB
+        [77, 83, 67, 70] => {
+            metric!(counter("compression") += 1, "type" => "cab");
+            log::trace!("Decompressing (cab): {}", cache_key);
+
+            let status = process::Command::new("cabextract")
+                .arg("-sfqp")
+                .arg(&download_file_path)
+                .stdout(process::Stdio::from(extract_file.try_clone()?))
+                .stderr(process::Stdio::null())
+                .status()?;
+
+            if !status.success() {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "failed to decompress cab file",
+                ))?;
+            }
+
+            Ok(extract_file)
+        }
+        // Probably not compressed
+        _ => {
+            metric!(counter("compression") += 1, "type" => "none");
+            log::trace!("No compression detected: {}", cache_key);
+            Ok(download_file)
         }
     }
 }
