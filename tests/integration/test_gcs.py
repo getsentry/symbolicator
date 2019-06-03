@@ -1,5 +1,4 @@
 import uuid
-import pytest
 
 
 debug_id_libdyld = uuid.UUID("e514c946-4eed-3be5-943a-2c61d9241fad")
