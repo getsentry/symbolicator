@@ -36,6 +36,8 @@ pub enum SourceConfig {
     Http(Arc<HttpSourceConfig>),
     /// Amazon S3 bucket containing symbols in a directory hierarchy.
     S3(Arc<S3SourceConfig>),
+    /// A google cloud storage bucket.
+    Gcs(Arc<GcsSourceConfig>),
 }
 
 /// Configuration for the Sentry-internal debug files endpoint.
@@ -114,6 +116,37 @@ impl std::hash::Hash for S3SourceKey {
         self.secret_key.hash(state);
         self.region.name().hash(state);
     }
+}
+
+/// GCS authorization information.
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GcsSourceKey {
+    /// Gcs authorization key.
+    pub private_key: String,
+
+    /// The client email.
+    pub client_email: String,
+}
+
+/// Configuration for a GCS symbol buckets.
+#[derive(Deserialize, Clone, Debug)]
+pub struct GcsSourceConfig {
+    /// Unique source identifier.
+    pub id: String,
+
+    /// Name of the GCS bucket.
+    pub bucket: String,
+
+    /// A path from the root of the bucket where files are located.
+    #[serde(default)]
+    pub prefix: String,
+
+    /// Authorization information for this bucket. Needs read access.
+    #[serde(flatten)]
+    pub source_key: Arc<GcsSourceKey>,
+
+    #[serde(flatten)]
+    pub files: ExternalSourceConfigBase,
 }
 
 /// Configuration for S3 symbol buckets.
@@ -254,6 +287,7 @@ impl SourceConfig {
         match *self {
             SourceConfig::Http(ref x) => &x.id,
             SourceConfig::S3(ref x) => &x.id,
+            SourceConfig::Gcs(ref x) => &x.id,
             SourceConfig::Sentry(ref x) => &x.id,
         }
     }
@@ -262,6 +296,7 @@ impl SourceConfig {
         match *self {
             SourceConfig::Sentry(..) => "sentry",
             SourceConfig::S3(..) => "s3",
+            SourceConfig::Gcs(..) => "gcs",
             SourceConfig::Http(..) => "http",
         }
     }
@@ -271,6 +306,7 @@ impl SourceConfig {
         match *self {
             SourceConfig::Http(ref x) => x.files.is_public,
             SourceConfig::S3(ref x) => x.files.is_public,
+            SourceConfig::Gcs(ref x) => x.files.is_public,
             SourceConfig::Sentry(_) => false,
         }
     }

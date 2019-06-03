@@ -11,7 +11,7 @@ readme = "README.md"
 members = [".", "symsorter"]
 
 [dependencies]
-actix-web = { version = "0.7.19", features = ["tls"] }
+actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
 actix = "0.7.9"
 failure = "0.1.5"
 serde = { version = "1.0.91", features = ["derive", "rc"] }
@@ -48,6 +48,9 @@ flate2 = "1.0.7"
 glob = "0.3.0"
 itertools = "0.8.0"
 tokio-retry = "0.2.0"
+# needed for gcs, see https://github.com/Keats/jsonwebtoken/pull/89
+jsonwebtoken = { git = "https://github.com/Keats/jsonwebtoken", branch = "next" }
+base64 = "0.10.1"
 
 [dev-dependencies]
 insta = "0.8.1"
