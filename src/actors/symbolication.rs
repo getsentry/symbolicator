@@ -1086,7 +1086,7 @@ fn test_global_cache_leakage() -> Result<(), failure::Error> {
         ))]),
         stacktraces: vec![RawStacktrace {
             frames: vec![RawFrame {
-                instruction_addr: HexValue(0x0000000100000fa0),
+                instruction_addr: HexValue(0x1_0000_0fa0),
                 ..Default::default()
             }],
             registers: Default::default(),
@@ -1095,7 +1095,7 @@ fn test_global_cache_leakage() -> Result<(), failure::Error> {
             ty: ObjectType("macho".to_owned()),
             code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
             debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
-            image_addr: HexValue(0x0000000100000000),
+            image_addr: HexValue(0x1_0000_0000),
             image_size: Some(4096),
             code_file: Default::default(),
             debug_file: Default::default(),
