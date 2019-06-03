@@ -12,8 +12,6 @@ walkdir = "2.2.7"
 symbolic = { git = "https://github.com/getsentry/symbolic", rev = "572fbbc2151bc862fa58b8ab15a377da6f3c5a7c", features = ["debuginfo-serde"] }
 console = "0.7.5"
 zstd = "0.4.24"
-rayon = "1.0.3"
 itertools = "0.8.0"
-crossbeam = "0.7.1"
 zip = "0.5.2"
 parking_lot = "0.8.0"
