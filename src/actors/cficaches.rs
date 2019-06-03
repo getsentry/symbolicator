@@ -8,7 +8,7 @@ use failure::{Fail, ResultExt};
 use futures::Future;
 use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
-use symbolic::{common::ByteView, minidump};
+use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
@@ -75,13 +75,12 @@ pub struct CfiCacheFile {
 }
 
 impl CfiCacheFile {
-    pub fn parse(&self) -> Result<Option<minidump::cfi::CfiCache<'_>>, CfiCacheError> {
+    pub fn parse(&self) -> Result<Option<CfiCache<'_>>, CfiCacheError> {
         match self.status {
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(CfiCacheErrorKind::ObjectParsing.into()),
             CacheStatus::Positive => Ok(Some(
-                minidump::cfi::CfiCache::from_bytes(self.data.clone())
-                    .context(CfiCacheErrorKind::Parsing)?,
+                CfiCache::from_bytes(self.data.clone()).context(CfiCacheErrorKind::Parsing)?,
             )),
         }
     }
@@ -156,6 +155,12 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         ))
     }
 
+    fn should_load(&self, data: &[u8]) -> bool {
+        CfiCache::from_bytes(ByteView::from_slice(data))
+            .map(|cficache| cficache.is_latest())
+            .unwrap_or(false)
+    }
+
     fn load(
         self,
         scope: Scope,
@@ -211,7 +216,7 @@ fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheE
         log::debug!("Converting cficache for {}", cache_key);
     }
 
-    minidump::cfi::CfiCache::from_object(&object)
+    CfiCache::from_object(&object)
         .context(CfiCacheErrorKind::ObjectParsing)?
         .write_to(writer)
         .context(CfiCacheErrorKind::Io)?;
