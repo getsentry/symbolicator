@@ -34,7 +34,7 @@ fn read_sources_json(
     field
         .map_err(Error::from)
         .fold(BytesMut::with_capacity(512), move |mut body, chunk| {
-            if (body.len() + chunk.len()) > 2048 {
+            if (body.len() + chunk.len()) > 1_000_000 {
                 Err(Error::from(error::JsonPayloadError::Overflow))
             } else {
                 body.extend_from_slice(&chunk);
