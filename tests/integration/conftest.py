@@ -16,6 +16,8 @@ SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolic
 AWS_ACCESS_KEY_ID = os.environ.get("SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY")
 AWS_REGION_NAME = "us-east-1"
+GCS_PRIVATE_KEY = os.environ.get("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY")
+GCS_CLIENT_EMAIL = os.environ.get("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL")
 
 session = requests.session()
 
@@ -192,3 +194,17 @@ def s3_bucket_config(s3):
 
     s3.Bucket(bucket_name).objects.all().delete()
     s3.Bucket(bucket_name).delete()
+
+
+@pytest.fixture
+def ios_bucket_config():
+    if not GCS_PRIVATE_KEY or not GCS_CLIENT_EMAIL:
+        pytest.skip("No GCS credentials")
+    yield {
+        "id": "ios",
+        "type": "gcs",
+        "bucket": "sentryio-system-symbols",
+        "private_key": GCS_PRIVATE_KEY,
+        "client_email": GCS_CLIENT_EMAIL,
+        "prefix": "/ios",
+    }

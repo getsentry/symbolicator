@@ -7,47 +7,47 @@ license = "MIT"
 include = ["src/**/*", "Cargo.toml", "README.md"]
 readme = "README.md"
 
-[workspace]
-members = [".", "symsorter"]
-
 [dependencies]
-actix-web = { version = "0.7.19", features = ["tls"] }
+actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
 actix = "0.7.9"
 failure = "0.1.5"
 serde = { version = "1.0.91", features = ["derive", "rc"] }
 futures = "0.1.27"
 bytes = "0.4.12"
 url = "1.7.2"
-derive_more = "0.14.0"
+derive_more = "0.14.1"
 url_serde = "0.2.0"
 log = { version = "0.4.6", features = ["serde"] }
-tempfile = "3.0.7"
+tempfile = "3.0.8"
 env_logger = "0.6.1"
-structopt = "0.2.15"
+structopt = "0.2.16"
 serde_yaml = "0.8.9"
 void = "1.0.2"
 tokio-threadpool = "0.1.14"
 cadence = "0.17.1"
 lazy_static = "1.3.0"
 parking_lot = "0.8.0"
-tokio = "0.1.20"
+tokio = "0.1.21"
 uuid = "0.7.4"
 symbolic = { git = "https://github.com/getsentry/symbolic", rev = "572fbbc2151bc862fa58b8ab15a377da6f3c5a7c", features = ["common-serde", "demangle", "minidump", "minidump-serde", "symcache"] }
 sentry = "0.15.5"
 sentry-actix = "0.15.5"
-rusoto_s3 = "0.38.0"
-rusoto_core = "0.38.0"
-rusoto_credential = "0.17.0"
+rusoto_s3 = "0.39.0"
+rusoto_core = "0.39.0"
+rusoto_credential = "0.39.0"
 lru = "0.1.15"
 pretty_env_logger = "0.3.0"
 console = "0.7.5"
 serde_json = "1.0.39"
 chrono = "0.4.6"
-zstd = "0.4.24"
+zstd = "0.4.24+zstd.1.4.0"
 flate2 = "1.0.7"
 glob = "0.3.0"
 itertools = "0.8.0"
 tokio-retry = "0.2.0"
+# needed for gcs, see https://github.com/Keats/jsonwebtoken/pull/89
+jsonwebtoken = { git = "https://github.com/Keats/jsonwebtoken", branch = "next" }
+base64 = "0.10.1"
 
 [dev-dependencies]
 insta = "0.8.1"

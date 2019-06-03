@@ -165,7 +165,7 @@ Sources are ordered by priority.  Each source needs at least two keys:
 
 - `id`: the ID of the source.  This can be freely chosen and is used to identify
   cache files in the cache folder
-- `type`: defines the type of the source (`http`, `s3` or `sentry`)
+- `type`: defines the type of the source (`http`, `s3`, `gcs` or `sentry`)
 
 These are common parameters that work on most symbol sources (except `sentry`):
 
@@ -211,7 +211,17 @@ issues as the SSQP protocol demands case insensitive lookups.
 - `prefix`: a path prefix to put in front of all keys (eg: `/windows`)
 - `region`: the AWS region where the bucket is located
 - `access_key`: the AWS access key to use
-- `secret_keh`: the AWS secret key to use
+- `secret_key`: the AWS secret key to use
+
+### `gcs` source
+
+This source connects to a GCS bucket and looks for symbols there.  It behaves similarly
+to `s3` but uses different credentials:
+
+- `bucket`: the name of the GCS bucket
+- `prefix`: a path prefix to put in front of all keys (eg: `/windows`)
+- `private_key`: the GCS private key (base64 encoded and with optional PEM envelope)
+- `client_email`: the GCS client email for authentication
 
 ### `sentry` source
 

@@ -21,11 +21,13 @@ use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
-    FileType, HttpSourceConfig, ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
+    FileType, GcsSourceConfig, HttpSourceConfig, ObjectId, S3SourceConfig, Scope,
+    SentrySourceConfig, SourceConfig,
 };
 use crate::utils::objects;
 
 mod common;
+mod gcs;
 mod http;
 mod s3;
 mod sentry;
@@ -94,6 +96,7 @@ pub struct FetchFileRequest {
 enum FileId {
     Sentry(Arc<SentrySourceConfig>, SentryFileId),
     S3(Arc<S3SourceConfig>, DownloadPath),
+    Gcs(Arc<GcsSourceConfig>, DownloadPath),
     Http(Arc<HttpSourceConfig>, DownloadPath),
 }
 
@@ -108,6 +111,7 @@ impl FileId {
         match *self {
             FileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
             FileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
+            FileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
             FileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
         }
     }
@@ -128,6 +132,7 @@ impl CacheItemRequest for FetchFileRequest {
             cache_key: match self.file_id {
                 FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
                 FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
+                FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
                 FileId::Sentry(ref source, ref file_id) => {
                     format!("{}.{}.sentryinternal", source.id, file_id.0)
                 }
@@ -569,6 +574,9 @@ fn prepare_downloads(
         SourceConfig::S3(ref source) => {
             s3::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
         }
+        SourceConfig::Gcs(ref source) => {
+            gcs::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
+        }
     }
 }
 
@@ -583,5 +591,6 @@ fn download_from_source(
             http::download_from_source(source.clone(), file_id)
         }
         FileId::S3(ref source, ref file_id) => s3::download_from_source(source.clone(), file_id),
+        FileId::Gcs(ref source, ref file_id) => gcs::download_from_source(source.clone(), file_id),
     }
 }
