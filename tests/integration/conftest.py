@@ -198,6 +198,8 @@ def s3_bucket_config(s3):
 
 @pytest.fixture
 def ios_bucket_config():
+    if not GCS_PRIVATE_KEY or not GCS_CLIENT_EMAIL:
+        pytest.skip("No GCS credentials")
     yield {
         "id": "ios",
         "type": "gcs",
