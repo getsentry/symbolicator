@@ -39,6 +39,16 @@ pub enum CacheStatus {
     Malformed,
 }
 
+impl AsRef<str> for CacheStatus {
+    fn as_ref(&self) -> &str {
+        match self {
+            CacheStatus::Positive => "positive",
+            CacheStatus::Negative => "negative",
+            CacheStatus::Malformed => "malformed",
+        }
+    }
+}
+
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
         if s == MALFORMED_MARKER {

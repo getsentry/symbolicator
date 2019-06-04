@@ -196,6 +196,11 @@ impl<T: CacheItemRequest> Cacher<T> {
                         let byteview = tryf!(ByteView::open(file.path()));
 
                         metric!(
+                            counter(&format!("caches.{}.file.write", name)) += 1,
+                            "status" => status.as_ref(),
+                        );
+
+                        metric!(
                             time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
                             "hit" => "false"
                         );
