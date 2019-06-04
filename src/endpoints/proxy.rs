@@ -61,14 +61,21 @@ fn proxy_symstore_request(
                     purpose: ObjectPurpose::Debug,
                 })
                 .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
-                .and_then(move |object_file| {
-                    if !object_file.has_object() {
+                .and_then(move |object_file_opt| {
+                    let object_file = if object_file_opt
+                        .as_ref()
+                        .map(|x| x.has_object())
+                        .unwrap_or(false)
+                    {
+                        object_file_opt.unwrap()
+                    } else {
                         return Ok(HttpResponse::NotFound().finish());
-                    }
+                    };
+
                     let length = object_file.len();
                     let mut response = HttpResponse::Ok();
                     response
-                        .content_length(length)
+                        .content_length(length as u64)
                         .header("content-type", "application/octet-stream");
                     if is_head {
                         Ok(response.finish())

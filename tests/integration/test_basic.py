@@ -120,7 +120,10 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             symcache, = (
                 cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
             )
-            assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+            assert (
+                symcache.basename
+                == "microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb"
+            )
             assert symcache.size() > 0
 
         count = 1 if cache_dir_param else (i + 1)
@@ -144,9 +147,7 @@ def test_no_sources(symbolicator, cache_dir_param):
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
-        symcache, = cache_dir_param.join("symcaches/global").listdir()
-        assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
-        assert symcache.size() == 0
+        assert not cache_dir_param.join("symcaches/global").exists()
 
 
 @pytest.mark.parametrize("is_public", [True, False])

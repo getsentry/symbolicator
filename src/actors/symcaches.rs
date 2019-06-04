@@ -5,7 +5,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
-use futures::Future;
+use futures::{
+    future::{Either, IntoFuture},
+    Future,
+};
 use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{Arch, ByteView};
@@ -97,7 +100,7 @@ impl SymCacheFile {
 #[derive(Clone)]
 struct FetchSymCacheInternal {
     request: FetchSymCache,
-    objects: Arc<ObjectsActor>,
+    object: Arc<ObjectFile>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -106,52 +109,35 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.request.identifier.cache_key(),
-            scope: self.request.scope.clone(),
-        }
+        self.object.cache_key().clone()
     }
 
     fn compute(
         &self,
         path: &Path,
     ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
-        let objects = self.objects.clone();
-
         let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
+        let object = self.object.clone();
 
-        let result = objects
-            .fetch(FetchObject {
-                filetypes: FileType::from_object_type(&self.request.object_type),
-                identifier: self.request.identifier.clone(),
-                sources: self.request.sources.clone(),
-                scope: self.request.scope.clone(),
-                purpose: ObjectPurpose::Debug,
+        let result = self.threadpool.spawn_handle(
+            futures::lazy(move || {
+                if object.status() != CacheStatus::Positive {
+                    return Ok((object.status(), object.scope().clone()));
+                }
+
+                let status = if let Err(e) = write_symcache(&path, &*object) {
+                    log::warn!("Failed to write symcache: {}", e);
+                    capture_fail(e.cause().unwrap_or(&e));
+
+                    CacheStatus::Malformed
+                } else {
+                    CacheStatus::Positive
+                };
+
+                Ok((status, object.scope().clone()))
             })
-            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)))
-            .and_then(move |object| {
-                threadpool.spawn_handle(
-                    futures::lazy(move || {
-                        if object.status() != CacheStatus::Positive {
-                            return Ok((object.status(), object.scope().clone()));
-                        }
-
-                        let status = if let Err(e) = write_symcache(&path, &*object) {
-                            log::warn!("Failed to write symcache: {}", e);
-                            capture_fail(e.cause().unwrap_or(&e));
-
-                            CacheStatus::Malformed
-                        } else {
-                            CacheStatus::Positive
-                        };
-
-                        Ok((status, object.scope().clone()))
-                    })
-                    .sentry_hub_current(),
-                )
-            })
-            .sentry_hub_current();
+            .sentry_hub_current(),
+        );
 
         let num_sources = self.request.sources.len();
 
@@ -200,11 +186,49 @@ impl SymCacheActor {
         &self,
         request: FetchSymCache,
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
-        self.symcaches.compute_memoized(FetchSymCacheInternal {
-            request,
-            objects: self.objects.clone(),
-            threadpool: self.threadpool.clone(),
-        })
+        let object = self
+            .objects
+            .fetch(FetchObject {
+                filetypes: FileType::from_object_type(&request.object_type),
+                identifier: request.identifier.clone(),
+                sources: request.sources.clone(),
+                scope: request.scope.clone(),
+                purpose: ObjectPurpose::Debug,
+            })
+            .map_err(|e| Arc::new(SymCacheError::from(e.context(SymCacheErrorKind::Fetching))));
+
+        let symcaches = self.symcaches.clone();
+        let threadpool = self.threadpool.clone();
+
+        let object_type = request.object_type.clone();
+        let identifier = request.identifier.clone();
+        let scope = request.scope.clone();
+
+        let symcache = object.and_then(move |object| {
+            object
+                .map(|object| {
+                    Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
+                        request,
+                        object,
+                        threadpool,
+                    }))
+                })
+                .unwrap_or_else(move || {
+                    Either::B(
+                        Ok(Arc::new(SymCacheFile {
+                            object_type,
+                            identifier,
+                            scope,
+                            data: ByteView::from_slice(b""),
+                            status: CacheStatus::Negative,
+                            arch: Arch::Unknown,
+                        }))
+                        .into_future(),
+                    )
+                })
+        });
+
+        symcache
     }
 }
 
@@ -222,9 +246,7 @@ fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError>
     let file = File::create(&path).context(SymCacheErrorKind::Io)?;
     let mut writer = BufWriter::new(file);
 
-    if let Some(cache_key) = object.cache_key() {
-        log::debug!("Converting symcache for {}", cache_key);
-    }
+    log::debug!("Converting symcache for {}", object.cache_key());
 
     if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
         match e.kind() {

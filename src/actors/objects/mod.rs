@@ -295,11 +295,11 @@ impl CacheItemRequest for FetchFileRequest {
             object_id: self.object_id.clone(),
             scope,
 
-            file_id: Some(self.file_id.clone()),
-            cache_key: Some(self.get_cache_key()),
+            file_id: self.file_id.clone(),
+            cache_key: self.get_cache_key(),
 
             status,
-            data: Some(data),
+            data,
         };
 
         configure_scope(|scope| {
@@ -314,7 +314,7 @@ pub struct ObjectFileBytes(pub Arc<ObjectFile>);
 
 impl AsRef<[u8]> for ObjectFileBytes {
     fn as_ref(&self) -> &[u8] {
-        self.0.data.as_ref().map_or(&[][..], |x| &x[..])
+        &self.0.data
     }
 }
 
@@ -324,17 +324,17 @@ pub struct ObjectFile {
     object_id: ObjectId,
     scope: Scope,
 
-    file_id: Option<FileId>,
-    cache_key: Option<CacheKey>,
+    file_id: FileId,
+    cache_key: CacheKey,
 
     /// The mmapped object.
-    data: Option<ByteView<'static>>,
+    data: ByteView<'static>,
     status: CacheStatus,
 }
 
 impl ObjectFile {
-    pub fn len(&self) -> u64 {
-        self.data.as_ref().map_or(0, |x| x.len() as u64)
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 
     pub fn has_object(&self) -> bool {
@@ -344,7 +344,7 @@ impl ObjectFile {
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         match self.status {
             CacheStatus::Positive => Ok(Some(
-                Object::parse(&self.data.as_ref().unwrap()).context(ObjectErrorKind::Parsing)?,
+                Object::parse(&self.data).context(ObjectErrorKind::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
@@ -359,27 +359,21 @@ impl ObjectFile {
         &self.scope
     }
 
-    pub fn cache_key(&self) -> Option<&CacheKey> {
-        self.cache_key.as_ref()
+    pub fn cache_key(&self) -> &CacheKey {
+        &self.cache_key
     }
 }
 
 impl WriteSentryScope for ObjectFile {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.write_sentry_scope(scope);
-
-        if let Some(ref file_id) = self.file_id {
-            file_id.write_sentry_scope(scope);
-        }
+        self.file_id.write_sentry_scope(scope);
 
         scope.set_tag("object_file.scope", self.scope());
-
-        if let Some(ref data) = self.data {
-            scope.set_extra(
-                "object_file.first_16_bytes",
-                format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
-            );
-        }
+        scope.set_extra(
+            "object_file.first_16_bytes",
+            format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
+        );
     }
 }
 
@@ -418,7 +412,7 @@ impl ObjectsActor {
     pub fn fetch(
         &self,
         request: FetchObject,
-    ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
+    ) -> impl Future<Item = Option<Arc<ObjectFile>>, Error = ObjectError> {
         let FetchObject {
             filetypes,
             scope,
@@ -447,7 +441,7 @@ impl ObjectsActor {
                 .into_iter()
                 .flatten()
                 .enumerate()
-                .min_by_key(|(ref i, response)| {
+                .min_by_key(|(i, response)| {
                     (
                         // Prefer object files with debug/unwind info over object files without
                         // Prefer files that contain an object over unparseable files
@@ -466,18 +460,7 @@ impl ObjectsActor {
                     )
                 })
                 .map(|(_, response)| response)
-                .unwrap_or_else(clone!(identifier, || {
-                    Ok(Arc::new(ObjectFile {
-                        scope,
-                        object_id: identifier,
-
-                        file_id: None,
-                        cache_key: None,
-
-                        data: None,
-                        status: CacheStatus::Negative,
-                    }))
-                }))
+                .transpose()
         })
     }
 }
