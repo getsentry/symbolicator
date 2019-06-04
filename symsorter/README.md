@@ -27,7 +27,7 @@ returns but slower compression and decompression performance.
 Example:
 
 ```
-../target/release/symsorter -zz -o ./output path/to/input/folder
+./target/release/symsorter -zz -o ./output path/to/input/folder
 ```
 
 ## Serving
