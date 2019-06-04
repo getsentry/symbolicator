@@ -5,11 +5,11 @@ authors = ["Sentry <hello@getsentry.com>"]
 edition = "2018"
 
 [dependencies]
-structopt = "0.2.15"
+structopt = "0.2.17"
 clap = "2.33.0"
 failure = "0.1.5"
 walkdir = "2.2.7"
-symbolic = { git = "https://github.com/getsentry/symbolic", rev = "572fbbc2151bc862fa58b8ab15a377da6f3c5a7c", features = ["debuginfo-serde"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", rev = "0171d428e05617666c4bbd4f2a9b2fca21fbe746", features = ["debuginfo-serde"] }
 console = "0.7.5"
 zstd = "0.4.24"
 itertools = "0.8.0"
