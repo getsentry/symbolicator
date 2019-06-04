@@ -69,9 +69,10 @@ impl SymCacheActor {
 
 #[derive(Clone)]
 pub struct SymCacheFile {
-    data: ByteView<'static>,
+    object_type: ObjectType,
+    identifier: ObjectId,
     scope: Scope,
-    request: FetchSymCacheInternal,
+    data: ByteView<'static>,
     status: CacheStatus,
     arch: Arch,
 }
@@ -175,10 +176,11 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or_default();
 
         SymCacheFile {
-            request: self.clone(),
-            status,
+            object_type: self.request.object_type.clone(),
+            identifier: self.request.identifier.clone(),
             scope,
             data,
+            status,
             arch,
         }
     }
