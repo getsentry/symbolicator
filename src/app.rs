@@ -210,6 +210,18 @@ pub(crate) fn get_test_system() -> (actix::SystemRunner, ServiceState) {
     get_system(Default::default())
 }
 
+#[cfg(test)]
+pub(crate) fn get_test_system_with_cache() -> (tempfile::TempDir, actix::SystemRunner, ServiceState)
+{
+    let tempdir = tempfile::TempDir::new().unwrap();
+    let (runner, state) = get_system(Config {
+        cache_dir: Some(tempdir.path().to_owned()),
+        ..Default::default()
+    });
+
+    (tempdir, runner, state)
+}
+
 /// Starts all actors and HTTP server based on loaded config.
 fn run_server(config: Config) -> Result<(), CliError> {
     let (sys, state) = get_system(config);

@@ -71,7 +71,7 @@ def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
         key = key.upper()
 
     s3.meta.client.put_object(
-        Body=open("tests/fixtures/hello.dsym", "rb"),
+        Body=open("tests/fixtures/symbols/502F/C0A5/1EC1/3E47/9998/684FA139DCA7", "rb"),
         Bucket=s3_bucket_config["bucket"],
         Key=key,
     )

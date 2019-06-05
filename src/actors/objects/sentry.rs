@@ -117,7 +117,7 @@ pub fn prepare_downloads(
     )
 }
 
-pub fn download_from_source(
+pub(super) fn download_from_source(
     source: Arc<SentrySourceConfig>,
     file_id: &SentryFileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
@@ -158,12 +158,12 @@ pub fn download_from_source(
         Ok(response) => {
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);
-                Ok(Some(Box::new(
+                Ok(Some(DownloadStream::FutureStream(Box::new(
                     response
                         .payload()
                         .map_err(|e| e.context(ObjectErrorKind::Io).into()),
                 )
-                    as Box<dyn Stream<Item = _, Error = _>>))
+                    as Box<dyn Stream<Item = _, Error = _>>)))
             } else {
                 log::debug!(
                     "Unexpected status code from {}: {}",
