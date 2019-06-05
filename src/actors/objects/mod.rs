@@ -414,6 +414,7 @@ pub struct ObjectFile {
     file_id: FileId,
     cache_key: CacheKey,
 
+    /// The mmapped object.
     data: ByteView<'static>,
     status: CacheStatus,
 }
@@ -421,6 +422,10 @@ pub struct ObjectFile {
 impl ObjectFile {
     pub fn len(&self) -> usize {
         self.data.len()
+    }
+
+    pub fn has_object(&self) -> bool {
+        self.status == CacheStatus::Positive
     }
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
@@ -431,10 +436,6 @@ impl ObjectFile {
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
         }
-    }
-
-    pub fn has_object(&self) -> bool {
-        self.status == CacheStatus::Positive
     }
 
     pub fn status(&self) -> CacheStatus {
