@@ -1,7 +1,6 @@
 use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
@@ -79,10 +78,9 @@ impl From<io::Error> for ObjectError {
     }
 }
 
-/// The cache item request type yielded by `http::prepare_downloads` and `s3::prepare_downloads`.
-/// This requests the download of a single file at a specific path.
+/// This requests metadata of a single file at a specific path/url.
 #[derive(Clone)]
-pub struct FetchFileRequest {
+struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
     /// Source-type specific attributes.
@@ -90,14 +88,16 @@ pub struct FetchFileRequest {
     object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
-    // `<FetchFileRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
+    // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
     threadpool: Arc<ThreadPool>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
 }
 
+/// This requests the file content of a single file at a specific path/url.
+/// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
 #[derive(Clone)]
-pub struct FetchFileDataRequest(FetchFileRequest);
+struct FetchFileDataRequest(FetchFileMetaRequest);
 
 #[derive(Debug, Clone)]
 enum FileId {
@@ -109,10 +109,10 @@ enum FileId {
 }
 
 #[derive(Debug, Clone)]
-pub struct DownloadPath(String);
+struct DownloadPath(String);
 
 #[derive(Debug, Clone)]
-pub struct SentryFileId(String);
+struct SentryFileId(String);
 
 impl FileId {
     fn source(&self) -> SourceConfig {
@@ -144,8 +144,8 @@ impl WriteSentryScope for FileId {
     }
 }
 
-impl CacheItemRequest for FetchFileRequest {
-    type Item = ObjectFile;
+impl CacheItemRequest for FetchFileMetaRequest {
+    type Item = ShallowObjectFile;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -189,7 +189,7 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
-        ObjectFile {
+        ShallowObjectFile {
             object_id: self.object_id.clone(),
             scope,
 
@@ -204,7 +204,7 @@ impl CacheItemRequest for FetchFileRequest {
 }
 
 impl CacheItemRequest for FetchFileDataRequest {
-    type Item = ObjectFileWithData;
+    type Item = ObjectFile;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -215,12 +215,12 @@ impl CacheItemRequest for FetchFileDataRequest {
         &self,
         path: &Path,
     ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
-        let request = download_from_source(&self.file_id);
+        let request = download_from_source(&self.0.file_id);
         let path = path.to_owned();
-        let request_scope = self.scope.clone();
-        let threadpool = self.threadpool.clone();
+        let request_scope = self.0.scope.clone();
+        let threadpool = self.0.threadpool.clone();
 
-        let final_scope = if self.file_id.source().is_public() {
+        let final_scope = if self.0.file_id.source().is_public() {
             Scope::Global
         } else {
             request_scope
@@ -229,11 +229,11 @@ impl CacheItemRequest for FetchFileDataRequest {
         let mut cache_key = self.get_cache_key();
         cache_key.scope = final_scope.clone();
 
-        let object_id = self.object_id.clone();
+        let object_id = self.0.object_id.clone();
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.file_id.write_sentry_scope(scope);
+            self.0.file_id.write_sentry_scope(scope);
         });
 
         let result = request.and_then(move |payload| {
@@ -346,7 +346,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             })
             .sentry_hub_current();
 
-        let type_name = self.file_id.source().type_name();
+        let type_name = self.0.file_id.source().type_name();
 
         Box::new(future_metrics!(
             "objects",
@@ -357,7 +357,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
-        let object = ObjectFileWithData {
+        let object = ObjectFile {
             object_id: self.0.object_id.clone(),
             scope,
 
@@ -376,7 +376,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 }
 
-pub struct ObjectFileBytes(pub Arc<ObjectFileWithData>);
+pub struct ObjectFileBytes(pub Arc<ObjectFile>);
 
 impl AsRef<[u8]> for ObjectFileBytes {
     fn as_ref(&self) -> &[u8] {
@@ -384,9 +384,11 @@ impl AsRef<[u8]> for ObjectFileBytes {
     }
 }
 
-/// Handle to local cache file.
+/// Handle to local metadata file of an object. Having an instance of this type does not mean there
+/// is a downloaded object file behind it. We cache metadata separately (ObjectFileMeta) because
+/// every symcache lookup requires reading this metadata.
 #[derive(Debug, Clone)]
-pub struct ObjectFile {
+struct ShallowObjectFile {
     object_id: ObjectId,
     scope: Scope,
 
@@ -398,12 +400,14 @@ pub struct ObjectFile {
 }
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ObjectFileMeta {
+struct ObjectFileMeta {
     has_debug_info: bool,
     has_unwind_info: bool,
 }
 
-pub struct ObjectFileWithData {
+/// Handle to local cache file of an object.
+#[derive(Debug, Clone)]
+pub struct ObjectFile {
     object_id: ObjectId,
     scope: Scope,
 
@@ -414,7 +418,7 @@ pub struct ObjectFileWithData {
     status: CacheStatus,
 }
 
-impl ObjectFileWithData {
+impl ObjectFile {
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -428,17 +432,7 @@ impl ObjectFileWithData {
             CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
         }
     }
-}
 
-impl Deref for FetchFileDataRequest {
-    type Target = FetchFileRequest;
-
-    fn deref(&self) -> &FetchFileRequest {
-        &self.0
-    }
-}
-
-impl ObjectFileWithData {
     pub fn has_object(&self) -> bool {
         self.status == CacheStatus::Positive
     }
@@ -456,7 +450,7 @@ impl ObjectFileWithData {
     }
 }
 
-impl WriteSentryScope for ObjectFileWithData {
+impl WriteSentryScope for ObjectFile {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.write_sentry_scope(scope);
         self.file_id.write_sentry_scope(scope);
@@ -472,7 +466,7 @@ impl WriteSentryScope for ObjectFileWithData {
 
 #[derive(Clone)]
 pub struct ObjectsActor {
-    meta_cache: Arc<Cacher<FetchFileRequest>>,
+    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     threadpool: Arc<ThreadPool>,
 }
@@ -507,7 +501,7 @@ impl ObjectsActor {
     pub fn fetch(
         &self,
         request: FetchObject,
-    ) -> impl Future<Item = Option<Arc<ObjectFileWithData>>, Error = ObjectError> {
+    ) -> impl Future<Item = Option<Arc<ObjectFile>>, Error = ObjectError> {
         let FetchObject {
             filetypes,
             scope,
@@ -532,7 +526,7 @@ impl ObjectsActor {
                         scope,
                         |ids| {
                             future::join_all(ids.into_iter().map(move |file_id| {
-                                let request = FetchFileRequest {
+                                let request = FetchFileMetaRequest {
                                     scope: scope.clone(),
                                     file_id,
                                     object_id: identifier.clone(),
@@ -595,9 +589,7 @@ impl ObjectsActor {
     }
 }
 
-type PrioritizedDownloads = Vec<FileId>;
-
-pub(crate) enum DownloadStream {
+enum DownloadStream {
     FutureStream(Box<dyn Stream<Item = Bytes, Error = ObjectError>>),
     File(PathBuf),
 }
@@ -606,7 +598,7 @@ fn prepare_downloads(
     source: &SourceConfig,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
+) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
     match *source {
         SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),

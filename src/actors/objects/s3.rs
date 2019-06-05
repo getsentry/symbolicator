@@ -8,9 +8,7 @@ use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{
-    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-};
+use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};
 use crate::types::{FileType, ObjectId, S3SourceConfig, S3SourceKey};
 
 lazy_static::lazy_static! {
@@ -55,7 +53,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<S3SourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
+) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,

@@ -5,16 +5,14 @@ use std::sync::Arc;
 use futures::{Future, IntoFuture};
 
 use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{
-    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-};
+use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};
 use crate::types::{FileType, FilesystemSourceConfig, ObjectId};
 
 pub(super) fn prepare_downloads(
     source: &Arc<FilesystemSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
+) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,

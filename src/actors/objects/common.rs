@@ -14,7 +14,7 @@ const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
 /// `filetypes`: Limit search to these filetypes.
 /// `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
 /// `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
-pub fn prepare_download_paths<'a>(
+pub(super) fn prepare_download_paths<'a>(
     object_id: &'a ObjectId,
     filetypes: &'static [FileType],
     filters: &'a SourceFilters,

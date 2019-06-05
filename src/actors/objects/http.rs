@@ -10,8 +10,7 @@ use tokio_retry::Retry;
 
 use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
-    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-    USER_AGENT,
+    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, USER_AGENT,
 };
 use crate::http;
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
@@ -20,7 +19,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
+) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,

@@ -12,8 +12,7 @@ use tokio_retry::Retry;
 use url::Url;
 
 use crate::actors::objects::{
-    DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads, SentryFileId,
-    USER_AGENT,
+    DownloadStream, FileId, ObjectError, ObjectErrorKind, SentryFileId, USER_AGENT,
 };
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
 
@@ -112,7 +111,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
+) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
     let index_url = {
         let mut url = source.url.clone();
         if let Some(ref debug_id) = object_id.debug_id {
