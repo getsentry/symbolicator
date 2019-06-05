@@ -12,7 +12,7 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::common::cache::Cacher;
 use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
-    DownloadPath, DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
+    DownloadPath, DownloadStream, FetchFileRequest, FileId, ObjectError, ObjectErrorKind,
     PrioritizedDownloads,
 };
 use crate::sentry::SentryFutureExt;
@@ -75,7 +75,7 @@ pub fn prepare_downloads(
         let request = cache
             .compute_memoized(FetchFileRequest {
                 scope: scope.clone(),
-                request: FetchFileInner::S3(source.clone(), download_path),
+                file_id: FileId::S3(source.clone(), download_path),
                 object_id: object_id.clone(),
                 threadpool: threadpool.clone(),
             })

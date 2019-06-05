@@ -29,6 +29,10 @@ struct Cli {
     )]
     pub compression_level: usize,
 
+    /// Ignore broken archives.
+    #[structopt(long = "ignore-errors", short = "I")]
+    pub ignore_errors: bool,
+
     /// If enabled output will be suppressed
     #[structopt(long = "quiet", short = "q")]
     pub quiet: bool,
@@ -53,6 +57,29 @@ fn get_target_filename(debug_id: &DebugId) -> PathBuf {
 }
 
 fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<usize, Error> {
+    let mut rv = 0;
+
+    macro_rules! maybe_ignore_error {
+        ($expr:expr) => {
+            match $expr {
+                Ok(value) => value,
+                Err(err) => {
+                    if cli.ignore_errors {
+                        eprintln!(
+                            "{}: ignored error {} ({})",
+                            style("error").red().bold(),
+                            err,
+                            style(filename).cyan(),
+                        );
+                        return Ok(rv);
+                    } else {
+                        return Err(err.into());
+                    }
+                }
+            }
+        };
+    }
+
     let compression_level = match cli.compression_level {
         0 => 0,
         1 => 3,
@@ -60,10 +87,9 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<us
         3 => 19,
         _ => 22,
     };
-    let mut rv = 0;
-    let archive = Archive::parse(&bv)?;
+    let archive = maybe_ignore_error!(Archive::parse(&bv));
     for obj in archive.objects() {
-        let obj = obj?;
+        let obj = maybe_ignore_error!(obj);
         let new_filename = cli.output.join(get_target_filename(&obj.debug_id()));
         fs::create_dir_all(new_filename.parent().unwrap())?;
         if !cli.quiet {

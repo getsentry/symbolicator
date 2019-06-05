@@ -79,15 +79,7 @@ pub trait CacheItemRequest: 'static + Send {
     }
 
     /// Loads an existing element from the cache.
-    ///
-    /// This may return `Ok(None)` if the cached item is no longer valid, or `Err` if the item is
-    /// corrupt or any other error occurs during loading.
-    fn load(
-        self,
-        scope: Scope,
-        status: CacheStatus,
-        data: ByteView<'static>,
-    ) -> Result<Self::Item, Self::Error>;
+    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -165,7 +157,9 @@ impl<T: CacheItemRequest> Cacher<T> {
                     });
 
                     log::trace!("Loading {} at path {:?}", name, path);
-                    let item = tryf!(request.load(scope.clone(), status, byteview));
+
+                    let item = request.load(scope.clone(), status, byteview);
+
                     return Box::new(Ok(item).into_future());
                 }
 
@@ -196,11 +190,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                         let byteview = tryf!(ByteView::open(file.path()));
 
                         metric!(
+                            counter(&format!("caches.{}.file.write", name)) += 1,
+                            "status" => status.as_ref(),
+                        );
+
+                        metric!(
                             time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
                             "hit" => "false"
                         );
 
-                        let item = tryf!(request.load(new_scope, status, byteview));
+                        let item = request.load(new_scope, status, byteview);
 
                         if let Some(ref cache_path) = new_cache_path {
                             tryf!(status.persist_item(cache_path, file));
