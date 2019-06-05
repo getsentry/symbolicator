@@ -3,22 +3,18 @@ use std::sync::Arc;
 use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::{Fail, ResultExt};
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{Future, IntoFuture, Stream};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
-use tokio_threadpool::ThreadPool;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use crate::actors::common::cache::Cacher;
 use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
-    DownloadPath, DownloadStream, FetchFileRequest, FileId, ObjectError, ObjectErrorKind,
-    PrioritizedDownloads,
+    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
 };
-use crate::sentry::SentryFutureExt;
-use crate::types::{ArcFail, FileType, GcsSourceConfig, GcsSourceKey, ObjectId, Scope};
+use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -141,37 +137,21 @@ fn get_token(
     }))
 }
 
-pub fn prepare_downloads(
+pub(super) fn prepare_downloads(
     source: &Arc<GcsSourceConfig>,
-    scope: Scope,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-    threadpool: Arc<ThreadPool>,
-    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
-    let mut requests = vec![];
-
-    for download_path in prepare_download_paths(
+    let ids = prepare_download_paths(
         object_id,
         filetypes,
         &source.files.filters,
         source.files.layout,
-    ) {
-        let request = cache
-            .compute_memoized(FetchFileRequest {
-                scope: scope.clone(),
-                file_id: FileId::Gcs(source.clone(), download_path),
-                object_id: object_id.clone(),
-                threadpool: threadpool.clone(),
-            })
-            .sentry_hub_new_from_current() // new hub because of join_all
-            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-            .then(Ok);
+    )
+    .map(|download_path| FileId::Gcs(source.clone(), download_path))
+    .collect();
 
-        requests.push(request);
-    }
-
-    Box::new(future::join_all(requests))
+    Box::new(Ok(ids).into_future())
 }
 
 pub(super) fn download_from_source(

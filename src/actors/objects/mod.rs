@@ -21,8 +21,8 @@ use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
-    FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId, S3SourceConfig,
-    Scope, SentrySourceConfig, SourceConfig,
+    ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
+    S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
 use crate::utils::objects;
 
@@ -421,18 +421,28 @@ impl ObjectsActor {
             purpose,
         } = request;
 
+        let cache = &self.cache;
+        let threadpool = &self.threadpool;
+
         let prepare_futures: Vec<_> = sources
             .iter()
-            .map(|source| {
-                prepare_downloads(
-                    source,
-                    scope.clone(),
-                    filetypes,
-                    &identifier,
-                    self.threadpool.clone(),
-                    self.cache.clone(),
-                )
-                .sentry_hub_new_from_current() // new hub because of join_all
+            .map(move |source| {
+                prepare_downloads(source, filetypes, &identifier)
+                    .and_then(clone!(cache, threadpool, identifier, scope, |ids| {
+                        future::join_all(ids.into_iter().map(move |file_id| {
+                            cache
+                                .compute_memoized(FetchFileRequest {
+                                    scope: scope.clone(),
+                                    file_id,
+                                    object_id: identifier.clone(),
+                                    threadpool: threadpool.clone(),
+                                })
+                                .sentry_hub_new_from_current() // new hub because of join_all
+                                .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+                                .then(Ok)
+                        }))
+                    }))
+                    .sentry_hub_new_from_current() // new hub because of join_all
             })
             .collect();
 
@@ -465,7 +475,7 @@ impl ObjectsActor {
     }
 }
 
-type PrioritizedDownloads = Vec<Result<Arc<ObjectFile>, ObjectError>>;
+type PrioritizedDownloads = Vec<FileId>;
 
 pub(crate) enum DownloadStream {
     FutureStream(Box<dyn Stream<Item = Bytes, Error = ObjectError>>),
@@ -474,27 +484,16 @@ pub(crate) enum DownloadStream {
 
 fn prepare_downloads(
     source: &SourceConfig,
-    scope: Scope,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-    threadpool: Arc<ThreadPool>,
-    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     match *source {
-        SourceConfig::Sentry(ref source) => {
-            sentry::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
-        }
-        SourceConfig::Http(ref source) => {
-            http::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
-        }
-        SourceConfig::S3(ref source) => {
-            s3::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
-        }
-        SourceConfig::Gcs(ref source) => {
-            gcs::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
-        }
+        SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
+        SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
+        SourceConfig::S3(ref source) => s3::prepare_downloads(source, filetypes, object_id),
+        SourceConfig::Gcs(ref source) => gcs::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Filesystem(ref source) => {
-            filesystem::prepare_downloads(source, scope, filetypes, object_id, threadpool, cache)
+            filesystem::prepare_downloads(source, filetypes, object_id)
         }
     }
 }

@@ -4,19 +4,16 @@ use std::time::Duration;
 use actix_web::{client, HttpMessage};
 
 use failure::Fail;
-use futures::future::{self, Either};
+use futures::future::Either;
 use futures::{Future, IntoFuture, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
-use tokio_threadpool::ThreadPool;
 
-use crate::actors::common::cache::Cacher;
 use crate::actors::objects::{
-    DownloadStream, FetchFileRequest, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
-    SentryFileId, USER_AGENT,
+    DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads, SentryFileId,
+    USER_AGENT,
 };
-use crate::sentry::SentryFutureExt;
-use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig};
+use crate::types::{FileType, ObjectId, SentrySourceConfig};
 
 #[derive(Debug, Fail, Clone, Copy)]
 pub enum SentryErrorKind {
@@ -42,13 +39,10 @@ symbolic::common::derive_failure!(
     doc = "Errors happening while fetching data from Sentry"
 );
 
-pub fn prepare_downloads(
+pub(super) fn prepare_downloads(
     source: &Arc<SentrySourceConfig>,
-    scope: Scope,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
-    threadpool: Arc<ThreadPool>,
-    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
     let index_url = {
         let mut url = source.url.clone();
@@ -98,18 +92,13 @@ pub fn prepare_downloads(
 
     Box::new(
         index_request
-            .and_then(clone!(source, object_id, |entries| future::join_all(
-                entries.into_iter().map(move |api_response| cache
-                    .compute_memoized(FetchFileRequest {
-                        scope: scope.clone(),
-                        file_id: FileId::Sentry(source.clone(), SentryFileId(api_response.id),),
-                        threadpool: threadpool.clone(),
-                        object_id: object_id.clone(),
-                    })
-                    .sentry_hub_new_from_current() // new hub because of join_all
-                    .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-                    .then(Ok))
-            )))
+            .map(clone!(source, |entries| entries
+                .into_iter()
+                .map(move |api_response| FileId::Sentry(
+                    source.clone(),
+                    SentryFileId(api_response.id),
+                ),)
+                .collect()))
             .map_err(|e| match e {
                 tokio_retry::Error::OperationError(e) => e.context(ObjectErrorKind::Sentry).into(),
                 e => panic!("{}", e),

@@ -2,21 +2,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use failure::Fail;
-use futures::{future, Future, Stream};
+use futures::{future::IntoFuture, Future, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
-use tokio_threadpool::ThreadPool;
 
-use crate::actors::common::cache::Cacher;
 use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
-    DownloadPath, DownloadStream, FetchFileRequest, FileId, ObjectError, ObjectErrorKind,
-    PrioritizedDownloads,
+    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
 };
-use crate::sentry::SentryFutureExt;
-use crate::types::{ArcFail, FileType, ObjectId, S3SourceConfig, S3SourceKey, Scope};
+use crate::types::{FileType, ObjectId, S3SourceConfig, S3SourceKey};
 
 lazy_static::lazy_static! {
     static ref AWS_HTTP_CLIENT: rusoto_core::HttpClient = rusoto_core::HttpClient::new().unwrap();
@@ -56,37 +51,20 @@ fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     }
 }
 
-pub fn prepare_downloads(
+pub(super) fn prepare_downloads(
     source: &Arc<S3SourceConfig>,
-    scope: Scope,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-    threadpool: Arc<ThreadPool>,
-    cache: Arc<Cacher<FetchFileRequest>>,
 ) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
-    let mut requests = vec![];
-
-    for download_path in prepare_download_paths(
+    let ids = prepare_download_paths(
         object_id,
         filetypes,
         &source.files.filters,
         source.files.layout,
-    ) {
-        let request = cache
-            .compute_memoized(FetchFileRequest {
-                scope: scope.clone(),
-                file_id: FileId::S3(source.clone(), download_path),
-                object_id: object_id.clone(),
-                threadpool: threadpool.clone(),
-            })
-            .sentry_hub_new_from_current() // new hub because of join_all
-            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-            .then(Ok);
-
-        requests.push(request);
-    }
-
-    Box::new(future::join_all(requests))
+    )
+    .map(|download_path| FileId::S3(source.clone(), download_path))
+    .collect();
+    Box::new(Ok(ids).into_future())
 }
 
 pub(super) fn download_from_source(
