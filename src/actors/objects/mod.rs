@@ -172,6 +172,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         let meta = ObjectFileMeta {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
+                            has_symbols: object.has_symbols(),
                         };
 
                         serde_json::to_writer(&mut f, &meta).context(ObjectErrorKind::Io)?;
@@ -403,6 +404,7 @@ struct ShallowObjectFile {
 struct ObjectFileMeta {
     has_debug_info: bool,
     has_unwind_info: bool,
+    has_symbols: bool,
 }
 
 /// Handle to local cache file of an object.
@@ -557,19 +559,25 @@ impl ObjectsActor {
                 .flatten()
                 .enumerate()
                 .min_by_key(|(i, (_request, response))| {
-                    (
-                        // Prefer object files with debug/unwind info over object files without
-                        // Prefer files that contain an object over unparseable files
-                        match response.as_ref().ok().and_then(|object| match purpose {
-                            ObjectPurpose::Unwind => Some(object.meta.has_unwind_info),
-                            ObjectPurpose::Debug => Some(object.meta.has_debug_info),
-                        }) {
-                            Some(true) => 0,
-                            Some(false) => 1,
-                            None => 2,
-                        },
-                        *i,
-                    )
+                    // Prefer files that contain an object over unparseable files
+                    let object = match response {
+                        Ok(object) => object,
+                        Err(_) => return (1, *i),
+                    };
+
+                    // Prefer object files with debug/unwind info over object files without
+                    let has_good_info = match purpose {
+                        ObjectPurpose::Debug => object.meta.has_debug_info,
+                        ObjectPurpose::Unwind => object.meta.has_unwind_info,
+                    };
+
+                    if has_good_info {
+                        (-2, *i)
+                    } else if object.meta.has_symbols {
+                        (-1, *i)
+                    } else {
+                        (0, *i)
+                    }
                 })
                 .map(|(_, response)| Ok((response.0, response.1?)))
                 .transpose();
