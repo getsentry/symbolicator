@@ -15,7 +15,7 @@ use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FetchObject, ObjectFileWithData, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -93,7 +93,7 @@ impl CfiCacheFile {
 #[derive(Clone)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
-    object: Arc<ObjectFile>,
+    object: Arc<ObjectFileWithData>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -193,7 +193,7 @@ impl CfiCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        let cficache = object.and_then(move |object| {
+        object.and_then(move |object| {
             object
                 .map(|object| {
                     Either::A(cficaches.compute_memoized(FetchCfiCacheInternal {
@@ -214,13 +214,11 @@ impl CfiCacheActor {
                         .into_future(),
                     )
                 })
-        });
-
-        cficache
+        })
     }
 }
 
-fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheError> {
+fn write_cficache(path: &Path, object_file: &ObjectFileWithData) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
         object_file.write_sentry_scope(scope);

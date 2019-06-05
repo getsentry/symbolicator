@@ -77,8 +77,10 @@ def cache_dir_param(tmpdir, request):
         return tmpdir.mkdir("caches")
 
 
-@pytest.mark.parametrize("is_public", [True, False])
-def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
+@pytest.mark.parametrize(
+    "is_public", [True, False], ids=["global_cache", "local_cache"]
+)
+def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
     scope = "myscope"
 
     input = dict(
@@ -126,11 +128,18 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             )
             assert symcache.size() > 0
 
-        count = 1 if cache_dir_param else (i + 1)
+        if cache_dir_param:
+            hit_count = miss_count = 1
+        else:
+            miss_count = i + 1
+            # XXX(markus): Symbolicator opens a cachefile twice if it maps
+            # successfully. With caches this doesn't matter, but without caches
+            # enabled Symbolicator effectively downloads every item twice
+            hit_count = 2 * (i + 1)
 
         assert hitcounter.hits == {
-            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": count,
-            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": count,
+            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": miss_count,
+            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": hit_count,
         }
 
 
@@ -186,10 +195,13 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
 
     assert responses == [SUCCESS_WINDOWS] * 20
 
-    assert hitcounter.hits == {
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": 1,
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1,
+    assert set(hitcounter.hits) == {
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
     }
+
+    for key, count in hitcounter.hits.items():
+        assert count < 20, (key, count)
 
 
 def test_sources_filetypes(symbolicator, hitcounter):
@@ -263,7 +275,10 @@ def test_timeouts(symbolicator, hitcounter):
 
     assert hitcounter.hits == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": 1,
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1,
+        # XXX(markus): Symbolicator opens a cachefile twice if it maps
+        # successfully. With caches this doesn't matter, but without caches
+        # enabled Symbolicator effectively downloads every item twice
+        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 2,
     }
 
 

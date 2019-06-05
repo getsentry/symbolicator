@@ -1,6 +1,7 @@
 use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
@@ -11,7 +12,8 @@ use failure::{Fail, ResultExt};
 
 use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{future, future::Either, Future, IntoFuture, Stream};
+use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
@@ -79,7 +81,7 @@ impl From<io::Error> for ObjectError {
 
 /// The cache item request type yielded by `http::prepare_downloads` and `s3::prepare_downloads`.
 /// This requests the download of a single file at a specific path.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FetchFileRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
@@ -91,7 +93,11 @@ pub struct FetchFileRequest {
     // `<FetchFileRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
     threadpool: Arc<ThreadPool>,
+    data_cache: Arc<Cacher<FetchFileDataRequest>>,
 }
+
+#[derive(Clone)]
+pub struct FetchFileDataRequest(FetchFileRequest);
 
 #[derive(Debug, Clone)]
 enum FileId {
@@ -118,6 +124,18 @@ impl FileId {
             FileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
         }
     }
+
+    fn cache_key(&self) -> String {
+        match self {
+            FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            FileId::Sentry(ref source, ref file_id) => {
+                format!("{}.{}.sentryinternal", source.id, file_id.0)
+            }
+            FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
+        }
+    }
 }
 
 impl WriteSentryScope for FileId {
@@ -132,17 +150,65 @@ impl CacheItemRequest for FetchFileRequest {
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: match self.file_id {
-                FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-                FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-                FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-                FileId::Sentry(ref source, ref file_id) => {
-                    format!("{}.{}.sentryinternal", source.id, file_id.0)
-                }
-                FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            },
+            cache_key: self.file_id.cache_key(),
             scope: self.scope.clone(),
         }
+    }
+
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
+        let path = path.to_owned();
+
+        let result = self
+            .data_cache
+            .compute_memoized(FetchFileDataRequest(self.clone()))
+            .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
+            .and_then(move |data| {
+                if data.status == CacheStatus::Positive {
+                    if let Ok(object) = Object::parse(&data.data) {
+                        let mut f = fs::File::create(path).context(ObjectErrorKind::Io)?;
+                        let meta = ObjectFileMeta {
+                            has_debug_info: object.has_debug_info(),
+                            has_unwind_info: object.has_unwind_info(),
+                        };
+
+                        serde_json::to_writer(&mut f, &meta).context(ObjectErrorKind::Io)?;
+                    }
+                }
+
+                Ok((data.status, data.scope.clone()))
+            });
+
+        Box::new(result)
+    }
+
+    fn should_load(&self, data: &[u8]) -> bool {
+        serde_json::from_slice::<ObjectFileMeta>(data).is_ok()
+    }
+
+    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+        ObjectFile {
+            object_id: self.object_id.clone(),
+            scope,
+
+            file_id: self.file_id.clone(),
+            cache_key: self.get_cache_key(),
+
+            meta: serde_json::from_slice(&data).unwrap_or_default(),
+
+            status,
+        }
+    }
+}
+
+impl CacheItemRequest for FetchFileDataRequest {
+    type Item = ObjectFileWithData;
+    type Error = ObjectError;
+
+    fn get_cache_key(&self) -> CacheKey {
+        self.0.get_cache_key()
     }
 
     fn compute(
@@ -291,11 +357,11 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
-        let object = ObjectFile {
-            object_id: self.object_id.clone(),
+        let object = ObjectFileWithData {
+            object_id: self.0.object_id.clone(),
             scope,
 
-            file_id: self.file_id.clone(),
+            file_id: self.0.file_id.clone(),
             cache_key: self.get_cache_key(),
 
             status,
@@ -310,7 +376,7 @@ impl CacheItemRequest for FetchFileRequest {
     }
 }
 
-pub struct ObjectFileBytes(pub Arc<ObjectFile>);
+pub struct ObjectFileBytes(pub Arc<ObjectFileWithData>);
 
 impl AsRef<[u8]> for ObjectFileBytes {
     fn as_ref(&self) -> &[u8] {
@@ -327,18 +393,30 @@ pub struct ObjectFile {
     file_id: FileId,
     cache_key: CacheKey,
 
-    /// The mmapped object.
+    meta: ObjectFileMeta,
+    status: CacheStatus,
+}
+
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ObjectFileMeta {
+    has_debug_info: bool,
+    has_unwind_info: bool,
+}
+
+pub struct ObjectFileWithData {
+    object_id: ObjectId,
+    scope: Scope,
+
+    file_id: FileId,
+    cache_key: CacheKey,
+
     data: ByteView<'static>,
     status: CacheStatus,
 }
 
-impl ObjectFile {
+impl ObjectFileWithData {
     pub fn len(&self) -> usize {
         self.data.len()
-    }
-
-    pub fn has_object(&self) -> bool {
-        self.status == CacheStatus::Positive
     }
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
@@ -349,6 +427,20 @@ impl ObjectFile {
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
         }
+    }
+}
+
+impl Deref for FetchFileDataRequest {
+    type Target = FetchFileRequest;
+
+    fn deref(&self) -> &FetchFileRequest {
+        &self.0
+    }
+}
+
+impl ObjectFileWithData {
+    pub fn has_object(&self) -> bool {
+        self.status == CacheStatus::Positive
     }
 
     pub fn status(&self) -> CacheStatus {
@@ -364,12 +456,13 @@ impl ObjectFile {
     }
 }
 
-impl WriteSentryScope for ObjectFile {
+impl WriteSentryScope for ObjectFileWithData {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.write_sentry_scope(scope);
         self.file_id.write_sentry_scope(scope);
 
         scope.set_tag("object_file.scope", self.scope());
+
         scope.set_extra(
             "object_file.first_16_bytes",
             format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
@@ -379,14 +472,16 @@ impl WriteSentryScope for ObjectFile {
 
 #[derive(Clone)]
 pub struct ObjectsActor {
-    cache: Arc<Cacher<FetchFileRequest>>,
+    meta_cache: Arc<Cacher<FetchFileRequest>>,
+    data_cache: Arc<Cacher<FetchFileDataRequest>>,
     threadpool: Arc<ThreadPool>,
 }
 
 impl ObjectsActor {
-    pub fn new(cache: Cache, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: Arc<ThreadPool>) -> Self {
         ObjectsActor {
-            cache: Arc::new(Cacher::new(cache)),
+            meta_cache: Arc::new(Cacher::new(meta_cache)),
+            data_cache: Arc::new(Cacher::new(data_cache)),
             threadpool,
         }
     }
@@ -412,7 +507,7 @@ impl ObjectsActor {
     pub fn fetch(
         &self,
         request: FetchObject,
-    ) -> impl Future<Item = Option<Arc<ObjectFile>>, Error = ObjectError> {
+    ) -> impl Future<Item = Option<Arc<ObjectFileWithData>>, Error = ObjectError> {
         let FetchObject {
             filetypes,
             scope,
@@ -421,46 +516,58 @@ impl ObjectsActor {
             purpose,
         } = request;
 
-        let cache = &self.cache;
+        let meta_cache = &self.meta_cache;
         let threadpool = &self.threadpool;
+        let data_cache = &self.data_cache;
 
         let prepare_futures: Vec<_> = sources
             .iter()
             .map(move |source| {
                 prepare_downloads(source, filetypes, &identifier)
-                    .and_then(clone!(cache, threadpool, identifier, scope, |ids| {
-                        future::join_all(ids.into_iter().map(move |file_id| {
-                            cache
-                                .compute_memoized(FetchFileRequest {
+                    .and_then(clone!(
+                        meta_cache,
+                        data_cache,
+                        threadpool,
+                        identifier,
+                        scope,
+                        |ids| {
+                            future::join_all(ids.into_iter().map(move |file_id| {
+                                let request = FetchFileRequest {
                                     scope: scope.clone(),
                                     file_id,
                                     object_id: identifier.clone(),
                                     threadpool: threadpool.clone(),
-                                })
-                                .sentry_hub_new_from_current() // new hub because of join_all
-                                .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-                                .then(Ok)
-                        }))
-                    }))
+                                    data_cache: data_cache.clone(),
+                                };
+
+                                meta_cache
+                                    .compute_memoized(request.clone())
+                                    .sentry_hub_new_from_current() // new hub because of join_all
+                                    .map_err(|e| {
+                                        ObjectError::from(
+                                            ArcFail(e).context(ObjectErrorKind::Caching),
+                                        )
+                                    })
+                                    .then(move |response| Ok((request, response)))
+                            }))
+                        }
+                    ))
                     .sentry_hub_new_from_current() // new hub because of join_all
             })
             .collect();
 
-        future::join_all(prepare_futures).and_then(move |responses| {
-            responses
+        future::join_all(prepare_futures).and_then(clone!(data_cache, |responses| {
+            let response = responses
                 .into_iter()
                 .flatten()
                 .enumerate()
-                .min_by_key(|(i, response)| {
+                .min_by_key(|(i, (_request, response))| {
                     (
                         // Prefer object files with debug/unwind info over object files without
                         // Prefer files that contain an object over unparseable files
-                        match response.as_ref().ok().and_then(|o| {
-                            let object = o.parse().ok()??;
-                            match purpose {
-                                ObjectPurpose::Unwind => Some(object.has_unwind_info()),
-                                ObjectPurpose::Debug => Some(object.has_debug_info()),
-                            }
+                        match response.as_ref().ok().and_then(|object| match purpose {
+                            ObjectPurpose::Unwind => Some(object.meta.has_unwind_info),
+                            ObjectPurpose::Debug => Some(object.meta.has_debug_info),
                         }) {
                             Some(true) => 0,
                             Some(false) => 1,
@@ -469,9 +576,22 @@ impl ObjectsActor {
                         *i,
                     )
                 })
-                .map(|(_, response)| response)
-                .transpose()
-        })
+                .map(|(_, response)| Ok((response.0, response.1?)))
+                .transpose();
+
+            response.into_future().and_then(move |object| {
+                if let Some((request, _object)) = object {
+                    Either::A(
+                        data_cache
+                            .compute_memoized(FetchFileDataRequest(request))
+                            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+                            .map(Some),
+                    )
+                } else {
+                    Either::B(Ok(None).into_future())
+                }
+            })
+        }))
     }
 }
 

@@ -130,6 +130,7 @@ fn execute() -> Result<(), CliError> {
 
 struct Caches {
     objects: Cache,
+    object_meta: Cache,
     symcaches: Cache,
     cficaches: Cache,
 }
@@ -140,6 +141,10 @@ impl Caches {
             objects: {
                 let path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
                 Cache::new("objects", path, config.caches.downloaded)
+            },
+            object_meta: {
+                let path = config.cache_dir.as_ref().map(|x| x.join("./object_meta/"));
+                Cache::new("object_meta", path, config.caches.derived)
             },
             symcaches: {
                 let path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
@@ -156,6 +161,7 @@ impl Caches {
 fn cleanup_caches(config: Config) -> Result<(), CliError> {
     let caches = Caches::new(&config);
     caches.objects.cleanup()?;
+    caches.object_meta.cleanup()?;
     caches.symcaches.cleanup()?;
     caches.cficaches.cleanup()?;
     Ok(())
@@ -175,7 +181,11 @@ fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
     let cpu_threadpool = Arc::new(ThreadPool::new());
     let io_threadpool = Arc::new(ThreadPool::new());
 
-    let objects = Arc::new(ObjectsActor::new(caches.objects, io_threadpool.clone()));
+    let objects = Arc::new(ObjectsActor::new(
+        caches.object_meta,
+        caches.objects,
+        io_threadpool.clone(),
+    ));
 
     let symcaches = Arc::new(SymCacheActor::new(
         caches.symcaches,

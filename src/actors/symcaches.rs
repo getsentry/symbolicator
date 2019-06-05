@@ -16,7 +16,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FetchObject, ObjectFileWithData, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -100,7 +100,7 @@ impl SymCacheFile {
 #[derive(Clone)]
 struct FetchSymCacheInternal {
     request: FetchSymCache,
-    object: Arc<ObjectFile>,
+    object: Arc<ObjectFileWithData>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -204,7 +204,7 @@ impl SymCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        let symcache = object.and_then(move |object| {
+        object.and_then(move |object| {
             object
                 .map(|object| {
                     Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
@@ -226,13 +226,11 @@ impl SymCacheActor {
                         .into_future(),
                     )
                 })
-        });
-
-        symcache
+        })
     }
 }
 
-fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError> {
+fn write_symcache(path: &Path, object: &ObjectFileWithData) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
         object.write_sentry_scope(scope);
