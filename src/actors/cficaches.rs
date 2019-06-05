@@ -68,10 +68,11 @@ impl CfiCacheActor {
 
 #[derive(Clone)]
 pub struct CfiCacheFile {
+    object_type: ObjectType,
+    identifier: ObjectId,
+    scope: Scope,
     data: ByteView<'static>,
     status: CacheStatus,
-    scope: Scope,
-    request: FetchCfiCacheInternal,
 }
 
 impl CfiCacheFile {
@@ -161,18 +162,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(
-        self,
-        scope: Scope,
-        status: CacheStatus,
-        data: ByteView<'static>,
-    ) -> Result<Self::Item, Self::Error> {
-        Ok(CfiCacheFile {
-            request: self,
-            status,
+    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+        CfiCacheFile {
+            object_type: self.request.object_type.clone(),
+            identifier: self.request.identifier.clone(),
             scope,
             data,
-        })
+            status,
+        }
     }
 }
 

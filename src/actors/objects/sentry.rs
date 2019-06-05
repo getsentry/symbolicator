@@ -12,8 +12,8 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::Cacher;
 use crate::actors::objects::{
-    DownloadStream, FetchFileInner, FetchFileRequest, ObjectError, ObjectErrorKind,
-    PrioritizedDownloads, SentryFileId, USER_AGENT,
+    DownloadStream, FetchFileRequest, FileId, ObjectError, ObjectErrorKind, PrioritizedDownloads,
+    SentryFileId, USER_AGENT,
 };
 use crate::sentry::SentryFutureExt;
 use crate::types::{ArcFail, FileType, ObjectId, Scope, SentrySourceConfig};
@@ -102,10 +102,7 @@ pub fn prepare_downloads(
                 entries.into_iter().map(move |api_response| cache
                     .compute_memoized(FetchFileRequest {
                         scope: scope.clone(),
-                        request: FetchFileInner::Sentry(
-                            source.clone(),
-                            SentryFileId(api_response.id),
-                        ),
+                        file_id: FileId::Sentry(source.clone(), SentryFileId(api_response.id),),
                         threadpool: threadpool.clone(),
                         object_id: object_id.clone(),
                     })

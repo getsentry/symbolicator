@@ -83,7 +83,7 @@ pub struct FetchFileRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
     /// Source-type specific attributes.
-    request: FetchFileInner,
+    file_id: FileId,
     object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
@@ -93,7 +93,7 @@ pub struct FetchFileRequest {
 }
 
 #[derive(Debug, Clone)]
-enum FetchFileInner {
+enum FileId {
     Sentry(Arc<SentrySourceConfig>, SentryFileId),
     S3(Arc<S3SourceConfig>, DownloadPath),
     Gcs(Arc<GcsSourceConfig>, DownloadPath),
@@ -106,18 +106,18 @@ pub struct DownloadPath(String);
 #[derive(Debug, Clone)]
 pub struct SentryFileId(String);
 
-impl FetchFileInner {
+impl FileId {
     fn source(&self) -> SourceConfig {
         match *self {
-            FetchFileInner::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            FetchFileInner::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            FetchFileInner::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            FetchFileInner::Http(ref x, ..) => SourceConfig::Http(x.clone()),
+            FileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
+            FileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
+            FileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
+            FileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
         }
     }
 }
 
-impl WriteSentryScope for FetchFileInner {
+impl WriteSentryScope for FileId {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.source().write_sentry_scope(scope);
     }
@@ -129,11 +129,11 @@ impl CacheItemRequest for FetchFileRequest {
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: match self.request {
-                FetchFileInner::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-                FetchFileInner::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-                FetchFileInner::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-                FetchFileInner::Sentry(ref source, ref file_id) => {
+            cache_key: match self.file_id {
+                FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
+                FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
+                FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
+                FileId::Sentry(ref source, ref file_id) => {
                     format!("{}.{}.sentryinternal", source.id, file_id.0)
                 }
             },
@@ -145,12 +145,12 @@ impl CacheItemRequest for FetchFileRequest {
         &self,
         path: &Path,
     ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
-        let request = download_from_source(&self.request);
+        let request = download_from_source(&self.file_id);
         let path = path.to_owned();
         let request_scope = self.scope.clone();
         let threadpool = self.threadpool.clone();
 
-        let final_scope = if self.request.source().is_public() {
+        let final_scope = if self.file_id.source().is_public() {
             Scope::Global
         } else {
             request_scope
@@ -163,7 +163,7 @@ impl CacheItemRequest for FetchFileRequest {
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.request.write_sentry_scope(scope);
+            self.file_id.write_sentry_scope(scope);
         });
 
         let result = request.and_then(move |payload| {
@@ -351,7 +351,7 @@ impl CacheItemRequest for FetchFileRequest {
             })
             .sentry_hub_current();
 
-        let type_name = self.request.source().type_name();
+        let type_name = self.file_id.source().type_name();
 
         Box::new(future_metrics!(
             "objects",
@@ -361,16 +361,15 @@ impl CacheItemRequest for FetchFileRequest {
         ))
     }
 
-    fn load(
-        self,
-        scope: Scope,
-        status: CacheStatus,
-        data: ByteView<'static>,
-    ) -> Result<Self::Item, Self::Error> {
+    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
         let object = ObjectFile {
-            request: Some(self),
-            status,
+            object_id: self.object_id.clone(),
             scope,
+
+            file_id: Some(self.file_id.clone()),
+            cache_key: Some(self.get_cache_key()),
+
+            status,
             data: Some(data),
         };
 
@@ -378,7 +377,7 @@ impl CacheItemRequest for FetchFileRequest {
             object.write_sentry_scope(scope);
         });
 
-        Ok(object)
+        object
     }
 }
 
@@ -393,12 +392,11 @@ impl AsRef<[u8]> for ObjectFileBytes {
 /// Handle to local cache file.
 #[derive(Debug, Clone)]
 pub struct ObjectFile {
-    /// The original request. This can be `None` if we never decided to actually do a request to a
-    /// bucket (e.g. because there are no sources, or we lack information in the `ObjectId` to
-    /// build filepaths)
-    request: Option<FetchFileRequest>,
-
+    object_id: ObjectId,
     scope: Scope,
+
+    file_id: Option<FileId>,
+    cache_key: Option<CacheKey>,
 
     /// The mmapped object.
     data: Option<ByteView<'static>>,
@@ -432,19 +430,20 @@ impl ObjectFile {
         &self.scope
     }
 
-    pub fn cache_key(&self) -> Option<CacheKey> {
-        self.request.as_ref().map(CacheItemRequest::get_cache_key)
+    pub fn cache_key(&self) -> Option<&CacheKey> {
+        self.cache_key.as_ref()
     }
 }
 
 impl WriteSentryScope for ObjectFile {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        if let Some(ref request) = self.request {
-            request.object_id.write_sentry_scope(scope);
-            scope.set_tag("object_file.scope", self.scope());
+        self.object_id.write_sentry_scope(scope);
 
-            request.request.write_sentry_scope(scope);
+        if let Some(ref file_id) = self.file_id {
+            file_id.write_sentry_scope(scope);
         }
+
+        scope.set_tag("object_file.scope", self.scope());
 
         if let Some(ref data) = self.data {
             scope.set_extra(
@@ -538,14 +537,18 @@ impl ObjectsActor {
                     )
                 })
                 .map(|(_, response)| response)
-                .unwrap_or_else(move || {
+                .unwrap_or_else(clone!(identifier, || {
                     Ok(Arc::new(ObjectFile {
-                        request: None,
                         scope,
+                        object_id: identifier,
+
+                        file_id: None,
+                        cache_key: None,
+
                         data: None,
                         status: CacheStatus::Negative,
                     }))
-                })
+                }))
         })
     }
 }
@@ -578,20 +581,16 @@ fn prepare_downloads(
 }
 
 fn download_from_source(
-    request: &FetchFileInner,
+    file_id: &FileId,
 ) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    match *request {
-        FetchFileInner::Sentry(ref source, ref file_id) => {
+    match *file_id {
+        FileId::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source.clone(), file_id)
         }
-        FetchFileInner::Http(ref source, ref file_id) => {
+        FileId::Http(ref source, ref file_id) => {
             http::download_from_source(source.clone(), file_id)
         }
-        FetchFileInner::S3(ref source, ref file_id) => {
-            s3::download_from_source(source.clone(), file_id)
-        }
-        FetchFileInner::Gcs(ref source, ref file_id) => {
-            gcs::download_from_source(source.clone(), file_id)
-        }
+        FileId::S3(ref source, ref file_id) => s3::download_from_source(source.clone(), file_id),
+        FileId::Gcs(ref source, ref file_id) => gcs::download_from_source(source.clone(), file_id),
     }
 }
