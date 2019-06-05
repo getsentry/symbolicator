@@ -1,5 +1,5 @@
 ---
-created: "2019-05-22T09:44:27.365260Z"
+created: "2019-06-06T10:53:37.591328Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -29,63 +29,40 @@ stacktraces:
       esi: 0x759c6314
       esp: 0x10ff644
     frames:
-      - status: missing
+      - status: symbolicated
         original_index: 0
+        symbol: main
+        sym_addr: 0x2a2910
+        function: main
+        filename: main.cpp
+        abs_path: "c:\\projects\\breakpad-tools\\windows\\crash\\main.cpp"
+        lineno: 35
         instruction_addr: 0x2a2a3d
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         trust: context
-      - status: missing
+      - status: symbolicated
         original_index: 1
-        instruction_addr: 0x2a28d0
+        symbol: __scrt_common_main_seh
+        sym_addr: 0x2a2c9e
+        function: __scrt_common_main_seh
+        filename: exe_common.inl
+        abs_path: "f:\\dd\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl"
+        lineno: 283
+        instruction_addr: 0x2a2d96
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        trust: fp
+        trust: cfi
       - status: missing
         original_index: 2
-        instruction_addr: 0x7584e9c0
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        trust: scan
-      - status: missing
-        original_index: 3
-        instruction_addr: 0x70850000
-        package: "C:\\Windows\\System32\\dbghelp.dll"
-        trust: scan
-      - status: missing
-        original_index: 4
-        instruction_addr: 0x70b7ae40
-        package: "C:\\Windows\\System32\\dbgcore.dll"
-        trust: scan
-      - status: missing
-        original_index: 5
-        instruction_addr: 0x75810000
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        trust: scan
-      - status: missing
-        original_index: 6
-        instruction_addr: 0x7584e9c0
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        trust: scan
-      - status: missing
-        original_index: 7
-        instruction_addr: 0x2a3435
-        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        trust: scan
-      - status: missing
-        original_index: 8
-        instruction_addr: 0x2a2d97
-        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        trust: scan
-      - status: missing
-        original_index: 9
         instruction_addr: 0x750662c4
         package: "C:\\Windows\\System32\\kernel32.dll"
-        trust: fp
+        trust: cfi
       - status: missing
-        original_index: 10
+        original_index: 3
         instruction_addr: 0x771d0f79
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
       - status: missing
-        original_index: 11
+        original_index: 4
         instruction_addr: 0x771d0f44
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
@@ -177,9 +154,9 @@ stacktraces:
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
 modules:
-  - debug_status: missing
-    unwind_status: missing
-    arch: unknown
+  - debug_status: found
+    unwind_status: found
+    arch: x86
     type: pe
     code_id: 5ab380779000
     code_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
@@ -187,7 +164,7 @@ modules:
     debug_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb"
     image_addr: 0x2a0000
     image_size: 36864
-  - debug_status: missing
+  - debug_status: unused
     unwind_status: unused
     arch: unknown
     type: pe
@@ -217,7 +194,7 @@ modules:
     debug_file: apphelp.pdb
     image_addr: 0x70a10000
     image_size: 598016
-  - debug_status: missing
+  - debug_status: unused
     unwind_status: missing
     arch: unknown
     type: pe
@@ -307,7 +284,7 @@ modules:
     debug_file: bcryptprimitives.pdb
     image_addr: 0x75130000
     image_size: 368640
-  - debug_status: missing
+  - debug_status: unused
     unwind_status: missing
     arch: unknown
     type: pe
