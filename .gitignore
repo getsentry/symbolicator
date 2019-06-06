@@ -12,3 +12,4 @@ __pycache__
 /cache/objects/
 /cache/symcaches/
 /cache/cficaches/
+/cache/object_meta/
