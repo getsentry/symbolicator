@@ -1035,7 +1035,6 @@ impl From<&SymCacheError> for ObjectFileStatus {
     }
 }
 
-
 #[cfg(test)]
 mod testutils {
     use std::path::PathBuf;
