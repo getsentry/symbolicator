@@ -290,10 +290,17 @@ impl CacheItemRequest for FetchFileRequest {
         ))
     }
 
-    fn load(&self, cache_key: Option<CacheKey>, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        cache_key: Option<CacheKey>,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Self::Item {
         let object = ObjectFile {
             object_id: self.object_id.clone(),
-            scope: cache_key.map(|key| key.scope).unwrap_or_else(|| self.scope.clone()),
+            scope: cache_key
+                .map(|key| key.scope)
+                .unwrap_or_else(|| self.scope.clone()),
 
             file_id: Some(self.file_id.clone()),
             cache_key: Some(self.get_cache_key()),

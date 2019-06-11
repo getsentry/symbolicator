@@ -87,7 +87,12 @@ pub trait CacheItemRequest: 'static + Send {
     }
 
     /// Loads an existing element from the cache.
-    fn load(&self, cache_key: Option<CacheKey>, status: CacheStatus, data: ByteView<'static>) -> Self::Item;
+    fn load(
+        &self,
+        cache_key: Option<CacheKey>,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Self::Item;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -110,7 +115,11 @@ impl<T: CacheItemRequest> Cacher<T> {
             .into_future()
             .and_then(move |file| {
                 for key in request.get_lookup_cache_keys().into_iter() {
-                    let path = tryf!(get_scope_path(config.cache_dir(), &key.scope, &key.cache_key));
+                    let path = tryf!(get_scope_path(
+                        config.cache_dir(),
+                        &key.scope,
+                        &key.cache_key
+                    ));
 
                     let path = match path {
                         Some(x) => x,
@@ -156,9 +165,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // just got pruned.
                 metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-                let future = request
-                    .compute(file.path())
-                    .and_then(move |(status, new_cache_key)| {
+                let future = request.compute(file.path()).and_then(
+                    move |(status, new_cache_key)| {
                         let new_cache_path = if let Some(ref new_cache_key) = new_cache_key {
                             tryf!(get_scope_path(
                                 config.cache_dir(),
@@ -199,7 +207,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                         }
 
                         Box::new(Ok(item).into_future())
-                    });
+                    },
+                );
 
                 Box::new(future) as Box<dyn Future<Item = T::Item, Error = T::Error>>
             })

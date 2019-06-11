@@ -102,12 +102,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     }
 
     fn get_lookup_cache_keys(&self) -> Vec<CacheKey> {
-        self.request.sources.iter().map(|source: &SourceConfig| {
-            CacheKey {
+        self.request
+            .sources
+            .iter()
+            .map(|source: &SourceConfig| CacheKey {
                 cache_key: format!("{}.{}", source.id(), self.request.identifier.cache_key()),
-                scope: self.request.scope.clone()
-            }
-        }).collect()
+                scope: self.request.scope.clone(),
+            })
+            .collect()
     }
 
     fn compute(
@@ -133,10 +135,16 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                     futures::lazy(move || {
                         let new_cache_key = if let Some(ref source) = object.source() {
                             Some(CacheKey {
-                                cache_key: format!("{}.{}", source.id(), object.object_id().cache_key()),
+                                cache_key: format!(
+                                    "{}.{}",
+                                    source.id(),
+                                    object.object_id().cache_key()
+                                ),
                                 scope: object.scope().clone(),
                             })
-                        } else { None };
+                        } else {
+                            None
+                        };
 
                         if object.status() != CacheStatus::Positive {
                             return Ok((object.status(), new_cache_key));
@@ -174,7 +182,12 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(&self, _cache_key: Option<CacheKey>, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        _cache_key: Option<CacheKey>,
+        status: CacheStatus,
+        data: ByteView<'static>,
+    ) -> Self::Item {
         CfiCacheFile {
             object_type: self.request.object_type.clone(),
             identifier: self.request.identifier.clone(),

@@ -119,7 +119,9 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             symcache, = (
                 cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
             )
-            assert symcache.basename == "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+            assert (
+                symcache.basename == "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+            )
             assert symcache.size() > 0
 
         count = 1 if cache_dir_param else (i + 1)
