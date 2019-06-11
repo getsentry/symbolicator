@@ -148,7 +148,7 @@ impl CacheItemRequest for FetchFileRequest {
     fn compute(
         &self,
         path: &Path,
-    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
+    ) -> Box<dyn Future<Item = (CacheStatus, Option<CacheKey>), Error = Self::Error>> {
         let request = download_from_source(&self.file_id);
         let path = path.to_owned();
         let request_scope = self.scope.clone();
@@ -226,7 +226,7 @@ impl CacheItemRequest for FetchFileRequest {
                         let archive = match Archive::parse(&view) {
                             Ok(archive) => archive,
                             Err(_) => {
-                                return Ok((CacheStatus::Malformed, final_scope));
+                                return Ok((CacheStatus::Malformed, Some(cache_key)));
                             }
                         };
 
@@ -245,7 +245,7 @@ impl CacheItemRequest for FetchFileRequest {
                             // early.
                             let object = match object_opt {
                                 Some(object) => object,
-                                None => return Ok((CacheStatus::Negative, final_scope)),
+                                None => return Ok((CacheStatus::Negative, Some(cache_key))),
                             };
 
                             io::copy(&mut object.data(), &mut persist_file)
@@ -254,21 +254,21 @@ impl CacheItemRequest for FetchFileRequest {
                             // Attempt to parse the object to capture errors. The result can be
                             // discarded as the object's data is the entire ByteView.
                             if archive.object_by_index(0).is_err() {
-                                return Ok((CacheStatus::Malformed, final_scope));
+                                return Ok((CacheStatus::Malformed, Some(cache_key)));
                             }
 
                             io::copy(&mut view.as_ref(), &mut persist_file)
                                 .context(ObjectErrorKind::Io)?;
                         }
 
-                        Ok((CacheStatus::Positive, final_scope))
+                        Ok((CacheStatus::Positive, Some(cache_key)))
                     }))
                 }));
 
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
             } else {
                 log::debug!("No debug file found for {}", cache_key);
-                Box::new(Ok((CacheStatus::Negative, final_scope)).into_future())
+                Box::new(Ok((CacheStatus::Negative, Some(cache_key))).into_future())
                     as Box<dyn Future<Item = _, Error = _>>
             }
         });
@@ -290,10 +290,10 @@ impl CacheItemRequest for FetchFileRequest {
         ))
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(&self, cache_key: Option<CacheKey>, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
         let object = ObjectFile {
             object_id: self.object_id.clone(),
-            scope,
+            scope: cache_key.map(|key| key.scope).unwrap_or_else(|| self.scope.clone()),
 
             file_id: Some(self.file_id.clone()),
             cache_key: Some(self.get_cache_key()),
@@ -357,6 +357,14 @@ impl ObjectFile {
 
     pub fn scope(&self) -> &Scope {
         &self.scope
+    }
+
+    pub fn source(&self) -> Option<SourceConfig> {
+        Some(self.file_id.as_ref()?.source())
+    }
+
+    pub fn object_id(&self) -> &ObjectId {
+        &self.object_id
     }
 
     pub fn cache_key(&self) -> Option<&CacheKey> {

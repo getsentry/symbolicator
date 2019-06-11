@@ -71,7 +71,6 @@ impl SymCacheActor {
 pub struct SymCacheFile {
     object_type: ObjectType,
     identifier: ObjectId,
-    scope: Scope,
     data: ByteView<'static>,
     status: CacheStatus,
     arch: Arch,
@@ -106,16 +105,22 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.request.identifier.cache_key(),
-            scope: self.request.scope.clone(),
-        }
+        unimplemented!()
+    }
+
+    fn get_lookup_cache_keys(&self) -> Vec<CacheKey> {
+        self.request.sources.iter().map(|source: &SourceConfig| {
+            CacheKey {
+                cache_key: format!("{}.{}", source.id(), self.request.identifier.cache_key()),
+                scope: self.request.scope.clone()
+            }
+        }).collect()
     }
 
     fn compute(
         &self,
         path: &Path,
-    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
+    ) -> Box<dyn Future<Item = (CacheStatus, Option<CacheKey>), Error = Self::Error>> {
         let objects = self.objects.clone();
 
         let path = path.to_owned();
@@ -133,8 +138,15 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .and_then(move |object| {
                 threadpool.spawn_handle(
                     futures::lazy(move || {
+                        let new_cache_key = if let Some(ref source) = object.source() {
+                            Some(CacheKey {
+                                cache_key: format!("{}.{}", source.id(), object.object_id().cache_key()),
+                                scope: object.scope().clone(),
+                            })
+                        } else { None };
+
                         if object.status() != CacheStatus::Positive {
-                            return Ok((object.status(), object.scope().clone()));
+                            return Ok((object.status(), new_cache_key));
                         }
 
                         let status = if let Err(e) = write_symcache(&path, &*object) {
@@ -146,7 +158,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                             CacheStatus::Positive
                         };
 
-                        Ok((status, object.scope().clone()))
+                        Ok((status, new_cache_key))
                     })
                     .sentry_hub_current(),
                 )
@@ -169,7 +181,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(&self, _cache_key: Option<CacheKey>, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
         // TODO: Figure out if this double-parsing could be avoided
         let arch = SymCache::parse(&data)
             .map(|cache| cache.arch())
@@ -178,7 +190,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
         SymCacheFile {
             object_type: self.request.object_type.clone(),
             identifier: self.request.identifier.clone(),
-            scope,
             data,
             status,
             arch,

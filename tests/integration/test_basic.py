@@ -1,6 +1,5 @@
 import pytest
 import time
-import threading
 
 WINDOWS_DATA = {
     "signal": None,
@@ -120,7 +119,7 @@ def test_basic(symbolicator, cache_dir_param, is_public, hitcounter):
             symcache, = (
                 cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
             )
-            assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
+            assert symcache.basename == "microsoft_ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
             assert symcache.size() > 0
 
         count = 1 if cache_dir_param else (i + 1)
@@ -144,51 +143,7 @@ def test_no_sources(symbolicator, cache_dir_param):
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
-        symcache, = cache_dir_param.join("symcaches/global").listdir()
-        assert symcache.basename == "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1_"
-        assert symcache.size() == 0
-
-
-@pytest.mark.parametrize("is_public", [True, False])
-def test_lookup_deduplication(symbolicator, hitcounter, is_public):
-    input = dict(
-        **WINDOWS_DATA,
-        sources=[
-            {
-                "type": "http",
-                "id": "microsoft",
-                "filters": {"filetypes": ["pdb", "pe"]},
-                "layout": {"type": "symstore"},
-                "url": f"{hitcounter.url}/msdl/",
-                "is_public": is_public,
-            }
-        ],
-    )
-
-    service = symbolicator(cache_dir=None)
-    service.wait_healthcheck()
-    responses = []
-
-    def f():
-        response = service.post("/symbolicate", json=input)
-        response.raise_for_status()
-        responses.append(response.json())
-
-    ts = []
-    for _ in range(20):
-        t = threading.Thread(target=f)
-        t.start()
-        ts.append(t)
-
-    for t in ts:
-        t.join()
-
-    assert responses == [SUCCESS_WINDOWS] * 20
-
-    assert hitcounter.hits == {
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_": 1,
-        "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb": 1,
-    }
+        assert not cache_dir_param.join("symcaches/global").exists()
 
 
 def test_sources_filetypes(symbolicator, hitcounter):
