@@ -448,22 +448,21 @@ impl ObjectsActor {
                 .flatten()
                 .enumerate()
                 .min_by_key(|(ref i, response)| {
-                    (
-                        // Prefer object files with debug/unwind info over object files without
-                        // Prefer files that contain an object over unparseable files
-                        match response.as_ref().ok().and_then(|o| {
-                            let object = o.parse().ok()??;
-                            match purpose {
-                                ObjectPurpose::Unwind => Some(object.has_unwind_info()),
-                                ObjectPurpose::Debug => Some(object.has_debug_info()),
-                            }
-                        }) {
-                            Some(true) => 0,
-                            Some(false) => 1,
-                            None => 2,
-                        },
-                        *i,
-                    )
+                    // Prefer files that contain an object over unparseable files
+                    let object = match response.as_ref().map(|o| o.parse()) {
+                        Ok(Ok(Some(object))) => object,
+                        _ => return (3, *i),
+                    };
+
+                    // Prefer object files with debug/unwind info over object files without
+                    let score = match purpose {
+                        ObjectPurpose::Unwind if object.has_unwind_info() => 0,
+                        ObjectPurpose::Debug if object.has_debug_info() => 0,
+                        ObjectPurpose::Debug if object.has_symbols() => 1,
+                        _ => 2,
+                    };
+
+                    (score, *i)
                 })
                 .map(|(_, response)| response)
                 .unwrap_or_else(clone!(identifier, || {
