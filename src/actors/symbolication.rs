@@ -1036,13 +1036,40 @@ impl From<&SymCacheError> for ObjectFileStatus {
 }
 
 #[cfg(test)]
+mod testutils {
+    use std::path::PathBuf;
+    use std::sync::{Once, ONCE_INIT};
+
+    use crate::types::FilesystemSourceConfig;
+
+    use super::*;
+
+    static INIT: Once = ONCE_INIT;
+
+    /// Setup function that is only run once, even if called multiple times.
+    pub(crate) fn setup_logging() {
+        INIT.call_once(|| {
+            env_logger::init();
+        });
+    }
+
+    pub(crate) fn get_local_bucket() -> SourceConfig {
+        SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
+            id: "local".to_owned(),
+            path: PathBuf::from("./tests/fixtures/symbols/"),
+            files: Default::default(),
+        }))
+    }
+}
+
+#[cfg(test)]
 fn stackwalk_minidump(path: &str) -> Result<(), failure::Error> {
     use crate::app::get_test_system;
 
     let request = ProcessMinidump {
         file: File::open(path)?,
         scope: Scope::Global,
-        sources: Arc::new(vec![]),
+        sources: Arc::new(vec![testutils::get_local_bucket()]),
     };
 
     let (mut sys, state) = get_test_system();
@@ -1065,25 +1092,17 @@ fn stackwalk_minidump(path: &str) -> Result<(), failure::Error> {
 }
 
 #[test]
-fn test_global_cache_leakage() -> Result<(), failure::Error> {
-    env_logger::init();
-    use std::path::PathBuf;
-
+fn test_remove_bucket() -> Result<(), failure::Error> {
     use crate::app::get_test_system_with_cache;
-    use crate::types::FilesystemSourceConfig;
+
+    testutils::setup_logging();
 
     let (_tempdir, mut sys, state) = get_test_system_with_cache();
 
     let mut request = SymbolicateStacktraces {
         scope: Scope::Global,
         signal: None,
-        sources: Arc::new(vec![SourceConfig::Filesystem(Arc::new(
-            FilesystemSourceConfig {
-                id: "local".to_owned(),
-                path: PathBuf::from("./tests/fixtures/symbols/"),
-                files: Default::default(),
-            },
-        ))]),
+        sources: Arc::new(vec![testutils::get_local_bucket()]),
         stacktraces: vec![RawStacktrace {
             frames: vec![RawFrame {
                 instruction_addr: HexValue(0x1_0000_0fa0),
@@ -1120,6 +1139,74 @@ fn test_global_cache_leakage() -> Result<(), failure::Error> {
     insta::assert_yaml_snapshot_matches!(response);
 
     request.sources = Arc::new(vec![]);
+
+    let request_id = state
+        .symbolication
+        .symbolicate_stacktraces(request.clone())?;
+    let response = sys
+        .block_on(
+            state
+                .symbolication
+                .get_symbolication_status(GetSymbolicationStatus {
+                    request_id,
+                    timeout: None,
+                }),
+        )?
+        .unwrap();
+
+    insta::assert_yaml_snapshot_matches!(response);
+
+    Ok(())
+}
+
+#[test]
+fn test_add_bucket() -> Result<(), failure::Error> {
+    use crate::app::get_test_system_with_cache;
+
+    testutils::setup_logging();
+
+    let (_tempdir, mut sys, state) = get_test_system_with_cache();
+
+    let mut request = SymbolicateStacktraces {
+        scope: Scope::Global,
+        signal: None,
+        sources: Arc::new(vec![]),
+        stacktraces: vec![RawStacktrace {
+            frames: vec![RawFrame {
+                instruction_addr: HexValue(0x1_0000_0fa0),
+                ..Default::default()
+            }],
+            registers: Default::default(),
+        }],
+        modules: vec![RawObjectInfo {
+            ty: ObjectType("macho".to_owned()),
+            code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
+            debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
+            image_addr: HexValue(0x1_0000_0000),
+            image_size: Some(4096),
+            code_file: Default::default(),
+            debug_file: Default::default(),
+        }
+        .into()],
+    };
+
+    let request_id = state
+        .symbolication
+        .symbolicate_stacktraces(request.clone())?;
+    let response = sys
+        .block_on(
+            state
+                .symbolication
+                .get_symbolication_status(GetSymbolicationStatus {
+                    request_id,
+                    timeout: None,
+                }),
+        )?
+        .unwrap();
+
+    insta::assert_yaml_snapshot_matches!(response);
+
+    request.sources = Arc::new(vec![testutils::get_local_bucket()]);
 
     let request_id = state
         .symbolication
