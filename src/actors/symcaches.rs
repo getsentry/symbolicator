@@ -16,7 +16,9 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{
+    FetchObject, ObjectFile, ObjectPurpose, ObjectsActor, ShallowObjectFile,
+};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -100,7 +102,8 @@ impl SymCacheFile {
 #[derive(Clone)]
 struct FetchSymCacheInternal {
     request: FetchSymCache,
-    object: Arc<ObjectFile>,
+    objects_actor: Arc<ObjectsActor>,
+    shallow_object: Arc<ShallowObjectFile>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -109,7 +112,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.object.cache_key().clone()
+        self.shallow_object.cache_key().clone()
     }
 
     fn compute(
@@ -117,27 +120,35 @@ impl CacheItemRequest for FetchSymCacheInternal {
         path: &Path,
     ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
         let path = path.to_owned();
-        let object = self.object.clone();
+        let object = self
+            .objects_actor
+            .fetch(self.shallow_object.clone())
+            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)));
+        let threadpool = &self.threadpool;
 
-        let result = self.threadpool.spawn_handle(
-            futures::lazy(move || {
-                if object.status() != CacheStatus::Positive {
-                    return Ok((object.status(), object.scope().clone()));
-                }
+        let result = object
+            .and_then(clone!(threadpool, |object| {
+                threadpool.spawn_handle(
+                    futures::lazy(move || {
+                        if object.status() != CacheStatus::Positive {
+                            return Ok((object.status(), object.scope().clone()));
+                        }
 
-                let status = if let Err(e) = write_symcache(&path, &*object) {
-                    log::warn!("Failed to write symcache: {}", e);
-                    capture_fail(e.cause().unwrap_or(&e));
+                        let status = if let Err(e) = write_symcache(&path, &*object) {
+                            log::warn!("Failed to write symcache: {}", e);
+                            capture_fail(e.cause().unwrap_or(&e));
 
-                    CacheStatus::Malformed
-                } else {
-                    CacheStatus::Positive
-                };
+                            CacheStatus::Malformed
+                        } else {
+                            CacheStatus::Positive
+                        };
 
-                Ok((status, object.scope().clone()))
-            })
-            .sentry_hub_current(),
-        );
+                        Ok((status, object.scope().clone()))
+                    })
+                    .sentry_hub_current(),
+                )
+            }))
+            .sentry_hub_current();
 
         let num_sources = self.request.sources.len();
 
@@ -188,7 +199,7 @@ impl SymCacheActor {
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
         let object = self
             .objects
-            .fetch(FetchObject {
+            .find(FetchObject {
                 filetypes: FileType::from_object_type(&request.object_type),
                 identifier: request.identifier.clone(),
                 sources: request.sources.clone(),
@@ -199,6 +210,7 @@ impl SymCacheActor {
 
         let symcaches = self.symcaches.clone();
         let threadpool = self.threadpool.clone();
+        let objects = self.objects.clone();
 
         let object_type = request.object_type.clone();
         let identifier = request.identifier.clone();
@@ -206,10 +218,11 @@ impl SymCacheActor {
 
         object.and_then(move |object| {
             object
-                .map(|object| {
+                .map(move |object| {
                     Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
                         request,
-                        object,
+                        objects_actor: objects,
+                        shallow_object: object,
                         threadpool,
                     }))
                 })

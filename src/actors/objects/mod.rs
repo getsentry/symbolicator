@@ -11,7 +11,7 @@ use failure::{Fail, ResultExt};
 
 use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
-use futures::{future, future::Either, Future, IntoFuture, Stream};
+use futures::{future, Future, IntoFuture, Stream};
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -191,14 +191,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
         ShallowObjectFile {
-            object_id: self.object_id.clone(),
+            request: self.clone(),
             scope,
-
-            file_id: self.file_id.clone(),
-            cache_key: self.get_cache_key(),
-
             meta: serde_json::from_slice(&data).unwrap_or_default(),
-
             status,
         }
     }
@@ -388,16 +383,18 @@ impl AsRef<[u8]> for ObjectFileBytes {
 /// Handle to local metadata file of an object. Having an instance of this type does not mean there
 /// is a downloaded object file behind it. We cache metadata separately (ObjectFileMeta) because
 /// every symcache lookup requires reading this metadata.
-#[derive(Debug, Clone)]
-struct ShallowObjectFile {
-    object_id: ObjectId,
+#[derive(Clone)]
+pub struct ShallowObjectFile {
+    request: FetchFileMetaRequest,
     scope: Scope,
-
-    file_id: FileId,
-    cache_key: CacheKey,
-
     meta: ObjectFileMeta,
     status: CacheStatus,
+}
+
+impl ShallowObjectFile {
+    pub fn cache_key(&self) -> CacheKey {
+        self.request.get_cache_key()
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -503,8 +500,17 @@ pub enum ObjectPurpose {
 impl ObjectsActor {
     pub fn fetch(
         &self,
+        shallow_file: Arc<ShallowObjectFile>,
+    ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
+        self.data_cache
+            .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
+            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+    }
+
+    pub fn find(
+        &self,
         request: FetchObject,
-    ) -> impl Future<Item = Option<Arc<ObjectFile>>, Error = ObjectError> {
+    ) -> impl Future<Item = Option<Arc<ShallowObjectFile>>, Error = ObjectError> {
         let FetchObject {
             filetypes,
             scope,
@@ -545,7 +551,7 @@ impl ObjectsActor {
                                             ArcFail(e).context(ObjectErrorKind::Caching),
                                         )
                                     })
-                                    .then(move |response| Ok((request, response)))
+                                    .then(|response| Ok(response))
                             }))
                         }
                     ))
@@ -553,12 +559,12 @@ impl ObjectsActor {
             })
             .collect();
 
-        future::join_all(prepare_futures).and_then(clone!(data_cache, |responses| {
+        future::join_all(prepare_futures).and_then(move |responses| {
             let response = responses
                 .into_iter()
                 .flatten()
                 .enumerate()
-                .min_by_key(|(i, (_request, response))| {
+                .min_by_key(|(i, response)| {
                     // Prefer files that contain an object over unparseable files
                     let object = match response {
                         Ok(object) => object,
@@ -575,22 +581,11 @@ impl ObjectsActor {
 
                     (score, *i)
                 })
-                .map(|(_, response)| Ok((response.0, response.1?)))
+                .map(|(_, response)| response)
                 .transpose();
 
-            response.into_future().and_then(move |object| {
-                if let Some((request, _object)) = object {
-                    Either::A(
-                        data_cache
-                            .compute_memoized(FetchFileDataRequest(request))
-                            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-                            .map(Some),
-                    )
-                } else {
-                    Either::B(Ok(None).into_future())
-                }
-            })
-        }))
+            response
+        })
     }
 }
 

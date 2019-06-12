@@ -4,7 +4,7 @@ use actix::ResponseFuture;
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
-use futures::{Future, IntoFuture, Stream};
+use futures::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
 use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};
@@ -50,17 +50,33 @@ fn proxy_symstore_request(
 
     Hub::run(hub, || {
         log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
+        let objects = state.objects.clone();
+
+        let shallow_object_file_opt = objects
+            .find(FetchObject {
+                filetypes,
+                identifier: object_id,
+                sources: state.config.sources.clone(),
+                scope: Scope::Global,
+                purpose: ObjectPurpose::Debug,
+            })
+            .map_err(|e| e.context(ProxyErrorKind::Fetching).into());
+
+        let object_file_opt = shallow_object_file_opt.and_then(move |shallow_object_file_opt| {
+            if let Some(shallow_object_file) = shallow_object_file_opt {
+                Either::A(
+                    objects
+                        .fetch(shallow_object_file)
+                        .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
+                        .map(Some),
+                )
+            } else {
+                Either::B(Ok(None).into_future())
+            }
+        });
+
         Box::new(
-            state
-                .objects
-                .fetch(FetchObject {
-                    filetypes,
-                    identifier: object_id,
-                    sources: state.config.sources.clone(),
-                    scope: Scope::Global,
-                    purpose: ObjectPurpose::Debug,
-                })
-                .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
+            object_file_opt
                 .and_then(move |object_file_opt| {
                     let object_file = if object_file_opt
                         .as_ref()
