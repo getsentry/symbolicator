@@ -551,7 +551,7 @@ impl ObjectsActor {
                                             ArcFail(e).context(ObjectErrorKind::Caching),
                                         )
                                     })
-                                    .then(|response| Ok(response))
+                                    .then(Ok)
                             }))
                         }
                     ))
@@ -560,7 +560,7 @@ impl ObjectsActor {
             .collect();
 
         future::join_all(prepare_futures).and_then(move |responses| {
-            let response = responses
+            responses
                 .into_iter()
                 .flatten()
                 .enumerate()
@@ -582,9 +582,7 @@ impl ObjectsActor {
                     (score, *i)
                 })
                 .map(|(_, response)| response)
-                .transpose();
-
-            response
+                .transpose()
         })
     }
 }
