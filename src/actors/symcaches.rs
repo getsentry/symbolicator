@@ -16,9 +16,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{
-    FetchObject, ObjectFile, ObjectPurpose, ObjectsActor, ShallowObjectFile,
-};
+use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -103,7 +101,7 @@ impl SymCacheFile {
 struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects_actor: Arc<ObjectsActor>,
-    shallow_object: Arc<ShallowObjectFile>,
+    object_meta: Arc<ObjectFileMeta>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -112,7 +110,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.shallow_object.cache_key().clone()
+        self.object_meta.cache_key().clone()
     }
 
     fn compute(
@@ -122,7 +120,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let path = path.to_owned();
         let object = self
             .objects_actor
-            .fetch(self.shallow_object.clone())
+            .fetch(self.object_meta.clone())
             .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)));
         let threadpool = &self.threadpool;
 
@@ -199,7 +197,7 @@ impl SymCacheActor {
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
         let object = self
             .objects
-            .find(FetchObject {
+            .find(FindObject {
                 filetypes: FileType::from_object_type(&request.object_type),
                 identifier: request.identifier.clone(),
                 sources: request.sources.clone(),
@@ -222,7 +220,7 @@ impl SymCacheActor {
                     Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: objects,
-                        shallow_object: object,
+                        object_meta: object,
                         threadpool,
                     }))
                 })

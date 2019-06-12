@@ -9,7 +9,7 @@ use sentry::Hub;
 use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::{FetchObject, ObjectFileBytes, ObjectPurpose};
+use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
@@ -52,8 +52,8 @@ fn proxy_symstore_request(
         log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
         let objects = state.objects.clone();
 
-        let shallow_object_file_opt = objects
-            .find(FetchObject {
+        let object_meta_opt = objects
+            .find(FindObject {
                 filetypes,
                 identifier: object_id,
                 sources: state.config.sources.clone(),
@@ -62,11 +62,11 @@ fn proxy_symstore_request(
             })
             .map_err(|e| e.context(ProxyErrorKind::Fetching).into());
 
-        let object_file_opt = shallow_object_file_opt.and_then(move |shallow_object_file_opt| {
-            if let Some(shallow_object_file) = shallow_object_file_opt {
+        let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
+            if let Some(object_meta) = object_meta_opt {
                 Either::A(
                     objects
-                        .fetch(shallow_object_file)
+                        .fetch(object_meta)
                         .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
                         .map(Some),
                 )

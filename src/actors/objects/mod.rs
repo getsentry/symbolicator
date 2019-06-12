@@ -145,7 +145,7 @@ impl WriteSentryScope for FileId {
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
-    type Item = ShallowObjectFile;
+    type Item = ObjectFileMeta;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -169,7 +169,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
                         let mut f = fs::File::create(path).context(ObjectErrorKind::Io)?;
-                        let meta = ObjectFileMeta {
+                        let meta = ObjectFileMetaInner {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
                             has_symbols: object.has_symbols(),
@@ -186,11 +186,11 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
-        serde_json::from_slice::<ObjectFileMeta>(data).is_ok()
+        serde_json::from_slice::<ObjectFileMetaInner>(data).is_ok()
     }
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
-        ShallowObjectFile {
+        ObjectFileMeta {
             request: self.clone(),
             scope,
             meta: serde_json::from_slice(&data).unwrap_or_default(),
@@ -381,24 +381,24 @@ impl AsRef<[u8]> for ObjectFileBytes {
 }
 
 /// Handle to local metadata file of an object. Having an instance of this type does not mean there
-/// is a downloaded object file behind it. We cache metadata separately (ObjectFileMeta) because
+/// is a downloaded object file behind it. We cache metadata separately (ObjectFileMetaInner) because
 /// every symcache lookup requires reading this metadata.
 #[derive(Clone)]
-pub struct ShallowObjectFile {
+pub struct ObjectFileMeta {
     request: FetchFileMetaRequest,
     scope: Scope,
-    meta: ObjectFileMeta,
+    meta: ObjectFileMetaInner,
     status: CacheStatus,
 }
 
-impl ShallowObjectFile {
+impl ObjectFileMeta {
     pub fn cache_key(&self) -> CacheKey {
         self.request.get_cache_key()
     }
 }
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
-struct ObjectFileMeta {
+struct ObjectFileMetaInner {
     has_debug_info: bool,
     has_unwind_info: bool,
     has_symbols: bool,
@@ -483,7 +483,7 @@ impl ObjectsActor {
 
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
-pub struct FetchObject {
+pub struct FindObject {
     pub filetypes: &'static [FileType],
     pub purpose: ObjectPurpose,
     pub scope: Scope,
@@ -500,7 +500,7 @@ pub enum ObjectPurpose {
 impl ObjectsActor {
     pub fn fetch(
         &self,
-        shallow_file: Arc<ShallowObjectFile>,
+        shallow_file: Arc<ObjectFileMeta>,
     ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
@@ -509,9 +509,9 @@ impl ObjectsActor {
 
     pub fn find(
         &self,
-        request: FetchObject,
-    ) -> impl Future<Item = Option<Arc<ShallowObjectFile>>, Error = ObjectError> {
-        let FetchObject {
+        request: FindObject,
+    ) -> impl Future<Item = Option<Arc<ObjectFileMeta>>, Error = ObjectError> {
+        let FindObject {
             filetypes,
             scope,
             identifier,
