@@ -562,22 +562,18 @@ impl ObjectsActor {
                     // Prefer files that contain an object over unparseable files
                     let object = match response {
                         Ok(object) => object,
-                        Err(_) => return (1, *i),
+                        _ => return (3, *i),
                     };
 
                     // Prefer object files with debug/unwind info over object files without
-                    let has_good_info = match purpose {
-                        ObjectPurpose::Debug => object.meta.has_debug_info,
-                        ObjectPurpose::Unwind => object.meta.has_unwind_info,
+                    let score = match purpose {
+                        ObjectPurpose::Unwind if object.meta.has_unwind_info => 0,
+                        ObjectPurpose::Debug if object.meta.has_debug_info => 0,
+                        ObjectPurpose::Debug if object.meta.has_symbols => 1,
+                        _ => 2,
                     };
 
-                    if has_good_info {
-                        (-2, *i)
-                    } else if object.meta.has_symbols {
-                        (-1, *i)
-                    } else {
-                        (0, *i)
-                    }
+                    (score, *i)
                 })
                 .map(|(_, response)| Ok((response.0, response.1?)))
                 .transpose();
