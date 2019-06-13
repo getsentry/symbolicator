@@ -10,6 +10,7 @@ readme = "README.md"
 [dependencies]
 actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
 actix = "0.7.9"
+apple-crash-report-parser = "0.3.1"
 failure = "0.1.5"
 serde = { version = "1.0.91", features = ["derive", "rc"] }
 futures = "0.1.27"

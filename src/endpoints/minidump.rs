@@ -1,18 +1,12 @@
 use std::fs;
-use std::io::{self, Seek, SeekFrom, Write};
 use std::sync::Arc;
-use tempfile;
 
 use actix::ResponseFuture;
 use actix_web::dev::Payload;
 use actix_web::http::header::ContentDisposition;
 use actix_web::http::Method;
 use actix_web::{error, multipart, Error, HttpMessage, HttpRequest, Json, Query, State};
-use bytes::BytesMut;
-use futures::{
-    future::{self, IntoFuture},
-    Future, Stream,
-};
+use futures::{Future, IntoFuture, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
 use tokio_threadpool::ThreadPool;
@@ -22,53 +16,11 @@ use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{SourceConfig, SymbolicationResponse};
+use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
 
 enum MultipartItem {
     MinidumpFile(fs::File),
     Sources(Vec<SourceConfig>),
-}
-
-fn read_sources_json(
-    field: multipart::Field<Payload>,
-) -> impl Future<Item = MultipartItem, Error = Error> {
-    field
-        .map_err(Error::from)
-        .fold(BytesMut::with_capacity(512), move |mut body, chunk| {
-            if (body.len() + chunk.len()) > 1_000_000 {
-                Err(Error::from(error::JsonPayloadError::Overflow))
-            } else {
-                body.extend_from_slice(&chunk);
-                Ok(body)
-            }
-        })
-        .and_then(|body| Ok(serde_json::from_slice(&body)?))
-        .map(MultipartItem::Sources)
-}
-
-fn read_minidump(
-    threadpool: Arc<ThreadPool>,
-    field: multipart::Field<Payload>,
-) -> impl Future<Item = MultipartItem, Error = Error> {
-    tempfile::tempfile()
-        .into_future()
-        .map_err(Error::from)
-        .and_then(clone!(threadpool, |file| field.map_err(Error::from).fold(
-            file,
-            move |mut file, chunk| threadpool
-                .spawn_handle(future::lazy(move || -> Result<_, io::Error> {
-                    file.write_all(&chunk)?;
-                    Ok(file)
-                }))
-                .map_err(Error::from)
-        )))
-        .and_then(clone!(threadpool, |mut file| threadpool
-            .spawn_handle(future::lazy(move || -> Result<_, io::Error> {
-                file.sync_all()?;
-                file.seek(SeekFrom::Start(0))?;
-                Ok(file)
-            }))
-            .map_err(Error::from)))
-        .map(MultipartItem::MinidumpFile)
 }
 
 fn handle_multipart_item(
@@ -82,10 +34,16 @@ fn handle_multipart_item(
                 .as_ref()
                 .and_then(ContentDisposition::get_name)
             {
-                Some("sources") => Box::new(read_sources_json(field).into_stream()),
-                Some("upload_file_minidump") => {
-                    Box::new(read_minidump(threadpool.clone(), field).into_stream())
-                }
+                Some("sources") => Box::new(
+                    read_multipart_sources(field)
+                        .map(MultipartItem::Sources)
+                        .into_stream(),
+                ),
+                Some("upload_file_minidump") => Box::new(
+                    read_multipart_file(field, threadpool.clone())
+                        .map(MultipartItem::MinidumpFile)
+                        .into_stream(),
+                ),
                 _ => Box::new(
                     Err(error::ErrorBadRequest("unknown formdata field"))
                         .into_future()

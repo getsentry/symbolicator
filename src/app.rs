@@ -87,6 +87,8 @@ enum Command {
 /// The shared state for the service.
 #[derive(Clone)]
 pub struct ServiceState {
+    /// Thread pool instance reserved for CPU-intensive tasks.
+    pub cpu_threadpool: Arc<ThreadPool>,
     /// Thread pool instance reserved for IO-intensive tasks.
     pub io_threadpool: Arc<ThreadPool>,
     /// Actor for minidump and stacktrace processing
@@ -196,6 +198,7 @@ fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
     ));
 
     let state = ServiceState {
+        cpu_threadpool,
         io_threadpool,
         symbolication,
         objects,
@@ -232,6 +235,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
             .middleware(ErrorHandlers)
             .middleware(sentry_actix::SentryMiddleware::new());
 
+        app = endpoints::applecrashreport::register(app);
         app = endpoints::healthcheck::register(app);
         app = endpoints::minidump::register(app);
         app = endpoints::requests::register(app);
