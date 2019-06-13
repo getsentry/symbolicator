@@ -4,12 +4,12 @@ use actix::ResponseFuture;
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
-use futures::{Future, IntoFuture, Stream};
+use futures::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
 use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::{FetchObject, ObjectFileBytes, ObjectPurpose};
+use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
@@ -50,25 +50,48 @@ fn proxy_symstore_request(
 
     Hub::run(hub, || {
         log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
+        let objects = state.objects.clone();
+
+        let object_meta_opt = objects
+            .find(FindObject {
+                filetypes,
+                identifier: object_id,
+                sources: state.config.sources.clone(),
+                scope: Scope::Global,
+                purpose: ObjectPurpose::Debug,
+            })
+            .map_err(|e| e.context(ProxyErrorKind::Fetching).into());
+
+        let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
+            if let Some(object_meta) = object_meta_opt {
+                Either::A(
+                    objects
+                        .fetch(object_meta)
+                        .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
+                        .map(Some),
+                )
+            } else {
+                Either::B(Ok(None).into_future())
+            }
+        });
+
         Box::new(
-            state
-                .objects
-                .fetch(FetchObject {
-                    filetypes,
-                    identifier: object_id,
-                    sources: state.config.sources.clone(),
-                    scope: Scope::Global,
-                    purpose: ObjectPurpose::Debug,
-                })
-                .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
-                .and_then(move |object_file| {
-                    if !object_file.has_object() {
+            object_file_opt
+                .and_then(move |object_file_opt| {
+                    let object_file = if object_file_opt
+                        .as_ref()
+                        .map(|x| x.has_object())
+                        .unwrap_or(false)
+                    {
+                        object_file_opt.unwrap()
+                    } else {
                         return Ok(HttpResponse::NotFound().finish());
-                    }
+                    };
+
                     let length = object_file.len();
                     let mut response = HttpResponse::Ok();
                     response
-                        .content_length(length)
+                        .content_length(length as u64)
                         .header("content-type", "application/octet-stream");
                     if is_head {
                         Ok(response.finish())

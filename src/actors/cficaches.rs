@@ -5,14 +5,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
-use futures::Future;
+use futures::{
+    future::{Either, IntoFuture},
+    Future,
+};
 use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
-use crate::actors::objects::{FetchObject, ObjectFile, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
@@ -90,7 +93,8 @@ impl CfiCacheFile {
 #[derive(Clone)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
-    objects: Arc<ObjectsActor>,
+    objects_actor: Arc<ObjectsActor>,
+    object_meta: Arc<ObjectFileMeta>,
     threadpool: Arc<ThreadPool>,
 }
 
@@ -99,31 +103,22 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     type Error = CfiCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.request.identifier.cache_key(),
-            scope: self.request.scope.clone(),
-        }
+        self.object_meta.cache_key().clone()
     }
 
     fn compute(
         &self,
         path: &Path,
     ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
-        let objects = self.objects.clone();
-
         let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
+        let object = self
+            .objects_actor
+            .fetch(self.object_meta.clone())
+            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)));
+        let threadpool = &self.threadpool;
 
-        let result = objects
-            .fetch(FetchObject {
-                filetypes: FileType::from_object_type(&self.request.object_type),
-                identifier: self.request.identifier.clone(),
-                sources: self.request.sources.clone(),
-                scope: self.request.scope.clone(),
-                purpose: ObjectPurpose::Unwind,
-            })
-            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
-            .and_then(move |object| {
+        let result = object
+            .and_then(clone!(threadpool, |object| {
                 threadpool.spawn_handle(
                     futures::lazy(move || {
                         if object.status() != CacheStatus::Positive {
@@ -143,7 +138,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                     })
                     .sentry_hub_current(),
                 )
-            })
+            }))
             .sentry_hub_current();
 
         let num_sources = self.request.sources.len();
@@ -187,10 +182,47 @@ impl CfiCacheActor {
         &self,
         request: FetchCfiCache,
     ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
-        self.cficaches.compute_memoized(FetchCfiCacheInternal {
-            request,
-            objects: self.objects.clone(),
-            threadpool: self.threadpool.clone(),
+        let object = self
+            .objects
+            .find(FindObject {
+                filetypes: FileType::from_object_type(&request.object_type),
+                identifier: request.identifier.clone(),
+                sources: request.sources.clone(),
+                scope: request.scope.clone(),
+                purpose: ObjectPurpose::Unwind,
+            })
+            .map_err(|e| Arc::new(CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching))));
+
+        let cficaches = self.cficaches.clone();
+        let threadpool = self.threadpool.clone();
+        let objects = self.objects.clone();
+
+        let object_type = request.object_type.clone();
+        let identifier = request.identifier.clone();
+        let scope = request.scope.clone();
+
+        object.and_then(move |object| {
+            object
+                .map(move |object| {
+                    Either::A(cficaches.compute_memoized(FetchCfiCacheInternal {
+                        request,
+                        objects_actor: objects,
+                        object_meta: object,
+                        threadpool,
+                    }))
+                })
+                .unwrap_or_else(move || {
+                    Either::B(
+                        Ok(Arc::new(CfiCacheFile {
+                            object_type,
+                            identifier,
+                            scope,
+                            data: ByteView::from_slice(b""),
+                            status: CacheStatus::Negative,
+                        }))
+                        .into_future(),
+                    )
+                })
         })
     }
 }
@@ -209,9 +241,7 @@ fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheE
     let file = File::create(&path).context(CfiCacheErrorKind::Io)?;
     let writer = BufWriter::new(file);
 
-    if let Some(cache_key) = object_file.cache_key() {
-        log::debug!("Converting cficache for {}", cache_key);
-    }
+    log::debug!("Converting cficache for {}", object_file.cache_key());
 
     CfiCache::from_object(&object)
         .context(CfiCacheErrorKind::ObjectParsing)?
