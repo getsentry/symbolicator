@@ -1,5 +1,5 @@
 ---
-created: "2019-05-22T09:44:27.365538Z"
+created: "2019-06-13T13:20:02.558579Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -11,6 +11,7 @@ system_info:
   os_version: 10.12.6
   os_build: 16G29
   cpu_arch: x86_64
+  device_model: ""
 crashed: true
 crash_reason: EXC_BAD_ACCESS / KERN_INVALID_ADDRESS
 assertion: ""

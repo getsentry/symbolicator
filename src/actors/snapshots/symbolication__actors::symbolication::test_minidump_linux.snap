@@ -1,5 +1,5 @@
 ---
-created: "2019-05-15T11:57:08.232391Z"
+created: "2019-06-13T13:20:02.567205Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -11,6 +11,7 @@ system_info:
   os_version: 4.9.60-linuxkit-aufs
   os_build: "#1 SMP Mon Nov 6 16:00:12 UTC 2017"
   cpu_arch: x86_64
+  device_model: ""
 crashed: true
 crash_reason: SIGSEGV /0x00000000
 assertion: ""

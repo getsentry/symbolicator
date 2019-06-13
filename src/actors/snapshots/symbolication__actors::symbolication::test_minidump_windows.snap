@@ -1,5 +1,5 @@
 ---
-created: "2019-06-06T10:53:37.591328Z"
+created: "2019-06-13T13:20:02.639570Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -11,6 +11,7 @@ system_info:
   os_version: 10.0.14393
   os_build: ""
   cpu_arch: x86
+  device_model: ""
 crashed: true
 crash_reason: EXCEPTION_ACCESS_VIOLATION_WRITE
 assertion: ""
