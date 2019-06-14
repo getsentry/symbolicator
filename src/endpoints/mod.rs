@@ -1,3 +1,4 @@
+pub mod applecrashreport;
 pub mod healthcheck;
 pub mod minidump;
 pub mod proxy;

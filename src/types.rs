@@ -649,7 +649,7 @@ pub struct CompletedSymbolicationResponse {
 }
 
 /// Information about the operating system.
-#[derive(Debug, Clone, Serialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct SystemInfo {
     /// Name of operating system
     pub os_name: String,
@@ -662,6 +662,9 @@ pub struct SystemInfo {
 
     /// OS architecture
     pub cpu_arch: Arch,
+
+    /// Device model name
+    pub device_model: String,
 }
 
 /// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot
