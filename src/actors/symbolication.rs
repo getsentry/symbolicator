@@ -1014,15 +1014,12 @@ impl AppleCrashReportState {
     }
 }
 
-fn map_apple_binary_image(
-    ty: ObjectType,
-    image: apple_crash_report_parser::BinaryImage,
-) -> CompleteObjectInfo {
+fn map_apple_binary_image(image: apple_crash_report_parser::BinaryImage) -> CompleteObjectInfo {
     let code_id = CodeId::from_binary(&image.uuid.as_bytes()[..]);
     let debug_id = DebugId::from_uuid(image.uuid);
 
     let raw_info = RawObjectInfo {
-        ty,
+        ty: ObjectType("macho".to_owned()),
         code_id: Some(code_id.to_string()),
         code_file: Some(image.path.clone()),
         debug_id: Some(debug_id.to_string()),
@@ -1047,11 +1044,17 @@ impl SymbolicationActor {
         let parse_future = future::lazy(move || {
             let mut report = AppleCrashReport::from_reader(file)?;
 
-            let object_type = ObjectType("macho".to_owned());
+            let arch = report
+                .code_type
+                .as_ref()
+                .and_then(|code_type| code_type.split(' ').next())
+                .and_then(|word| word.parse().ok())
+                .unwrap_or_default();
+
             let modules = report
                 .binary_images
                 .into_iter()
-                .map(|image| map_apple_binary_image(object_type.clone(), image))
+                .map(map_apple_binary_image)
                 .collect();
 
             let mut stacktraces = Vec::with_capacity(report.threads.len());
@@ -1097,6 +1100,7 @@ impl SymbolicationActor {
                 system_info: SystemInfo {
                     os_name: report.metadata.remove("OS Version").unwrap_or_default(),
                     device_model: report.metadata.remove("Hardware Model").unwrap_or_default(),
+                    cpu_arch: arch,
                     ..SystemInfo::default()
                 },
                 app_info: report.application_specific_information,
@@ -1208,231 +1212,220 @@ impl From<&SymCacheError> for ObjectFileStatus {
 }
 
 #[cfg(test)]
-mod testutils {
+mod tests {
+    use super::*;
+
     use std::path::PathBuf;
     use std::sync::{Once, ONCE_INIT};
 
-    use crate::types::FilesystemSourceConfig;
+    use failure::Error;
 
-    use super::*;
+    use crate::app::ServiceState;
+    use crate::types::FilesystemSourceConfig;
 
     static INIT: Once = ONCE_INIT;
 
     /// Setup function that is only run once, even if called multiple times.
-    pub(crate) fn setup_logging() {
+    fn setup_logging() {
         INIT.call_once(|| {
             env_logger::init();
         });
     }
 
-    pub(crate) fn get_local_bucket() -> SourceConfig {
+    fn get_local_bucket() -> SourceConfig {
         SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
             id: "local".to_owned(),
             path: PathBuf::from("./tests/fixtures/symbols/"),
             files: Default::default(),
         }))
     }
-}
 
-#[cfg(test)]
-fn stackwalk_minidump(path: &str) -> Result<(), failure::Error> {
-    use crate::app::get_test_system;
-
-    let request = ProcessMinidump {
-        file: File::open(path)?,
-        scope: Scope::Global,
-        sources: Arc::new(vec![testutils::get_local_bucket()]),
-    };
-
-    let (mut sys, state) = get_test_system();
-
-    let request_id = state.symbolication.process_minidump(request)?;
-
-    let response = sys
-        .block_on(
+    fn get_symbolication_response(
+        sys: &mut actix::SystemRunner,
+        state: &ServiceState,
+        request_id: RequestId,
+    ) -> Result<SymbolicationResponse, Error> {
+        let response_future =
             state
                 .symbolication
                 .get_symbolication_status(GetSymbolicationStatus {
                     request_id,
                     timeout: None,
-                }),
-        )?
-        .unwrap();
+                });
 
-    insta::assert_yaml_snapshot_matches!(response);
-    Ok(())
-}
+        let response = sys
+            .block_on(response_future)?
+            .ok_or_else(|| failure::err_msg(""))?;
 
-#[test]
-fn test_remove_bucket() -> Result<(), failure::Error> {
-    use crate::app::get_test_system_with_cache;
-
-    testutils::setup_logging();
-
-    let (_tempdir, mut sys, state) = get_test_system_with_cache();
-
-    let mut request = SymbolicateStacktraces {
-        scope: Scope::Global,
-        signal: None,
-        sources: Arc::new(vec![testutils::get_local_bucket()]),
-        stacktraces: vec![RawStacktrace {
-            frames: vec![RawFrame {
-                instruction_addr: HexValue(0x1_0000_0fa0),
-                ..Default::default()
-            }],
-            registers: Default::default(),
-        }],
-        modules: vec![RawObjectInfo {
-            ty: ObjectType("macho".to_owned()),
-            code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
-            debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
-            image_addr: HexValue(0x1_0000_0000),
-            image_size: Some(4096),
-            code_file: Default::default(),
-            debug_file: Default::default(),
-        }
-        .into()],
-    };
-
-    let request_id = state
-        .symbolication
-        .symbolicate_stacktraces(request.clone())?;
-    let response = sys
-        .block_on(
-            state
-                .symbolication
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                }),
-        )?
-        .unwrap();
-
-    insta::assert_yaml_snapshot_matches!(response);
-
-    request.sources = Arc::new(vec![]);
-
-    let request_id = state
-        .symbolication
-        .symbolicate_stacktraces(request.clone())?;
-    let response = sys
-        .block_on(
-            state
-                .symbolication
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                }),
-        )?
-        .unwrap();
-
-    insta::assert_yaml_snapshot_matches!(response);
-
-    Ok(())
-}
-
-#[test]
-fn test_add_bucket() -> Result<(), failure::Error> {
-    use crate::app::get_test_system_with_cache;
-
-    testutils::setup_logging();
-
-    let (_tempdir, mut sys, state) = get_test_system_with_cache();
-
-    let mut request = SymbolicateStacktraces {
-        scope: Scope::Global,
-        signal: None,
-        sources: Arc::new(vec![]),
-        stacktraces: vec![RawStacktrace {
-            frames: vec![RawFrame {
-                instruction_addr: HexValue(0x1_0000_0fa0),
-                ..Default::default()
-            }],
-            registers: Default::default(),
-        }],
-        modules: vec![RawObjectInfo {
-            ty: ObjectType("macho".to_owned()),
-            code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
-            debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
-            image_addr: HexValue(0x1_0000_0000),
-            image_size: Some(4096),
-            code_file: Default::default(),
-            debug_file: Default::default(),
-        }
-        .into()],
-    };
-
-    let request_id = state
-        .symbolication
-        .symbolicate_stacktraces(request.clone())?;
-    let response = sys
-        .block_on(
-            state
-                .symbolication
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                }),
-        )?
-        .unwrap();
-
-    insta::assert_yaml_snapshot_matches!(response);
-
-    request.sources = Arc::new(vec![testutils::get_local_bucket()]);
-
-    let request_id = state
-        .symbolication
-        .symbolicate_stacktraces(request.clone())?;
-    let response = sys
-        .block_on(
-            state
-                .symbolication
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                }),
-        )?
-        .unwrap();
-
-    insta::assert_yaml_snapshot_matches!(response);
-
-    Ok(())
-}
-
-#[test]
-fn test_minidump_windows() -> Result<(), failure::Error> {
-    stackwalk_minidump("./tests/fixtures/windows.dmp")
-}
-
-#[test]
-fn test_minidump_macos() -> Result<(), failure::Error> {
-    stackwalk_minidump("./tests/fixtures/macos.dmp")
-}
-
-#[test]
-fn test_minidump_linux() -> Result<(), failure::Error> {
-    stackwalk_minidump("./tests/fixtures/linux.dmp")
-}
-
-#[test]
-fn test_symcache_lookup_open_end_addr() {
-    // The Rust SDK and some other clients sometimes send zero-sized images when no end addr could
-    // be determined. Symbolicator should still resolve such images.
-    let info: CompleteObjectInfo = RawObjectInfo {
-        ty: ObjectType(Default::default()),
-        code_id: None,
-        debug_id: None,
-        code_file: None,
-        debug_file: None,
-        image_addr: HexValue(42),
-        image_size: Some(0),
+        Ok(response)
     }
-    .into();
 
-    let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
+    fn stackwalk_minidump(path: &str) -> Result<(), Error> {
+        use crate::app::get_test_system;
 
-    let (a, b, c) = lookup.lookup_symcache(43).unwrap();
-    assert_eq!(a, 0);
-    assert_eq!(b, &info);
-    assert!(c.is_none());
+        let (mut sys, state) = get_test_system();
+
+        let request_id = state.symbolication.process_minidump(ProcessMinidump {
+            file: File::open(path)?,
+            scope: Scope::Global,
+            sources: Arc::new(vec![get_local_bucket()]),
+        })?;
+
+        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        insta::assert_yaml_snapshot_matches!(response);
+        Ok(())
+    }
+
+    #[test]
+    fn test_remove_bucket() -> Result<(), Error> {
+        use crate::app::get_test_system_with_cache;
+
+        setup_logging();
+
+        let (_tempdir, mut sys, state) = get_test_system_with_cache();
+
+        let mut request = SymbolicateStacktraces {
+            scope: Scope::Global,
+            signal: None,
+            sources: Arc::new(vec![get_local_bucket()]),
+            stacktraces: vec![RawStacktrace {
+                frames: vec![RawFrame {
+                    instruction_addr: HexValue(0x1_0000_0fa0),
+                    ..Default::default()
+                }],
+                registers: Default::default(),
+            }],
+            modules: vec![RawObjectInfo {
+                ty: ObjectType("macho".to_owned()),
+                code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
+                debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
+                image_addr: HexValue(0x1_0000_0000),
+                image_size: Some(4096),
+                code_file: Default::default(),
+                debug_file: Default::default(),
+            }
+            .into()],
+        };
+
+        let request_id = state
+            .symbolication
+            .symbolicate_stacktraces(request.clone())?;
+        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        insta::assert_yaml_snapshot_matches!(response);
+
+        request.sources = Arc::new(vec![]);
+
+        let request_id = state
+            .symbolication
+            .symbolicate_stacktraces(request.clone())?;
+        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        insta::assert_yaml_snapshot_matches!(response);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_bucket() -> Result<(), Error> {
+        use crate::app::get_test_system_with_cache;
+
+        setup_logging();
+
+        let (_tempdir, mut sys, state) = get_test_system_with_cache();
+
+        let mut request = SymbolicateStacktraces {
+            scope: Scope::Global,
+            signal: None,
+            sources: Arc::new(vec![]),
+            stacktraces: vec![RawStacktrace {
+                frames: vec![RawFrame {
+                    instruction_addr: HexValue(0x1_0000_0fa0),
+                    ..Default::default()
+                }],
+                registers: Default::default(),
+            }],
+            modules: vec![RawObjectInfo {
+                ty: ObjectType("macho".to_owned()),
+                code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
+                debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
+                image_addr: HexValue(0x1_0000_0000),
+                image_size: Some(4096),
+                code_file: Default::default(),
+                debug_file: Default::default(),
+            }
+            .into()],
+        };
+
+        let request_id = state
+            .symbolication
+            .symbolicate_stacktraces(request.clone())?;
+        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        insta::assert_yaml_snapshot_matches!(response);
+
+        request.sources = Arc::new(vec![get_local_bucket()]);
+
+        let request_id = state
+            .symbolication
+            .symbolicate_stacktraces(request.clone())?;
+        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        insta::assert_yaml_snapshot_matches!(response);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_minidump_windows() -> Result<(), Error> {
+        stackwalk_minidump("./tests/fixtures/windows.dmp")
+    }
+
+    #[test]
+    fn test_minidump_macos() -> Result<(), Error> {
+        stackwalk_minidump("./tests/fixtures/macos.dmp")
+    }
+
+    #[test]
+    fn test_minidump_linux() -> Result<(), Error> {
+        stackwalk_minidump("./tests/fixtures/linux.dmp")
+    }
+
+    #[test]
+    fn test_apple_crash_report() -> Result<(), Error> {
+        use crate::app::get_test_system;
+
+        let (mut sys, state) = get_test_system();
+
+        let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
+        let sources = vec![get_local_bucket()];
+
+        let request_id =
+            state
+                .symbolication
+                .process_apple_crash_report(Scope::Global, report_file, sources)?;
+
+        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        insta::assert_yaml_snapshot_matches!(response);
+        Ok(())
+    }
+
+    #[test]
+    fn test_symcache_lookup_open_end_addr() {
+        // The Rust SDK and some other clients sometimes send zero-sized images when no end addr could
+        // be determined. Symbolicator should still resolve such images.
+        let info: CompleteObjectInfo = RawObjectInfo {
+            ty: ObjectType(Default::default()),
+            code_id: None,
+            debug_id: None,
+            code_file: None,
+            debug_file: None,
+            image_addr: HexValue(42),
+            image_size: Some(0),
+        }
+        .into();
+
+        let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
+
+        let (a, b, c) = lookup.lookup_symcache(43).unwrap();
+        assert_eq!(a, 0);
+        assert_eq!(b, &info);
+        assert!(c.is_none());
+    }
 }

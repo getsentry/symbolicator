@@ -8,6 +8,7 @@ MINIDUMP_SUCCESS = {
         "os_version": "10.0.14393",
         "os_build": "",
         "cpu_arch": "x86",
+        "device_model": "",
     },
     "crashed": True,
     "crash_reason": "EXCEPTION_ACCESS_VIOLATION_WRITE",
