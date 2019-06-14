@@ -4,52 +4,32 @@ use std::time::Duration;
 use actix_web::http::header::HeaderName;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{Future, IntoFuture, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
-use tokio_threadpool::ThreadPool;
 
-use crate::actors::common::cache::Cacher;
 use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
-    DownloadPath, DownloadStream, FetchFileRequest, FileId, ObjectError, ObjectErrorKind,
-    PrioritizedDownloads, USER_AGENT,
+    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, USER_AGENT,
 };
 use crate::http;
-use crate::sentry::SentryFutureExt;
-use crate::types::{ArcFail, FileType, HttpSourceConfig, ObjectId, Scope};
+use crate::types::{FileType, HttpSourceConfig, ObjectId};
 
-pub fn prepare_downloads(
+pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
-    scope: Scope,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-    threadpool: Arc<ThreadPool>,
-    cache: Arc<Cacher<FetchFileRequest>>,
-) -> Box<Future<Item = PrioritizedDownloads, Error = ObjectError>> {
-    let mut requests = vec![];
-
-    for download_path in prepare_download_paths(
+) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+    let ids = prepare_download_paths(
         object_id,
         filetypes,
         &source.files.filters,
         source.files.layout,
-    ) {
-        let request = cache
-            .compute_memoized(FetchFileRequest {
-                scope: scope.clone(),
-                file_id: FileId::Http(source.clone(), download_path),
-                object_id: object_id.clone(),
-                threadpool: threadpool.clone(),
-            })
-            .sentry_hub_new_from_current() // new hub because of join_all
-            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
-            .then(Ok);
+    )
+    .map(|download_path| FileId::Http(source.clone(), download_path))
+    .collect();
 
-        requests.push(request);
-    }
-
-    Box::new(future::join_all(requests))
+    Box::new(Ok(ids).into_future())
 }
 
 pub(super) fn download_from_source(
