@@ -9,6 +9,18 @@ server](https://en.wikipedia.org/wiki/Microsoft_Symbol_Server)
 support.  It's a flexible frontend for parts of the
 [symbolic](https://github.com/getsentry/symbolic) library.
 
+## Compiling
+
+Symbolicator is currently not distributed as binary which means you need to
+compile it yourself.  It's written in [rust](https://www.rust-lang.org/) and
+thus requires a recent rust installation.  We generally track latest stable.
+
+To compile run this:
+
+    cargo build --release
+
+The resulting binary ends up in `target/release/symbolicator`.
+
 ## Setup
 
 Symbolicator can be configured to work as a standalone system or to fit into a
