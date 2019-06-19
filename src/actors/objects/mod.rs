@@ -155,10 +155,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         }
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
 
         let result = self
@@ -179,7 +176,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                     }
                 }
 
-                Ok((data.status, data.scope.clone()))
+                Ok(data.status)
             });
 
         Box::new(result)
@@ -207,23 +204,12 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let request = download_from_source(&self.0.file_id);
         let path = path.to_owned();
-        let request_scope = self.0.scope.clone();
         let threadpool = self.0.threadpool.clone();
 
-        let final_scope = if self.0.file_id.source().is_public() {
-            Scope::Global
-        } else {
-            request_scope
-        };
-
-        let mut cache_key = self.get_cache_key();
-        cache_key.scope = final_scope.clone();
+        let cache_key = self.get_cache_key();
 
         let object_id = self.0.object_id.clone();
 
@@ -288,7 +274,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                         let archive = match Archive::parse(&view) {
                             Ok(archive) => archive,
                             Err(_) => {
-                                return Ok((CacheStatus::Malformed, final_scope));
+                                return Ok(CacheStatus::Malformed);
                             }
                         };
 
@@ -307,7 +293,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                             // early.
                             let object = match object_opt {
                                 Some(object) => object,
-                                None => return Ok((CacheStatus::Negative, final_scope)),
+                                None => return Ok(CacheStatus::Negative),
                             };
 
                             io::copy(&mut object.data(), &mut persist_file)
@@ -316,21 +302,21 @@ impl CacheItemRequest for FetchFileDataRequest {
                             // Attempt to parse the object to capture errors. The result can be
                             // discarded as the object's data is the entire ByteView.
                             if archive.object_by_index(0).is_err() {
-                                return Ok((CacheStatus::Malformed, final_scope));
+                                return Ok(CacheStatus::Malformed);
                             }
 
                             io::copy(&mut view.as_ref(), &mut persist_file)
                                 .context(ObjectErrorKind::Io)?;
                         }
 
-                        Ok((CacheStatus::Positive, final_scope))
+                        Ok(CacheStatus::Positive)
                     }))
                 }));
 
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
             } else {
                 log::debug!("No debug file found for {}", cache_key);
-                Box::new(Ok((CacheStatus::Negative, final_scope)).into_future())
+                Box::new(Ok(CacheStatus::Negative).into_future())
                     as Box<dyn Future<Item = _, Error = _>>
             }
         });
@@ -536,7 +522,11 @@ impl ObjectsActor {
                         |ids| {
                             future::join_all(ids.into_iter().map(move |file_id| {
                                 let request = FetchFileMetaRequest {
-                                    scope: scope.clone(),
+                                    scope: if file_id.source().is_public() {
+                                        Scope::Global
+                                    } else {
+                                        scope.clone()
+                                    },
                                     file_id,
                                     object_id: identifier.clone(),
                                     threadpool: threadpool.clone(),
