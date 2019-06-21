@@ -106,10 +106,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.object_meta.cache_key().clone()
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Box<dyn Future<Item = (CacheStatus, Scope), Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
@@ -122,7 +119,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 threadpool.spawn_handle(
                     futures::lazy(move || {
                         if object.status() != CacheStatus::Positive {
-                            return Ok((object.status(), object.scope().clone()));
+                            return Ok(object.status());
                         }
 
                         let status = if let Err(e) = write_cficache(&path, &*object) {
@@ -134,7 +131,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                             CacheStatus::Positive
                         };
 
-                        Ok((status, object.scope().clone()))
+                        Ok(status)
                     })
                     .sentry_hub_current(),
                 )
