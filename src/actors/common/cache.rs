@@ -5,7 +5,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
-use futures::future::{Future, IntoFuture, Shared};
+use futures::future::{lazy, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::configure_scope;
@@ -93,7 +93,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let name = self.config.name();
         let key = request.get_cache_key();
 
-        let path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key)?;
+        let path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
 
         let path = match path {
             Some(x) => x,
@@ -159,69 +159,66 @@ impl<T: CacheItemRequest> Cacher<T> {
         // A concurrent cache lookup is considered new. This does not imply a full cache miss.
         metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
 
-        let config = self.config.clone();
         let (tx, rx) = oneshot::channel();
-
-        let file_result = match config.cache_dir() {
-            Some(ref dir) => fs::create_dir_all(dir).and_then(|_| NamedTempFile::new_in(dir)),
-            None => NamedTempFile::new(),
-        };
 
         let slf = (*self).clone();
 
-        let compute_future = file_result
-            .map_err(T::Error::from)
-            .into_future()
-            .and_then(clone!(key, |file| {
-                if let Some(item) = tryf!(slf.lookup_cache(&request)) {
-                    return Box::new(Ok(item).into_future());
+        let compute_future = lazy(clone!(key, || {
+            if let Some(item) = tryf!(slf.lookup_cache(&request)) {
+                return Box::new(Ok(item).into_future());
+            }
+
+            // A file was not found. If this spikes, it's possible that the filesystem cache
+            // just got pruned.
+            metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+
+            let cache_path = get_scope_path(slf.config.cache_dir(), &key.scope, &key.cache_key);
+
+            let temp_file = if let Some(ref path) = cache_path {
+                let dir = path.parent().unwrap();
+                tryf!(fs::create_dir_all(dir));
+                tryf!(NamedTempFile::new_in(dir))
+            } else {
+                tryf!(NamedTempFile::new())
+            };
+
+            let future = request.compute(temp_file.path()).and_then(move |status| {
+                if let Some(ref cache_path) = cache_path {
+                    configure_scope(|scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            format!("{:?}", cache_path).into(),
+                        );
+                    });
+
+                    log::trace!("Creating {} at path {:?}", name, cache_path);
                 }
 
-                // A file was not found. If this spikes, it's possible that the filesystem cache
-                // just got pruned.
-                metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+                let byteview = tryf!(ByteView::open(temp_file.path()));
 
-                let future = request.compute(file.path()).and_then(move |status| {
-                    let cache_path = tryf!(get_scope_path(
-                        config.cache_dir(),
-                        &key.scope,
-                        &key.cache_key
-                    ));
+                metric!(
+                    counter(&format!("caches.{}.file.write", name)) += 1,
+                    "status" => status.as_ref(),
+                );
 
-                    if let Some(ref cache_path) = cache_path {
-                        configure_scope(|scope| {
-                            scope.set_extra(
-                                &format!("cache.{}.cache_path", name),
-                                format!("{:?}", cache_path).into(),
-                            );
-                        });
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                    "hit" => "false"
+                );
 
-                        log::trace!("Creating {} at path {:?}", name, cache_path);
-                    }
+                let item = request.load(key.scope.clone(), status, byteview);
 
-                    let byteview = tryf!(ByteView::open(file.path()));
+                if let Some(ref cache_path) = cache_path {
+                    tryf!(status.persist_item(cache_path, temp_file));
+                }
 
-                    metric!(
-                        counter(&format!("caches.{}.file.write", name)) += 1,
-                        "status" => status.as_ref(),
-                    );
+                Box::new(Ok(item).into_future())
+            });
 
-                    metric!(
-                        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                        "hit" => "false"
-                    );
+            Box::new(future) as Box<dyn Future<Item = T::Item, Error = T::Error>>
+        }));
 
-                    let item = request.load(key.scope.clone(), status, byteview);
-
-                    if let Some(ref cache_path) = cache_path {
-                        tryf!(status.persist_item(cache_path, file));
-                    }
-
-                    Box::new(Ok(item).into_future())
-                });
-
-                Box::new(future) as Box<dyn Future<Item = T::Item, Error = T::Error>>
-            }))
+        let compute_future = compute_future
             .then(clone!(key, current_computations, |result| {
                 current_computations.write().remove(&key);
                 tx.send(match result {

@@ -2,7 +2,7 @@
 ///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
-use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
+use std::fs::{read_dir, remove_file, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -282,18 +282,12 @@ pub struct CacheKey {
     pub scope: Scope,
 }
 
-pub fn get_scope_path(
-    cache_dir: Option<&Path>,
-    scope: &Scope,
-    cache_key: &str,
-) -> Result<Option<PathBuf>, io::Error> {
-    let dir = match cache_dir {
-        Some(x) => x.join(safe_path_segment(scope.as_ref())),
-        None => return Ok(None),
-    };
-
-    create_dir_all(&dir)?;
-    Ok(Some(dir.join(safe_path_segment(cache_key))))
+pub fn get_scope_path(cache_dir: Option<&Path>, scope: &Scope, cache_key: &str) -> Option<PathBuf> {
+    Some(
+        cache_dir?
+            .join(safe_path_segment(scope.as_ref()))
+            .join(safe_path_segment(cache_key)),
+    )
 }
 
 fn safe_path_segment(s: &str) -> String {
@@ -322,6 +316,7 @@ fn tempdir() -> io::Result<tempfile::TempDir> {
 
 #[test]
 fn test_max_unused_for() -> Result<(), CleanupError> {
+    use std::fs::create_dir_all;
     use std::io::Write;
     use std::thread::sleep;
 
@@ -357,6 +352,7 @@ fn test_max_unused_for() -> Result<(), CleanupError> {
 
 #[test]
 fn test_retry_misses_after() -> Result<(), CleanupError> {
+    use std::fs::create_dir_all;
     use std::io::Write;
     use std::thread::sleep;
 
@@ -392,6 +388,7 @@ fn test_retry_misses_after() -> Result<(), CleanupError> {
 
 #[test]
 fn test_cleanup_malformed() -> Result<(), CleanupError> {
+    use std::fs::create_dir_all;
     use std::io::Write;
     use std::thread::sleep;
 
