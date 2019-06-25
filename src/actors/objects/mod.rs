@@ -580,7 +580,7 @@ impl ObjectsActor {
 
                     (score, *i)
                 })
-                .and_then(|(score, response)| if score < 2 { Some(response) } else { None })
+                .map(|(_, response)| response)
                 .transpose()
         })
     }
