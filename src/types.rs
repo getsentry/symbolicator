@@ -494,6 +494,15 @@ pub struct SymbolicatedFrame {
     /// The line number within the source file, starting at 1 for the first line.
     #[serde(skip_serializing_if = "is_default")]
     pub lineno: Option<u32>,
+    /// Source context before the context line
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pre_context: Vec<String>,
+    /// The context line if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_line: Option<String>,
+    /// Post context after the context line
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub post_context: Vec<String>,
 
     #[serde(flatten)]
     pub raw: RawFrame,

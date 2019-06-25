@@ -506,6 +506,9 @@ fn symbolize_thread(
                         ),
                         trust: frame.trust,
                     },
+                    pre_context: vec![],
+                    context_line: None,
+                    post_context: vec![],
                 });
             }
 
