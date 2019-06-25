@@ -437,6 +437,10 @@ impl ObjectFile {
     pub fn cache_key(&self) -> &CacheKey {
         &self.cache_key
     }
+
+    pub fn data(&self) -> ByteView<'static> {
+        self.data.clone()
+    }
 }
 
 impl WriteSentryScope for ObjectFile {

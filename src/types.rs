@@ -716,6 +716,8 @@ pub enum FileType {
     /// Breakpad files (this is the reason we have a flat enum for what at first sight could've
     /// been two enums)
     Breakpad,
+    /// Source bundle
+    SourceBundle,
 }
 
 impl FileType {
@@ -723,7 +725,22 @@ impl FileType {
     #[inline]
     pub fn all() -> &'static [Self] {
         use FileType::*;
-        &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
+        &[
+            Pdb,
+            MachDebug,
+            ElfDebug,
+            Pe,
+            MachCode,
+            ElfCode,
+            Breakpad,
+            SourceBundle,
+        ]
+    }
+
+    /// Source providing file types.
+    #[inline]
+    pub fn sources() -> &'static [Self] {
+        &[FileType::SourceBundle]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.
@@ -749,6 +766,7 @@ impl AsRef<str> for FileType {
             FileType::ElfDebug => "elf_debug",
             FileType::ElfCode => "elf_code",
             FileType::Breakpad => "breakpad",
+            FileType::SourceBundle => "sourcebundle",
         }
     }
 }

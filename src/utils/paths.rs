@@ -139,6 +139,9 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
                 debug_file
             ))
         }
+
+        // not available
+        FileType::SourceBundle => None,
     }
 }
 
@@ -194,6 +197,9 @@ fn get_symstore_path(
 
         // Microsoft SymbolServer does not specify Breakpad.
         FileType::Breakpad => None,
+
+        // not available
+        FileType::SourceBundle => None,
     }
 }
 
