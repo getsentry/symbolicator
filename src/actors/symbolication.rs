@@ -332,7 +332,7 @@ impl SourceLookup {
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let lineno = lineno as usize - 1;
+        let lineno = lineno as usize;
         if let Some(index) = self.get_object_index_by_addr(addr) {
             if let Some(ref object) = self.inner[index].1 {
                 let sess = object.0.get().debug_session().ok()?;
