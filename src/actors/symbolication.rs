@@ -598,7 +598,7 @@ impl SymbolicationActor {
             .and_then(move |object_lookup| {
                 threadpool.spawn_handle(
                     future::lazy(move || {
-                        let stacktraces = stacktraces
+                        let stacktraces: Vec<_> = stacktraces
                             .into_iter()
                             .map(|thread| symbolize_thread(thread, &object_lookup, signal))
                             .collect();
@@ -613,6 +613,8 @@ impl SymbolicationActor {
                             .collect();
 
                         metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+                        metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+                        metric!(time_raw("symbolication.num_frames") = stacktraces.iter().map(|s| s.frames.len() as u64).sum());
 
                         Ok(CompletedSymbolicationResponse {
                             signal,
