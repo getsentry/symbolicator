@@ -252,7 +252,7 @@ impl Cache {
 
         Ok(!is_negative
             && !is_malformed
-            && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true))
+            && mtime.map(|x| x > Duration::from_secs(1200)).unwrap_or(true))
     }
 
     /// Validate cachefile against expiration config and open a byteview on it. Takes care of
