@@ -333,26 +333,24 @@ impl SourceLookup {
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
         let lineno = lineno as usize;
-        if let Some(index) = self.get_object_index_by_addr(addr) {
-            if let Some(ref object) = self.inner[index].1 {
-                let sess = object.0.get().debug_session().ok()?;
-                if let Some(source) = sess.source_by_path(abs_path) {
-                    let start = lineno.saturating_sub(n);
-                    let diff = lineno - start;
+        let index = self.get_object_index_by_addr(addr)?;
+        let object = self.inner[index].1.as_ref()?;
 
-                    let mut lines = source.lines().skip(start);
-                    return Some((
-                        (&mut lines)
-                            .take(diff.saturating_sub(1))
-                            .map(|x| x.to_string())
-                            .collect(),
-                        lines.next()?.to_string(),
-                        lines.take(n).map(|x| x.to_string()).collect(),
-                    ));
-                }
-            }
-        }
-        None
+        let session = object.0.get().debug_session().ok()?;
+        let source = session.source_by_path(abs_path).ok()??;
+
+        let start_line = lineno.saturating_sub(n);
+        let line_diff = lineno - start_line;
+
+        let mut lines = source.lines().skip(start_line);
+        let pre_context = (&mut lines)
+            .take(line_diff.saturating_sub(1))
+            .map(|x| x.to_string())
+            .collect();
+        let context = lines.next()?.to_string();
+        let post_context = lines.take(n).map(|x| x.to_string()).collect();
+
+        Some((pre_context, context, post_context))
     }
 
     fn get_object_index_by_addr(&self, addr: u64) -> Option<usize> {
