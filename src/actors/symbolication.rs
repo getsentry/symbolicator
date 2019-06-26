@@ -603,11 +603,16 @@ impl SymbolicationActor {
                             .map(|thread| symbolize_thread(thread, &object_lookup, signal))
                             .collect();
 
-                        let modules = object_lookup
+                        let modules: Vec<_> = object_lookup
                             .inner
                             .into_iter()
-                            .map(|(object_info, _)| object_info)
+                            .map(|(object_info, _)| {
+                                metric!(counter("symbolication.debug_status") += 1, "status" => object_info.debug_status.as_ref());
+                                object_info
+                            })
                             .collect();
+
+                        metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
 
                         Ok(CompletedSymbolicationResponse {
                             signal,
@@ -836,12 +841,14 @@ impl SymbolicationActor {
                                     )
                                     .into();
 
-                                info.unwind_status = Some(
-                                    unwind_statuses
+                                let status = unwind_statuses
                                         .get(&code_module.id()?)
                                         .cloned()
-                                        .unwrap_or(ObjectFileStatus::Unused),
-                                );
+                                        .unwrap_or(ObjectFileStatus::Unused);
+
+                                metric!(counter("symbolication.unwind_status") += 1, "status" => status.as_ref());
+                                info.unwind_status = Some(status);
+
                                 Some(info)
                             })
                             .collect();
