@@ -607,7 +607,7 @@ impl SymbolicationActor {
                             .inner
                             .into_iter()
                             .map(|(object_info, _)| {
-                                metric!(counter("symbolication.debug_status") += 1, "status" => object_info.debug_status.as_ref());
+                                metric!(counter("symbolication.debug_status") += 1, "status" => object_info.debug_status.name());
                                 object_info
                             })
                             .collect();
@@ -848,7 +848,7 @@ impl SymbolicationActor {
                                         .cloned()
                                         .unwrap_or(ObjectFileStatus::Unused);
 
-                                metric!(counter("symbolication.unwind_status") += 1, "status" => status.as_ref());
+                                metric!(counter("symbolication.unwind_status") += 1, "status" => status.name());
                                 info.unwind_status = Some(status);
 
                                 Some(info)

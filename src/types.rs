@@ -546,10 +546,10 @@ pub enum ObjectFileStatus {
     Other,
 }
 
-impl AsRef<str> for ObjectFileStatus {
-    fn as_ref(&self) -> &str {
+impl ObjectFileStatus {
+    pub fn name(self) -> &'static str {
         // used for metrics
-        match *self {
+        match self {
             ObjectFileStatus::Found => "found",
             ObjectFileStatus::Unused => "unused",
             ObjectFileStatus::Missing => "missing",
