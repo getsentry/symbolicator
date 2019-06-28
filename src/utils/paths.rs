@@ -133,10 +133,10 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
             };
 
             Some(format!(
-                "{}.sym/{}/{}",
-                new_debug_file,
+                "{}/{}/{}.sym",
+                debug_file,
                 debug_id.breakpad(),
-                debug_file
+                new_debug_file
             ))
         }
 

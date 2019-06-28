@@ -758,16 +758,23 @@ impl SymbolicationActor {
             .and_then(move |symcache_lookup| {
                 threadpool.spawn_handle(
                     future::lazy(move || {
-                        let stacktraces = stacktraces
+                        let stacktraces: Vec<_> = stacktraces
                             .into_iter()
                             .map(|thread| symbolize_thread(thread, &symcache_lookup, signal))
                             .collect();
 
-                        let modules = symcache_lookup
+                        let modules: Vec<_> = symcache_lookup
                             .inner
                             .into_iter()
-                            .map(|(object_info, _)| object_info)
+                            .map(|(object_info, _)| {
+                                metric!(counter("symbolication.debug_status") += 1, "status" => object_info.debug_status.name());
+                                object_info
+                            })
                             .collect();
+
+                        metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+                        metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+                        metric!(time_raw("symbolication.num_frames") = stacktraces.iter().map(|s| s.frames.len() as u64).sum());
 
                         Ok(CompletedSymbolicationResponse {
                             signal,
@@ -1019,12 +1026,14 @@ impl SymbolicationActor {
                                     )
                                     .into();
 
-                                info.unwind_status = Some(
-                                    unwind_statuses
+                                let status = unwind_statuses
                                         .get(&code_module.id()?)
                                         .cloned()
-                                        .unwrap_or(ObjectFileStatus::Unused),
-                                );
+                                        .unwrap_or(ObjectFileStatus::Unused);
+
+                                metric!(counter("symbolication.unwind_status") += 1, "status" => status.name());
+                                info.unwind_status = Some(status);
+
                                 Some(info)
                             })
                             .collect();
@@ -1398,6 +1407,7 @@ impl From<&SymCacheError> for ObjectFileStatus {
 mod tests {
     use super::*;
 
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::{Once, ONCE_INIT};
 
@@ -1444,9 +1454,9 @@ mod tests {
     }
 
     fn stackwalk_minidump(path: &str) -> Result<(), Error> {
-        use crate::app::get_test_system;
+        use crate::app::get_test_system_with_cache;
 
-        let (mut sys, state) = get_test_system();
+        let (_tempdir, mut sys, state) = get_test_system_with_cache();
 
         let request_id = state.symbolication.process_minidump(ProcessMinidump {
             file: File::open(path)?,
@@ -1456,6 +1466,23 @@ mod tests {
 
         let response = get_symbolication_response(&mut sys, &state, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
+
+        insta::assert_yaml_snapshot_matches!({
+            let mut cache_entries: Vec<_> = fs::read_dir(
+                state
+                    .config
+                    .cache_dir
+                    .as_ref()
+                    .unwrap()
+                    .join("object_meta/global/"),
+            )
+            .unwrap()
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+            cache_entries.sort();
+            cache_entries
+        });
         Ok(())
     }
 

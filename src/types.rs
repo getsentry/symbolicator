@@ -555,6 +555,21 @@ pub enum ObjectFileStatus {
     Other,
 }
 
+impl ObjectFileStatus {
+    pub fn name(self) -> &'static str {
+        // used for metrics
+        match self {
+            ObjectFileStatus::Found => "found",
+            ObjectFileStatus::Unused => "unused",
+            ObjectFileStatus::Missing => "missing",
+            ObjectFileStatus::Malformed => "malformed",
+            ObjectFileStatus::FetchingFailed => "fetching_failed",
+            ObjectFileStatus::Timeout => "timeout",
+            ObjectFileStatus::Other => "other",
+        }
+    }
+}
+
 impl Default for ObjectFileStatus {
     fn default() -> Self {
         ObjectFileStatus::Unused

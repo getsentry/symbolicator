@@ -26,6 +26,12 @@ test-integration: .venv/bin/python
 	@.venv/bin/pytest tests --reruns 5 -n12 -vv
 .PHONY: test-integration
 
+# Documentation
+
+doc: .venv/bin/python
+	.venv/bin/pip install -U mkdocs
+	.venv/bin/mkdocs serve
+
 # Style checking
 
 style: style-rust style-python
