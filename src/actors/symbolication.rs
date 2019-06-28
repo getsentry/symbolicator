@@ -607,7 +607,6 @@ fn symbolize_thread(
                 // The logic for filename and abs_path intentionally diverges from how symbolic is used
                 // inside of Sentry right now.
                 let (filename, abs_path) = {
-                    let comp_dir = line_info.compilation_dir();
                     let rel_path = line_info.path();
                     let abs_path = line_info.abs_path();
 
