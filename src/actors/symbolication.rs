@@ -1215,9 +1215,9 @@ impl From<&SymCacheError> for ObjectFileStatus {
 mod tests {
     use super::*;
 
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::{Once, ONCE_INIT};
-    use std::fs;
 
     use failure::Error;
 
@@ -1274,11 +1274,17 @@ mod tests {
 
         let response = get_symbolication_response(&mut sys, &state, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
-        insta::assert_yaml_snapshot_matches!(
-            fs::read_dir(state.config.cache_dir.as_ref().unwrap().join("object_meta/global/"))
-            .unwrap()
-            .map(|x| x.unwrap().file_name().into_string().unwrap()).collect::<Vec<_>>()
-        );
+        insta::assert_yaml_snapshot_matches!(fs::read_dir(
+            state
+                .config
+                .cache_dir
+                .as_ref()
+                .unwrap()
+                .join("object_meta/global/")
+        )
+        .unwrap()
+        .map(|x| x.unwrap().file_name().into_string().unwrap())
+        .collect::<Vec<_>>());
         Ok(())
     }
 
