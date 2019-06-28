@@ -12,9 +12,7 @@ use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, Shared
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{
-    clean_path, join_path, Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell,
-};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
 use symbolic::debuginfo::Object;
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
@@ -611,7 +609,7 @@ fn symbolize_thread(
                 let (filename, abs_path) = {
                     let comp_dir = line_info.compilation_dir();
                     let rel_path = line_info.path();
-                    let abs_path = clean_path(&join_path(&comp_dir, &rel_path));
+                    let abs_path = line_info.abs_path();
 
                     if abs_path == rel_path {
                         // rel_path is absolute and therefore not usable for `filename`. Use the
