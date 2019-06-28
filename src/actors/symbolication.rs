@@ -1224,6 +1224,7 @@ impl From<&SymCacheError> for ObjectFileStatus {
 mod tests {
     use super::*;
 
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::{Once, ONCE_INIT};
 
@@ -1270,9 +1271,9 @@ mod tests {
     }
 
     fn stackwalk_minidump(path: &str) -> Result<(), Error> {
-        use crate::app::get_test_system;
+        use crate::app::get_test_system_with_cache;
 
-        let (mut sys, state) = get_test_system();
+        let (_tempdir, mut sys, state) = get_test_system_with_cache();
 
         let request_id = state.symbolication.process_minidump(ProcessMinidump {
             file: File::open(path)?,
@@ -1282,6 +1283,23 @@ mod tests {
 
         let response = get_symbolication_response(&mut sys, &state, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
+
+        insta::assert_yaml_snapshot_matches!({
+            let mut cache_entries: Vec<_> = fs::read_dir(
+                state
+                    .config
+                    .cache_dir
+                    .as_ref()
+                    .unwrap()
+                    .join("object_meta/global/"),
+            )
+            .unwrap()
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+            cache_entries.sort();
+            cache_entries
+        });
         Ok(())
     }
 
