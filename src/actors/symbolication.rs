@@ -1274,17 +1274,23 @@ mod tests {
 
         let response = get_symbolication_response(&mut sys, &state, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
-        insta::assert_yaml_snapshot_matches!(fs::read_dir(
-            state
-                .config
-                .cache_dir
-                .as_ref()
-                .unwrap()
-                .join("object_meta/global/")
-        )
-        .unwrap()
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect::<Vec<_>>());
+
+        insta::assert_yaml_snapshot_matches!({
+            let mut cache_entries: Vec<_> = fs::read_dir(
+                state
+                    .config
+                    .cache_dir
+                    .as_ref()
+                    .unwrap()
+                    .join("object_meta/global/"),
+            )
+            .unwrap()
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+            cache_entries.sort();
+            cache_entries
+        });
         Ok(())
     }
 
