@@ -899,6 +899,11 @@ impl SymbolicationActor {
                                             package: frame.module().map(CodeModule::code_file),
                                             trust: frame.trust(),
                                         })
+                                        // Trim infinite recursions explicitly because those do not
+                                        // correlate to minidump size. Every other kind of bloated
+                                        // input data we know is already trimmed/rejected by raw
+                                        // byte size alone.
+                                        .take(20000)
                                         .collect(),
                                 }
                             })
