@@ -383,7 +383,7 @@ def test_redirects(symbolicator, hitcounter):
     assert response.json() == SUCCESS_WINDOWS
 
 
-@pytest.mark.parametrize('value', [True, False])
+@pytest.mark.parametrize("value", [True, False])
 def test_reserved_ip_addresses(symbolicator, hitcounter, value):
     input = dict(
         sources=[
