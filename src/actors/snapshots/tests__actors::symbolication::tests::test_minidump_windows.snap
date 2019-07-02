@@ -1,5 +1,5 @@
 ---
-created: "2019-06-14T08:44:54.969696Z"
+created: "2019-07-02T13:48:39.243365Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -32,25 +32,25 @@ stacktraces:
     frames:
       - status: symbolicated
         original_index: 0
+        instruction_addr: 0x2a2a3d
+        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         symbol: main
         sym_addr: 0x2a2910
         function: main
         filename: main.cpp
         abs_path: "c:\\projects\\breakpad-tools\\windows\\crash\\main.cpp"
         lineno: 35
-        instruction_addr: 0x2a2a3d
-        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         trust: context
       - status: symbolicated
         original_index: 1
+        instruction_addr: 0x2a2d96
+        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         symbol: __scrt_common_main_seh
         sym_addr: 0x2a2c9e
         function: __scrt_common_main_seh
         filename: exe_common.inl
         abs_path: "f:\\dd\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl"
         lineno: 283
-        instruction_addr: 0x2a2d96
-        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         trust: cfi
       - status: missing
         original_index: 2

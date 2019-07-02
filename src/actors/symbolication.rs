@@ -15,13 +15,15 @@ use sentry::integrations::failure::capture_fail;
 use symbolic::common::{join_path, Arch, ByteView, CodeId, DebugId, InstructionInfo, Language};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
-    CodeModule, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
+    CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
-use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheErrorKind, FetchCfiCache};
+use crate::actors::cficaches::{
+    CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
+};
 use crate::actors::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
@@ -30,8 +32,8 @@ use crate::logging::LogError;
 use crate::sentry::SentryFutureExt;
 use crate::types::{
     ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, RequestId,
-    Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
+    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
+    RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -366,158 +368,160 @@ impl SymCacheLookup {
     }
 }
 
-fn symbolize_thread(
+fn symbolicate_frame(
+    caches: &SymCacheLookup,
+    registers: &Registers,
+    signal: Option<Signal>,
+    frame: &mut RawFrame,
+    index: usize,
+) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
+    let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
+        Some((_, info, Some(symcache))) => {
+            frame.package = info.raw.code_file.clone();
+            (info, symcache)
+        }
+        Some((_, info, None)) => {
+            frame.package = info.raw.code_file.clone();
+            if info.debug_status == ObjectFileStatus::Malformed {
+                return Err(FrameStatus::Malformed);
+            } else {
+                return Err(FrameStatus::Missing);
+            }
+        }
+        None => return Err(FrameStatus::UnknownImage),
+    };
+
+    log::trace!("Loading symcache");
+    let symcache = match symcache.parse() {
+        Ok(Some(x)) => x,
+        Ok(None) => return Err(FrameStatus::Missing),
+        Err(_) => return Err(FrameStatus::Malformed),
+    };
+
+    let crashing_frame = index == 0;
+
+    let ip_reg = if crashing_frame {
+        symcache
+            .arch()
+            .ip_register_name()
+            .and_then(|ip_reg_name| registers.get(ip_reg_name))
+            .map(|x| x.0)
+    } else {
+        None
+    };
+
+    let instruction_info = InstructionInfo {
+        addr: frame.instruction_addr.0,
+        arch: symcache.arch(),
+        signal: signal.map(|x| x.0),
+        crashing_frame,
+        ip_reg,
+    };
+    let caller_address = instruction_info.caller_address();
+
+    let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
+        Some(x) => x,
+        None => {
+            log::warn!("Underflow when trying to subtract image start addr from caller address");
+            metric!(counter("relative_addr.underflow") += 1);
+            return Err(FrameStatus::MissingSymbol);
+        }
+    };
+
+    log::trace!("Symbolicating {:#x}", relative_addr);
+    let line_infos = match symcache.lookup(relative_addr) {
+        Ok(x) => x,
+        Err(_) => return Err(FrameStatus::Malformed),
+    };
+
+    let mut rv = vec![];
+
+    for line_info in line_infos {
+        let line_info = match line_info {
+            Ok(x) => x,
+            Err(_) => return Err(FrameStatus::Malformed),
+        };
+
+        // The logic for filename and abs_path intentionally diverges from how symbolic is
+        // used inside of Sentry right now.
+        let (filename, abs_path) = {
+            let comp_dir = line_info.compilation_dir();
+            let rel_path = line_info.path();
+            let abs_path = join_path(&comp_dir, &rel_path);
+
+            if abs_path == rel_path {
+                // rel_path is absolute and therefore not usable for `filename`. Use the
+                // basename as filename.
+                (line_info.filename().to_owned(), abs_path.to_owned())
+            } else {
+                // rel_path is relative (probably to the compilation dir) and therefore
+                // useful as filename for Sentry.
+                (rel_path.to_owned(), abs_path.to_owned())
+            }
+        };
+
+        let lang = line_info.language();
+
+        rv.push(SymbolicatedFrame {
+            status: FrameStatus::Symbolicated,
+            original_index: Some(index),
+            raw: RawFrame {
+                package: object_info.raw.code_file.clone(),
+                instruction_addr: HexValue(
+                    object_info.raw.image_addr.0 + line_info.instruction_address(),
+                ),
+                symbol: Some(line_info.symbol().to_string()),
+                abs_path: if !abs_path.is_empty() {
+                    Some(abs_path)
+                } else {
+                    frame.abs_path.clone()
+                },
+                function: Some(
+                    line_info
+                        .function_name()
+                        .try_demangle(DEMANGLE_OPTIONS)
+                        .into_owned(),
+                ),
+                filename: if !filename.is_empty() {
+                    Some(filename)
+                } else {
+                    frame.filename.clone()
+                },
+                lineno: Some(line_info.line()),
+                sym_addr: Some(HexValue(
+                    object_info.raw.image_addr.0 + line_info.function_address(),
+                )),
+                lang: if lang != Language::Unknown {
+                    Some(lang)
+                } else {
+                    frame.lang
+                },
+                trust: frame.trust,
+            },
+        });
+    }
+
+    if rv.is_empty() {
+        return Err(FrameStatus::MissingSymbol);
+    }
+
+    Ok(rv)
+}
+
+fn symbolicate_stacktrace(
     thread: RawStacktrace,
     caches: &SymCacheLookup,
     signal: Option<Signal>,
 ) -> CompleteStacktrace {
-    let registers = thread.registers;
-
     let mut stacktrace = CompleteStacktrace {
+        thread_id: thread.thread_id,
+        is_requesting: thread.is_requesting,
+        registers: thread.registers.clone(),
         frames: vec![],
-        registers: registers.clone(),
-        ..Default::default()
     };
 
-    let symbolize_frame =
-        |i, frame: &mut RawFrame| -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-            let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
-                Some((_, info, Some(symcache))) => {
-                    frame.package = info.raw.code_file.clone();
-                    (info, symcache)
-                }
-                Some((_, info, None)) => {
-                    frame.package = info.raw.code_file.clone();
-                    if info.debug_status == ObjectFileStatus::Malformed {
-                        return Err(FrameStatus::Malformed);
-                    } else {
-                        return Err(FrameStatus::Missing);
-                    }
-                }
-                None => return Err(FrameStatus::UnknownImage),
-            };
-
-            log::trace!("Loading symcache");
-            let symcache = match symcache.parse() {
-                Ok(Some(x)) => x,
-                Ok(None) => return Err(FrameStatus::Missing),
-                Err(_) => return Err(FrameStatus::Malformed),
-            };
-
-            let crashing_frame = i == 0;
-
-            let ip_reg = if crashing_frame {
-                symcache
-                    .arch()
-                    .ip_register_name()
-                    .and_then(|ip_reg_name| registers.get(ip_reg_name))
-                    .map(|x| x.0)
-            } else {
-                None
-            };
-
-            let instruction_info = InstructionInfo {
-                addr: frame.instruction_addr.0,
-                arch: symcache.arch(),
-                signal: signal.map(|x| x.0),
-                crashing_frame,
-                ip_reg,
-            };
-            let caller_address = instruction_info.caller_address();
-
-            let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
-                Some(x) => x,
-                None => {
-                    log::warn!(
-                        "Underflow when trying to subtract image start addr from caller address"
-                    );
-                    metric!(counter("relative_addr.underflow") += 1);
-                    return Err(FrameStatus::MissingSymbol);
-                }
-            };
-
-            log::trace!("Symbolicating {:#x}", relative_addr);
-            let line_infos = match symcache.lookup(relative_addr) {
-                Ok(x) => x,
-                Err(_) => return Err(FrameStatus::Malformed),
-            };
-
-            let mut rv = vec![];
-
-            for line_info in line_infos {
-                let line_info = match line_info {
-                    Ok(x) => x,
-                    Err(_) => return Err(FrameStatus::Malformed),
-                };
-
-                // The logic for filename and abs_path intentionally diverges from how symbolic is used
-                // inside of Sentry right now.
-                let (filename, abs_path) = {
-                    let comp_dir = line_info.compilation_dir();
-                    let rel_path = line_info.path();
-                    let abs_path = join_path(&comp_dir, &rel_path);
-
-                    if abs_path == rel_path {
-                        // rel_path is absolute and therefore not usable for `filename`. Use the
-                        // basename as filename.
-                        (line_info.filename().to_owned(), abs_path.to_owned())
-                    } else {
-                        // rel_path is relative (probably to the compilation dir) and therefore useful
-                        // as filename for Sentry.
-                        (rel_path.to_owned(), abs_path.to_owned())
-                    }
-                };
-
-                let lang = line_info.language();
-
-                rv.push(SymbolicatedFrame {
-                    status: FrameStatus::Symbolicated,
-                    symbol: Some(line_info.symbol().to_string()),
-                    abs_path: if !abs_path.is_empty() {
-                        Some(abs_path)
-                    } else {
-                        None
-                    },
-                    function: Some(
-                        line_info
-                            .function_name()
-                            .try_demangle(DEMANGLE_OPTIONS)
-                            .into_owned(),
-                    ),
-                    filename: if !filename.is_empty() {
-                        Some(filename)
-                    } else {
-                        None
-                    },
-                    lineno: Some(line_info.line()),
-                    sym_addr: Some(HexValue(
-                        object_info.raw.image_addr.0 + line_info.function_address(),
-                    )),
-                    lang: if lang != Language::Unknown {
-                        Some(lang)
-                    } else {
-                        None
-                    },
-                    original_index: Some(i),
-                    raw: RawFrame {
-                        package: object_info.raw.code_file.clone(),
-                        instruction_addr: HexValue(
-                            object_info.raw.image_addr.0 + line_info.instruction_address(),
-                        ),
-                        trust: frame.trust,
-                    },
-                });
-            }
-
-            if rv.is_empty() {
-                return Err(FrameStatus::MissingSymbol);
-            }
-
-            Ok(rv)
-        };
-
-    for (i, mut frame) in thread.frames.into_iter().enumerate() {
-        match symbolize_frame(i, &mut frame) {
+    for (index, mut frame) in thread.frames.into_iter().enumerate() {
+        match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
                 // Temporary workaround: Skip false-positive frames from stack scanning after the
@@ -544,9 +548,8 @@ fn symbolize_thread(
 
                 stacktrace.frames.push(SymbolicatedFrame {
                     status,
-                    original_index: Some(i),
-                    raw: frame.clone(),
-                    ..Default::default()
+                    original_index: Some(index),
+                    raw: frame,
                 });
             }
         }
@@ -600,21 +603,30 @@ impl SymbolicationActor {
                     future::lazy(move || {
                         let stacktraces: Vec<_> = stacktraces
                             .into_iter()
-                            .map(|thread| symbolize_thread(thread, &object_lookup, signal))
+                            .map(|trace| symbolicate_stacktrace(trace, &object_lookup, signal))
                             .collect();
 
                         let modules: Vec<_> = object_lookup
                             .inner
                             .into_iter()
                             .map(|(object_info, _)| {
-                                metric!(counter("symbolication.debug_status") += 1, "status" => object_info.debug_status.name());
+                                metric!(
+                                    counter("symbolication.debug_status") += 1,
+                                    "status" => object_info.debug_status.name()
+                                );
+
                                 object_info
                             })
                             .collect();
 
                         metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
-                        metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
-                        metric!(time_raw("symbolication.num_frames") = stacktraces.iter().map(|s| s.frames.len() as u64).sum());
+                        metric!(
+                            time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64
+                        );
+                        metric!(
+                            time_raw("symbolication.num_frames") =
+                                stacktraces.iter().map(|s| s.frames.len() as u64).sum()
+                        );
 
                         Ok(CompletedSymbolicationResponse {
                             signal,
@@ -676,6 +688,8 @@ impl SymbolicationActor {
     }
 }
 
+type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
+
 #[derive(Debug)]
 struct MinidumpState {
     timestamp: u64,
@@ -683,229 +697,254 @@ struct MinidumpState {
     crashed: bool,
     crash_reason: String,
     assertion: String,
-    requesting_thread_index: Option<usize>,
-    thread_ids: Vec<u32>,
+}
+
+impl MinidumpState {
+    fn merge_into(mut self, response: &mut CompletedSymbolicationResponse) {
+        if self.system_info.cpu_arch == Arch::Unknown {
+            self.system_info.cpu_arch = response
+                .modules
+                .iter()
+                .map(|object| object.arch)
+                .find(|arch| *arch != Arch::Unknown)
+                .unwrap_or_default();
+        }
+
+        response.timestamp = Some(self.timestamp);
+        response.system_info = Some(self.system_info);
+        response.crashed = Some(self.crashed);
+        response.crash_reason = Some(self.crash_reason);
+        response.assertion = Some(self.assertion);
+    }
 }
 
 impl SymbolicationActor {
+    fn get_referenced_modules_from_minidump(
+        &self,
+        minidump: ByteView<'static>,
+    ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
+        let lazy = future::lazy(move || {
+            log::debug!("Processing minidump ({} bytes)", minidump.len());
+            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
+            let state = ProcessState::from_minidump(&minidump, None)?;
+
+            let os_name = state.system_info().os_name();
+            let object_type = ObjectType(get_image_type_from_minidump(&os_name).to_owned());
+
+            let cfi_modules = state
+                .referenced_modules()
+                .into_iter()
+                .filter_map(|code_module| {
+                    Some((
+                        code_module.id()?,
+                        object_info_from_minidump_module(object_type.clone(), code_module),
+                    ))
+                })
+                .collect();
+
+            Ok(cfi_modules)
+        });
+
+        let future = self.threadpool.spawn_handle(lazy.sentry_hub_current());
+
+        Box::new(future)
+    }
+
+    fn load_cfi_caches(
+        &self,
+        scope: Scope,
+        requests: Vec<(CodeModuleId, RawObjectInfo)>,
+        sources: Arc<Vec<SourceConfig>>,
+    ) -> ResponseFuture<Vec<CfiCacheResult>, SymbolicationError> {
+        let cficaches = self.cficaches.clone();
+
+        let futures = requests
+            .into_iter()
+            .map(move |(code_module_id, object_info)| {
+                cficaches
+                    .fetch(FetchCfiCache {
+                        object_type: object_info.ty.clone(),
+                        identifier: object_id_from_object_info(&object_info),
+                        sources: sources.clone(),
+                        scope: scope.clone(),
+                    })
+                    .then(move |result| Ok((code_module_id, result)).into_future())
+                    // Clone hub because of join_all
+                    .sentry_hub_new_from_current()
+            });
+
+        Box::new(join_all(futures))
+    }
+
+    fn stackwalk_minidump_with_cfi(
+        &self,
+        scope: Scope,
+        minidump: ByteView<'static>,
+        sources: Arc<Vec<SourceConfig>>,
+        cfi_results: Vec<CfiCacheResult>,
+    ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+        let stackwalk_future = future::lazy(move || {
+            let mut frame_info_map = FrameInfoMap::new();
+            let mut unwind_statuses = BTreeMap::new();
+
+            for (code_module_id, result) in &cfi_results {
+                let cache_file = match result {
+                    Ok(x) => x,
+                    Err(e) => {
+                        log::info!(
+                            "Error while fetching cficache: {}",
+                            LogError(&ArcFail(e.clone()))
+                        );
+                        unwind_statuses.insert(code_module_id, (&**e).into());
+                        continue;
+                    }
+                };
+
+                log::trace!("Loading cficache");
+                let cfi_cache = match cache_file.parse() {
+                    Ok(Some(x)) => x,
+                    Ok(None) => {
+                        unwind_statuses.insert(code_module_id, ObjectFileStatus::Missing);
+                        continue;
+                    }
+                    Err(e) => {
+                        log::warn!("Error while parsing cficache: {}", LogError(&e));
+                        unwind_statuses.insert(code_module_id, (&e).into());
+                        continue;
+                    }
+                };
+
+                unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
+                frame_info_map.insert(code_module_id.clone(), cfi_cache);
+            }
+
+            let process_state = ProcessState::from_minidump(&minidump, Some(&frame_info_map))?;
+
+            let minidump_system_info = process_state.system_info();
+            let os_name = minidump_system_info.os_name();
+            let os_version = minidump_system_info.os_version();
+            let os_build = minidump_system_info.os_build();
+            let cpu_family = minidump_system_info.cpu_family();
+            let cpu_arch = match cpu_family.parse() {
+                Ok(arch) => arch,
+                Err(_) => {
+                    if !cpu_family.is_empty() {
+                        let msg = format!("Unknown minidump arch: {}", cpu_family);
+                        sentry::capture_message(&msg, sentry::Level::Error);
+                    }
+
+                    Default::default()
+                }
+            };
+
+            let object_type = ObjectType(get_image_type_from_minidump(&os_name).to_owned());
+
+            let modules = process_state
+                .modules()
+                .into_iter()
+                .filter_map(|code_module| {
+                    let mut info: CompleteObjectInfo =
+                        object_info_from_minidump_module(object_type.clone(), code_module).into();
+
+                    let status = unwind_statuses
+                        .get(&code_module.id()?)
+                        .cloned()
+                        .unwrap_or(ObjectFileStatus::Unused);
+
+                    metric!(
+                        counter("symbolication.unwind_status") += 1,
+                        "status" => status.name()
+                    );
+                    info.unwind_status = Some(status);
+
+                    Some(info)
+                })
+                .collect();
+
+            let minidump_state = MinidumpState {
+                timestamp: process_state.timestamp(),
+                system_info: SystemInfo {
+                    os_name: normalize_minidump_os_name(&os_name).to_owned(),
+                    os_version,
+                    os_build,
+                    cpu_arch,
+                    device_model: String::default(),
+                },
+                crashed: process_state.crashed(),
+                crash_reason: process_state.crash_reason(),
+                assertion: process_state.assertion(),
+            };
+
+            let requesting_thread_index: Option<usize> =
+                process_state.requesting_thread().try_into().ok();
+
+            let threads = process_state.threads();
+            let mut stacktraces = Vec::with_capacity(threads.len());
+            for (index, thread) in threads.iter().enumerate() {
+                let registers = match thread.frames().get(0) {
+                    Some(frame) => map_symbolic_registers(frame.registers(cpu_arch)),
+                    None => Registers::new(),
+                };
+
+                let frames = thread
+                    .frames()
+                    .iter()
+                    .map(|frame| RawFrame {
+                        instruction_addr: HexValue(frame.return_address(cpu_arch)),
+                        package: frame.module().map(CodeModule::code_file),
+                        trust: frame.trust(),
+                        ..RawFrame::default()
+                    })
+                    .collect();
+
+                stacktraces.push(RawStacktrace {
+                    is_requesting: requesting_thread_index.map(|r| r == index),
+                    thread_id: Some(thread.thread_id().into()),
+                    registers,
+                    frames,
+                });
+            }
+
+            let request = SymbolicateStacktraces {
+                modules,
+                scope,
+                sources,
+                signal: None,
+                stacktraces,
+            };
+
+            Ok((request, minidump_state))
+        });
+
+        Box::new(
+            self.threadpool
+                .spawn_handle(stackwalk_future.sentry_hub_current()),
+        )
+    }
+
     fn do_stackwalk_minidump(
         &self,
         scope: Scope,
         minidump: File,
         sources: Vec<SourceConfig>,
-    ) -> impl Future<Item = (SymbolicateStacktraces, MinidumpState), Error = SymbolicationError>
-    {
+    ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+        let slf = self.clone();
         let sources = Arc::new(sources);
+        let minidump = tryf!(ByteView::map_file(minidump));
 
-        let cfi_to_fetch = self.threadpool.spawn_handle(
-            future::lazy(move || {
-                let byteview = ByteView::map_file(minidump)?;
-                log::debug!("Processing minidump ({} bytes)", byteview.len());
-                metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
-                let state = ProcessState::from_minidump(&byteview, None)?;
-
-                let os_name = state.system_info().os_name();
-                let object_type = ObjectType(get_image_type_from_minidump(&os_name).to_owned());
-
-                let cfi_to_fetch: Vec<_> = state
-                    .referenced_modules()
-                    .into_iter()
-                    .filter_map(|code_module| {
-                        Some((
-                            code_module.id()?,
-                            object_info_from_minidump_module(object_type.clone(), code_module),
-                        ))
-                    })
-                    .collect();
-
-                Ok((byteview, cfi_to_fetch))
-            })
-            .sentry_hub_current(),
-        );
-
-        let cficaches = &self.cficaches;
-
-        let cfi_requests = cfi_to_fetch.and_then(clone!(cficaches, scope, sources, |(
-            byteview,
-            object_infos,
-        )| {
-            join_all(
-                object_infos
-                    .into_iter()
-                    .map(move |(code_module_id, object_info)| {
-                        cficaches
-                            .fetch(FetchCfiCache {
-                                object_type: object_info.ty.clone(),
-                                identifier: object_id_from_object_info(&object_info),
-                                sources: sources.clone(),
-                                scope: scope.clone(),
-                            })
-                            .then(move |result| Ok((code_module_id, result)).into_future())
-                            // Clone hub because of join_all
-                            .sentry_hub_new_from_current()
-                    }),
-            )
-            .map(move |cfi_requests| (byteview, cfi_requests))
-        }));
-
-        let threadpool = &self.threadpool;
-
-        let symbolication_request =
-            cfi_requests.and_then(clone!(threadpool, scope, sources, |(
-                byteview,
-                cfi_requests,
-            )| {
-                threadpool.spawn_handle(
-                    future::lazy(move || {
-                        let mut frame_info_map = FrameInfoMap::new();
-                        let mut unwind_statuses = BTreeMap::new();
-
-                        for (code_module_id, result) in &cfi_requests {
-                            let cache_file = match result {
-                                Ok(x) => x,
-                                Err(e) => {
-                                    log::info!(
-                                        "Error while fetching cficache: {}",
-                                        LogError(&ArcFail(e.clone()))
-                                    );
-                                    unwind_statuses.insert(code_module_id, (&**e).into());
-                                    continue;
-                                }
-                            };
-
-                            log::trace!("Loading cficache");
-                            let cfi_cache = match cache_file.parse() {
-                                Ok(Some(x)) => x,
-                                Ok(None) => {
-                                    unwind_statuses
-                                        .insert(code_module_id, ObjectFileStatus::Missing);
-                                    continue;
-                                }
-                                Err(e) => {
-                                    log::warn!("Error while parsing cficache: {}", LogError(&e));
-                                    unwind_statuses.insert(code_module_id, (&e).into());
-                                    continue;
-                                }
-                            };
-
-                            unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
-                            frame_info_map.insert(code_module_id.clone(), cfi_cache);
-                        }
-
-                        let process_state =
-                            ProcessState::from_minidump(&byteview, Some(&frame_info_map))?;
-
-                        let minidump_system_info = process_state.system_info();
-                        let os_name = minidump_system_info.os_name();
-                        let os_version = minidump_system_info.os_version();
-                        let os_build = minidump_system_info.os_build();
-                        let cpu_family = minidump_system_info.cpu_family();
-                        let cpu_arch = match cpu_family.parse() {
-                            Ok(arch) => arch,
-                            Err(_) => {
-                                if !cpu_family.is_empty() {
-                                    let msg = format!("Unknown minidump arch: {}", cpu_family);
-                                    sentry::capture_message(&msg, sentry::Level::Error);
-                                }
-
-                                Default::default()
-                            }
-                        };
-
-                        let object_type =
-                            ObjectType(get_image_type_from_minidump(&os_name).to_owned());
-
-                        let modules = process_state
-                            .modules()
-                            .into_iter()
-                            .filter_map(|code_module| {
-                                let mut info: CompleteObjectInfo =
-                                    object_info_from_minidump_module(
-                                        object_type.clone(),
-                                        code_module,
-                                    )
-                                    .into();
-
-                                let status = unwind_statuses
-                                        .get(&code_module.id()?)
-                                        .cloned()
-                                        .unwrap_or(ObjectFileStatus::Unused);
-
-                                metric!(counter("symbolication.unwind_status") += 1, "status" => status.name());
-                                info.unwind_status = Some(status);
-
-                                Some(info)
-                            })
-                            .collect();
-
-                        // This type only exists because ProcessState is not Send
-                        let mut minidump_state = MinidumpState {
-                            timestamp: process_state.timestamp(),
-                            system_info: SystemInfo {
-                                os_name: normalize_minidump_os_name(&os_name).to_owned(),
-                                os_version,
-                                os_build,
-                                cpu_arch,
-                                ..SystemInfo::default()
-                            },
-                            requesting_thread_index: process_state
-                                .requesting_thread()
-                                .try_into()
-                                .ok(),
-                            crashed: process_state.crashed(),
-                            crash_reason: process_state.crash_reason(),
-                            assertion: process_state.assertion(),
-                            thread_ids: Vec::new(),
-                        };
-
-                        let stacktraces = process_state
-                            .threads()
-                            .iter()
-                            .map(|thread| {
-                                minidump_state.thread_ids.push(thread.thread_id());
-                                let frames = thread.frames();
-                                RawStacktrace {
-                                    registers: frames
-                                        .get(0)
-                                        .map(|frame| {
-                                            symbolic_registers_to_protocol_registers(
-                                                &frame.registers(cpu_arch),
-                                            )
-                                        })
-                                        .unwrap_or_default(),
-                                    frames: frames
-                                        .iter()
-                                        .map(|frame| RawFrame {
-                                            instruction_addr: HexValue(
-                                                frame.return_address(cpu_arch),
-                                            ),
-                                            package: frame.module().map(CodeModule::code_file),
-                                            trust: frame.trust(),
-                                        })
-                                        .collect(),
-                                }
-                            })
-                            .collect();
-
-                        Ok((
-                            SymbolicateStacktraces {
-                                modules,
-                                scope,
-                                sources,
-                                signal: None,
-                                stacktraces,
-                            },
-                            minidump_state,
-                        ))
-                    })
-                    .sentry_hub_current(),
-                )
-            }));
+        let future = slf
+            .get_referenced_modules_from_minidump(minidump.clone())
+            .and_then(clone!(slf, scope, sources, |referenced_modules| {
+                slf.load_cfi_caches(scope, referenced_modules, sources)
+            }))
+            .and_then(move |cfi_caches| {
+                slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
+            });
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
             Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
-            symbolication_request,
+            future,
         ))
     }
 
@@ -915,50 +954,15 @@ impl SymbolicationActor {
         minidump: File,
         sources: Vec<SourceConfig>,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let self2 = self.clone();
+        let slf = self.clone();
 
-        self.do_stackwalk_minidump(scope, minidump, sources)
-            .and_then(move |(request, minidump_state)| {
-                self2
-                    .do_symbolicate(request)
-                    .map(move |response| (response, minidump_state))
+        slf.do_stackwalk_minidump(scope, minidump, sources)
+            .and_then(move |(request, state)| {
+                slf.do_symbolicate(request)
+                    .map(move |response| (response, state))
             })
-            .map(|(mut response, minidump_state)| {
-                let MinidumpState {
-                    timestamp,
-                    requesting_thread_index,
-                    mut system_info,
-                    crashed,
-                    crash_reason,
-                    assertion,
-                    thread_ids,
-                } = minidump_state;
-
-                if system_info.cpu_arch == Arch::Unknown {
-                    system_info.cpu_arch = response
-                        .modules
-                        .iter()
-                        .map(|object| object.arch)
-                        .find(|arch| *arch != Arch::Unknown)
-                        .unwrap_or_default();
-                }
-
-                response.timestamp = Some(timestamp);
-                response.system_info = Some(system_info);
-                response.crashed = Some(crashed);
-                response.crash_reason = Some(crash_reason);
-                response.assertion = Some(assertion);
-
-                for ((i, mut stacktrace), thread_id) in response
-                    .stacktraces
-                    .iter_mut()
-                    .enumerate()
-                    .zip(thread_ids.into_iter())
-                {
-                    stacktrace.is_requesting = requesting_thread_index.map(|r| r == i);
-                    stacktrace.thread_id = Some(thread_id.into());
-                }
-
+            .map(|(mut response, state)| {
+                state.merge_into(&mut response);
                 response
             })
     }
@@ -978,8 +982,6 @@ struct AppleCrashReportState {
     timestamp: Option<u64>,
     system_info: SystemInfo,
     app_info: Option<String>,
-    thread_ids: Vec<u64>,
-    crashed_thread_index: Option<usize>,
 }
 
 impl AppleCrashReportState {
@@ -997,16 +999,6 @@ impl AppleCrashReportState {
         response.system_info = Some(self.system_info);
         response.crash_reason = self.app_info;
         response.crashed = Some(true);
-
-        for ((i, mut stacktrace), thread_id) in response
-            .stacktraces
-            .iter_mut()
-            .enumerate()
-            .zip(self.thread_ids.into_iter())
-        {
-            stacktrace.is_requesting = self.crashed_thread_index.map(|r| r == i);
-            stacktrace.thread_id = Some(thread_id);
-        }
     }
 }
 
@@ -1054,10 +1046,8 @@ impl SymbolicationActor {
                 .collect();
 
             let mut stacktraces = Vec::with_capacity(report.threads.len());
-            let mut crashed_thread_index = None;
-            let mut thread_ids = Vec::new();
 
-            for (index, thread) in report.threads.into_iter().enumerate() {
+            for thread in report.threads {
                 let registers = thread
                     .registers
                     .unwrap_or_default()
@@ -1075,12 +1065,12 @@ impl SymbolicationActor {
                     })
                     .collect();
 
-                if thread.crashed {
-                    crashed_thread_index = Some(index);
-                }
-
-                stacktraces.push(RawStacktrace { registers, frames });
-                thread_ids.push(thread.id);
+                stacktraces.push(RawStacktrace {
+                    thread_id: Some(thread.id),
+                    is_requesting: Some(thread.crashed),
+                    registers,
+                    frames,
+                });
             }
 
             let request = SymbolicateStacktraces {
@@ -1100,8 +1090,6 @@ impl SymbolicationActor {
                     ..SystemInfo::default()
                 },
                 app_info: report.application_specific_information,
-                thread_ids,
-                crashed_thread_index,
             };
 
             Ok((request, state))
@@ -1150,14 +1138,12 @@ impl SymbolicationActor {
     }
 }
 
-fn symbolic_registers_to_protocol_registers(
-    x: &BTreeMap<&'_ str, RegVal>,
-) -> BTreeMap<String, HexValue> {
-    x.iter()
-        .map(|(&k, &v)| {
+fn map_symbolic_registers(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<String, HexValue> {
+    x.into_iter()
+        .map(|(register, value)| {
             (
-                k.to_owned(),
-                HexValue(match v {
+                register.to_owned(),
+                HexValue(match value {
                     RegVal::U32(x) => x.into(),
                     RegVal::U64(x) => x,
                 }),
@@ -1307,7 +1293,7 @@ mod tests {
                     instruction_addr: HexValue(0x1_0000_0fa0),
                     ..Default::default()
                 }],
-                registers: Default::default(),
+                ..Default::default()
             }],
             modules: vec![RawObjectInfo {
                 ty: ObjectType("macho".to_owned()),
@@ -1355,7 +1341,7 @@ mod tests {
                     instruction_addr: HexValue(0x1_0000_0fa0),
                     ..Default::default()
                 }],
-                registers: Default::default(),
+                ..Default::default()
             }],
             modules: vec![RawObjectInfo {
                 ty: ObjectType("macho".to_owned()),
@@ -1422,8 +1408,8 @@ mod tests {
 
     #[test]
     fn test_symcache_lookup_open_end_addr() {
-        // The Rust SDK and some other clients sometimes send zero-sized images when no end addr could
-        // be determined. Symbolicator should still resolve such images.
+        // The Rust SDK and some other clients sometimes send zero-sized images when no end addr
+        // could be determined. Symbolicator should still resolve such images.
         let info: CompleteObjectInfo = RawObjectInfo {
             ty: ObjectType(Default::default()),
             code_id: None,
