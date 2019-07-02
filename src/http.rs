@@ -136,7 +136,12 @@ impl Handler<Connect> for SafeResolver {
                 });
 
                 if addrs.is_empty() {
-                    Either::A(Err(ResolverError::InvalidInput("FUCK")).into_future())
+                    Either::A(
+                        Err(ResolverError::InvalidInput(
+                            "Blocked attempt to connect to reserved IP addresses",
+                        ))
+                        .into_future(),
+                    )
                 } else {
                     Either::B(TcpConnector::with_timeout(addrs, timeout))
                 }
