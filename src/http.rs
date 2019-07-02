@@ -123,6 +123,11 @@ impl Handler<Connect> for SafeResolver {
                 addrs.retain(|addr| {
                     for network in &*RESERVED_IP_BLOCKS {
                         if network.contains(addr.ip()) {
+                            metric!(counter("http.blacklisted_ip") += 1);
+                            log::error!(
+                                "Blocked attempt to connect to reserved IP address: {}",
+                                addr.ip()
+                            );
                             return false;
                         }
                     }
