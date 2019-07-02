@@ -1085,6 +1085,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipnetwork"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "serde 1.0.92 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "itertools"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2436,6 +2444,7 @@ dependencies = [
  "futures 0.1.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "insta 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ipnetwork 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "jsonwebtoken 6.0.1 (git+https://github.com/Keats/jsonwebtoken?branch=next)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3280,6 +3289,7 @@ dependencies = [
 "checksum insta 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8bbbb69ec4557c37b2bf4d525d106d828e0c2fbd6c44bc98cd3798da13c73b9f"
 "checksum iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dbe6e417e7d0975db6512b90796e8ce223145ac4e33c377e4a42882a0e88bb08"
 "checksum ipconfig 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "08f7eadeaf4b52700de180d147c4805f199854600b36faa963d91114827b2ffc"
+"checksum ipnetwork 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b3d862c86f7867f19b693ec86765e0252d82e53d4240b9b629815675a0714ad1"
 "checksum itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5b8467d9c1cebe26feb08c640139247fac215782d35371ade9a2136ed6085358"
 "checksum itoa 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
 "checksum jsonwebtoken 6.0.1 (git+https://github.com/Keats/jsonwebtoken?branch=next)" = "<none>"

@@ -73,6 +73,14 @@ sentry_dsn: https://mykey@sentry.io/4711
   default but requires the `sources` key to be configured.  The symstore proxy
   lets you download raw symbols from the symbolicator as if it was a symstore
   (Microsoft Symbol Server) compatible server.
+- `connect_to_unsafe_ips`: Allow reserved IP addresses for requests to sources.
+    
+   By default (value of `false`) source configs are not allowed to connect to
+   internal IP networks or loopback, because most types of sources are
+   considered untrusted user input.
+    
+   An exception from this rule is the Sentry source type, which is always
+   allowed to connect to any kind of IP address.
 
 ### Starting
 

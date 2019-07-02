@@ -381,3 +381,29 @@ def test_redirects(symbolicator, hitcounter):
     response.raise_for_status()
 
     assert response.json() == SUCCESS_WINDOWS
+
+
+@pytest.mark.parametrize('value', [True, False])
+def test_reserved_ip_addresses(symbolicator, hitcounter, value):
+    input = dict(
+        sources=[
+            {
+                "type": "http",
+                "id": "microsoft",
+                "layout": {"type": "symstore"},
+                "url": f"{hitcounter.url}/msdl/",
+            }
+        ],
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator(connect_to_reserved_ips=value)
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+
+    if value:
+        assert response.json() == SUCCESS_WINDOWS
+    else:
+        assert response.json() == MISSING_FILE
