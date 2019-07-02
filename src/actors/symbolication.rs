@@ -676,21 +676,6 @@ impl SymbolicationActor {
     }
 }
 
-/// A request for a minidump to be stackwalked and symbolicated. Internally this will basically be
-/// converted into a `SymbolicateStacktraces`
-#[derive(Debug)]
-pub struct ProcessMinidump {
-    /// The scope of this request which determines access to cached files.
-    pub scope: Scope,
-
-    /// Handle to minidump file. The message handler should not worry about resource cleanup: The
-    /// inode does not have a hardlink, so closing the file should clean up the tempfile.
-    pub file: File,
-
-    /// A list of external sources to load debug files.
-    pub sources: Arc<Vec<SourceConfig>>,
-}
-
 #[derive(Debug)]
 struct MinidumpState {
     timestamp: u64,
@@ -705,18 +690,16 @@ struct MinidumpState {
 impl SymbolicationActor {
     fn do_stackwalk_minidump(
         &self,
-        request: ProcessMinidump,
+        scope: Scope,
+        minidump: File,
+        sources: Vec<SourceConfig>,
     ) -> impl Future<Item = (SymbolicateStacktraces, MinidumpState), Error = SymbolicationError>
     {
-        let ProcessMinidump {
-            file,
-            scope,
-            sources,
-        } = request;
+        let sources = Arc::new(sources);
 
         let cfi_to_fetch = self.threadpool.spawn_handle(
             future::lazy(move || {
-                let byteview = ByteView::map_file(file)?;
+                let byteview = ByteView::map_file(minidump)?;
                 log::debug!("Processing minidump ({} bytes)", byteview.len());
                 metric!(time_raw("minidump.upload.size") = byteview.len() as u64);
                 let state = ProcessState::from_minidump(&byteview, None)?;
@@ -928,11 +911,13 @@ impl SymbolicationActor {
 
     fn do_process_minidump(
         &self,
-        request: ProcessMinidump,
+        scope: Scope,
+        minidump: File,
+        sources: Vec<SourceConfig>,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
         let self2 = self.clone();
 
-        self.do_stackwalk_minidump(request)
+        self.do_stackwalk_minidump(scope, minidump, sources)
             .and_then(move |(request, minidump_state)| {
                 self2
                     .do_symbolicate(request)
@@ -980,9 +965,11 @@ impl SymbolicationActor {
 
     pub fn process_minidump(
         &self,
-        request: ProcessMinidump,
+        scope: Scope,
+        minidump: File,
+        sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(|| self.do_process_minidump(request))
+        self.create_symbolication_request(|| self.do_process_minidump(scope, minidump, sources))
     }
 }
 
