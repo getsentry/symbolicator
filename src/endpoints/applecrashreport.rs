@@ -102,6 +102,8 @@ fn handle_apple_crash_report_request(
     let hub = Hub::from_request(&request);
 
     Hub::run(hub, || {
+        let default_sources = state.config.sources.clone();
+
         let params = params.into_inner();
         configure_scope(|scope| {
             params.write_sentry_scope(scope);
@@ -118,7 +120,11 @@ fn handle_apple_crash_report_request(
         let symbolication = state.symbolication.clone();
 
         let response_future = request_future
-            .and_then(clone!(symbolication, |request| {
+            .and_then(clone!(symbolication, |mut request| {
+                if request.sources.is_none() {
+                    request.sources = Some((*default_sources).clone());
+                }
+
                 parse_apple_crash_report(&symbolication, request, scope)
             }))
             .and_then(move |request_id| {
