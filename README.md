@@ -98,10 +98,10 @@ See [the documentation on caching](docs/caching.md).
 
 <a name=ref-security />
 
-In the context of Sentry, source configuration is considered untrusted user
-input. This is why, by default, (`connect_to_reserved_ips=false`) source configs
-are not allowed to connect to [reserved IP
-ranges](https://en.wikipedia.org/wiki/Reserved_IP_addresses).
+In the context of Sentry, a subset of source configuration is user input (has
+to be valid JSON, only certain source types allowed). This is why, by default,
+(`connect_to_reserved_ips=false`) source configs are not allowed to connect to
+[reserved IP ranges](https://en.wikipedia.org/wiki/Reserved_IP_addresses).
 
 An exception from this rule is the Sentry source type, which is always allowed
 to connect to any kind of IP address because the user can't enter a custom
