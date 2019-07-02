@@ -1,5 +1,5 @@
 ---
-created: "2019-06-14T08:44:54.885835Z"
+created: "2019-07-02T13:48:39.142460Z"
 creator: insta@0.8.1
 source: src/actors/symbolication.rs
 expression: response
@@ -9,6 +9,7 @@ stacktraces:
   - frames:
       - status: symbolicated
         original_index: 0
+        instruction_addr: 0x100000fa0
         lang: c
         symbol: main
         sym_addr: 0x100000fa0
@@ -16,7 +17,6 @@ stacktraces:
         filename: hello.c
         abs_path: /tmp/hello.c
         lineno: 1
-        instruction_addr: 0x100000fa0
 modules:
   - debug_status: found
     arch: x86_64
