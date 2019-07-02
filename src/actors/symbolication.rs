@@ -1262,11 +1262,11 @@ mod tests {
 
         let (_tempdir, mut sys, state) = get_test_system_with_cache();
 
-        let request_id = state.symbolication.process_minidump(ProcessMinidump {
-            file: File::open(path)?,
-            scope: Scope::Global,
-            sources: Arc::new(vec![get_local_bucket()]),
-        })?;
+        let request_id = state.symbolication.process_minidump(
+            Scope::Global,
+            File::open(path)?,
+            vec![get_local_bucket()],
+        )?;
 
         let response = get_symbolication_response(&mut sys, &state, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
