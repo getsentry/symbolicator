@@ -384,21 +384,25 @@ def test_redirects(symbolicator, hitcounter):
 
 
 @pytest.mark.parametrize("value", [True, False])
-def test_reserved_ip_addresses(symbolicator, hitcounter, value):
+@pytest.mark.parametrize("hostname", ["dev.getsentry.net", "localhost", "127.0.0.1"])
+def test_reserved_ip_addresses(symbolicator, hitcounter, value, hostname):
+    service = symbolicator(connect_to_reserved_ips=value)
+    service.wait_healthcheck()
+
+    url = hitcounter.url.replace("localhost", hostname).replace("127.0.0.1", hostname)
+    assert hostname in url
+
     input = dict(
         sources=[
             {
                 "type": "http",
                 "id": "microsoft",
                 "layout": {"type": "symstore"},
-                "url": f"{hitcounter.url}/msdl/",
+                "url": f"{url}/msdl/",
             }
         ],
         **WINDOWS_DATA,
     )
-
-    service = symbolicator(connect_to_reserved_ips=value)
-    service.wait_healthcheck()
 
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
