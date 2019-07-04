@@ -1,7 +1,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use actix_web::client::ClientConnector;
 use actix_web::{client, HttpMessage};
+
+use actix::{Actor, Addr};
 
 use failure::Fail;
 use futures::future::Either;
@@ -19,6 +22,7 @@ use crate::types::{FileType, ObjectId, SentrySourceConfig};
 lazy_static::lazy_static! {
     static ref SENTRY_SEARCH_RESULTS: Mutex<lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>> =
         Mutex::new(lru::LruCache::new(2000));
+    static ref CLIENT_CONNECTOR: Addr<ClientConnector> = ClientConnector::default().start();
 }
 
 #[derive(Debug, Fail, Clone, Copy)]
@@ -66,6 +70,7 @@ fn perform_search(
     log::debug!("Fetching list of Sentry debug files from {}", index_url);
     let index_request = move || {
         client::get(&index_url)
+            .with_connector((*CLIENT_CONNECTOR).clone())
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", token.clone()))
             .finish()
@@ -88,7 +93,7 @@ fn perform_search(
     };
 
     let index_request = Retry::spawn(
-        ExponentialBackoff::from_millis(100).map(jitter).take(3),
+        ExponentialBackoff::from_millis(10).map(jitter).take(3),
         index_request,
     );
 
@@ -156,6 +161,7 @@ pub(super) fn download_from_source(
     let token = &source.token;
     let response = clone!(token, download_url, || {
         client::get(&download_url)
+            .with_connector((*CLIENT_CONNECTOR).clone())
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", token))
             // This timeout is for the entire HTTP download *including* the response stream
@@ -170,7 +176,7 @@ pub(super) fn download_from_source(
     });
 
     let response = Retry::spawn(
-        ExponentialBackoff::from_millis(100).map(jitter).take(3),
+        ExponentialBackoff::from_millis(10).map(jitter).take(3),
         response,
     );
 

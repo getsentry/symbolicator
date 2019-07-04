@@ -219,7 +219,7 @@ pub(super) fn download_from_source(
     };
 
     let response = Retry::spawn(
-        ExponentialBackoff::from_millis(100).map(jitter).take(3),
+        ExponentialBackoff::from_millis(10).map(jitter).take(3),
         try_response,
     );
 

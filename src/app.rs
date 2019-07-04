@@ -3,8 +3,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use actix_web::{server, App};
+use actix::Actor;
+use actix_web::{client, server, App};
 use failure::Fail;
+use futures::future;
 use structopt::StructOpt;
 use tokio_threadpool::ThreadPool;
 
@@ -15,6 +17,7 @@ use crate::actors::{
 use crate::cache::{Cache, CleanupError};
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
+use crate::http::SafeResolver;
 use crate::logging;
 use crate::metrics;
 use crate::middlewares::{ErrorHandlers, Metrics};
@@ -178,7 +181,19 @@ fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
 
     let caches = Caches::new(&config);
 
-    let sys = actix::System::new("symbolicator");
+    let mut sys = actix::System::new("symbolicator");
+
+    if !config.connect_to_reserved_ips {
+        sys.block_on(future::lazy(|| {
+            actix::System::current().registry().set(
+                client::ClientConnector::default()
+                    .resolver(SafeResolver::default().start().recipient())
+                    .start(),
+            );
+            Ok::<(), ()>(())
+        }))
+        .unwrap();
+    }
 
     let cpu_threadpool = Arc::new(ThreadPool::new());
     let io_threadpool = Arc::new(ThreadPool::new());
@@ -259,6 +274,7 @@ fn run_server(config: Config) -> Result<(), CliError> {
         .start();
 
     log::info!("Started http server: {}", state.config.bind);
+
     let _ = sys.run();
     Ok(())
 }

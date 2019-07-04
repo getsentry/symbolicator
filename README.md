@@ -73,6 +73,9 @@ sentry_dsn: https://mykey@sentry.io/4711
   default but requires the `sources` key to be configured.  The symstore proxy
   lets you download raw symbols from the symbolicator as if it was a symstore
   (Microsoft Symbol Server) compatible server.
+- `connect_to_reserved_ips`: Allow reserved IP addresses for requests to sources.
+  See [Security](#ref-security).
+    
 
 ### Starting
 
@@ -89,18 +92,20 @@ settings in this case.
 
 <a name=ref-caching />
 
-If you provide a `cache_dir`, the server assumes to have full control over that
-directory. Pointing other instances to the same directory will cause
-concurrency issues as access to files is only synchronized in-memory.
+See [the documentation on caching](docs/caching.md).
 
-When a cache file is accessed, its `mtime` is bumped. `mtime` of a file
-therefore equals to "Last Used".
+## Security and trust of source configs
 
-The cache is currently unbound, there is no expiration logic. It is recommended
-to prune files yourself, starting with files having the oldest `mtime`.
-Effectively implementing a LRU cache from the outside of the process. You
-should be able to `unlink` files while the server is running without it causing
-issues (assuming a POSIX filesystem).
+<a name=ref-security />
+
+In the context of Sentry, a subset of source configuration is user input (has
+to be valid JSON, only certain source types allowed). This is why, by default,
+(`connect_to_reserved_ips=false`) source configs are not allowed to connect to
+[reserved IP ranges](https://en.wikipedia.org/wiki/Reserved_IP_addresses).
+
+An exception from this rule is the Sentry source type, which is always allowed
+to connect to any kind of IP address because the user can't enter a custom
+source with this source type.
 
 ## Resource Usage
 

@@ -124,6 +124,7 @@ impl Default for CacheConfigs {
     }
 }
 
+/// See README.md for more information on config values.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -150,6 +151,9 @@ pub struct Config {
 
     /// Default list of sources and the sources used for proxy mode.
     pub sources: Arc<Vec<SourceConfig>>,
+
+    /// Allow reserved IP addresses for requests to sources.
+    pub connect_to_reserved_ips: bool,
 }
 
 /// Checks if we are running in docker.
@@ -184,6 +188,7 @@ impl Default for Config {
             caches: CacheConfigs::default(),
             symstore_proxy: true,
             sources: Arc::new(vec![]),
+            connect_to_reserved_ips: false,
         }
     }
 }
