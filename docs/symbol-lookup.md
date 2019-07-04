@@ -40,7 +40,7 @@ How we deviate from this in practice is documented separately.
 ### Symbol Table
 
 Platform | 1. Choice    | 2. Choice    | 3. Choice
---------------------------------------------------
+---------|--------------|--------------|----------
 MachO    | MachO (dSYM) | MachO (code) | Breakpad
 ELF      | ELF (debug)  | ELF (code)   | Breakpad
 PE       | PDB          | PE           | Breakpad
@@ -48,7 +48,7 @@ PE       | PDB          | PE           | Breakpad
 ### Debug Information
 
 Platform | 1. Choice    | 2. Choice    | 3. Choice
---------------------------------------------------
+---------|--------------|--------------|----------
 MachO    | MachO (dSYM) | Breakpad     | 
 ELF      | ELF (debug)  | ELF (code)   | Breakpad
 PE       | PDB          | Breakpad     | 
@@ -57,7 +57,7 @@ PE       | PDB          | Breakpad     |
 ### Unwind Information
 
 Platform    | 1. Choice    | 2. Choice  
---------------------------------------
+------------|--------------|----------
 MachO       | MachO (code) | Breakpad
 ELF         | ELF (code)   | Breakpad
 PE (32-bit) | PDB          | Breakpad
@@ -88,19 +88,19 @@ Some identifiers may be computed from others. See the following list for allowed
 
 * **MachO `code_id` ←→ `debug_id`**
 
-      *identity*
+        *identity*
 
   **Implementation note:** Symbolicator implements this by using the code ID everywhere.
 
 
 * **ELF `code_id` → `debug_id`**
 
-     debug_id = code_id[0..16]
-      
-      if object.little_endian {
-        debug_id[0..4].reverse(); // uuid field 1
-        debug_id[4..6].reverse(); // uuid field 2
-        debug_id[6..8].reverse(); // uuid field 3
-      }
+        debug_id = code_id[0..16]
+        
+        if object.little_endian {
+          debug_id[0..4].reverse(); // uuid field 1
+          debug_id[4..6].reverse(); // uuid field 2
+          debug_id[6..8].reverse(); // uuid field 3
+        }
 
   **Implementation note:** This is not yet implemented (TODO)

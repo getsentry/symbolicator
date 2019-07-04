@@ -27,6 +27,9 @@ matrix:
     - name: "test"
       script: make -e test
 
+    - name: "docs"
+      script: make -e travis-upload-docs
+
 notifications:
   webhooks:
     urls:

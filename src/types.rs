@@ -374,6 +374,9 @@ impl fmt::Display for Scope {
     }
 }
 
+/// A map of register values.
+pub type Registers = BTreeMap<String, HexValue>;
+
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
@@ -385,16 +388,63 @@ pub struct RawFrame {
     #[serde(default)]
     pub package: Option<String>,
 
+    /// The language of the symbol (function) this frame is located in.
+    #[serde(skip_serializing_if = "is_default")]
+    pub lang: Option<Language>,
+
+    /// The mangled name of the function this frame is located in.
+    #[serde(skip_serializing_if = "is_default")]
+    pub symbol: Option<String>,
+
+    /// Start address of the function this frame is located in (lower or equal to instruction_addr).
+    #[serde(skip_serializing_if = "is_default")]
+    pub sym_addr: Option<HexValue>,
+
+    /// The demangled function name.
+    #[serde(skip_serializing_if = "is_default")]
+    pub function: Option<String>,
+
+    /// Source file path relative to the compilation directory.
+    #[serde(skip_serializing_if = "is_default")]
+    pub filename: Option<String>,
+
+    /// Absolute source file path.
+    #[serde(skip_serializing_if = "is_default")]
+    pub abs_path: Option<String>,
+
+    /// The line number within the source file, starting at 1 for the first line.
+    #[serde(skip_serializing_if = "is_default")]
+    pub lineno: Option<u32>,
+
+    /// Source context before the context line
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pre_context: Vec<String>,
+
+    /// The context line if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_line: Option<String>,
+
+    /// Post context after the context line
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub post_context: Vec<String>,
+
     /// Information about how the raw frame was created.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
     pub trust: FrameTrust,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct RawStacktrace {
     #[serde(default)]
-    pub registers: BTreeMap<String, HexValue>,
+    pub thread_id: Option<u64>,
+
+    #[serde(default)]
+    pub is_requesting: Option<bool>,
+
+    #[serde(default)]
+    pub registers: Registers,
+
     pub frames: Vec<RawFrame>,
 }
 
@@ -464,6 +514,7 @@ impl Default for FrameStatus {
 pub struct SymbolicatedFrame {
     /// Symbolication status of this frame.
     pub status: FrameStatus,
+
     /// The index of this frame in the request.
     ///
     /// This is relevant for two reasons:
@@ -472,37 +523,6 @@ pub struct SymbolicatedFrame {
     ///  2. Frames might expand to multiple inline frames at the same instruction address. However,
     ///     this might occur within recursion, so the instruction address is not a good
     pub original_index: Option<usize>,
-
-    /// The language of the symbol (function) this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
-    pub lang: Option<Language>,
-    /// The mangled name of the function this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
-    pub symbol: Option<String>,
-    /// Start address of the function this frame is located in (lower or equal to instruction_addr).
-    #[serde(skip_serializing_if = "is_default")]
-    pub sym_addr: Option<HexValue>,
-    /// The demangled function name.
-    #[serde(skip_serializing_if = "is_default")]
-    pub function: Option<String>,
-    /// Source file path relative to the compilation directory.
-    #[serde(skip_serializing_if = "is_default")]
-    pub filename: Option<String>,
-    /// Absolute source file path.
-    #[serde(skip_serializing_if = "is_default")]
-    pub abs_path: Option<String>,
-    /// The line number within the source file, starting at 1 for the first line.
-    #[serde(skip_serializing_if = "is_default")]
-    pub lineno: Option<u32>,
-    /// Source context before the context line
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub pre_context: Vec<String>,
-    /// The context line if available.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_line: Option<String>,
-    /// Post context after the context line
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub post_context: Vec<String>,
 
     #[serde(flatten)]
     pub raw: RawFrame,
@@ -529,7 +549,7 @@ pub struct CompleteStacktrace {
     /// Registers, only useful when returning a processed minidump.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_default")]
-    pub registers: BTreeMap<String, HexValue>,
+    pub registers: Registers,
 
     /// Frames of this stack trace.
     pub frames: Vec<SymbolicatedFrame>,

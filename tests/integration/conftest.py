@@ -94,6 +94,7 @@ def symbolicator(tmpdir, request, random_port, background_process):
 
         config_data["bind"] = bind
         config_data["logging"] = {"level": "debug"}
+        config_data.setdefault("connect_to_reserved_ips", True)
 
         if config_data.get("cache_dir"):
             config_data["cache_dir"] = str(config_data["cache_dir"])

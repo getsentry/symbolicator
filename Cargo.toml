@@ -49,6 +49,7 @@ tokio-retry = "0.2.0"
 # needed for gcs, see https://github.com/Keats/jsonwebtoken/pull/89
 jsonwebtoken = { git = "https://github.com/Keats/jsonwebtoken", rev = "e2e11b1e56d217002c3ba27f56aa0d8a439262d0" }
 base64 = "0.10.1"
+ipnetwork = "0.14.0"
 
 [dev-dependencies]
 insta = "0.8.1"
