@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  <link rel="shortcut icon" href="../img/favicon.ico">
+  <title>Internal Caching - Symbolicator</title>
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Internal Caching";
+    var mkdocs_page_input_path = "caching.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href=".." class="icon icon-home"> Symbolicator</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+	<ul class="current">
+	  
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="..">Symbolicator</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../background-and-principles/">Background and Principles</a>
+	    </li>
+          
+            <li class="toctree-l1 current">
+		
+    <a class="current" href="./">Internal Caching</a>
+    <ul class="subnav">
+            
+    <li class="toctree-l2"><a href="#internal-caching">Internal Caching</a></li>
+    
+        <ul>
+        
+            <li><a class="toctree-l3" href="#cache-files">Cache Files</a></li>
+        
+            <li><a class="toctree-l3" href="#cache-rules">Cache Rules</a></li>
+        
+            <li><a class="toctree-l3" href="#cache-enforcement">Cache Enforcement</a></li>
+        
+            <li><a class="toctree-l3" href="#scopes">Scopes</a></li>
+        
+            <li><a class="toctree-l3" href="#pruning-caches">Pruning Caches</a></li>
+        
+        </ul>
+    
+
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../symbol-lookup/">Symbol lookup strategy</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../symbol-server-compatibility/">Symbol Server Compatibility</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../symbolication-api/">Symbolication API</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../system-architecture/">System Architecture</a>
+	    </li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="..">Symbolicator</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="..">Docs</a> &raquo;</li>
+    
+      
+    
+    <li>Internal Caching</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="internal-caching">Internal Caching</h1>
+<p>This page describes how Symbolicator uses file system caches.</p>
+<p>Conceptionally, Symbolicator does not store debug information files but treats them as transient caches. Symbolicator caches two types of files: Raw debug information files and symbolication caches.</p>
+<h2 id="cache-files">Cache Files</h2>
+<p>Symbolicator caches two kinds of files: original Debug Information Files and derived caches which comprise SymCaches and CFI caches. </p>
+<ul>
+<li><strong>Debug Information Files (Object Files)</strong> (original): The original debug files as they are stored on external sources. They are cached to allow for faster recomputation of the derived caches, especially when after an update the format of the derived caches change. Otherwise, all original files would have to be downloaded again which could incur significant performance impact. DIFs are platform dependent and usually large in size, up to multiple GB. Their internal structure is platform dependent.</li>
+<li><strong>Object Meta Files</strong> (derived): Important attributes of a Object File used to determine which Object File is the best one. This information is persisted separately from Object Files because we want to delete Object Files a few days after download for disk we want to delete Object Files a few days after download for disk space while still knowing some information about them.</li>
+<li><strong>Symbolication Caches</strong> (derived): A platform-independent representation of function and line information to symbolicate instruction addresses. Those files are usually significantly smaller than native DIFs. However, endianness of the file contents depends on the host so these files cannot be transferred between systems with different endianness.</li>
+<li><strong>CFI Caches</strong> (derived): A platform-independent representation of stack unwind information to allow stackwalking. This currently uses the Breakpad ASCII format.</li>
+</ul>
+<h2 id="cache-rules">Cache Rules</h2>
+<p>In addition to caching DIFs and derived caches, the Symbolicator also stores placeholders to indicate the absence of or errors when retrieving or computing those files. The cache adheres to the following rules:</p>
+<ol>
+<li>DIFs are cached until they have not been used for <em>7 days</em> but may be deleted earlier when disk space is running out. A DIF is used when a derived cache is computed from it.</li>
+<li>Derived caches that were successfully created from preferred DIFs are cached until they have not been used for <em>at least 7 days</em>.</li>
+<li>Derived caches that were successfully created from fallback DIFs are treated equally but <em>at most once per hour</em> an upgrade attempt is started to search for better DIFs.</li>
+<li>The absence of a DIF is cached for <em>1 hour</em>, after that another fetch attempt from all sources is started.</li>
+<li>Failed conversions (due to malformed or unsupported debug files) are cached for <em>24 hours</em> but only up to the <em>next restart</em>. After that, another conversion is attempted. The restart constraint serves the purpose to allow immediate bug fixes.</li>
+</ol>
+<p>Derived caches can continue to be stored independently of the DIFs they were created from. Because they are smaller than the originals, this contributes to a better use of the available disk space. All timeouts mentioned above are configurable:</p>
+<pre><code>caches:
+  downloaded:
+    max_unused_for:
+      days: 7   # unused DIFs, rule 1
+    retry_misses_after:
+      hours: 1  # absence of a DIF, rule 4
+  derived:
+    max_unused_for:
+      days: 7   # unused caches, rule 2
+    retry_misses_after:
+      hours: 1  # also necessary for rule 4
+</code></pre>
+<p>For more information on which DIFs are preferred to create a specific cache format, see this document:</p>
+<p><a href="../symbol-lookup/">Symbol Lookup Strategy</a></p>
+<h2 id="cache-enforcement">Cache Enforcement</h2>
+<p>In order to enforce the desired cache behavior, Symbolicator uses file system meta data and information stored in the files themselves to determine when to evict items from the cache.</p>
+<ol>
+<li><strong>Last use of derived cache</strong>: The time when a derived cache was last used in a symbolication request. This allows to prune cold caches from the system, even from an external service. This value is stored in the <em>mtime</em> of the symbolication file and updated at most <em>once per hour</em>. </li>
+<li><strong>Last attempt to fetch dependencies of a cache:</strong> The time when the a derived cache could not be constructed because no debug files were available. Instead, a placeholder cache file is created and its <em>mtime</em> indicates the attempt. If this file is older than the threshold (default <em>1 hour</em>), another fetch attempt can be started and the file is recreated or replaced. <strong>NOTE</strong>: The placeholder is created for the derived cache only, because otherwise too many placeholders would be created.</li>
+<li><strong>Last failed cache conversion</strong>: The time when deriving a cache from a native DIF failed due to an error. A placeholder file is created and its <em>mtime</em> indicates the attempt. If a file is older than the threshold (default <em>24 hours</em>), conversion is repeated. If the debug files have been deleted in between, this causes another fetch from external sources.</li>
+<li><strong>DIFs used for derived cache</strong>: The kind of debug information that was used to compute a derived cache. SymCaches store this in their header, so this can be retrieved inexpensively by opening the file. CFI caches currently do not contain this information, although all DIFs offer equal quality of unwind information.</li>
+<li><strong>Last cache upgrade:</strong> The last time when an upgrade of an existing derived cache was attempted since it was not computed from a preferred source. This also uses the file’s <em>mtime</em> and attempts an update every time the modification time exceeds the threshold. </li>
+</ol>
+<h2 id="scopes">Scopes</h2>
+<p>Cached files are associated to a scope, which is given by the symbolication request. The default is a “global” scope, which implicitly makes the files accessible to any request (scoped and not scoped). Otherwise, the scope needs to match for caches to be used. Note that there is no verification of the scope number, so users of the Symbolicator are required to ensure the soundness of scope values.</p>
+<p>Scoping is achieved by encoding the scope identifier into the cache paths, thus creating separate cache directories for each scope.</p>
+<h2 id="pruning-caches">Pruning Caches</h2>
+<p>The <code>symbolicator cleanup</code> command removes stale caches. This command needs to be run manually and periodically, or at least when disk space is about to run out.</p>
+<p>Symbolicator operates under the assumption that files may be removed by an external actor at any time (one such actor is <code>symbolicator cleanup</code> itself which does not really attempt to synchronize with the main symbolicator service).</p>
+<p>Symbolicator assumes a fully POSIX-compliant filesystem to be able to serve requests without interruptions while files are being deleted. <strong>Using a network share for the cache folder will not work.</strong></p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../symbol-lookup/" class="btn btn-neutral float-right" title="Symbol lookup strategy">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../background-and-principles/" class="btn btn-neutral" title="Background and Principles"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../background-and-principles/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../symbol-lookup/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+
+</body>
+</html>
