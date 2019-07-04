@@ -76,12 +76,6 @@
         
             <li><a class="toctree-l3" href="#symbol-precedence">Symbol Precedence</a></li>
         
-            <li><a class="toctree-l3" href="#platform-1-choice-2-choice-3-choice">Platform | 1. Choice    | 2. Choice    | 3. Choice</a></li>
-        
-            <li><a class="toctree-l3" href="#platform-1-choice-2-choice-3-choice_1">Platform | 1. Choice    | 2. Choice    | 3. Choice</a></li>
-        
-            <li><a class="toctree-l3" href="#platform-1-choice-2-choice">Platform    | 1. Choice    | 2. Choice</a></li>
-        
             <li><a class="toctree-l3" href="#conversion-algorithms">Conversion Algorithms</a></li>
         
         </ul>
@@ -169,21 +163,99 @@ files available.</p>
 <p>The following is a table of what we initially deemed as ideal lookup strategy.
 How we deviate from this in practice is documented separately.</p>
 <h3 id="symbol-table">Symbol Table</h3>
-<h2 id="platform-1-choice-2-choice-3-choice">Platform | 1. Choice    | 2. Choice    | 3. Choice</h2>
-<p>MachO    | MachO (dSYM) | MachO (code) | Breakpad
-ELF      | ELF (debug)  | ELF (code)   | Breakpad
-PE       | PDB          | PE           | Breakpad</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>1. Choice</th>
+<th>2. Choice</th>
+<th>3. Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachO</td>
+<td>MachO (dSYM)</td>
+<td>MachO (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>ELF</td>
+<td>ELF (debug)</td>
+<td>ELF (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE</td>
+<td>PDB</td>
+<td>PE</td>
+<td>Breakpad</td>
+</tr>
+</tbody>
+</table>
 <h3 id="debug-information">Debug Information</h3>
-<h2 id="platform-1-choice-2-choice-3-choice_1">Platform | 1. Choice    | 2. Choice    | 3. Choice</h2>
-<p>MachO    | MachO (dSYM) | Breakpad     | 
-ELF      | ELF (debug)  | ELF (code)   | Breakpad
-PE       | PDB          | Breakpad     | </p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>1. Choice</th>
+<th>2. Choice</th>
+<th>3. Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachO</td>
+<td>MachO (dSYM)</td>
+<td>Breakpad</td>
+<td></td>
+</tr>
+<tr>
+<td>ELF</td>
+<td>ELF (debug)</td>
+<td>ELF (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE</td>
+<td>PDB</td>
+<td>Breakpad</td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h3 id="unwind-information">Unwind Information</h3>
-<h2 id="platform-1-choice-2-choice">Platform    | 1. Choice    | 2. Choice</h2>
-<p>MachO       | MachO (code) | Breakpad
-ELF         | ELF (code)   | Breakpad
-PE (32-bit) | PDB          | Breakpad
-PE (64-bit) | PE           | Breakpad</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>1. Choice</th>
+<th>2. Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachO</td>
+<td>MachO (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>ELF</td>
+<td>ELF (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE (32-bit)</td>
+<td>PDB</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE (64-bit)</td>
+<td>PE</td>
+<td>Breakpad</td>
+</tr>
+</tbody>
+</table>
 <h3 id="notes-on-implementation">Notes on implementation</h3>
 <ul>
 <li>Symbolicator downloads <em>all</em> filetypes in parallel and filters by whether
@@ -205,21 +277,20 @@ PE (64-bit) | PE           | Breakpad</p>
 <h2 id="conversion-algorithms">Conversion Algorithms</h2>
 <p>Some identifiers may be computed from others. See the following list for allowed non-lossy conversions in pseudocode:</p>
 <ul>
-<li>
-<p><strong>MachO <code>code_id</code> ←→ <code>debug_id</code></strong></p>
-<p><em>identity</em></p>
+<li><strong>MachO <code>code_id</code> ←→ <code>debug_id</code></strong><pre><code>*identity*
+</code></pre>
 </li>
 </ul>
 <p><strong>Implementation note:</strong> Symbolicator implements this by using the code ID everywhere.</p>
 <ul>
-<li>
-<p><strong>ELF <code>code_id</code> → <code>debug_id</code></strong></p>
-<p>debug_id = code_id[0..16]</p>
-<p>if object.little_endian {
-    debug_id[0..4].reverse(); // uuid field 1
-    debug_id[4..6].reverse(); // uuid field 2
-    debug_id[6..8].reverse(); // uuid field 3
-  }</p>
+<li><strong>ELF <code>code_id</code> → <code>debug_id</code></strong><pre><code>debug_id = code_id[0..16]
+
+if object.little_endian {
+  debug_id[0..4].reverse(); // uuid field 1
+  debug_id[4..6].reverse(); // uuid field 2
+  debug_id[6..8].reverse(); // uuid field 3
+}
+</code></pre>
 </li>
 </ul>
 <p><strong>Implementation note:</strong> This is not yet implemented (TODO)</p>
