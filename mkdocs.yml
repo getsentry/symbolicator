@@ -1,2 +1,4 @@
 site_name: Symbolicator
 theme: readthedocs
+markdown_extensions:
+  - tables
