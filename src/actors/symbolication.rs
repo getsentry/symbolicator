@@ -33,10 +33,10 @@ use crate::hex::HexValue;
 use crate::logging::LogError;
 use crate::sentry::SentryFutureExt;
 use crate::types::{
-    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
-    RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
-    FileType,
+    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
+    FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
+    Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
+    SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
