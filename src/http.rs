@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use tokio::net::tcp::ConnectFuture;
@@ -18,10 +18,11 @@ use actix_web::{FutureResponse, HttpMessage};
 use futures::future::{Either, Future, IntoFuture};
 use futures::{Async, Poll};
 
-use ipnetwork::IpNetwork;
+use ipnetwork::Ipv4Network;
 
 lazy_static::lazy_static! {
-    static ref RESERVED_IP_BLOCKS: Vec<IpNetwork> = vec![
+    static ref RESERVED_IP_BLOCKS: Vec<Ipv4Network> = vec![
+        // https://en.wikipedia.org/wiki/Reserved_IP_addresses#IPv4
         "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
         "192.0.0.0/29", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15",
         "198.51.100.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
@@ -121,12 +122,21 @@ impl Handler<Connect> for SafeResolver {
             .flatten()
             .and_then(move |mut addrs| {
                 addrs.retain(|addr| {
+                    let addr = match addr.ip() {
+                        IpAddr::V4(x) => x,
+                        IpAddr::V6(_) => {
+                            // We don't know what is an internal service in IPv6 and what is not. Just
+                            // bail out. This effectively means that we don't support IPv6.
+                            return false;
+                        }
+                    };
+
                     for network in &*RESERVED_IP_BLOCKS {
-                        if network.contains(addr.ip()) {
-                            metric!(counter("http.blacklisted_ip") += 1);
+                        if network.contains(addr) {
+                            metric!(counter("http.blocked_ip") += 1);
                             log::debug!(
                                 "Blocked attempt to connect to reserved IP address: {}",
-                                addr.ip()
+                                addr
                             );
                             return false;
                         }

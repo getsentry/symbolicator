@@ -103,6 +103,8 @@ to be valid JSON, only certain source types allowed). This is why, by default,
 (`connect_to_reserved_ips=false`) source configs are not allowed to connect to
 [reserved IP ranges](https://en.wikipedia.org/wiki/Reserved_IP_addresses).
 
+Currently this implies that we will never connect to any IPv6 address.
+
 An exception from this rule is the Sentry source type, which is always allowed
 to connect to any kind of IP address because the user can't enter a custom
 source with this source type.
