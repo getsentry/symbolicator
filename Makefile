@@ -33,19 +33,15 @@ docs: .venv/bin/python
 	.venv/bin/mkdocs build
 .PHONY: docs
 
-install-zeus-cli:
-	npm install -g @zeus-ci/cli
-.PHONY: install-zeus-cli
-
-travis-upload-docs: docs install-zeus-cli
-	cd site && zip -r gh-pages .
-	zeus upload -t "application/zip+docs" site/gh-pages.zip
-.PHONY: travis-upload-docs
-
-doc: .venv/bin/python
+docserver: .venv/bin/python
 	.venv/bin/pip install -U mkdocs
 	.venv/bin/mkdocs serve
 .PHONY: doc
+
+docs-upload: docs
+	cd site && zip -r gh-pages .
+	zeus upload -t "application/zip+docs" site/gh-pages.zip
+.PHONY: travis-upload-docs
 
 # Style checking
 

@@ -28,7 +28,8 @@ matrix:
       script: make -e test
 
     - name: "docs"
-      script: make -e travis-upload-docs
+      before_script: npm install -g @zeus-ci/cli
+      script: make -e docs-upload
 
 notifications:
   webhooks:
