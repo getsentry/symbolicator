@@ -38,7 +38,7 @@ docserver: .venv/bin/python
 	.venv/bin/mkdocs serve
 .PHONY: doc
 
-docs-upload: docs
+travis-upload-docs: docs
 	cd site && zip -r gh-pages .
 	zeus upload -t "application/zip+docs" site/gh-pages.zip
 .PHONY: travis-upload-docs
