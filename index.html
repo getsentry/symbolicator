@@ -8,7 +8,7 @@
   <meta name="description" content="None">
   
   <link rel="shortcut icon" href="img/favicon.ico">
-  <title>Symbolicator - Symbolicator</title>
+  <title>Home - Symbolicator</title>
   <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
 
   <link rel="stylesheet" href="css/theme.css" type="text/css" />
@@ -17,7 +17,7 @@
   
   <script>
     // Current page data
-    var mkdocs_page_name = "Symbolicator";
+    var mkdocs_page_name = "Home";
     var mkdocs_page_input_path = "index.md";
     var mkdocs_page_url = null;
   </script>
@@ -50,16 +50,16 @@
           
             <li class="toctree-l1 current">
 		
-    <a class="current" href=".">Symbolicator</a>
+    <a class="current" href=".">Home</a>
     <ul class="subnav">
             
-    <li class="toctree-l2"><a href="#symbolicator">Symbolicator</a></li>
+    <li class="toctree-l2"><a href="#usage">Usage</a></li>
     
-        <ul>
-        
-            <li><a class="toctree-l3" href="#table-of-contents">Table of contents</a></li>
-        
-        </ul>
+
+    <li class="toctree-l2"><a href="#configuration">Configuration</a></li>
+    
+
+    <li class="toctree-l2"><a href="#security">Security</a></li>
     
 
     </ul>
@@ -67,32 +67,67 @@
           
             <li class="toctree-l1">
 		
-    <a class="" href="background-and-principles/">Background and Principles</a>
+    <span class="caption-text">Advanced</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="advanced/caching/">Caching</a>
+                </li>
+    </ul>
 	    </li>
           
             <li class="toctree-l1">
 		
-    <a class="" href="caching/">Internal Caching</a>
+    <span class="caption-text">Api</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="api/applecrashreport/">Apple Crash Report</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="api/minidump/">Minidump</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="api/overview/">Overview</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="api/proxy/">Proxy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="api/response/">Response</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="api/symbolication/">Symbolication</a>
+                </li>
+    </ul>
 	    </li>
           
             <li class="toctree-l1">
 		
-    <a class="" href="symbol-lookup/">Symbol lookup strategy</a>
-	    </li>
-          
-            <li class="toctree-l1">
-		
-    <a class="" href="symbol-server-compatibility/">Symbol Server Compatibility</a>
-	    </li>
-          
-            <li class="toctree-l1">
-		
-    <a class="" href="symbolication-api/">Symbolication API</a>
-	    </li>
-          
-            <li class="toctree-l1">
-		
-    <a class="" href="system-architecture/">System Architecture</a>
+    <span class="caption-text">Development</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="development/background-and-principles/">Background and Principles</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="development/symbol-lookup/">Lookup Strategy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="development/symbol-server-compatibility/">Symbol Server Compatibility</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="development/system-architecture/">System Architecture</a>
+                </li>
+    </ul>
 	    </li>
           
         </ul>
@@ -117,7 +152,7 @@
     
       
     
-    <li>Symbolicator</li>
+    <li>Home</li>
     <li class="wy-breadcrumbs-aside">
       
     </li>
@@ -127,15 +162,80 @@
           <div role="main">
             <div class="section">
               
-                <h1 id="symbolicator">Symbolicator</h1>
-<h2 id="table-of-contents">Table of contents</h2>
+                <p align="center">
+    <img src="https://github.com/getsentry/symbolicator/raw/master/artwork/logo.png" width="520" alt="Symbolicator">
+    <br />
+</p>
+
+<p>Symbolicator is a standalone service that resolves function names, file location
+and source context in native stack traces. It can process Minidumps and Apple
+Crash Reports. Additionally, Symbolicator can act as a proxy to symbol servers
+supporting multiple formats, such as Microsoft's symbol server or Breakpad
+symbol repositories.</p>
+<h2 id="usage">Usage</h2>
+<p>Start the server with:</p>
+<pre><code class="bash">$ symbolicator run -c config.yml
+</code></pre>
+
+<p>The configuration file can be omitted. Symbolicator will run with default
+settings in this case.</p>
+<h2 id="configuration">Configuration</h2>
+<p>Write this to a file (<code>config.yml</code>):</p>
+<pre><code class="yml">cache_dir: &quot;/tmp/symbolicator&quot;
+bind: &quot;0.0.0.0:3021&quot;
+logging:
+  level: &quot;info&quot;
+  format: &quot;pretty&quot;
+  enable_backtraces: true
+metrics:
+  statsd: &quot;127.0.0.1:8125&quot;
+  prefix: &quot;symbolicator&quot;
+</code></pre>
+
 <ul>
-<li><a href="background-and-principles/">Background and Principles</a></li>
-<li><a href="system-architecture/">System Architecture</a></li>
-<li><a href="symbol-lookup/">Symbol lookup strategy</a></li>
-<li><a href="symbol-server-compatibility/">Symbol Server Compatibility</a></li>
-<li><a href="caching/">Caching</a></li>
+<li><code>cache_dir</code>: Path to a directory to cache downloaded files and symbolication
+  caches. Defaults to <code>null</code>, which disables caching. <strong>It is strictly
+  recommended to configure caches in production!</strong></li>
+<li><code>bind</code>: Host and port for HTTP interface.</li>
+<li><code>logging</code>: Command line logging behavior.<ul>
+<li><code>level</code>: Log level, defaults to <code>info</code>. Can be one of <code>off</code>, <code>error</code>,
+  <code>warn</code>, <code>info</code>, <code>debug</code>, or <code>trace</code>.</li>
+<li><code>format</code>: The format with which to print logs. Defaults to <code>auto</code>. Can be
+  one of: <code>json</code>, <code>simplified</code>, <code>pretty</code>, or <code>auto</code> (pretty on console,
+  simplified on tty).</li>
+<li><code>enable_backtraces</code>: Whether backtraces for errors should be computed. This
+  causes a slight performance hit but improves debuggability. Defaults to
+  <code>true</code>.</li>
 </ul>
+</li>
+<li><code>metrics</code>: Configure a statsd server to send metrics to.<ul>
+<li><code>statsd</code>: The host and port to send metrics to. Defaults to <code>null</code>, which
+  disables metric submission.</li>
+<li><code>prefix</code>: A prefix for every metric, defaults to <code>symbolicator</code>.</li>
+</ul>
+</li>
+<li><code>sentry_dsn</code>: DSN to a Sentry project for internal error reporting. Defaults
+  to <code>null</code>, which disables reporting to Sentry.</li>
+<li><code>sources</code>: An optional list of preconfigured sources. If these are configured
+  they will be used as default sources for symbolication requests and they will
+  be proxied by the symbol proxy if enabled. The format for the sources here
+  matches the sources in the HTTP API.</li>
+<li><code>symstore_proxy</code>: Enables or disables the symstore proxy mode. Creates an
+  endpoint to download raw symbols from configured sources Symbolicator as if it
+  were a <code>symstore</code> (Microsoft Symbol Server) compatible server. Defaults to
+  <code>true</code>.</li>
+<li><code>connect_to_reserved_ips</code>: Allow reserved IP addresses for requests to
+  sources. See <a href="#security">Security</a>. Defaults to <code>false</code>.</li>
+</ul>
+<h2 id="security">Security</h2>
+<p>By default, Symbolicator does not try to download debug files from <a href="https://en.wikipedia.org/wiki/Reserved_IP_addresses">reserved IP
+ranges</a>. This ensures that
+no unintended connections are made to internal systems when source configuration
+is passed in from an untrusted source.</p>
+<p>To allow internal connections, set <code>connect_to_reserved_ips</code> to <code>true</code>.</p>
+<p>An exception from this rule is the <code>"sentry"</code> source type. Sentry is expected to
+run within the same network as Symbolicator, which is why it is exempt by
+default.</p>
               
             </div>
           </div>
@@ -143,7 +243,7 @@
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
       
-        <a href="background-and-principles/" class="btn btn-neutral float-right" title="Background and Principles">Next <span class="icon icon-circle-arrow-right"></span></a>
+        <a href="advanced/caching/" class="btn btn-neutral float-right" title="Caching">Next <span class="icon icon-circle-arrow-right"></span></a>
       
       
     </div>
@@ -171,7 +271,7 @@
       
       
       
-        <span style="margin-left: 15px"><a href="background-and-principles/" style="color: #fcfcfc">Next &raquo;</a></span>
+        <span style="margin-left: 15px"><a href="advanced/caching/" style="color: #fcfcfc">Next &raquo;</a></span>
       
     </span>
 </div>
@@ -184,5 +284,5 @@
 
 <!--
 MkDocs version : 1.0.4
-Build Date UTC : 2019-07-05 10:51:21
+Build Date UTC : 2019-07-07 14:03:57
 -->

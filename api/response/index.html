@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  <link rel="shortcut icon" href="../../img/favicon.ico">
+  <title>Response - Symbolicator</title>
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Response";
+    var mkdocs_page_input_path = "api/response.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href="../.." class="icon icon-home"> Symbolicator</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+	<ul class="current">
+	  
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../..">Home</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Advanced</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../../advanced/caching/">Caching</a>
+                </li>
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Api</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../applecrashreport/">Apple Crash Report</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../minidump/">Minidump</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../overview/">Overview</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../proxy/">Proxy</a>
+                </li>
+                <li class=" current">
+                    
+    <a class="current" href="./">Response</a>
+    <ul class="subnav">
+            
+    <li class="toctree-l3"><a href="#symbolication-response">Symbolication Response</a></li>
+    
+        <ul>
+        
+            <li><a class="toctree-l4" href="#success-response">Success Response</a></li>
+        
+            <li><a class="toctree-l4" href="#backoff-response">Backoff Response</a></li>
+        
+            <li><a class="toctree-l4" href="#invalid-request-response">Invalid Request Response</a></li>
+        
+        </ul>
+    
+
+    </ul>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../symbolication/">Symbolication</a>
+                </li>
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Development</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../../development/background-and-principles/">Background and Principles</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/symbol-lookup/">Lookup Strategy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/symbol-server-compatibility/">Symbol Server Compatibility</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/system-architecture/">System Architecture</a>
+                </li>
+    </ul>
+	    </li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../..">Symbolicator</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>Api &raquo;</li>
+        
+      
+    
+    <li>Response</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="symbolication-response">Symbolication Response</h1>
+<p>The response to a symbolication request is a JSON object which contains
+different data depending on the status of the symbolication job:</p>
+<ul>
+<li><code>pending</code>: Symbolication has not finished yet; try again later. This is only
+  returned after the timeout has expired, if one was specified.</li>
+<li><code>complete</code>: The symbolication request has been processed and results are
+  ready. This status is only reported once, after which the job is cleaned up.</li>
+<li><code>error</code>: Something went wrong during symbolication, and details are in the
+  payload.</li>
+</ul>
+<h2 id="success-response">Success Response</h2>
+<p>Symbol server responds with <em>200 OK</em> and the response payload listed below if
+symbolication succeeds within a configured timeframe (around 20 seconds):</p>
+<pre><code class="js">{
+  &quot;status&quot;: &quot;complete&quot;,
+
+  // Symbolicated stack traces
+  &quot;stacktraces&quot;: [
+    {
+      &quot;frames&quot;: [
+        {
+          // Symbolication meta data
+          &quot;status&quot;: &quot;symbolicated&quot;,
+          &quot;original_index&quot;: 0,
+
+          // Frame information
+          &quot;instruction_addr&quot;: &quot;0xfeedbeef&quot;,  // actual address of the frame
+          &quot;sym_addr&quot;: &quot;0xfeed0000&quot;,          // start address of the function
+          &quot;line_addr&quot;: &quot;0xfeedbe00&quot;,         // start address of the line
+          &quot;package&quot;: &quot;/path/to/module.so&quot;,   // path to the module's code file
+          &quot;symbol&quot;: &quot;__1cGmemset6FpviI_0_&quot;,  // original mangled function name
+          &quot;function&quot;: &quot;memset&quot;,              // demangled short version of symbol
+          &quot;lang&quot;: &quot;cpp&quot;,
+          &quot;abs_path&quot;: &quot;/path/to/src/file.c&quot;, // normalized absolute path
+          &quot;filename&quot;: &quot;../src/file.c&quot;,       // path relative to compilation dir
+          &quot;lineno&quot;: 22,
+        },
+        ...
+      ],
+      &quot;registers&quot;: { ... }
+    }
+  ],
+
+  // Modules completed with information read from object files
+  &quot;modules&quot;: [
+    {
+      &quot;status&quot;: &quot;found&quot;,
+      ...
+    }
+  ],
+  // Additional information read from crash report
+  &quot;arch&quot;: &quot;x86_64&quot;,
+  &quot;signal&quot;: 11,
+  &quot;os&quot;: {
+    &quot;name&quot;: &quot;Windows NT&quot;,
+    &quot;version&quot;: &quot;8.1.2700&quot;
+  }
+}
+</code></pre>
+
+<p>The symbolicated frames are returned in the same order as provided in the
+request. Additional properties passed in the request are discarded. Errors that
+occurred during symbolication, such as missing symbol files or unresolvable
+addresses within symbols are reported as values for <code>status</code> in both modules and
+frames.</p>
+<h2 id="backoff-response">Backoff Response</h2>
+<p>If symbolication takes longer than the threshold <code>timeout</code>, the server instead
+responds with a backoff response. It will then continue to fetch symbols and
+symbolication. The response indicates the estimated time for symbol retrieval,
+after which the symbolication request can be expected to succeed:</p>
+<pre><code class="js">{
+  &quot;status&quot;: &quot;pending&quot;,
+  &quot;request_id&quot;: &quot;deadbeef&quot;,
+  &quot;retry_after&quot;: 300 // 5 minutes
+}
+</code></pre>
+
+<p>The symbolication server must not send a backoff response if no timeout was sent
+by the client.</p>
+<p>Note that the <code>retry_after</code> value is just an estimation and does not give any
+guarantee. The request may be repeated at any time:</p>
+<pre><code>GET /requests/deadbeef?timeout=123
+</code></pre>
+<h2 id="invalid-request-response">Invalid Request Response</h2>
+<p>If the user provided a non-existent request ID, the server responds with <em>404
+Not Found</em>.</p>
+<p>Requests should always be treated transient as they might disappear during a
+deploy. Clients must expect that 404 is returned even for valid request IDs and
+then re-schedule symbolication</p>
+<p>On a related note, state on the server is generally ephemeral.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../symbolication/" class="btn btn-neutral float-right" title="Symbolication">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../proxy/" class="btn btn-neutral" title="Proxy"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../proxy/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../symbolication/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+
+</body>
+</html>

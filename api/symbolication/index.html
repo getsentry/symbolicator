@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  <link rel="shortcut icon" href="../../img/favicon.ico">
+  <title>Symbolication - Symbolicator</title>
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Symbolication";
+    var mkdocs_page_input_path = "api/symbolication.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href="../.." class="icon icon-home"> Symbolicator</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+	<ul class="current">
+	  
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../..">Home</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Advanced</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../../advanced/caching/">Caching</a>
+                </li>
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Api</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../applecrashreport/">Apple Crash Report</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../minidump/">Minidump</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../overview/">Overview</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../proxy/">Proxy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../response/">Response</a>
+                </li>
+                <li class=" current">
+                    
+    <a class="current" href="./">Symbolication</a>
+    <ul class="subnav">
+            
+    <li class="toctree-l3"><a href="#symbolication-request">Symbolication Request</a></li>
+    
+        <ul>
+        
+            <li><a class="toctree-l4" href="#query-parameters">Query Parameters</a></li>
+        
+            <li><a class="toctree-l4" href="#request-body">Request Body</a></li>
+        
+            <li><a class="toctree-l4" href="#response">Response</a></li>
+        
+        </ul>
+    
+
+    </ul>
+                </li>
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Development</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../../development/background-and-principles/">Background and Principles</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/symbol-lookup/">Lookup Strategy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/symbol-server-compatibility/">Symbol Server Compatibility</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/system-architecture/">System Architecture</a>
+                </li>
+    </ul>
+	    </li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../..">Symbolicator</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>Api &raquo;</li>
+        
+      
+    
+    <li>Symbolication</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="symbolication-request">Symbolication Request</h1>
+<pre><code>POST /symbolicate?timeout=123&amp;scope=123
+
+{
+  &quot;signal&quot;: 11,
+  &quot;sources&quot;: [
+    {
+      &quot;id&quot;: &quot;&lt;uuid&gt;&quot;,
+      &quot;type&quot;: &quot;http&quot;,
+      ... // see &quot;External Buckets&quot;
+    },
+    ...
+  ],
+  &quot;threads&quot;: [
+    {
+      &quot;frames&quot;: [
+        {
+          &quot;instruction_addr&quot;: &quot;0xfeedbeef&quot; // can also be a number
+        },
+        ...
+      ],
+      &quot;registers&quot;: {
+        &quot;rip&quot;: &quot;0xfeedbeef&quot;,
+        &quot;rsp&quot;: &quot;0xfeedface&quot;
+      }
+    }
+  ],
+  &quot;modules&quot;: [
+    {
+      &quot;type&quot;: &quot;macho&quot;,
+      &quot;debug_id&quot;: &quot;some-debug-id&quot;,
+      &quot;code_id&quot;: &quot;some-debug-id&quot;,
+      &quot;debug_file&quot;: &quot;/path/to/image.so&quot;,
+      &quot;image_addr&quot;: &quot;0xfeedbeef&quot;,
+      &quot;image_size&quot;: &quot;0xbeef&quot;
+    },
+    ...
+  ]
+}
+</code></pre>
+
+<h2 id="query-parameters">Query Parameters</h2>
+<ul>
+<li><code>timeout</code>: If given, a response status of <code>pending</code> might be sent by the
+  server.</li>
+<li><code>scope</code>: An optional scope which will be used to isolate cached files from
+  each other</li>
+</ul>
+<h2 id="request-body">Request Body</h2>
+<p>A JSON payload describing the stack traces and code modules for symbolication,
+as well as external sources to pull symbols from:</p>
+<ul>
+<li><code>sources</code>: A list of descriptors for internal or external symbol sources. See
+  <a href="../overview/">Sources</a>.</li>
+<li><code>modules</code>: A list of code modules (aka debug images) that were loaded into the
+  process. All attributes other than <code>type</code> are required. The Symbolicator may
+  optimize lookups based on the <code>type</code> if present. Valid types are <code>macho</code>,
+  <code>pe</code>, <code>elf</code>. Invalid types are silently ignored. The Symbolicator still works
+  if the type is invalid, but less efficiently. However, a schematically valid
+  but <em>wrong</em> type is fatal for finding symbols.</li>
+<li><code>threads</code>: A list of process threads to symbolicate.<ul>
+<li><code>registers</code>: Optional register values aiding symbolication heuristics. For
+  example, register values may be used to perform correction heuristics on the
+  instruction address of the top frame.</li>
+<li><code>frames</code>: A list of frames with addresses. Arbitrary additional properties
+  may be passed with frames, but are discarded.</li>
+</ul>
+</li>
+</ul>
+<h2 id="response">Response</h2>
+<p>See <a href="../response/">Symbolication Response</a>.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../../development/background-and-principles/" class="btn btn-neutral float-right" title="Background and Principles">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../response/" class="btn btn-neutral" title="Response"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../response/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../../development/background-and-principles/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+
+</body>
+</html>

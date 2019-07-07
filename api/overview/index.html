@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  
+  <link rel="shortcut icon" href="../../img/favicon.ico">
+  <title>Overview - Symbolicator</title>
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700|Roboto+Slab:400,700|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+
+  <link rel="stylesheet" href="../../css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../css/theme_extra.css" type="text/css" />
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css">
+  
+  <script>
+    // Current page data
+    var mkdocs_page_name = "Overview";
+    var mkdocs_page_input_path = "api/overview.md";
+    var mkdocs_page_url = null;
+  </script>
+  
+  <script src="../../js/jquery-2.1.1.min.js" defer></script>
+  <script src="../../js/modernizr-2.8.3.min.js" defer></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script> 
+  
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+      <div class="wy-side-nav-search">
+        <a href="../.." class="icon icon-home"> Symbolicator</a>
+        <div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+	<ul class="current">
+	  
+          
+            <li class="toctree-l1">
+		
+    <a class="" href="../..">Home</a>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Advanced</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../../advanced/caching/">Caching</a>
+                </li>
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Api</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../applecrashreport/">Apple Crash Report</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../minidump/">Minidump</a>
+                </li>
+                <li class=" current">
+                    
+    <a class="current" href="./">Overview</a>
+    <ul class="subnav">
+            
+    <li class="toctree-l3"><a href="#api">API</a></li>
+    
+        <ul>
+        
+            <li><a class="toctree-l4" href="#sources">Sources</a></li>
+        
+            <li><a class="toctree-l4" href="#http-source">HTTP source</a></li>
+        
+            <li><a class="toctree-l4" href="#amazon-s3-bucket">Amazon S3 Bucket</a></li>
+        
+            <li><a class="toctree-l4" href="#gcs-bucket">GCS Bucket</a></li>
+        
+            <li><a class="toctree-l4" href="#sentry">Sentry</a></li>
+        
+        </ul>
+    
+
+    </ul>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../proxy/">Proxy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../response/">Response</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../symbolication/">Symbolication</a>
+                </li>
+    </ul>
+	    </li>
+          
+            <li class="toctree-l1">
+		
+    <span class="caption-text">Development</span>
+    <ul class="subnav">
+                <li class="">
+                    
+    <a class="" href="../../development/background-and-principles/">Background and Principles</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/symbol-lookup/">Lookup Strategy</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/symbol-server-compatibility/">Symbol Server Compatibility</a>
+                </li>
+                <li class="">
+                    
+    <a class="" href="../../development/system-architecture/">System Architecture</a>
+                </li>
+    </ul>
+	    </li>
+          
+        </ul>
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../..">Symbolicator</a>
+      </nav>
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../..">Docs</a> &raquo;</li>
+    
+      
+        
+          <li>Api &raquo;</li>
+        
+      
+    
+    <li>Overview</li>
+    <li class="wy-breadcrumbs-aside">
+      
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main">
+            <div class="section">
+              
+                <h1 id="api">API</h1>
+<p>Symbolicator exposes a HTTP API to allow symbolication of raw native stack
+traces and minidumps. All information necessary for symbolication needs to be
+part of the request, such as external buckets and their auth tokens or full
+stack traces. There are the following endpoints:</p>
+<ul>
+<li><code>POST /symbolicate</code>: Symbolicate raw native stacktrace</li>
+<li><code>POST /minidump</code>: Symbolicate a minidump and extract information</li>
+<li><code>POST /applecrashreport</code>: Symbolicate an Apple Crash Report</li>
+<li><code>GET /requests/:id</code>: Status update on running symbolication jobs</li>
+<li><code>GET /health</code>: System status and health monitoring</li>
+</ul>
+<h2 id="sources">Sources</h2>
+<p>For Symbolicator to operate correctly, it needs to be pointed to at least one
+source. It supports various different backends for where it looks for symbols.
+There are two modes for Symbolicator with regards to how it looks for symbols.
+One is the preconfigured mode where the <code>sources</code> key is configured right in the
+config file. The second is one where the sources are defined with the HTTP
+request to the symbolication API.</p>
+<p>If you want to use Symbolicator as a symstore compatible proxy you need to
+preconfigure the sources.</p>
+<p>Example configuration:</p>
+<pre><code class="json">[
+  {
+    &quot;id&quot;: &quot;my-bucket-linux&quot;,
+    &quot;type&quot;: &quot;s3&quot;,
+    &quot;bucket&quot;: &quot;my-project-my-bucket&quot;,
+    &quot;region&quot;: &quot;us-east-1&quot;,
+    &quot;prefix&quot;: &quot;/linux&quot;,
+    &quot;access_key&quot;: &quot;AMVSAVWEXRIRJPOMCKWN&quot;,
+    &quot;secret_key&quot;: &quot;Lqnc45YWr9y7qftCI+vST/1ZPmmw1H6SkbIf2v/8&quot;,
+    &quot;filters&quot;: {
+      &quot;filetypes&quot;: [&quot;elf_debug&quot;, &quot;elf_code&quot;]
+    },
+    &quot;layout&quot;: {
+      &quot;type&quot;: &quot;native&quot;,
+      &quot;casing&quot;: &quot;lowercase&quot;
+    }
+  },
+  {
+    &quot;id&quot;: &quot;my-bucket-windows&quot;,
+    &quot;type&quot;: &quot;s3&quot;,
+    &quot;bucket&quot;: &quot;my-project-my-bucket&quot;,
+    &quot;region&quot;: &quot;us-east-1&quot;,
+    &quot;prefix&quot;: &quot;/windows&quot;,
+    &quot;access_key&quot;: &quot;AMVSAVWEXRIRJPOMCKWN&quot;,
+    &quot;secret_key&quot;: &quot;Lqnc45YWr9y7qftCI+vST/1ZPmmw1H6SkbIf2v/8&quot;,
+    &quot;filters&quot;: {
+      &quot;filetypes&quot;: [&quot;pe&quot;, &quot;pdb&quot;]
+    },
+    &quot;layout&quot;: {
+      &quot;type&quot;: &quot;native&quot;,
+      &quot;casing&quot;: &quot;lowercase&quot;
+    }
+  },
+  {
+    &quot;id&quot;: &quot;microsoft&quot;,
+    &quot;type&quot;: &quot;http&quot;,
+    &quot;filters&quot;: {
+      &quot;filetypes&quot;: [&quot;pe&quot;, &quot;pdb&quot;]
+    },
+    &quot;url&quot;: &quot;https://msdl.microsoft.com/download/symbols/&quot;
+  }
+]
+</code></pre>
+
+<p>Sources are ordered by priority. Each source needs at least two keys:</p>
+<ul>
+<li><code>id</code>: the ID of the source. This can be freely chosen and is used to identify
+  cache files in the cache folder</li>
+<li><code>type</code>: defines the type of the source (<code>http</code>, <code>s3</code>, <code>gcs</code> or <code>sentry</code>)</li>
+</ul>
+<p>These are common parameters that work on most symbol sources (except <code>sentry</code>):</p>
+<ul>
+<li><code>filters</code>: a set of filters to reduce the number of unnecessary hits on a
+  symbol server. This configuration key is an object with two keys:<ul>
+<li><code>filetypes</code>: a list of file types to restrict the server to. Possible
+  values: <code>pe</code>, <code>pdb</code>, <code>mach_debug</code>, <code>mach_code</code>, <code>elf_debug</code>, <code>elf_code</code>,
+  <code>breakpad</code>)</li>
+<li><code>path_patterns</code>: a list of glob matches that need to be matched on the image
+  name. If the debug image has no name it will never match here.</li>
+</ul>
+</li>
+<li><code>layout</code>: configures the file system layout of the sources. This configuration
+  key is an object with two keys:<ul>
+<li><code>type</code>: defines the general layout of the directory. Possible values are
+  <code>native</code>, <code>symstore</code>, <code>symstore_index2</code> and <code>ssqp</code>. <code>native</code> uses the file
+  type's native format. <code>symstore</code> and <code>ssqp</code> both use the Microsoft Symbol
+  Server format but control the case conventions. <code>symstore</code> uses the
+  conventional casing rules for signatures and filenames, <code>ssqp</code> uses the
+  Microsoft SSQP casing rules instead. Additionally <code>symstore_index2</code> works
+  like <code>symstore</code> but uses the "Two tier" (index2.txt) layout where the first
+  two characters of the filename are used as a toplevel extra folder.</li>
+<li><code>casing</code>: enforces a casing style. The default is not to touch the casing
+  and forward it unchanged. If the backend does not support a case insensitive
+  backend (eg: S3) then it's recommended to set this to <code>lowercase</code> to enforce
+  changing all to lowercase. Possible values: <code>default</code>, <code>lowercase</code>,
+  <code>uppercase</code>.</li>
+</ul>
+</li>
+</ul>
+<h2 id="http-source">HTTP source</h2>
+<p>The HTTP source lets one fetch symbols from a Microsoft Symbol Server or similar
+systems. There is some flexibility to how it operates.</p>
+<ul>
+<li><code>type</code>: <code>"http"</code></li>
+<li><code>url</code>: This defines the URL where symbolicator should be fetching from. For
+  instance this can be <code>https://msdl.microsoft.com/download/symbols/</code> to point
+  it to the official microsoft symbol server.</li>
+<li><code>headers</code>: an optional dictionary of headers that should be sent with the HTTP
+  requests. This can be used for instance to configure HTTP basic auth
+  configuration.</li>
+</ul>
+<h2 id="amazon-s3-bucket">Amazon S3 Bucket</h2>
+<p>This source connects straight to an S3 bucket and looks for symbols there. It's
+recommended for this to be configured with explicit <code>lowercase</code> casing to avoid
+issues as the SSQP protocol demands case insensitive lookups.</p>
+<ul>
+<li><code>type</code>: <code>"s3"</code></li>
+<li><code>bucket</code>: the name of the S3 bucket</li>
+<li><code>prefix</code>: a path prefix to put in front of all keys (eg: <code>/windows</code>)</li>
+<li><code>region</code>: the AWS region where the bucket is located</li>
+<li><code>access_key</code>: the AWS access key to use</li>
+<li><code>secret_key</code>: the AWS secret key to use</li>
+</ul>
+<h2 id="gcs-bucket">GCS Bucket</h2>
+<p>This source connects to a GCS bucket and looks for symbols there. It behaves
+similarly to <code>s3</code> but uses different credentials:</p>
+<ul>
+<li><code>type</code>: <code>"gcs"</code></li>
+<li><code>bucket</code>: the name of the GCS bucket</li>
+<li><code>prefix</code>: a path prefix to put in front of all keys (eg: <code>/windows</code>)</li>
+<li><code>private_key</code>: the GCS private key (base64 encoded and with optional PEM
+  envelope)</li>
+<li><code>client_email</code>: the GCS client email for authentication</li>
+</ul>
+<h2 id="sentry">Sentry</h2>
+<p>This points Symbolicator at a Sentry installation to fetch customer supplied
+symbols from there. Sentry applies proper configuration automatically.</p>
+              
+            </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../proxy/" class="btn btn-neutral float-right" title="Proxy">Next <span class="icon icon-circle-arrow-right"></span></a>
+      
+      
+        <a href="../minidump/" class="btn btn-neutral" title="Minidump"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+    
+  </div>
+
+  Built with <a href="http://www.mkdocs.org">MkDocs</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+      
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" style="cursor: pointer">
+    <span class="rst-current-version" data-toggle="rst-current-version">
+      
+      
+        <span><a href="../minidump/" style="color: #fcfcfc;">&laquo; Previous</a></span>
+      
+      
+        <span style="margin-left: 15px"><a href="../proxy/" style="color: #fcfcfc">Next &raquo;</a></span>
+      
+    </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+
+</body>
+</html>
