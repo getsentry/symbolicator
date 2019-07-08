@@ -53,17 +53,20 @@ fn key_from_string(mut s: &str) -> Result<Vec<u8>, ObjectError> {
     if s.starts_with("-----BEGIN PRIVATE KEY-----") {
         s = s.splitn(5, "-----").nth(2).unwrap();
     }
-    Ok(base64::decode(
-        &s.as_bytes()
-            .iter()
-            .cloned()
-            .filter(|b| !b.is_ascii_whitespace())
-            .collect::<Vec<u8>>(),
-    )
-    .context(ObjectErrorKind::Io)?)
+
+    let bytes = &s
+        .as_bytes()
+        .iter()
+        .cloned()
+        .filter(|b| !b.is_ascii_whitespace())
+        .collect::<Vec<u8>>();
+
+    Ok(base64::decode(bytes).context(ObjectErrorKind::Io)?)
 }
 
 fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, ObjectError> {
+    let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+
     let jwt_claims = JwtClaims {
         issuer: source_key.client_email.clone(),
         scope: "https://www.googleapis.com/auth/devstorage.read_only".into(),
@@ -72,12 +75,10 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
         issued_at: Utc::now().timestamp(),
     };
 
-    Ok(jsonwebtoken::encode(
-        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
-        &jwt_claims,
-        jsonwebtoken::Pkcs8::from(&key_from_string(&source_key.private_key)?),
-    )
-    .context(ObjectErrorKind::Io)?)
+    let key = key_from_string(&source_key.private_key)?;
+    let pkcs8 = jsonwebtoken::Key::Pkcs8(&key);
+
+    Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8).context(ObjectErrorKind::Io)?)
 }
 
 fn request_new_token(
