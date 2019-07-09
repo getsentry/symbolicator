@@ -1,5 +1,5 @@
 ---
-title: Home
+title: Introduction
 ---
 
 <p align="center">
@@ -17,7 +17,7 @@ symbol repositories.
 
 Start the server with:
 
-```bash
+```shell
 $ symbolicator run -c config.yml
 ```
 
@@ -28,7 +28,7 @@ settings in this case.
 
 Write this to a file (`config.yml`):
 
-```yml
+```yaml
 cache_dir: "/tmp/symbolicator"
 bind: "0.0.0.0:3021"
 logging:

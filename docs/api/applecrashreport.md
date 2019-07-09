@@ -1,20 +1,21 @@
 ---
-title: Apple Crash Report
+title: POST /applecrashreport
 ---
 
 # Apple Crash Report
 
-```
-
-POST /applecrashreport?timeout=5&scope=123
+```http
+POST /applecrashreport?timeout=5&scope=123 HTTP/1.1
 Content-Type: multipart/form-data; boundary=xxx
 
 --xxx
 Content-Disposition: form-data; name="apple_crash_report"
-[text file contents]
 
+[text file contents]
 --xxx
 Content-Disposition: form-data; name="sources"
+Content-Type: application/json
+
 [
   {
     "id": "<uuid>",
@@ -23,7 +24,6 @@ Content-Disposition: form-data; name="sources"
   },
   ...
 ]
-
 --xxx--
 ```
 

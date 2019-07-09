@@ -1,11 +1,11 @@
 ---
-title: Minidump
+title: POST /minidump
 ---
 
 # Minidump Request
 
-```
-POST /minidump?timeout=5&scope=123
+```http
+POST /minidump?timeout=5&scope=123 HTTP/1.1
 Content-Type: multipart/form-data; boundary=xxx
 
 --xxx

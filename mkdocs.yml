@@ -1,4 +1,26 @@
-site_name: Symbolicator
-theme: readthedocs
+site_name: Sentry Symbolicator
+repo_url: https://github.com/getsentry/symbolicator
+site_author: Sentry
+theme:
+  name: material
+  logo: _static/icon.png
 markdown_extensions:
   - tables
+  - codehilite
+extra_css:
+  - '_css/extra.css'
+nav:
+  - index.md
+  - Advanced:
+    - advanced/caching.md
+    - advanced/system-architecture.md
+    - advanced/background-and-principles.md
+    - advanced/symbol-lookup.md
+    - advanced/symbol-server-compatibility.md
+  - API:
+    - api/index.md
+    - api/minidump.md
+    - api/symbolication.md
+    - api/applecrashreport.md
+    - api/response.md
+    - api/proxy.md

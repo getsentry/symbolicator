@@ -1,5 +1,5 @@
 ---
-title: Proxy
+title: Symbol Server Proxy
 ---
 
 # Symbol Server Proxy
