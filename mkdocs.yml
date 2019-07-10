@@ -12,9 +12,9 @@ extra_css:
 nav:
   - index.md
   - Advanced:
-    - advanced/caching.md
-    - advanced/system-architecture.md
     - advanced/background-and-principles.md
+    - advanced/system-architecture.md
+    - advanced/caching.md
     - advanced/symbol-lookup.md
     - advanced/symbol-server-compatibility.md
   - API:
