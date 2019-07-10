@@ -1,0 +1,11 @@
+---
+minVersion: '0.5.1'
+github:
+  owner: getsentry
+  repo: symbolicator
+targets: 
+  - name: github
+  - name: gh-pages
+
+changelog: CHANGELOG.md
+changelogPolicy: simple
