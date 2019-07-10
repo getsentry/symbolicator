@@ -217,7 +217,6 @@ fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
     ));
 
     let symbolication = Arc::new(SymbolicationActor::new(
-        objects.clone(),
         symcaches,
         cficaches,
         cpu_threadpool.clone(),
