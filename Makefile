@@ -41,7 +41,8 @@ docserver: .venv/bin/python
 
 travis-upload-docs: docs
 	cd site && zip -r gh-pages .
-	zeus upload -t "application/zip+docs" site/gh-pages.zip
+	zeus upload -t "application/zip+docs" site/gh-pages.zip \
+		|| [[ ! "$(TRAVIS_BRANCH)" =~ ^release/ ]]
 .PHONY: travis-upload-docs
 
 # Style checking
