@@ -251,7 +251,6 @@ pub struct DirectoryLayout {
     /// DirectoryLayout::Symstore, where servers are supposed to handle requests
     /// case-insensitively, but practically don't (in the case of S3 buckets it's not possible),
     /// making this aspect not well-specified.
-    #[serde(default)]
     pub casing: FilenameCasing,
 }
 
@@ -384,8 +383,7 @@ pub struct RawFrame {
     pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub package: Option<String>,
 
     /// The language of the symbol (function) this frame is located in.
@@ -417,7 +415,7 @@ pub struct RawFrame {
     pub lineno: Option<u32>,
 
     /// Source context before the context line
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre_context: Vec<String>,
 
     /// The context line if available.
@@ -425,12 +423,11 @@ pub struct RawFrame {
     pub context_line: Option<String>,
 
     /// Post context after the context line
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post_context: Vec<String>,
 
     /// Information about how the raw frame was created.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub trust: FrameTrust,
 }
 
@@ -456,13 +453,11 @@ pub struct RawObjectInfo {
     pub ty: ObjectType,
 
     /// Identifier of the code file.
-    #[serde(skip_serializing_if = "is_default")]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub code_id: Option<String>,
 
     /// Name of the code file.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub code_file: Option<String>,
 
     /// Identifier of the debug file.
@@ -470,16 +465,14 @@ pub struct RawObjectInfo {
     pub debug_id: Option<String>,
 
     /// Name of the debug file.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub debug_file: Option<String>,
 
     /// Absolute address at which the image was mounted into virtual memory.
     pub image_addr: HexValue,
 
     /// Size of the image in virtual memory.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub image_size: Option<u64>,
 }
 
@@ -547,8 +540,7 @@ pub struct CompleteStacktrace {
     pub is_requesting: Option<bool>,
 
     /// Registers, only useful when returning a processed minidump.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub registers: Registers,
 
     /// Frames of this stack trace.
