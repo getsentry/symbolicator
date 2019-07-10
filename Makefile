@@ -29,12 +29,12 @@ test-integration: .venv/bin/python
 # Documentation
 
 docs: .venv/bin/python
-	.venv/bin/pip install -U mkdocs
+	.venv/bin/pip install -U mkdocs mkdocs-material pygments
 	.venv/bin/mkdocs build
 .PHONY: docs
 
 docserver: .venv/bin/python
-	.venv/bin/pip install -U mkdocs
+	.venv/bin/pip install -U mkdocs mkdocs-material pygments
 	.venv/bin/mkdocs serve
 .PHONY: doc
 

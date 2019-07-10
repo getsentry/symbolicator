@@ -1,11 +1,12 @@
 ---
-title: Symbolication
+title: POST /symbolicate
 ---
 
 # Symbolication Request
 
-```
-POST /symbolicate?timeout=123&scope=123
+```http
+POST /symbolicate?timeout=123&scope=123 HTTP/1.1
+Content-Type: application/json
 
 {
   "signal": 11,
@@ -13,7 +14,7 @@ POST /symbolicate?timeout=123&scope=123
     {
       "id": "<uuid>",
       "type": "http",
-      ... // see "External Buckets"
+      ...
     },
     ...
   ],
@@ -21,7 +22,7 @@ POST /symbolicate?timeout=123&scope=123
     {
       "frames": [
         {
-          "instruction_addr": "0xfeedbeef" // can also be a number
+          "instruction_addr": "0xfeedbeef"
         },
         ...
       ],

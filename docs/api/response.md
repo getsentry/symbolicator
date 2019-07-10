@@ -1,5 +1,5 @@
 ---
-title: Response
+title: Symbolication Response
 ---
 
 # Symbolication Response
@@ -19,7 +19,7 @@ different data depending on the status of the symbolication job:
 Symbol server responds with _200 OK_ and the response payload listed below if
 symbolication succeeds within a configured timeframe (around 20 seconds):
 
-```js
+```javascript
 {
   "status": "complete",
 
@@ -80,7 +80,7 @@ responds with a backoff response. It will then continue to fetch symbols and
 symbolication. The response indicates the estimated time for symbol retrieval,
 after which the symbolication request can be expected to succeed:
 
-```js
+```javascript
 {
   "status": "pending",
   "request_id": "deadbeef",

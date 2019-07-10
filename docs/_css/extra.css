@@ -1,0 +1,21 @@
+footer.md-footer {
+    margin-top: 80px;
+}
+
+.md-header-nav__button.md-logo img {
+    width: 32px!important;
+    height: 32px!important;
+}
+
+.md-main__inner {
+    padding-top: 0.5rem;
+}
+
+.md-footer-copyright {
+    font-size: 0.75em;
+    margin: 0 auto;
+    display: block!important;
+    float: none;
+    max-width: initial;
+    text-align: center;
+}
