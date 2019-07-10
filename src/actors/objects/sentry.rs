@@ -21,7 +21,7 @@ use crate::types::{FileType, ObjectId, SentrySourceConfig};
 
 lazy_static::lazy_static! {
     static ref SENTRY_SEARCH_RESULTS: Mutex<lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>> =
-        Mutex::new(lru::LruCache::new(2000));
+        Mutex::new(lru::LruCache::new(100_000));
     static ref CLIENT_CONNECTOR: Addr<ClientConnector> = ClientConnector::default().start();
 }
 
