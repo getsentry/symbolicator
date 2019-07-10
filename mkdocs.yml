@@ -3,7 +3,7 @@ repo_url: https://github.com/getsentry/symbolicator
 site_author: Sentry
 theme:
   name: material
-  logo: _static/icon.png
+  logo: static/icon.png
 markdown_extensions:
   - tables
   - codehilite
