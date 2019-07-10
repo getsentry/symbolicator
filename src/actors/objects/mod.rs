@@ -170,6 +170,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
                             has_symbols: object.has_symbols(),
+                            has_sources: object.has_sources(),
                         };
 
                         serde_json::to_writer(&mut f, &meta).context(ObjectErrorKind::Io)?;
@@ -388,6 +389,8 @@ struct ObjectFileMetaInner {
     has_debug_info: bool,
     has_unwind_info: bool,
     has_symbols: bool,
+    #[serde(default)]
+    has_sources: bool,
 }
 
 /// Handle to local cache file of an object.
@@ -433,6 +436,10 @@ impl ObjectFile {
 
     pub fn cache_key(&self) -> &CacheKey {
         &self.cache_key
+    }
+
+    pub fn data(&self) -> ByteView<'static> {
+        self.data.clone()
     }
 }
 
@@ -481,6 +488,7 @@ pub struct FindObject {
 pub enum ObjectPurpose {
     Unwind,
     Debug,
+    Source,
 }
 
 impl ObjectsActor {
@@ -566,6 +574,7 @@ impl ObjectsActor {
                         ObjectPurpose::Unwind if object.meta.has_unwind_info => 0,
                         ObjectPurpose::Debug if object.meta.has_debug_info => 0,
                         ObjectPurpose::Debug if object.meta.has_symbols => 1,
+                        ObjectPurpose::Source if object.meta.has_sources => 0,
                         _ => 2,
                     };
 

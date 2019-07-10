@@ -12,7 +12,8 @@ use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, Shared
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{join_path, Arch, ByteView, CodeId, DebugId, InstructionInfo, Language};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
+use symbolic::debuginfo::Object;
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
@@ -24,6 +25,7 @@ use uuid;
 use crate::actors::cficaches::{
     CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
 };
+use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
 use crate::actors::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
@@ -31,9 +33,10 @@ use crate::hex::HexValue;
 use crate::logging::LogError;
 use crate::sentry::SentryFutureExt;
 use crate::types::{
-    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
-    RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
+    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
+    FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
+    Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
+    SystemInfo,
 };
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -103,6 +106,7 @@ type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
 
 #[derive(Clone)]
 pub struct SymbolicationActor {
+    objects: Arc<ObjectsActor>,
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
     threadpool: Arc<ThreadPool>,
@@ -111,6 +115,7 @@ pub struct SymbolicationActor {
 
 impl SymbolicationActor {
     pub fn new(
+        objects: Arc<ObjectsActor>,
         symcaches: Arc<SymCacheActor>,
         cficaches: Arc<CfiCacheActor>,
         threadpool: Arc<ThreadPool>,
@@ -118,6 +123,7 @@ impl SymbolicationActor {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
 
         SymbolicationActor {
+            objects,
             symcaches,
             cficaches,
             threadpool,
@@ -250,6 +256,155 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawO
             0 => None,
             size => Some(size),
         },
+    }
+}
+
+pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
+
+struct SourceLookup {
+    inner: Vec<(CompleteObjectInfo, Option<Arc<SourceObject>>)>,
+}
+
+impl SourceLookup {
+    pub fn fetch_sources(
+        self,
+        objects: Arc<ObjectsActor>,
+        scope: Scope,
+        sources: Arc<Vec<SourceConfig>>,
+        response: &CompletedSymbolicationResponse,
+    ) -> impl Future<Item = Self, Error = SymbolicationError> {
+        let mut referenced_objects = BTreeSet::new();
+        let stacktraces = &response.stacktraces;
+
+        for stacktrace in stacktraces {
+            for frame in &stacktrace.frames {
+                if let Some(i) = self.get_object_index_by_addr(frame.raw.instruction_addr.0) {
+                    referenced_objects.insert(i);
+                }
+            }
+        }
+
+        future::join_all(self.inner.into_iter().enumerate().map(
+            move |(i, (mut object_info, _))| {
+                if !referenced_objects.contains(&i) {
+                    object_info.debug_status = ObjectFileStatus::Unused;
+                    return Either::B(Ok((object_info, None)).into_future());
+                }
+
+                Either::A(
+                    objects
+                        .find(FindObject {
+                            filetypes: FileType::sources(),
+                            purpose: ObjectPurpose::Source,
+                            scope: scope.clone(),
+                            identifier: object_id_from_object_info(&object_info.raw),
+                            sources: sources.clone(),
+                        })
+                        .and_then(clone!(objects, |opt_object_file_meta| {
+                            match opt_object_file_meta {
+                                None => Either::A(Ok(None).into_future()),
+                                Some(object_file_meta) => {
+                                    Either::B(objects.fetch(object_file_meta).and_then(
+                                        |x| -> Result<_, ObjectError> {
+                                            SelfCell::try_new(x.data(), |b| {
+                                                Object::parse(unsafe { &*b })
+                                            })
+                                            .map(|x| Some(Arc::new(SourceObject(x))))
+                                            .or_else(|_| Ok(None))
+                                        },
+                                    ))
+                                }
+                            }
+                        }))
+                        .or_else(|_| Ok(None))
+                        .map(move |object_file_opt| (object_info, object_file_opt)),
+                )
+            },
+        ))
+        .map(|results| SourceLookup {
+            inner: results.into_iter().collect(),
+        })
+    }
+
+    pub fn get_context_lines(
+        &self,
+        addr: u64,
+        abs_path: &str,
+        lineno: u32,
+        n: usize,
+    ) -> Option<(Vec<String>, String, Vec<String>)> {
+        let lineno = lineno as usize;
+        let index = self.get_object_index_by_addr(addr)?;
+        let object = self.inner[index].1.as_ref()?;
+
+        let session = object.0.get().debug_session().ok()?;
+        let source = session.source_by_path(abs_path).ok()??;
+
+        let start_line = lineno.saturating_sub(n);
+        let line_diff = lineno - start_line;
+
+        let mut lines = source.lines().skip(start_line);
+        let pre_context = (&mut lines)
+            .take(line_diff.saturating_sub(1))
+            .map(|x| x.to_string())
+            .collect();
+        let context = lines.next()?.to_string();
+        let post_context = lines.take(n).map(|x| x.to_string()).collect();
+
+        Some((pre_context, context, post_context))
+    }
+
+    fn get_object_index_by_addr(&self, addr: u64) -> Option<usize> {
+        for (i, (info, _)) in self.inner.iter().enumerate() {
+            let start_addr = info.raw.image_addr.0;
+
+            if start_addr > addr {
+                // The debug image starts at a too high address
+                continue;
+            }
+
+            let size = info.raw.image_size.unwrap_or(0);
+            if let Some(end_addr) = start_addr.checked_add(size) {
+                if end_addr < addr && size != 0 {
+                    // The debug image ends at a too low address and we're also confident that
+                    // end_addr is accurate (size != 0)
+                    continue;
+                }
+            }
+
+            return Some(i);
+        }
+
+        None
+    }
+
+    fn sort(&mut self) {
+        self.inner.sort_by_key(|(info, _)| info.raw.image_addr.0);
+
+        // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
+        // some.
+        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
+            // If this underflows we didn't sort properly.
+            let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
+            if info1.raw.image_size.unwrap_or(0) == 0 {
+                info1.raw.image_size = Some(size);
+            }
+
+            false
+        });
+    }
+}
+
+impl FromIterator<CompleteObjectInfo> for SourceLookup {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = CompleteObjectInfo>,
+    {
+        let mut rv = SourceLookup {
+            inner: iter.into_iter().map(|x| (x, None)).collect(),
+        };
+        rv.sort();
+        rv
     }
 }
 
@@ -442,20 +597,19 @@ fn symbolicate_frame(
             Err(_) => return Err(FrameStatus::Malformed),
         };
 
-        // The logic for filename and abs_path intentionally diverges from how symbolic is
-        // used inside of Sentry right now.
+        // The logic for filename and abs_path intentionally diverges from how symbolic is used
+        // inside of Sentry right now.
         let (filename, abs_path) = {
-            let comp_dir = line_info.compilation_dir();
             let rel_path = line_info.path();
-            let abs_path = join_path(&comp_dir, &rel_path);
+            let abs_path = line_info.abs_path();
 
             if abs_path == rel_path {
                 // rel_path is absolute and therefore not usable for `filename`. Use the
                 // basename as filename.
                 (line_info.filename().to_owned(), abs_path.to_owned())
             } else {
-                // rel_path is relative (probably to the compilation dir) and therefore
-                // useful as filename for Sentry.
+                // rel_path is relative (probably to the compilation dir) and therefore useful
+                // as filename for Sentry.
                 (rel_path.to_owned(), abs_path.to_owned())
             }
         };
@@ -488,6 +642,9 @@ fn symbolicate_frame(
                     frame.filename.clone()
                 },
                 lineno: Some(line_info.line()),
+                pre_context: vec![],
+                context_line: None,
+                post_context: vec![],
                 sym_addr: Some(HexValue(
                     object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
@@ -591,22 +748,26 @@ impl SymbolicationActor {
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
         let signal = request.signal;
         let stacktraces = request.stacktraces.clone();
+        let objects = self.objects.clone();
 
         let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
+        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
+        let sources = request.sources.clone();
+        let scope = request.scope.clone();
 
         let threadpool = self.threadpool.clone();
 
         let result = symcache_lookup
             .fetch_symcaches(self.symcaches.clone(), request)
-            .and_then(move |object_lookup| {
+            .and_then(move |symcache_lookup| {
                 threadpool.spawn_handle(
                     future::lazy(move || {
                         let stacktraces: Vec<_> = stacktraces
                             .into_iter()
-                            .map(|trace| symbolicate_stacktrace(trace, &object_lookup, signal))
+                            .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
                             .collect();
 
-                        let modules: Vec<_> = object_lookup
+                        let modules: Vec<_> = symcache_lookup
                             .inner
                             .into_iter()
                             .map(|(object_info, _)| {
@@ -637,6 +798,29 @@ impl SymbolicationActor {
                     })
                     .sentry_hub_current(),
                 )
+            })
+            .and_then(move |response| {
+                source_lookup
+                    .fetch_sources(objects, scope, sources, &response)
+                    .map(move |source_lookup| (source_lookup, response))
+            })
+            .map(|(source_lookup, mut response)| {
+                for trace in &mut response.stacktraces {
+                    for frame in &mut trace.frames {
+                        let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                            (&Some(ref abs_path), Some(lineno)) => (abs_path.as_str(), lineno),
+                            _ => continue,
+                        };
+                        if let Some((pre_context, context_line, post_context)) = source_lookup
+                            .get_context_lines(frame.raw.instruction_addr.0, abs_path, lineno, 5)
+                        {
+                            frame.raw.pre_context = pre_context;
+                            frame.raw.context_line = Some(context_line);
+                            frame.raw.post_context = post_context;
+                        }
+                    }
+                }
+                response
             });
 
         future_metrics!(

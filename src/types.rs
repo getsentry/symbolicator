@@ -251,7 +251,6 @@ pub struct DirectoryLayout {
     /// DirectoryLayout::Symstore, where servers are supposed to handle requests
     /// case-insensitively, but practically don't (in the case of S3 buckets it's not possible),
     /// making this aspect not well-specified.
-    #[serde(default)]
     pub casing: FilenameCasing,
 }
 
@@ -384,8 +383,7 @@ pub struct RawFrame {
     pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub package: Option<String>,
 
     /// The language of the symbol (function) this frame is located in.
@@ -416,9 +414,20 @@ pub struct RawFrame {
     #[serde(skip_serializing_if = "is_default")]
     pub lineno: Option<u32>,
 
+    /// Source context before the context line
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pre_context: Vec<String>,
+
+    /// The context line if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_line: Option<String>,
+
+    /// Post context after the context line
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub post_context: Vec<String>,
+
     /// Information about how the raw frame was created.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub trust: FrameTrust,
 }
 
@@ -444,13 +453,11 @@ pub struct RawObjectInfo {
     pub ty: ObjectType,
 
     /// Identifier of the code file.
-    #[serde(skip_serializing_if = "is_default")]
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub code_id: Option<String>,
 
     /// Name of the code file.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub code_file: Option<String>,
 
     /// Identifier of the debug file.
@@ -458,16 +465,14 @@ pub struct RawObjectInfo {
     pub debug_id: Option<String>,
 
     /// Name of the debug file.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub debug_file: Option<String>,
 
     /// Absolute address at which the image was mounted into virtual memory.
     pub image_addr: HexValue,
 
     /// Size of the image in virtual memory.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub image_size: Option<u64>,
 }
 
@@ -535,8 +540,7 @@ pub struct CompleteStacktrace {
     pub is_requesting: Option<bool>,
 
     /// Registers, only useful when returning a processed minidump.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub registers: Registers,
 
     /// Frames of this stack trace.
@@ -739,6 +743,8 @@ pub enum FileType {
     /// Breakpad files (this is the reason we have a flat enum for what at first sight could've
     /// been two enums)
     Breakpad,
+    /// Source bundle
+    SourceBundle,
 }
 
 impl FileType {
@@ -746,7 +752,22 @@ impl FileType {
     #[inline]
     pub fn all() -> &'static [Self] {
         use FileType::*;
-        &[Pdb, MachDebug, ElfDebug, Pe, MachCode, ElfCode, Breakpad]
+        &[
+            Pdb,
+            MachDebug,
+            ElfDebug,
+            Pe,
+            MachCode,
+            ElfCode,
+            Breakpad,
+            SourceBundle,
+        ]
+    }
+
+    /// Source providing file types.
+    #[inline]
+    pub fn sources() -> &'static [Self] {
+        &[FileType::SourceBundle]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.
@@ -772,6 +793,7 @@ impl AsRef<str> for FileType {
             FileType::ElfDebug => "elf_debug",
             FileType::ElfCode => "elf_code",
             FileType::Breakpad => "breakpad",
+            FileType::SourceBundle => "sourcebundle",
         }
     }
 }
