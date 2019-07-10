@@ -1,0 +1,976 @@
+
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <meta http-equiv="x-ua-compatible" content="ie=edge">
+      
+      
+      
+        <meta name="author" content="Sentry">
+      
+      
+        <meta name="lang:clipboard.copy" content="Copy to clipboard">
+      
+        <meta name="lang:clipboard.copied" content="Copied to clipboard">
+      
+        <meta name="lang:search.language" content="en">
+      
+        <meta name="lang:search.pipeline.stopwords" content="True">
+      
+        <meta name="lang:search.pipeline.trimmer" content="True">
+      
+        <meta name="lang:search.result.none" content="No matching documents">
+      
+        <meta name="lang:search.result.one" content="1 matching document">
+      
+        <meta name="lang:search.result.other" content="# matching documents">
+      
+        <meta name="lang:search.tokenizer" content="[\s\-]+">
+      
+      <link rel="shortcut icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.4.0">
+    
+    
+      
+        <title>Symbol Server Compatibility - Sentry Symbolicator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/application.0284f74d.css">
+      
+      
+    
+    
+      <script src="../../assets/javascripts/modernizr.74668098.js"></script>
+    
+    
+      
+        <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700|Roboto+Mono&display=fallback">
+        <style>body,input{font-family:"Roboto","Helvetica Neue",Helvetica,Arial,sans-serif}code,kbd,pre{font-family:"Roboto Mono","Courier New",Courier,monospace}</style>
+      
+    
+    <link rel="stylesheet" href="../../assets/fonts/material-icons.css">
+    
+    
+      <link rel="stylesheet" href="../../_css/extra.css">
+    
+    
+      
+    
+    
+  </head>
+  
+    <body dir="ltr">
+  
+    <svg class="md-svg">
+      <defs>
+        
+        
+          <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448" viewBox="0 0 416 448" id="__github"><path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19T128 352t-18.125-8.5-10.75-19T96 304t3.125-20.5 10.75-19T128 256t18.125 8.5 10.75 19T160 304zm160 0q0 10-3.125 20.5t-10.75 19T288 352t-18.125-8.5-10.75-19T256 304t3.125-20.5 10.75-19T288 256t18.125 8.5 10.75 19T320 304zm40 0q0-30-17.25-51T296 232q-10.25 0-48.75 5.25Q229.5 240 208 240t-39.25-2.75Q130.75 232 120 232q-29.5 0-46.75 21T56 304q0 22 8 38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0 37.25-1.75t35-7.375 30.5-15 20.25-25.75T360 304zm56-44q0 51.75-15.25 82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5T212 416q-19.5 0-35.5-.75t-36.875-3.125-38.125-7.5-34.25-12.875T37 371.5t-21.5-28.75Q0 312 0 260q0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25 30.875Q171.5 96 212 96q37 0 70 8 26.25-20.5 46.75-30.25T376 64q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34 99.5z"/></svg>
+        
+      </defs>
+    </svg>
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+    
+      <a href="#symbol-server-compatibility" tabindex="1" class="md-skip">
+        Skip to content
+      </a>
+    
+    
+      <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="../.." title="Sentry Symbolicator" class="md-header-nav__button md-logo">
+          
+            <img src="../../_static/icon.png" width="24" height="24">
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          
+            <span class="md-header-nav__topic">
+              Sentry Symbolicator
+            </span>
+            <span class="md-header-nav__topic">
+              
+                Symbol Server Compatibility
+              
+            </span>
+          
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        
+          <label class="md-icon md-icon--search md-header-nav__button" for="__search"></label>
+          
+<div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="query" data-md-state="active">
+      <label class="md-icon md-search__icon" for="__search"></label>
+      <button type="reset" class="md-icon md-search__icon" data-md-component="reset" tabindex="-1">
+        &#xE5CD;
+      </button>
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="result">
+          <div class="md-search-result__meta">
+            Type to start searching
+          </div>
+          <ol class="md-search-result__list"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+        
+      </div>
+      
+        <div class="md-flex__cell md-flex__cell--shrink">
+          <div class="md-header-nav__source">
+            
+
+
+  
+
+<a href="https://github.com/getsentry/symbolicator/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+          </div>
+        </div>
+      
+    </div>
+  </nav>
+</header>
+    
+    <div class="md-container">
+      
+        
+      
+      
+      <main class="md-main">
+        <div class="md-main__inner md-grid" data-md-component="container">
+          
+            
+              <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="../.." title="Sentry Symbolicator" class="md-nav__button md-logo">
+      
+        <img src="../../_static/icon.png" width="48" height="48">
+      
+    </a>
+    Sentry Symbolicator
+  </label>
+  
+    <div class="md-nav__source">
+      
+
+
+  
+
+<a href="https://github.com/getsentry/symbolicator/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../.." title="Introduction" class="md-nav__link">
+      Introduction
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2" checked>
+    
+    <label class="md-nav__link" for="nav-2">
+      Advanced
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-2">
+        Advanced
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../caching/" title="Caching" class="md-nav__link">
+      Caching
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../system-architecture/" title="System Architecture" class="md-nav__link">
+      System Architecture
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../background-and-principles/" title="Background and Principles" class="md-nav__link">
+      Background and Principles
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../symbol-lookup/" title="Lookup Strategy" class="md-nav__link">
+      Lookup Strategy
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active">
+    
+    <input class="md-toggle md-nav__toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+    
+      
+    
+    
+      <label class="md-nav__link md-nav__link--active" for="__toc">
+        Symbol Server Compatibility
+      </label>
+    
+    <a href="./" title="Symbol Server Compatibility" class="md-nav__link md-nav__link--active">
+      Symbol Server Compatibility
+    </a>
+    
+      
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" title="Prerequisites" class="md-nav__link">
+    Prerequisites
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identifiers" title="Identifiers" class="md-nav__link">
+    Identifiers
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#case-sensitivity" title="Case Sensitivity" class="md-nav__link">
+    Case Sensitivity
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compression" title="Compression" class="md-nav__link">
+    Compression
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-servers" title="Supported Servers" class="md-nav__link">
+    Supported Servers
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#breakpad" title="Breakpad" class="md-nav__link">
+    Breakpad
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#microsoft-symbol-server" title="Microsoft Symbol Server" class="md-nav__link">
+    Microsoft Symbol Server
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#microsoft-ssqp-symbol-server" title="Microsoft SSQP Symbol Server" class="md-nav__link">
+    Microsoft SSQP Symbol Server
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lldb-debugger-macos" title="LLDB Debugger (macOS)" class="md-nav__link">
+    LLDB Debugger (macOS)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gdb" title="GDB" class="md-nav__link">
+    GDB
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-servers" title="Other Servers" class="md-nav__link">
+    Other Servers
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fedora-darkserver" title="Fedora Darkserver" class="md-nav__link">
+    Fedora Darkserver
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mozilla-tecken" title="Mozilla Tecken" class="md-nav__link">
+    Mozilla Tecken
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+    
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3">
+    
+    <label class="md-nav__link" for="nav-3">
+      API
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-3">
+        API
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/" title="Overview" class="md-nav__link">
+      Overview
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/minidump/" title="POST /minidump" class="md-nav__link">
+      POST /minidump
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/symbolication/" title="POST /symbolicate" class="md-nav__link">
+      POST /symbolicate
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/applecrashreport/" title="POST /applecrashreport" class="md-nav__link">
+      POST /applecrashreport
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/response/" title="Symbolication Response" class="md-nav__link">
+      Symbolication Response
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/proxy/" title="Symbol Server Proxy" class="md-nav__link">
+      Symbol Server Proxy
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" title="Prerequisites" class="md-nav__link">
+    Prerequisites
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#identifiers" title="Identifiers" class="md-nav__link">
+    Identifiers
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#case-sensitivity" title="Case Sensitivity" class="md-nav__link">
+    Case Sensitivity
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compression" title="Compression" class="md-nav__link">
+    Compression
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-servers" title="Supported Servers" class="md-nav__link">
+    Supported Servers
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#breakpad" title="Breakpad" class="md-nav__link">
+    Breakpad
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#microsoft-symbol-server" title="Microsoft Symbol Server" class="md-nav__link">
+    Microsoft Symbol Server
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#microsoft-ssqp-symbol-server" title="Microsoft SSQP Symbol Server" class="md-nav__link">
+    Microsoft SSQP Symbol Server
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lldb-debugger-macos" title="LLDB Debugger (macOS)" class="md-nav__link">
+    LLDB Debugger (macOS)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gdb" title="GDB" class="md-nav__link">
+    GDB
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-servers" title="Other Servers" class="md-nav__link">
+    Other Servers
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fedora-darkserver" title="Fedora Darkserver" class="md-nav__link">
+    Fedora Darkserver
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mozilla-tecken" title="Mozilla Tecken" class="md-nav__link">
+    Mozilla Tecken
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          <div class="md-content">
+            <article class="md-content__inner md-typeset">
+              
+                
+                  <a href="https://github.com/getsentry/symbolicator/edit/master/docs/advanced/symbol-server-compatibility.md" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
+                
+                
+                <h1 id="symbol-server-compatibility">Symbol Server Compatibility</h1>
+<p>This page describes external sources supported by Symbolicator.</p>
+<p>The layout of external sources intends to be compatible to several symbol server
+implementations that have been used historically by different platforms. We
+commit to provide compatibility to the following services or directory
+structures:</p>
+<ul>
+<li>Microsoft Symbol Server</li>
+<li>Breakpad Symbol Repositories</li>
+<li>LLDB File Mapped UUID Directories</li>
+<li>GDB Build ID Directories</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<h3 id="identifiers">Identifiers</h3>
+<p>There are two fundamentally different identifiers. Their semantics fundamentally
+depend on the symbol type, but follow certain rules:</p>
+<ul>
+<li><strong>Code Identifier:</strong> Identifies the actual executable or library file (e.g.
+  EXE or DLL)</li>
+<li><strong>Debug Identifier:</strong> Identifies a debug companion file (e.g. PDB)</li>
+</ul>
+<p>On all platforms other than Windows, binaries and debug companion files use the
+same file type and share the same container. The Breakpad library has thus
+changed the semantics of those identifiers for all other platforms to:</p>
+<ul>
+<li><strong>Code Identifier:</strong> The original platform-specific identifier</li>
+<li><strong>Debug Identifier:</strong> A potentially lossy transformation of the code
+  identifier into a unified format similar to the PDB debug identifiers.</li>
+</ul>
+<p>Specifically, the code and debug identifiers are defined as follows:</p>
+<p><strong>ELF</strong>:</p>
+<ul>
+<li><strong>Code ID:</strong> The contents of the <code>.note.gnu.build-id</code> section, or if not
+  present the value of the <code>NT_GNU_BUILD_ID</code> program header. This value is
+  traditionally 20 bytes formatted as hex string (40 characters). If neither
+  are present, there is no code id.</li>
+<li><strong>Debug ID:</strong> The first 16 bytes of the GNU build id interpreted as
+  little-endian GUID. This flips the byte order of the first three components
+  in the build ID. An <em>age</em> of <code>0</code> is appended at the end. The remaining bytes
+  of the build ID are discarded. This identifier is only specified by
+  Breakpad, but by SSQP.</li>
+</ul>
+<p><strong>MachO</strong>:</p>
+<ul>
+<li><strong>Code ID:</strong> The UUID as specified in the <code>LC_UUID</code> load command header.
+  Breakpad does not save this value explicitly since it can be converted
+  bidirectionally from the UUID.</li>
+<li><strong>Debug ID:</strong> The same UUID, amended by a <code>0</code> for age.</li>
+</ul>
+<p><strong>PE</strong> / <strong>PDB</strong>:</p>
+<ul>
+<li><strong>Code ID:</strong> The hex value of the <code>time_date_stamp</code> in the COFF header
+  formatted as <code>%08X</code> followed by <code>size_of_image</code> in the optional header
+  formatted as <code>%X</code> (variable length). This value is always read from the PE -
+  computing this from a PDB is not possible without locating the according PE.</li>
+<li><strong>Debug ID:</strong> The <code>signature</code> and <code>age</code> (<code>%X</code> variable length) fields from
+  the debug information stream in the PDB. The fields in the signature GUID
+  are converted to network byte order first. This identifier can also be
+  computed from a PE by reading the <code>code_view_pdb_70</code> records.</li>
+</ul>
+<p><strong>Breakpad</strong>:</p>
+<ul>
+<li><strong>Code ID:</strong> If applicable, Breakpad symbols will contain a <code>INFO CODE_ID</code>
+  record in the second line. Otherwise, the code ID is equal to the Debug ID.</li>
+<li><strong>Debug ID</strong>: Value of the identifier field in the <code>MODULE</code> record, always
+  in the first line of the file.</li>
+</ul>
+<h3 id="case-sensitivity">Case Sensitivity</h3>
+<p>Most symbol servers explicitly define <strong>case insensitive</strong> lookup semantics.
+This goes in particular for the Microsoft Public Symbol Server. However, the
+canonical representation on the file system is not necessarily case insensitive,
+for example when the files are stored on an Amazon S3 bucket. Since this is a
+hard restriction, the case for lookups is explicitly defined for each source
+below. Please pay attention to the casing rules!</p>
+<h3 id="compression">Compression</h3>
+<p>Symbolicator supports a range of compression formats (zlib, gzip, zstd and cab).
+For cab compression, the <code>cabextract</code> binary needs to be installed. If the debug
+file is already compressed, it will be auto-detected and extracted. For PE/PDB
+files, Symbolicator also supports the Microsoft convention of replacing the last
+character in the filename with an underscore.</p>
+<h2 id="supported-servers">Supported Servers</h2>
+<h3 id="breakpad">Breakpad</h3>
+<p>Breakpad always computes a "Breakpad ID" for each symbol. This is a lossy
+process depending on the file type. Sentry stores a bidirectionally compatible
+version of this in the <code>debug_id</code> field.</p>
+<p>The name of the symbol file is platform dependent. On Windows, the file
+extension (Either <em>.exe</em>, <em>.dll</em> or <em>.pdb</em>) is replaced with <em>.sym</em>. On all
+other platforms, the <em>.sym</em> extension is <strong>appended</strong> to the full file name
+including potential extensions.</p>
+<p>Casing rules are mixed:</p>
+<ul>
+<li>The file name is <strong>as given</strong></li>
+<li>The signature part of the id (first 32 characters) are <strong>uppercase</strong></li>
+<li>The age part of the id (remaining characters) are <strong>lowercase</strong></li>
+</ul>
+<p><strong>Schema</strong>: <code>&lt;debug_name&gt;/&lt;breakpad-id&gt;/&lt;sym_name&gt;</code></p>
+<h3 id="microsoft-symbol-server">Microsoft Symbol Server</h3>
+<p>The public symbol server provided by Microsoft used to only host PDBs for the
+Windows platform. These use a <em>signature-age</em> debug identifier in addition to
+the file name to locate symbols. For .NET, this specification was amended by a
+schema for ELF and MachO-symbols, which is specified as <a href="https://github.com/dotnet/symstore/blob/master/docs/specs/SSQP_Key_Conventions.md">SSQP Key Conventions</a>.
+This means all non windows platforms are following SSQP rules except for casing.</p>
+<p>Casing rules for Symbol Server are mixed:</p>
+<ul>
+<li>Filenames are <strong>as given</strong></li>
+<li>Identifiers are generally <strong>lowercase</strong>, except:</li>
+<li>The signature and age of a PDB identifier is <strong>uppercase</strong>.</li>
+<li>The timestamp of a PE identifier is <strong>uppercase</strong> except the size is
+  <strong>lowercase</strong></li>
+</ul>
+<p><strong>Schema</strong>:</p>
+<ul>
+<li><strong>PE</strong>: <code>&lt;code_name&gt;/&lt;Timestamp&gt;&lt;SizeOfImage&gt;/&lt;code_name&gt;</code></li>
+<li><strong>PDB</strong>: <code>&lt;debug_name&gt;/&lt;Signature&gt;&lt;Age&gt;/&lt;debug_name&gt;</code></li>
+<li><strong>ELF</strong> (binary, potentially stripped):
+  <code>&lt;code_name&gt;/elf-buildid-&lt;note_byte_sequence&gt;/&lt;code_name&gt;</code></li>
+<li><strong>ELF</strong> (debug info): <code>_.debug/elf-buildid-sym-&lt;note_byte_sequence&gt;/_.debug</code></li>
+<li><strong>MachO</strong> (binary): <code>&lt;code_name&gt;/mach-uuid-&lt;uuid_bytes&gt;/&lt;code_name&gt;</code></li>
+<li><strong>MachO</strong> (dSYM): <code>_.dwarf/mach-uuid-sym-&lt;uuid_bytes&gt;/_.dwarf</code></li>
+</ul>
+<p>The presence of a <code>index2.txt</code> in the root indicates two tier structure where
+the first two characters are prepended to the path as an additional folder. So
+<code>foo.exe/542D5742000f2000/foo.exe</code> is stored as
+<code>fo/foo.exe/542D5742000f2000/foo.exe</code>.</p>
+<h3 id="microsoft-ssqp-symbol-server">Microsoft SSQP Symbol Server</h3>
+<p>Casing rules for SSQP are mixed:</p>
+<ul>
+<li>Filenames are <strong>lowercased</strong></li>
+<li>Identifiers are generally <strong>lowercase</strong>, except:</li>
+<li>
+<p>The age of a PDB identifier is <strong>uppercase</strong>.</p>
+</li>
+<li>
+<p><strong>PE</strong>: <code>&lt;code_name&gt;/&lt;Timestamp&gt;&lt;SizeOfImage&gt;/&lt;code_name&gt;</code></p>
+</li>
+<li><strong>PDB</strong>: <code>&lt;debug_name&gt;/&lt;Signature&gt;&lt;Age&gt;/&lt;debug_name&gt;</code></li>
+<li><strong>ELF</strong> (binary, potentially stripped):
+  <code>&lt;code_name&gt;/elf-buildid-&lt;note_byte_sequence&gt;/&lt;code_name&gt;</code></li>
+<li><strong>ELF</strong> (debug info): <code>_.debug/elf-buildid-sym-&lt;note_byte_sequence&gt;/_.debug</code></li>
+<li><strong>MachO</strong> (binary): <code>&lt;code_name&gt;/mach-uuid-&lt;uuid_bytes&gt;/&lt;code_name&gt;</code></li>
+<li><strong>MachO</strong> (dSYM): <code>_.dwarf/mach-uuid-sym-&lt;uuid_bytes&gt;/_.dwarf</code></li>
+</ul>
+<p>Additionally, SSQP supports a lookup by SHA1 checksum over the file contents,
+commonly used for source file lookups. This will not be supported.</p>
+<h3 id="lldb-debugger-macos">LLDB Debugger (macOS)</h3>
+<p>The LLDB debugger on macOS can read debug symbols from <a href="http://lldb.llvm.org/use/symbols.html#file-mapped-uuid-directories">File Mapped UUID
+Directories</a> (scroll down to the second last section). The UUID is broken up by
+splitting the first 20 hex digits into 4 character chunks, and a directory is
+created for each chunk. In the final directory, LLDB usually expects a symlink
+named by the last 12 hex digits, which it follows to the actual dSYM file.</p>
+<p><strong>Note</strong>: this is not actually an LLVM feature. This is in fact a feature of
+<code>CoreFoundation</code> and exclusively implemented on macOS on top of spotlight.
+Spotlight indexes these paths and the private <code>DBGCopyFullDSYMURLForUUID</code> API is
+used by lldb to locate the symbols. macOS uses the symlinks of those locations.</p>
+<p>Since the executable or library shares the same UUID as the dSYM file, the
+former are distinguished with a <code>.app</code> suffix.</p>
+<p>The hex digits are <strong>uppercase</strong>, the app suffix is <strong>lowercase</strong>.</p>
+<ul>
+<li><strong>MachO</strong> (binary): <code>XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX.app</code></li>
+<li><strong>MachO</strong> (dSYM): <code>XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX</code></li>
+</ul>
+<h3 id="gdb">GDB</h3>
+<p><a href="https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html">GDB</a> supports multiple lookup methods, depending on the way the debug info file
+is specified. However, not all of these methods are applicable to a symbol
+server:</p>
+<ul>
+<li><strong>Debug Link Method:</strong> GDB looks up the name or relative path specified in the
+  <code>.gnu.debuglink</code> section. This requires the debug file to be in a relative
+  position to the actual executable, and does not provide any means to
+  distinguish by a unique identifier.</li>
+<li><strong>Build ID Method:</strong> Assuming that a GNU build ID note or section have been
+  written to the ELF file, this specifies a unique identifier for the executable
+  which is also retained in the debug file. This method is applicable to a
+  symbol server, but only if the Build ID is present.</li>
+</ul>
+<p>The GNU build ID is a variable-length binary string, usually consisting of a
+20-byte SHA1 hash of the code section (<code>.text</code>). The lookup path is
+<em>nn/nnnnnnnn.debug</em>, where <em>nn</em> are the first 2 hex characters of the build ID
+bit string, and <em>nnnnnnnn</em> are the rest of the bit string. To look up
+executables, the <code>.debug</code> suffix is omitted.</p>
+<p>The build-id hex representation is always provided in <strong>lowercase</strong>.</p>
+<ul>
+<li><strong>ELF</strong> (binary, potentially stripped)</li>
+<li><strong>ELF</strong> (debug info)</li>
+</ul>
+<h2 id="other-servers">Other Servers</h2>
+<p>The following additional sources were considered but are not implemented right
+now:</p>
+<h3 id="fedora-darkserver">Fedora Darkserver</h3>
+<p>In 2010, Fedora launched a project called "Darkserver" that aimed to provide a
+symbol server for various libraries. In 2012, it seemed to have contained
+symbols for Debian and Ubuntu as well.</p>
+<p>However, this projects seems to have been abandoned since and there is only
+little information available. For now, there is no intention to support
+Darkserver.</p>
+<h3 id="mozilla-tecken">Mozilla Tecken</h3>
+<p>Tecken is the symbol server implementation used at Mozilla. The symbol file
+paths are compatible to Google's Breakpad symbol server. An example of available
+symbols can be viewed at <a href="https://symbols.mozilla.org/downloads/missing">symbols.mozilla.org</a>.</p>
+<p>Tecken internally implements a client for the Microsoft Symbol Server to forward
+downloads for missing symbols. While doing that, it attempts to replace the last
+character in the URL with an underscore to look up compressed symbols. In any
+case Tecken tries both variants. Example: <code>foo.exe/&lt;id&gt;/foo.ex_</code>. Microsoft
+Symbol Server no longer supports this.</p>
+                
+                  
+                
+              
+              
+                
+
+
+              
+            </article>
+          </div>
+        </div>
+      </main>
+      
+        
+<footer class="md-footer">
+  
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+        
+          <a href="../symbol-lookup/" title="Lookup Strategy" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+            </div>
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Previous
+                </span>
+                Lookup Strategy
+              </span>
+            </div>
+          </a>
+        
+        
+          <a href="../../api/" title="Overview" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Next
+                </span>
+                Overview
+              </span>
+            </div>
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-forward md-footer-nav__button"></i>
+            </div>
+          </a>
+        
+      </nav>
+    </div>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-footer-copyright">
+        
+        powered by
+        <a href="https://www.mkdocs.org">MkDocs</a>
+        and
+        <a href="https://squidfunk.github.io/mkdocs-material/">
+          Material for MkDocs</a>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    
+      <script src="../../assets/javascripts/application.245445c6.js"></script>
+      
+      <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
+      
+    
+  </body>
+</html>

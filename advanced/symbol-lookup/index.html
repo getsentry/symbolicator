@@ -38,7 +38,7 @@
     
     
       
-        <title>POST /symbolicate</title>
+        <title>Lookup Strategy - Sentry Symbolicator</title>
       
     
     
@@ -81,7 +81,7 @@
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
     
-      <a href="#symbolication-request" tabindex="1" class="md-skip">
+      <a href="#lookup-strategy" tabindex="1" class="md-skip">
         Skip to content
       </a>
     
@@ -107,7 +107,7 @@
             </span>
             <span class="md-header-nav__topic">
               
-                POST /symbolicate
+                Lookup Strategy
               
             </span>
           
@@ -228,10 +228,12 @@
       
       
 
+  
 
-  <li class="md-nav__item md-nav__item--nested">
+
+  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
     
-      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2">
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2" checked>
     
     <label class="md-nav__link" for="nav-2">
       Advanced
@@ -249,7 +251,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/caching/" title="Caching" class="md-nav__link">
+    <a href="../caching/" title="Caching" class="md-nav__link">
       Caching
     </a>
   </li>
@@ -261,7 +263,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/system-architecture/" title="System Architecture" class="md-nav__link">
+    <a href="../system-architecture/" title="System Architecture" class="md-nav__link">
       System Architecture
     </a>
   </li>
@@ -273,82 +275,8 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/background-and-principles/" title="Background and Principles" class="md-nav__link">
+    <a href="../background-and-principles/" title="Background and Principles" class="md-nav__link">
       Background and Principles
-    </a>
-  </li>
-
-        
-          
-          
-          
-
-
-  <li class="md-nav__item">
-    <a href="../../advanced/symbol-lookup/" title="Lookup Strategy" class="md-nav__link">
-      Lookup Strategy
-    </a>
-  </li>
-
-        
-          
-          
-          
-
-
-  <li class="md-nav__item">
-    <a href="../../advanced/symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-nav__link">
-      Symbol Server Compatibility
-    </a>
-  </li>
-
-        
-      </ul>
-    </nav>
-  </li>
-
-    
-      
-      
-      
-
-  
-
-
-  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
-    
-      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3" checked>
-    
-    <label class="md-nav__link" for="nav-3">
-      API
-    </label>
-    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
-      <label class="md-nav__title" for="nav-3">
-        API
-      </label>
-      <ul class="md-nav__list" data-md-scrollfix>
-        
-        
-          
-          
-          
-
-
-  <li class="md-nav__item">
-    <a href="../" title="Overview" class="md-nav__link">
-      Overview
-    </a>
-  </li>
-
-        
-          
-          
-          
-
-
-  <li class="md-nav__item">
-    <a href="../minidump/" title="POST /minidump" class="md-nav__link">
-      POST /minidump
     </a>
   </li>
 
@@ -368,11 +296,11 @@
     
     
       <label class="md-nav__link md-nav__link--active" for="__toc">
-        POST /symbolicate
+        Lookup Strategy
       </label>
     
-    <a href="./" title="POST /symbolicate" class="md-nav__link md-nav__link--active">
-      POST /symbolicate
+    <a href="./" title="Lookup Strategy" class="md-nav__link md-nav__link--active">
+      Lookup Strategy
     </a>
     
       
@@ -386,22 +314,56 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#query-parameters" title="Query Parameters" class="md-nav__link">
-    Query Parameters
+  <a href="#identifiers" title="Identifiers" class="md-nav__link">
+    Identifiers
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#request-body" title="Request Body" class="md-nav__link">
-    Request Body
+  <a href="#symbol-precedence" title="Symbol Precedence" class="md-nav__link">
+    Symbol Precedence
   </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symbol-table" title="Symbol Table" class="md-nav__link">
+    Symbol Table
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug-information" title="Debug Information" class="md-nav__link">
+    Debug Information
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unwind-information" title="Unwind Information" class="md-nav__link">
+    Unwind Information
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation-notes" title="Implementation Notes" class="md-nav__link">
+    Implementation Notes
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#response" title="Response" class="md-nav__link">
-    Response
+  <a href="#conversion-algorithms" title="Conversion Algorithms" class="md-nav__link">
+    Conversion Algorithms
   </a>
   
 </li>
@@ -423,7 +385,79 @@
 
 
   <li class="md-nav__item">
-    <a href="../applecrashreport/" title="POST /applecrashreport" class="md-nav__link">
+    <a href="../symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-nav__link">
+      Symbol Server Compatibility
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3">
+    
+    <label class="md-nav__link" for="nav-3">
+      API
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-3">
+        API
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/" title="Overview" class="md-nav__link">
+      Overview
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/minidump/" title="POST /minidump" class="md-nav__link">
+      POST /minidump
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/symbolication/" title="POST /symbolicate" class="md-nav__link">
+      POST /symbolicate
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../api/applecrashreport/" title="POST /applecrashreport" class="md-nav__link">
       POST /applecrashreport
     </a>
   </li>
@@ -435,7 +469,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../response/" title="Symbolication Response" class="md-nav__link">
+    <a href="../../api/response/" title="Symbolication Response" class="md-nav__link">
       Symbolication Response
     </a>
   </li>
@@ -447,7 +481,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../proxy/" title="Symbol Server Proxy" class="md-nav__link">
+    <a href="../../api/proxy/" title="Symbol Server Proxy" class="md-nav__link">
       Symbol Server Proxy
     </a>
   </li>
@@ -479,22 +513,56 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#query-parameters" title="Query Parameters" class="md-nav__link">
-    Query Parameters
+  <a href="#identifiers" title="Identifiers" class="md-nav__link">
+    Identifiers
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#request-body" title="Request Body" class="md-nav__link">
-    Request Body
+  <a href="#symbol-precedence" title="Symbol Precedence" class="md-nav__link">
+    Symbol Precedence
   </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symbol-table" title="Symbol Table" class="md-nav__link">
+    Symbol Table
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug-information" title="Debug Information" class="md-nav__link">
+    Debug Information
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unwind-information" title="Unwind Information" class="md-nav__link">
+    Unwind Information
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation-notes" title="Implementation Notes" class="md-nav__link">
+    Implementation Notes
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#response" title="Response" class="md-nav__link">
-    Response
+  <a href="#conversion-algorithms" title="Conversion Algorithms" class="md-nav__link">
+    Conversion Algorithms
   </a>
   
 </li>
@@ -515,82 +583,187 @@
             <article class="md-content__inner md-typeset">
               
                 
-                  <a href="https://github.com/getsentry/symbolicator/edit/master/docs/api/symbolication.md" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
+                  <a href="https://github.com/getsentry/symbolicator/edit/master/docs/advanced/symbol-lookup.md" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
                 
                 
-                <h1 id="symbolication-request">Symbolication Request</h1>
-<div class="codehilite"><pre><span></span><span class="nf">POST</span> <span class="nn">/symbolicate?timeout=123&amp;scope=123</span> <span class="kr">HTTP</span><span class="o">/</span><span class="m">1.1</span>
-<span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
+                <h1 id="lookup-strategy">Lookup Strategy</h1>
+<p>Symbolicator queries a list of external sources for debug information files
+which it uses to process minidumps and symbolicate stack traces. Based on
+availability, the CPU architecture and the operating system, it may determine
+the "best" file to use:</p>
+<ol>
+<li>Compute the code and debug identifiers for the modules to load.</li>
+<li>Look up available files in all sources</li>
+<li>Choose the best available file</li>
+</ol>
+<h2 id="identifiers">Identifiers</h2>
+<p>Symbol servers use native identifiers to locate files. Usually, they put them in
+a directory hierarchy for easier retrieval.</p>
+<p>There are two kinds of identifiers:</p>
+<ul>
+<li><strong>Code Id:</strong> Native identifier of the actual binary (library or executable).
+  Usually, this is a value stored in the header or computed from its contents.</li>
+<li><strong>Debug Id:</strong> Identifier of the associated debug file on some platforms, or a
+  mangled version of the code identifier on other platforms.</li>
+</ul>
+<p>To look up different symbol kinds, the symbol server uses the following process
+to determine the ID (see below for exact conversion algorithms):</p>
+<ul>
+<li><strong>MachO:</strong> Use the UUID which is stored interchangeably in <code>debug_id</code> and
+  <code>code_id</code>. If one of these values is missing, it can be computed from the
+  other. Primarily, the <code>code_id</code> should be used.</li>
+<li><strong>ELF:</strong> Use the GNU build id which is given in the <code>code_id</code>. The <code>debug_id</code>
+  can be computed from this <code>code_id</code>, but not the other way around. Thus, if
+  the <code>code_id</code> is missing, lookups may not be possible.</li>
+<li><strong>PE</strong>: Windows executables use a combination of timestamp and size fields to
+  compute a <code>code_id</code>. It is mandatory, as it cannot be derived from the
+  <code>debug_id</code>.</li>
+<li><strong>PDB</strong>: Windows PDBs have their own <code>debug_id</code>, which can be read from the
+  PDB or PE header. It is mandatory, as it cannot be derived from the <code>code_id</code>.</li>
+<li><strong>Breakpad</strong>: Google Breakpad uses <code>debug_id</code> for all symbol kinds. If it is
+  missing, it can be computed from the <code>code_id</code> if this is possible using the
+  above rules.</li>
+</ul>
+<h2 id="symbol-precedence">Symbol Precedence</h2>
+<p>Depending on the desired information and type of image, the Symbolicator
+requests several files and chooses the best one. Note that the image type
+depends on the platform, but there are multiple formats for debug information
+files available.</p>
+<p>The following is a table of what we initially deemed as ideal lookup strategy.
+How we deviate from this in practice is documented separately.</p>
+<h3 id="symbol-table">Symbol Table</h3>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>1. Choice</th>
+<th>2. Choice</th>
+<th>3. Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachO</td>
+<td>MachO (dSYM)</td>
+<td>MachO (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>ELF</td>
+<td>ELF (debug)</td>
+<td>ELF (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE</td>
+<td>PDB</td>
+<td>PE</td>
+<td>Breakpad</td>
+</tr>
+</tbody>
+</table>
+<h3 id="debug-information">Debug Information</h3>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>1. Choice</th>
+<th>2. Choice</th>
+<th>3. Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachO</td>
+<td>MachO (dSYM)</td>
+<td>Breakpad</td>
+<td></td>
+</tr>
+<tr>
+<td>ELF</td>
+<td>ELF (debug)</td>
+<td>ELF (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE</td>
+<td>PDB</td>
+<td>Breakpad</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="unwind-information">Unwind Information</h3>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>1. Choice</th>
+<th>2. Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachO</td>
+<td>MachO (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>ELF</td>
+<td>ELF (code)</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE (32-bit)</td>
+<td>PDB</td>
+<td>Breakpad</td>
+</tr>
+<tr>
+<td>PE (64-bit)</td>
+<td>PE</td>
+<td>Breakpad</td>
+</tr>
+</tbody>
+</table>
+<h3 id="implementation-notes">Implementation Notes</h3>
+<ul>
+<li>Symbolicator downloads <em>all</em> filetypes in parallel and filters by whether
+  symbolic says that a file has debug/unwind information. There is no special
+  codepath for each table presented here, and especially not for each
+  platform/filetype.</li>
+</ul>
+<p>This creates a few more downloads than what would be necessary for a specific
+  task, but those should not matter considering that you e.g. will likely look
+  into debug information very soon if you already look for unwind information.</p>
+<ul>
+<li>As a result of the previous point, Symbolicator does not differentiate between
+  32-bit and 64-bit platforms, meaning that even on 64-bit Windows it will
+  attempt to look into the PDB to find relevant information. Again this should
+  not matter in terms of correctness as it will still also unconditionally look
+  into the PE and pick that if it's deemed to be be of better quality.</li>
+</ul>
+<h2 id="conversion-algorithms">Conversion Algorithms</h2>
+<p>Some identifiers may be computed from others. See the following list for allowed
+non-lossy conversions in pseudocode:</p>
+<ul>
+<li>
+<p><strong>MachO</strong>: <code>code_id</code> ←→ <code>debug_id</code>. Symbolicator implements this by using the
+  code ID everywhere.</p>
+</li>
+<li>
+<p><strong>ELF</strong>: <code>code_id</code> → <code>debug_id</code>. This is not yet implemented.</p>
+<div class="codehilite"><pre><span></span><span class="nv">debug_id</span> <span class="o">=</span> <span class="nv">code_id</span>[<span class="mi">0</span>..<span class="mi">16</span>]
 
-<span class="p">{</span>
-  <span class="nt">&quot;signal&quot;</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
-  <span class="nt">&quot;sources&quot;</span><span class="p">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="nt">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;uuid&gt;&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span>
-      <span class="err">...</span>
-    <span class="p">},</span>
-    <span class="err">...</span>
-  <span class="p">],</span>
-  <span class="nt">&quot;threads&quot;</span><span class="p">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="nt">&quot;frames&quot;</span><span class="p">:</span> <span class="p">[</span>
-        <span class="p">{</span>
-          <span class="nt">&quot;instruction_addr&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span>
-        <span class="p">},</span>
-        <span class="err">...</span>
-      <span class="p">],</span>
-      <span class="nt">&quot;registers&quot;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="nt">&quot;rip&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>
-        <span class="nt">&quot;rsp&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedface&quot;</span>
-      <span class="p">}</span>
-    <span class="p">}</span>
-  <span class="p">],</span>
-  <span class="nt">&quot;modules&quot;</span><span class="p">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;macho&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;debug_id&quot;</span><span class="p">:</span> <span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;code_id&quot;</span><span class="p">:</span> <span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;debug_file&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/image.so&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;image_addr&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;image_size&quot;</span><span class="p">:</span> <span class="s2">&quot;0xbeef&quot;</span>
-    <span class="p">},</span>
-    <span class="err">...</span>
-  <span class="p">]</span>
-<span class="p">}</span>
+<span class="k">if</span> <span class="nv">object</span>.<span class="nv">little_endian</span> {
+  <span class="nv">debug_id</span>[<span class="mi">0</span>..<span class="mi">4</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 1</span>
+  <span class="nv">debug_id</span>[<span class="mi">4</span>..<span class="mi">6</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 2</span>
+  <span class="nv">debug_id</span>[<span class="mi">6</span>..<span class="mi">8</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 3</span>
+}
 </pre></div>
 
 
-<h2 id="query-parameters">Query Parameters</h2>
-<ul>
-<li><code>timeout</code>: If given, a response status of <code>pending</code> might be sent by the
-  server.</li>
-<li><code>scope</code>: An optional scope which will be used to isolate cached files from
-  each other</li>
-</ul>
-<h2 id="request-body">Request Body</h2>
-<p>A JSON payload describing the stack traces and code modules for symbolication,
-as well as external sources to pull symbols from:</p>
-<ul>
-<li><code>sources</code>: A list of descriptors for internal or external symbol sources. See
-  <a href="overview.md">Sources</a>.</li>
-<li><code>modules</code>: A list of code modules (aka debug images) that were loaded into the
-  process. All attributes other than <code>type</code> are required. The Symbolicator may
-  optimize lookups based on the <code>type</code> if present. Valid types are <code>macho</code>,
-  <code>pe</code>, <code>elf</code>. Invalid types are silently ignored. The Symbolicator still works
-  if the type is invalid, but less efficiently. However, a schematically valid
-  but <em>wrong</em> type is fatal for finding symbols.</li>
-<li><code>threads</code>: A list of process threads to symbolicate.<ul>
-<li><code>registers</code>: Optional register values aiding symbolication heuristics. For
-  example, register values may be used to perform correction heuristics on the
-  instruction address of the top frame.</li>
-<li><code>frames</code>: A list of frames with addresses. Arbitrary additional properties
-  may be passed with frames, but are discarded.</li>
-</ul>
 </li>
 </ul>
-<h2 id="response">Response</h2>
-<p>See <a href="../response/">Symbolication Response</a>.</p>
                 
                   
                 
@@ -611,7 +784,7 @@ as well as external sources to pull symbols from:</p>
     <div class="md-footer-nav">
       <nav class="md-footer-nav__inner md-grid">
         
-          <a href="../minidump/" title="POST /minidump" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+          <a href="../background-and-principles/" title="Background and Principles" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
             <div class="md-flex__cell md-flex__cell--shrink">
               <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
             </div>
@@ -620,19 +793,19 @@ as well as external sources to pull symbols from:</p>
                 <span class="md-footer-nav__direction">
                   Previous
                 </span>
-                POST /minidump
+                Background and Principles
               </span>
             </div>
           </a>
         
         
-          <a href="../applecrashreport/" title="POST /applecrashreport" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+          <a href="../symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
             <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
               <span class="md-flex__ellipsis">
                 <span class="md-footer-nav__direction">
                   Next
                 </span>
-                POST /applecrashreport
+                Symbol Server Compatibility
               </span>
             </div>
             <div class="md-flex__cell md-flex__cell--shrink">
