@@ -40,7 +40,7 @@ A multipart form data body containing the minidump, as well as the external
 sources to pull symbols from.
 
 - `sources`: A list of descriptors for internal or external symbol sources. See
-  [Sources](overview.md).
+  [Sources](index.md).
 - `upload_file_minidump`: The minidump file to be analyzed.
 
 ## Response

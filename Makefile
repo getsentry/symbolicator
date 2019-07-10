@@ -31,6 +31,7 @@ test-integration: .venv/bin/python
 docs: .venv/bin/python
 	.venv/bin/pip install -U mkdocs mkdocs-material pygments
 	.venv/bin/mkdocs build
+	touch site/.nojekyll
 .PHONY: docs
 
 docserver: .venv/bin/python

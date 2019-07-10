@@ -59,7 +59,7 @@ A JSON payload describing the stack traces and code modules for symbolication,
 as well as external sources to pull symbols from:
 
 - `sources`: A list of descriptors for internal or external symbol sources. See
-  [Sources](overview.md).
+  [Sources](index.md).
 - `modules`: A list of code modules (aka debug images) that were loaded into the
   process. All attributes other than `type` are required. The Symbolicator may
   optimize lookups based on the `type` if present. Valid types are `macho`,
