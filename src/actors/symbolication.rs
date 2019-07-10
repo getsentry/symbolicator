@@ -192,6 +192,10 @@ impl SymbolicationActor {
 
         let (tx, rx) = oneshot::channel();
 
+        self.requests
+            .write()
+            .insert(request_id.clone(), rx.shared());
+
         actix::spawn(
             f().then(move |result| {
                 tx.send((
@@ -209,10 +213,6 @@ impl SymbolicationActor {
             // Clone hub because of `actix::spawn`
             .sentry_hub_new_from_current(),
         );
-
-        self.requests
-            .write()
-            .insert(request_id.clone(), rx.shared());
 
         Ok(request_id)
     }
