@@ -1,3 +1,4 @@
+SHELL = /bin/bash
 export SYMBOLICATOR_PYTHON_VERSION := python3
 
 all: check test
