@@ -13,7 +13,7 @@ use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
-use symbolic::debuginfo::Object;
+use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
@@ -326,20 +326,26 @@ impl SourceLookup {
         })
     }
 
+    pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
+        self.inner
+            .iter()
+            .map(|&(_, ref o)| o.as_ref().and_then(|o| o.0.get().debug_session().ok()))
+            .collect()
+    }
+
     pub fn get_context_lines(
         &self,
+        debug_sessions: &[Option<ObjectDebugSession<'_>>],
         addr: u64,
         abs_path: &str,
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let lineno = lineno as usize;
         let index = self.get_object_index_by_addr(addr)?;
-        let object = self.inner[index].1.as_ref()?;
-
-        let session = object.0.get().debug_session().ok()?;
+        let session = debug_sessions[index].as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
+        let lineno = lineno as usize;
         let start_line = lineno.saturating_sub(n);
         let line_diff = lineno - start_line;
 
@@ -759,7 +765,7 @@ impl SymbolicationActor {
 
         let result = symcache_lookup
             .fetch_symcaches(self.symcaches.clone(), request)
-            .and_then(move |symcache_lookup| {
+            .and_then(clone!(threadpool, |symcache_lookup| {
                 threadpool.spawn_handle(
                     future::lazy(move || {
                         let stacktraces: Vec<_> = stacktraces
@@ -798,29 +804,44 @@ impl SymbolicationActor {
                     })
                     .sentry_hub_current(),
                 )
-            })
+            }))
             .and_then(move |response| {
                 source_lookup
                     .fetch_sources(objects, scope, sources, &response)
                     .map(move |source_lookup| (source_lookup, response))
             })
-            .map(|(source_lookup, mut response)| {
-                for trace in &mut response.stacktraces {
-                    for frame in &mut trace.frames {
-                        let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                            (&Some(ref abs_path), Some(lineno)) => (abs_path.as_str(), lineno),
-                            _ => continue,
-                        };
-                        if let Some((pre_context, context_line, post_context)) = source_lookup
-                            .get_context_lines(frame.raw.instruction_addr.0, abs_path, lineno, 5)
-                        {
-                            frame.raw.pre_context = pre_context;
-                            frame.raw.context_line = Some(context_line);
-                            frame.raw.post_context = post_context;
+            .and_then(move |(source_lookup, mut response)| {
+                threadpool.spawn_handle(
+                    future::lazy(move || {
+                        let debug_sessions = source_lookup.prepare_debug_sessions();
+
+                        for trace in &mut response.stacktraces {
+                            for frame in &mut trace.frames {
+                                let (abs_path, lineno) =
+                                    match (&frame.raw.abs_path, frame.raw.lineno) {
+                                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                                        _ => continue,
+                                    };
+
+                                let result = source_lookup.get_context_lines(
+                                    &debug_sessions,
+                                    frame.raw.instruction_addr.0,
+                                    abs_path,
+                                    lineno,
+                                    5,
+                                );
+
+                                if let Some((pre_context, context_line, post_context)) = result {
+                                    frame.raw.pre_context = pre_context;
+                                    frame.raw.context_line = Some(context_line);
+                                    frame.raw.post_context = post_context;
+                                }
+                            }
                         }
-                    }
-                }
-                response
+                        Ok(response)
+                    })
+                    .sentry_hub_current(),
+                )
             });
 
         future_metrics!(
