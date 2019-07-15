@@ -13,8 +13,8 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
-use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
+use crate::utils::sentry::SentryFutureExt;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
@@ -33,6 +33,7 @@ type ComputationMap<T, E> = Arc<RwLock<BTreeMap<CacheKey, ComputationChannel<T, 
 /// trait and associated types.
 ///
 /// Internally deduplicates concurrent cache lookups (in-memory).
+#[derive(Debug)]
 pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
 
@@ -230,7 +231,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             }))
             .sentry_hub_current();
 
-        actix::spawn(compute_future);
+        actix_rt::spawn(compute_future);
 
         let channel = rx.shared();
 

@@ -1,4 +1,5 @@
 use std::cmp;
+use std::fmt;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -18,14 +19,14 @@ use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 use tokio_threadpool::ThreadPool;
 
-use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::service::cache::{CacheItemRequest, Cacher};
 use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
 use crate::utils::objects;
+use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
 
 mod common;
 mod filesystem;
@@ -34,7 +35,19 @@ mod http;
 mod s3;
 mod sentry;
 
+use self::common::DownloadPath;
+use self::sentry::SentryFileId;
+
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+
+#[derive(Debug, Fail)]
+struct DisplayError(String);
+
+impl fmt::Display for DisplayError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 #[derive(Debug, Fail, Clone, Copy)]
 pub enum ObjectErrorKind {
@@ -43,9 +56,6 @@ pub enum ObjectErrorKind {
 
     #[fail(display = "unable to get directory for tempfiles")]
     NoTempDir,
-
-    #[fail(display = "failed dispatch internal message")]
-    Mailbox,
 
     #[fail(display = "failed to parse object")]
     Parsing,
@@ -72,32 +82,29 @@ symbolic::common::derive_failure!(
     doc = "Errors happening while fetching objects"
 );
 
+impl ObjectError {
+    #[inline]
+    pub fn from_error<E>(error: E, kind: ObjectErrorKind) -> Self
+    where
+        E: fmt::Display,
+    {
+        DisplayError(error.to_string()).context(kind).into()
+    }
+
+    #[inline]
+    pub fn io<E>(error: E) -> Self
+    where
+        E: fmt::Display,
+    {
+        Self::from_error(error, ObjectErrorKind::Io)
+    }
+}
+
 impl From<io::Error> for ObjectError {
     fn from(e: io::Error) -> Self {
         e.context(ObjectErrorKind::Io).into()
     }
 }
-
-/// This requests metadata of a single file at a specific path/url.
-#[derive(Clone)]
-struct FetchFileMetaRequest {
-    /// The scope that the file should be stored under.
-    scope: Scope,
-    /// Source-type specific attributes.
-    file_id: FileId,
-    object_id: ObjectId,
-
-    // XXX: This kind of state is not request data. We should find a different way to get this into
-    // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
-    // state for computing.
-    threadpool: Arc<ThreadPool>,
-    data_cache: Arc<Cacher<FetchFileDataRequest>>,
-}
-
-/// This requests the file content of a single file at a specific path/url.
-/// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
-#[derive(Clone)]
-struct FetchFileDataRequest(FetchFileMetaRequest);
 
 #[derive(Debug, Clone)]
 enum FileId {
@@ -107,12 +114,6 @@ enum FileId {
     Http(Arc<HttpSourceConfig>, DownloadPath),
     Filesystem(Arc<FilesystemSourceConfig>, DownloadPath),
 }
-
-#[derive(Debug, Clone)]
-struct DownloadPath(String);
-
-#[derive(Debug, Clone)]
-struct SentryFileId(String);
 
 impl FileId {
     fn source(&self) -> SourceConfig {
@@ -127,21 +128,37 @@ impl FileId {
 
     fn cache_key(&self) -> String {
         match self {
-            FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path),
+            FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path),
+            FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path),
             FileId::Sentry(ref source, ref file_id) => {
-                format!("{}.{}.sentryinternal", source.id, file_id.0)
+                format!("{}.{}.sentryinternal", source.id, file_id)
             }
-            FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path),
         }
     }
 }
 
-impl WriteSentryScope for FileId {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        self.source().write_sentry_scope(scope);
+impl ToSentryScope for FileId {
+    fn to_scope(&self, scope: &mut ::sentry::Scope) {
+        self.source().to_scope(scope);
     }
+}
+
+/// This requests metadata of a single file at a specific path/url.
+#[derive(Clone, Debug)]
+struct FetchFileMetaRequest {
+    /// The scope that the file should be stored under.
+    scope: Scope,
+    /// Source-type specific attributes.
+    file_id: FileId,
+    object_id: ObjectId,
+
+    // XXX: This kind of state is not request data. We should find a different way to get this into
+    // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
+    // state for computing.
+    threadpool: Arc<ThreadPool>,
+    data_cache: Arc<Cacher<FetchFileDataRequest>>,
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
@@ -197,6 +214,11 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 }
 
+/// This requests the file content of a single file at a specific path/url.
+/// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
+#[derive(Clone, Debug)]
+struct FetchFileDataRequest(FetchFileMetaRequest);
+
 impl CacheItemRequest for FetchFileDataRequest {
     type Item = ObjectFile;
     type Error = ObjectError;
@@ -216,7 +238,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.0.file_id.write_sentry_scope(scope);
+            self.0.file_id.to_scope(scope);
         });
 
         let result = request.and_then(move |payload| {
@@ -351,26 +373,15 @@ impl CacheItemRequest for FetchFileDataRequest {
             data,
         };
 
-        configure_scope(|scope| {
-            object.write_sentry_scope(scope);
-        });
-
+        object.configure_scope();
         object
-    }
-}
-
-pub struct ObjectFileBytes(pub Arc<ObjectFile>);
-
-impl AsRef<[u8]> for ObjectFileBytes {
-    fn as_ref(&self) -> &[u8] {
-        &self.0.data
     }
 }
 
 /// Handle to local metadata file of an object. Having an instance of this type does not mean there
 /// is a downloaded object file behind it. We cache metadata separately (ObjectFileMetaInner) because
 /// every symcache lookup requires reading this metadata.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectFileMeta {
     request: FetchFileMetaRequest,
     scope: Scope,
@@ -443,10 +454,10 @@ impl ObjectFile {
     }
 }
 
-impl WriteSentryScope for ObjectFile {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        self.object_id.write_sentry_scope(scope);
-        self.file_id.write_sentry_scope(scope);
+impl ToSentryScope for ObjectFile {
+    fn to_scope(&self, scope: &mut ::sentry::Scope) {
+        self.object_id.to_scope(scope);
+        self.file_id.to_scope(scope);
 
         scope.set_tag("object_file.scope", self.scope());
 
@@ -457,7 +468,7 @@ impl WriteSentryScope for ObjectFile {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
@@ -591,11 +602,20 @@ enum DownloadStream {
     File(PathBuf),
 }
 
+impl fmt::Debug for DownloadStream {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DownloadStream::FutureStream(_) => write!(f, "FutureStream(_)"),
+            DownloadStream::File(path) => write!(f, "File({:?})", path),
+        }
+    }
+}
+
 fn prepare_downloads(
     source: &SourceConfig,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     match *source {
         SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
@@ -609,7 +629,7 @@ fn prepare_downloads(
 
 fn download_from_source(
     file_id: &FileId,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *file_id {
         FileId::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source.clone(), file_id)

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use actix_web::{client, HttpMessage};
+use actix_web::{client::Client, http::header};
 use chrono::{DateTime, Duration, Utc};
-use failure::{Fail, ResultExt};
+use failure::ResultExt;
 use futures::{Future, IntoFuture, Stream};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -10,8 +10,8 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};
+use crate::service::objects::common::{prepare_download_paths, DownloadPath};
+use crate::service::objects::{DownloadStream, FileId, ObjectError, ObjectErrorKind};
 use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
 
 lazy_static::lazy_static! {
@@ -83,33 +83,30 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
 
 fn request_new_token(
     source_key: &GcsSourceKey,
-) -> Box<Future<Item = GcsToken, Error = ObjectError>> {
+) -> Box<dyn Future<Item = GcsToken, Error = ObjectError>> {
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = match get_auth_jwt(source_key, expires_at.timestamp() + 30) {
         Ok(auth_jwt) => auth_jwt,
         Err(err) => return Box::new(Err(err).into_future()),
     };
 
-    let mut builder = client::post("https://www.googleapis.com/oauth2/v4/token");
-    // for some inexplicable reason we otherwise get gzipped data back that actix-web
-    // client has no idea what to do with.
-    builder.header("accept-encoding", "identity");
-    let response = builder
-        .form(&OAuth2Grant {
+    let client = Client::default(); // TODO(ja): Get a shared client.
+    let response = client
+        .post("https://www.googleapis.com/oauth2/v4/token")
+        // for some inexplicable reason we otherwise get gzipped data back that actix-web client has
+        // no idea what to do with.
+        .header(header::ACCEPT_ENCODING, "identity")
+        .send_form(&OAuth2Grant {
             grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
             assertion: auth_jwt,
         })
-        .unwrap()
-        .send();
-
-    let response = response
         .map_err(|err| {
-            log::debug!("Failed to authenticate against gcs: {}", err);
-            ObjectError::from(ObjectErrorKind::Io)
+            log::debug!("Failed to authenticate against GCS: {}", err);
+            ObjectError::io(err)
         })
-        .and_then(move |resp| {
+        .and_then(move |mut resp| {
             resp.json::<GcsTokenResponse>()
-                .map_err(|e| e.context(ObjectErrorKind::Io).into())
+                .map_err(ObjectError::io)
                 .map(move |token| GcsToken {
                     access_token: token.access_token,
                     expires_at,
@@ -121,7 +118,7 @@ fn request_new_token(
 
 fn get_token(
     source_key: &Arc<GcsSourceKey>,
-) -> Box<Future<Item = Arc<GcsToken>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Arc<GcsToken>, Error = ObjectError>> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at < Utc::now() {
             return Box::new(Ok(token.clone()).into_future());
@@ -140,7 +137,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<GcsSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -156,13 +153,13 @@ pub(super) fn prepare_downloads(
 pub(super) fn download_from_source(
     source: Arc<GcsSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let key = {
         let prefix = source.prefix.trim_matches(&['/'][..]);
         if prefix.is_empty() {
-            download_path.0.clone()
+            download_path.to_string()
         } else {
-            format!("{}/{}", prefix, download_path.0)
+            format!("{}/{}", prefix, download_path)
         }
     };
     log::debug!("Fetching from GCS: {} (from {})", &key, source.bucket);
@@ -178,24 +175,23 @@ pub(super) fn download_from_source(
         get_token(&source.source_key)
             .and_then(move |token| {
                 log::debug!("Got valid GCS token: {:?}", &token);
-                let mut builder = client::get(&url);
-                builder.header("authorization", format!("Bearer {}", token.access_token));
-                builder
-                    .finish()
-                    .unwrap()
+                let client = Client::default(); // TODO(ja): Get client somehow
+
+                client
+                    .get(&url)
+                    .header(
+                        header::AUTHORIZATION,
+                        format!("Bearer {}", token.access_token),
+                    )
                     .send()
-                    .map_err(|err| err.context(ObjectErrorKind::Io).into())
+                    .map_err(ObjectError::io)
             })
             .then(move |result| match result {
                 Ok(response) => {
                     if response.status().is_success() {
                         log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                        Ok(Some(DownloadStream::FutureStream(Box::new(
-                            response
-                                .payload()
-                                .map_err(|e| e.context(ObjectErrorKind::Io).into()),
-                        )
-                            as Box<dyn Stream<Item = _, Error = _>>)))
+                        let stream = Box::new(response.map_err(ObjectError::io));
+                        Ok(Some(DownloadStream::FutureStream(stream)))
                     } else {
                         log::trace!(
                             "Unexpected status code from GCS {} (from {}): {}",

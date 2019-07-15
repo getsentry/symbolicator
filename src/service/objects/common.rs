@@ -1,4 +1,6 @@
-use crate::actors::objects::DownloadPath;
+use std::fmt;
+use std::path::Path;
+
 use crate::types::{DirectoryLayout, FileType, Glob, ObjectId, SourceFilters};
 use crate::utils::paths::get_directory_path;
 
@@ -7,6 +9,41 @@ const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
     require_literal_separator: false,
     require_literal_leading_dot: false,
 };
+
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub(super) struct DownloadPath(String);
+
+impl From<String> for DownloadPath {
+    fn from(path: String) -> Self {
+        Self(path)
+    }
+}
+
+impl fmt::Display for DownloadPath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl AsRef<str> for DownloadPath {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for DownloadPath {
+    fn as_ref(&self) -> &Path {
+        self.0.as_ref()
+    }
+}
+
+impl std::ops::Deref for DownloadPath {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Generate a list of filepaths to try downloading from.
 ///

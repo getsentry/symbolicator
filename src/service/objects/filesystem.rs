@@ -4,15 +4,15 @@ use std::sync::Arc;
 
 use futures::{Future, IntoFuture};
 
-use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};
+use crate::service::objects::common::{prepare_download_paths, DownloadPath};
+use crate::service::objects::{DownloadStream, FileId, ObjectError, ObjectErrorKind};
 use crate::types::{FileType, FilesystemSourceConfig, ObjectId};
 
 pub(super) fn prepare_downloads(
     source: &Arc<FilesystemSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -28,8 +28,8 @@ pub(super) fn prepare_downloads(
 pub(super) fn download_from_source(
     source: Arc<FilesystemSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let download_abspath = source.path.join(&download_path.0);
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+    let download_abspath = source.path.join(download_path);
     log::debug!("Fetching debug file from {:?}", download_abspath);
 
     let res = match File::open(download_abspath.clone()) {

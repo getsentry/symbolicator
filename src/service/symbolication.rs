@@ -5,7 +5,6 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
@@ -22,22 +21,22 @@ use tokio::prelude::FutureExt;
 use tokio_threadpool::ThreadPool;
 use uuid;
 
-use crate::actors::cficaches::{
+use crate::logging::LogError;
+use crate::service::cficaches::{
     CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
 };
-use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
-use crate::actors::symcaches::{
+use crate::service::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
+use crate::service::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
-use crate::hex::HexValue;
-use crate::logging::LogError;
-use crate::sentry::SentryFutureExt;
 use crate::types::{
     ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
     FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
     Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
     SystemInfo,
 };
+use crate::utils::hex::HexValue;
+use crate::utils::sentry::SentryFutureExt;
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,
@@ -104,7 +103,7 @@ type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationRespon
 
 type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     objects: Arc<ObjectsActor>,
     symcaches: Arc<SymCacheActor>,
@@ -178,7 +177,7 @@ impl SymbolicationActor {
         }
     }
 
-    fn create_symbolication_request<F, R>(&self, f: F) -> Result<RequestId, SymbolicationError>
+    fn create_symbolication_request<F, R>(&self, f: F) -> RequestId
     where
         F: FnOnce() -> R,
         R: Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> + 'static,
@@ -196,7 +195,7 @@ impl SymbolicationActor {
             .write()
             .insert(request_id.clone(), rx.shared());
 
-        actix::spawn(
+        actix_rt::spawn(
             f().then(move |result| {
                 tx.send((
                     Instant::now(),
@@ -214,7 +213,7 @@ impl SymbolicationActor {
             .sentry_hub_new_from_current(),
         );
 
-        Ok(request_id)
+        request_id
     }
 }
 
@@ -851,10 +850,7 @@ impl SymbolicationActor {
         )
     }
 
-    pub fn symbolicate_stacktraces(
-        &self,
-        request: SymbolicateStacktraces,
-    ) -> Result<RequestId, SymbolicationError> {
+    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
         self.create_symbolication_request(|| self.do_symbolicate(request))
     }
 }
@@ -927,7 +923,7 @@ impl SymbolicationActor {
     fn get_referenced_modules_from_minidump(
         &self,
         minidump: ByteView<'static>,
-    ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
+    ) -> impl Future<Item = Vec<(CodeModuleId, RawObjectInfo)>, Error = SymbolicationError> {
         let lazy = future::lazy(move || {
             log::debug!("Processing minidump ({} bytes)", minidump.len());
             metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
@@ -950,9 +946,7 @@ impl SymbolicationActor {
             Ok(cfi_modules)
         });
 
-        let future = self.threadpool.spawn_handle(lazy.sentry_hub_current());
-
-        Box::new(future)
+        self.threadpool.spawn_handle(lazy.sentry_hub_current())
     }
 
     fn load_cfi_caches(
@@ -960,7 +954,7 @@ impl SymbolicationActor {
         scope: Scope,
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
         sources: Arc<Vec<SourceConfig>>,
-    ) -> ResponseFuture<Vec<CfiCacheResult>, SymbolicationError> {
+    ) -> impl Future<Item = Vec<CfiCacheResult>, Error = SymbolicationError> {
         let cficaches = self.cficaches.clone();
 
         let futures = requests
@@ -987,7 +981,8 @@ impl SymbolicationActor {
         minidump: ByteView<'static>,
         sources: Arc<Vec<SourceConfig>>,
         cfi_results: Vec<CfiCacheResult>,
-    ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+    ) -> impl Future<Item = (SymbolicateStacktraces, MinidumpState), Error = SymbolicationError>
+    {
         let stackwalk_future = future::lazy(move || {
             let mut frame_info_map = FrameInfoMap::new();
             let mut unwind_statuses = BTreeMap::new();
@@ -1137,7 +1132,8 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: File,
         sources: Vec<SourceConfig>,
-    ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+    ) -> impl Future<Item = (SymbolicateStacktraces, MinidumpState), Error = SymbolicationError>
+    {
         let slf = self.clone();
         let sources = Arc::new(sources);
         let minidump = tryf!(ByteView::map_file(minidump));
@@ -1182,7 +1178,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: File,
         sources: Vec<SourceConfig>,
-    ) -> Result<RequestId, SymbolicationError> {
+    ) -> RequestId {
         self.create_symbolication_request(|| self.do_process_minidump(scope, minidump, sources))
     }
 }
@@ -1238,7 +1234,8 @@ impl SymbolicationActor {
         scope: Scope,
         file: File,
         sources: Vec<SourceConfig>,
-    ) -> ResponseFuture<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
+    ) -> impl Future<Item = (SymbolicateStacktraces, AppleCrashReportState), Error = SymbolicationError>
+    {
         let parse_future = future::lazy(move || {
             let mut report = AppleCrashReport::from_reader(file)?;
 
@@ -1341,7 +1338,7 @@ impl SymbolicationActor {
         scope: Scope,
         apple_crash_report: File,
         sources: Vec<SourceConfig>,
-    ) -> Result<RequestId, SymbolicationError> {
+    ) -> RequestId {
         self.create_symbolication_request(|| {
             self.do_process_apple_crash_report(scope, apple_crash_report, sources)
         })

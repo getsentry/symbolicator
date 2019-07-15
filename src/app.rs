@@ -3,8 +3,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use actix::Actor;
-use actix_web::{client, server, App};
+use actix_rt::{System, SystemRunner};
+use actix_web::{client, App, HttpServer};
 use failure::Fail;
 use futures::future;
 use structopt::StructOpt;
@@ -17,14 +17,18 @@ use crate::actors::{
 use crate::cache::{Cache, CleanupError};
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
-use crate::http::SafeResolver;
+// use crate::http::SafeResolver;
 use crate::logging;
 use crate::metrics;
-use crate::middlewares::{ErrorHandlers, Metrics};
+use crate::middleware;
 
 /// An enum representing a CLI error.
-#[derive(Fail, Debug, derive_more::From)]
+#[derive(Fail, Debug)]
 pub enum CliError {
+    /// Indicates a server startup error.
+    #[fail(display = "Failed to start the server")]
+    Startup(#[fail(cause)] io::Error),
+
     /// Indicates a config parsing error.
     #[fail(display = "Failed loading config")]
     ConfigParsing(#[fail(cause)] ConfigError),
@@ -102,9 +106,6 @@ pub struct ServiceState {
     pub config: Arc<Config>,
 }
 
-/// Typedef for the application type.
-pub type ServiceApp = App<ServiceState>;
-
 /// CLI entrypoint
 pub fn main() -> ! {
     match execute() {
@@ -144,19 +145,19 @@ impl Caches {
     fn new(config: &Config) -> Self {
         Caches {
             objects: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
+                let path = config.cache_dir().map(|x| x.join("./objects/"));
                 Cache::new("objects", path, config.caches.downloaded)
             },
             object_meta: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./object_meta/"));
+                let path = config.cache_dir().map(|x| x.join("./object_meta/"));
                 Cache::new("object_meta", path, config.caches.derived)
             },
             symcaches: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
+                let path = config.cache_dir().map(|x| x.join("./symcaches/"));
                 Cache::new("symcaches", path, config.caches.derived)
             },
             cficaches: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
+                let path = config.cache_dir().map(|x| x.join("./cficaches/"));
                 Cache::new("cficaches", path, config.caches.derived)
             },
         }
@@ -172,110 +173,100 @@ fn cleanup_caches(config: Config) -> Result<(), CliError> {
     Ok(())
 }
 
-fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
-    let config = Arc::new(config);
+// fn get_system(config: Config) -> SystemRunner {
+//     let config = Arc::new(config);
 
-    if let Some(ref statsd) = config.metrics.statsd {
-        metrics::configure_statsd(&config.metrics.prefix, statsd);
-    }
+//     if let Some(ref statsd) = config.metrics.statsd {
+//         metrics::configure_statsd(&config.metrics.prefix, statsd);
+//     }
 
-    let caches = Caches::new(&config);
+//     let caches = Caches::new(&config);
 
-    let mut sys = actix::System::new("symbolicator");
+//     let mut sys = actix::System::new("symbolicator");
 
-    if !config.connect_to_reserved_ips {
-        sys.block_on(future::lazy(|| {
-            actix::System::current().registry().set(
-                client::ClientConnector::default()
-                    .resolver(SafeResolver::default().start().recipient())
-                    .start(),
-            );
-            Ok::<(), ()>(())
-        }))
-        .unwrap();
-    }
+//     if !config.connect_to_reserved_ips {
+//         sys.block_on(future::lazy(|| {
+//             actix::System::current().registry().set(
+//                 client::ClientConnector::default()
+//                     .resolver(SafeResolver::default().start().recipient())
+//                     .start(),
+//             );
+//             Ok::<(), ()>(())
+//         }))
+//         .unwrap();
+//     }
 
-    let cpu_threadpool = Arc::new(ThreadPool::new());
-    let io_threadpool = Arc::new(ThreadPool::new());
+//     let cpu_threadpool = Arc::new(ThreadPool::new());
+//     let io_threadpool = Arc::new(ThreadPool::new());
 
-    let objects = Arc::new(ObjectsActor::new(
-        caches.object_meta,
-        caches.objects,
-        io_threadpool.clone(),
-    ));
+//     let objects = Arc::new(ObjectsActor::new(
+//         caches.object_meta,
+//         caches.objects,
+//         io_threadpool.clone(),
+//     ));
 
-    let symcaches = Arc::new(SymCacheActor::new(
-        caches.symcaches,
-        objects.clone(),
-        cpu_threadpool.clone(),
-    ));
+//     let symcaches = Arc::new(SymCacheActor::new(
+//         caches.symcaches,
+//         objects.clone(),
+//         cpu_threadpool.clone(),
+//     ));
 
-    let cficaches = Arc::new(CfiCacheActor::new(
-        caches.cficaches,
-        objects.clone(),
-        cpu_threadpool.clone(),
-    ));
+//     let cficaches = Arc::new(CfiCacheActor::new(
+//         caches.cficaches,
+//         objects.clone(),
+//         cpu_threadpool.clone(),
+//     ));
 
-    let symbolication = Arc::new(SymbolicationActor::new(
-        objects.clone(),
-        symcaches,
-        cficaches,
-        cpu_threadpool.clone(),
-    ));
+//     let symbolication = Arc::new(SymbolicationActor::new(
+//         objects.clone(),
+//         symcaches,
+//         cficaches,
+//         cpu_threadpool.clone(),
+//     ));
 
-    let state = ServiceState {
-        cpu_threadpool,
-        io_threadpool,
-        symbolication,
-        objects,
-        config: config.clone(),
-    };
+//     let state = ServiceState {
+//         cpu_threadpool,
+//         io_threadpool,
+//         symbolication,
+//         objects,
+//         config: config.clone(),
+//     };
+// }
 
-    (sys, state)
-}
+// #[cfg(test)]
+// pub(crate) fn get_test_system() -> (actix::SystemRunner, ServiceState) {
+//     get_system(Default::default())
+// }
 
-#[cfg(test)]
-pub(crate) fn get_test_system() -> (actix::SystemRunner, ServiceState) {
-    get_system(Default::default())
-}
+// #[cfg(test)]
+// pub(crate) fn get_test_system_with_cache() -> (tempfile::TempDir, actix::SystemRunner, ServiceState)
+// {
+//     let tempdir = tempfile::TempDir::new().unwrap();
+//     let (runner, state) = get_system(Config {
+//         cache_dir: Some(tempdir.path().to_owned()),
+//         ..Default::default()
+//     });
 
-#[cfg(test)]
-pub(crate) fn get_test_system_with_cache() -> (tempfile::TempDir, actix::SystemRunner, ServiceState)
-{
-    let tempdir = tempfile::TempDir::new().unwrap();
-    let (runner, state) = get_system(Config {
-        cache_dir: Some(tempdir.path().to_owned()),
-        ..Default::default()
-    });
-
-    (tempdir, runner, state)
-}
+//     (tempdir, runner, state)
+// }
 
 /// Starts all actors and HTTP server based on loaded config.
-fn run_server(config: Config) -> Result<(), CliError> {
-    let (sys, state) = get_system(config);
+fn start(config: Config) -> Result<(), CliError> {
+    let mut sys = System::new("symbolicator");
 
-    fn get_app(state: ServiceState) -> ServiceApp {
-        let mut app = App::with_state(state)
-            .middleware(Metrics)
-            .middleware(ErrorHandlers)
-            .middleware(sentry_actix::SentryMiddleware::new());
-
-        app = endpoints::applecrashreport::register(app);
-        app = endpoints::healthcheck::register(app);
-        app = endpoints::minidump::register(app);
-        app = endpoints::requests::register(app);
-        app = endpoints::symbolicate::register(app);
-        app = endpoints::proxy::register(app);
-        app
-    }
-
-    server::new(clone!(state, || get_app(state.clone())))
-        .bind(&state.config.bind)?
-        .start();
+    HttpServer::new(|| {
+        App::new()
+            .wrap(middleware::Sentry)
+            .wrap(middleware::RequestMetrics)
+            // TODO: ErrorHandlers
+            // TODO: data
+            .configure(endpoints::configure)
+    })
+    .bind(&state.config.bind)?
+    .start();
 
     log::info!("Started http server: {}", state.config.bind);
 
-    let _ = sys.run();
-    Ok(())
+    sys.run()?;
+    OK(())
 }

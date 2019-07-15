@@ -8,8 +8,9 @@ include = ["src/**/*", "Cargo.toml", "README.md"]
 readme = "README.md"
 
 [dependencies]
-actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
-actix = "0.7.9"
+actix-multipart = "0.1.2"
+actix-rt = "0.2.3"
+actix-web = { version = "1.0.3", features = ["ssl", "brotli", "flate2-zlib", "secure-cookies", "client", "rust-tls"], default-features = false }
 apple-crash-report-parser = "0.3.1"
 failure = "0.1.5"
 serde = { version = "1.0.94", features = ["derive", "rc"] }
@@ -32,7 +33,6 @@ tokio = "0.1.22"
 uuid = "0.7.4"
 symbolic = { git = "https://github.com/getsentry/symbolic", rev = "32df00067d53e57309b7015a9bf1f62d9d011020", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 sentry = "0.15.5"
-sentry-actix = "0.15.5"
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
 rusoto_credential = "0.40.0"
