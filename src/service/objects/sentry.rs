@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix_web::{client::Client, http::header};
+use actix_web::http::header;
 
 use futures::future::Either;
 use futures::{future, Future, Stream};
@@ -14,6 +14,7 @@ use url::Url;
 
 use crate::service::objects::{DownloadStream, FileId, ObjectError, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
+use crate::utils::http;
 
 lazy_static::lazy_static! {
     static ref SENTRY_SEARCH_RESULTS: Mutex<lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>> =
@@ -94,8 +95,7 @@ fn perform_search(
 
     log::debug!("Fetching list of Sentry debug files from {}", index_url);
     let index_request = move || {
-        let client = Client::new(); // TODO(ja): Get a shared client somehow.
-        client
+        http::unsafe_client()
             .get(index_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
             .header(header::AUTHORIZATION, format!("Bearer {}", token.clone()))
@@ -183,9 +183,8 @@ pub(super) fn download_from_source(
 
     log::debug!("Fetching debug file from {}", download_url);
     let token = source.token.clone();
-    let client = Client::default(); // TODO(ja): Get a shared client somehow
     let try_download = clone!(download_url, || {
-        client
+        http::unsafe_client()
             .get(download_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
             .header(header::AUTHORIZATION, format!("Bearer {}", token))

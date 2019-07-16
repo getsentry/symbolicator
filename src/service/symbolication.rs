@@ -11,6 +11,7 @@ use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, Shared
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
+use sentry::Hub;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
@@ -195,8 +196,8 @@ impl SymbolicationActor {
             .write()
             .insert(request_id.clone(), rx.shared());
 
-        actix_rt::spawn(
-            f().then(move |result| {
+        let request_future = f()
+            .then(move |result| {
                 tx.send((
                     Instant::now(),
                     match result {
@@ -209,9 +210,9 @@ impl SymbolicationActor {
                 ))
                 .map_err(|_| ())
             })
-            // Clone hub because of `actix::spawn`
-            .sentry_hub_new_from_current(),
-        );
+            .bind_hub(Hub::new_from_top(Hub::main()));
+
+        actix_rt::spawn(request_future);
 
         request_id
     }
@@ -283,8 +284,11 @@ impl SourceLookup {
             }
         }
 
-        future::join_all(self.inner.into_iter().enumerate().map(
-            move |(i, (mut object_info, _))| {
+        let futures = self
+            .inner
+            .into_iter()
+            .enumerate()
+            .map(move |(i, (mut object_info, _))| {
                 if !referenced_objects.contains(&i) {
                     object_info.debug_status = ObjectFileStatus::Unused;
                     return Either::B(Ok((object_info, None)).into_future());
@@ -316,11 +320,12 @@ impl SourceLookup {
                             }
                         }))
                         .or_else(|_| Ok(None))
-                        .map(move |object_file_opt| (object_info, object_file_opt)),
+                        .map(move |object_file_opt| (object_info, object_file_opt))
+                        .bind_hub(Hub::new_from_top(Hub::current())),
                 )
-            },
-        ))
-        .map(|results| SourceLookup {
+            });
+
+        future::join_all(futures).map(|results| SourceLookup {
             inner: results.into_iter().collect(),
         })
     }
@@ -465,8 +470,11 @@ impl SymCacheLookup {
             }
         }
 
-        future::join_all(self.inner.into_iter().enumerate().map(
-            move |(i, (mut object_info, _))| {
+        let futures = self
+            .inner
+            .into_iter()
+            .enumerate()
+            .map(move |(i, (mut object_info, _))| {
                 if !referenced_objects.contains(&i) {
                     object_info.debug_status = ObjectFileStatus::Unused;
                     return Either::B(Ok((object_info, None)).into_future());
@@ -491,11 +499,12 @@ impl SymCacheLookup {
 
                             object_info.debug_status = status;
                             (object_info, symcache)
-                        }),
+                        })
+                        .bind_hub(Hub::new_from_top(Hub::current())),
                 )
-            },
-        ))
-        .map(|results| SymCacheLookup {
+            });
+
+        future::join_all(futures).map(|results| SymCacheLookup {
             inner: results.into_iter().collect(),
         })
     }
@@ -801,7 +810,7 @@ impl SymbolicationActor {
                             ..Default::default()
                         })
                     })
-                    .sentry_hub_current(),
+                    .bind_hub(Hub::current()),
                 )
             }))
             .and_then(move |response| {
@@ -839,7 +848,7 @@ impl SymbolicationActor {
                         }
                         Ok(response)
                     })
-                    .sentry_hub_current(),
+                    .bind_hub(Hub::current()),
                 )
             });
 
@@ -946,7 +955,7 @@ impl SymbolicationActor {
             Ok(cfi_modules)
         });
 
-        self.threadpool.spawn_handle(lazy.sentry_hub_current())
+        self.threadpool.spawn_handle(lazy.bind_hub(Hub::current()))
     }
 
     fn load_cfi_caches(
@@ -968,8 +977,7 @@ impl SymbolicationActor {
                         scope: scope.clone(),
                     })
                     .then(move |result| Ok((code_module_id, result)).into_future())
-                    // Clone hub because of join_all
-                    .sentry_hub_new_from_current()
+                    .bind_hub(Hub::new_from_top(Hub::current()))
             });
 
         Box::new(join_all(futures))
@@ -1123,7 +1131,7 @@ impl SymbolicationActor {
 
         Box::new(
             self.threadpool
-                .spawn_handle(stackwalk_future.sentry_hub_current()),
+                .spawn_handle(stackwalk_future.bind_hub(Hub::current())),
         )
     }
 
@@ -1304,7 +1312,7 @@ impl SymbolicationActor {
 
         let request_future = self
             .threadpool
-            .spawn_handle(parse_future.sentry_hub_current());
+            .spawn_handle(parse_future.bind_hub(Hub::current()));
 
         Box::new(future_metrics!(
             "minidump_stackwalk",

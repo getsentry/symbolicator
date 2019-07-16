@@ -8,9 +8,11 @@ include = ["src/**/*", "Cargo.toml", "README.md"]
 readme = "README.md"
 
 [dependencies]
+actix-connect = "0.2.0"
 actix-multipart = "0.1.2"
 actix-rt = "0.2.3"
-actix-web = { version = "1.0.3", features = ["ssl", "brotli", "flate2-zlib", "secure-cookies", "client", "rust-tls"], default-features = false }
+actix-service = "0.4.1"
+actix-web = { version = "1.0.3", features = ["ssl", "brotli", "flate2-zlib", "secure-cookies", "client"], default-features = false }
 apple-crash-report-parser = "0.3.1"
 failure = "0.1.5"
 serde = { version = "1.0.94", features = ["derive", "rc"] }
@@ -53,3 +55,6 @@ ipnetwork = "0.14.0"
 
 [dev-dependencies]
 insta = "0.8.1"
+
+[patch.crates-io]
+actix-connect = { path = "../actix-net/actix-connect" }

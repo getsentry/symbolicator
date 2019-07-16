@@ -13,6 +13,7 @@ use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 use crate::service::objects::common::{prepare_download_paths, DownloadPath};
 use crate::service::objects::{DownloadStream, FileId, ObjectError, ObjectErrorKind};
 use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
+use crate::utils::http;
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -90,8 +91,7 @@ fn request_new_token(
         Err(err) => return Box::new(Err(err).into_future()),
     };
 
-    let client = Client::default(); // TODO(ja): Get a shared client.
-    let response = client
+    let response = http::default_client()
         .post("https://www.googleapis.com/oauth2/v4/token")
         // for some inexplicable reason we otherwise get gzipped data back that actix-web client has
         // no idea what to do with.

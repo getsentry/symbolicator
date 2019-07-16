@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::{client::Client, http::header};
+use actix_web::http::header;
 use futures::{future, Future, IntoFuture, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
@@ -47,8 +47,7 @@ pub(super) fn download_from_source(
             download_url.clone(),
             MAX_HTTP_REDIRECTS,
             clone!(source, |url| {
-                let client = Client::new(); // TODO(ja): Create global client.
-                let mut request = client.get(url);
+                let mut request = http::default_client().get(url);
 
                 for (key, value) in &source.headers {
                     if let Ok(header) = header::HeaderName::from_bytes(key.as_bytes()) {

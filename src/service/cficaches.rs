@@ -9,8 +9,8 @@ use futures::{
     future::{Either, IntoFuture},
     Future,
 };
-use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
+use sentry::{configure_scope, Hub};
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use tokio_threadpool::ThreadPool;
 
@@ -114,29 +114,27 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)));
         let threadpool = &self.threadpool;
 
-        let result = object
-            .and_then(clone!(threadpool, |object| {
-                threadpool.spawn_handle(
-                    futures::lazy(move || {
-                        if object.status() != CacheStatus::Positive {
-                            return Ok(object.status());
-                        }
+        let result = object.and_then(clone!(threadpool, |object| {
+            threadpool.spawn_handle(
+                futures::lazy(move || {
+                    if object.status() != CacheStatus::Positive {
+                        return Ok(object.status());
+                    }
 
-                        let status = if let Err(e) = write_cficache(&path, &*object) {
-                            log::warn!("Could not write cficache: {}", e);
-                            capture_fail(e.cause().unwrap_or(&e));
+                    let status = if let Err(e) = write_cficache(&path, &*object) {
+                        log::warn!("Could not write cficache: {}", e);
+                        capture_fail(e.cause().unwrap_or(&e));
 
-                            CacheStatus::Malformed
-                        } else {
-                            CacheStatus::Positive
-                        };
+                        CacheStatus::Malformed
+                    } else {
+                        CacheStatus::Positive
+                    };
 
-                        Ok(status)
-                    })
-                    .sentry_hub_current(),
-                )
-            }))
-            .sentry_hub_current();
+                    Ok(status)
+                })
+                .bind_hub(Hub::current()),
+            )
+        }));
 
         let num_sources = self.request.sources.len();
 

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use futures::future::{lazy, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
-use sentry::configure_scope;
+use sentry::{configure_scope, Hub};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
@@ -229,7 +229,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .map_err(|_| ())
                 .into_future()
             }))
-            .sentry_hub_current();
+            .bind_hub(Hub::new_from_top(Hub::main()));
 
         actix_rt::spawn(compute_future);
 

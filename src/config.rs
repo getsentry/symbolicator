@@ -159,7 +159,7 @@ pub struct Config {
 impl Config {
     pub fn cache_dir<P>(&self, dir: P) -> Option<PathBuf>
     where
-        P: AsRef<Path>
+        P: AsRef<Path>,
     {
         self.cache_dir.as_ref().map(|base| base.join(dir))
     }

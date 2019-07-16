@@ -44,6 +44,7 @@ use sentry::{Hub, Scope};
 //     }
 // }
 
+/// TODO(ja): Doc
 #[derive(Debug)]
 pub struct SentryFuture<F> {
     hub: Arc<Hub>,
@@ -68,7 +69,9 @@ where
     }
 }
 
+/// TODO(ja): Doc
 pub trait SentryFutureExt: Sized {
+    /// TODO(ja): Doc
     fn bind_hub<H>(self, hub: H) -> SentryFuture<Self>
     where
         H: Into<Arc<Hub>>,
@@ -77,16 +80,6 @@ pub trait SentryFutureExt: Sized {
             future: self,
             hub: hub.into(),
         }
-    }
-
-    // TODO(ja): Remove this
-    fn sentry_hub_current(self) -> SentryFuture<Self> {
-        self.bind_hub(Hub::current())
-    }
-
-    // TODO(ja): Remove this
-    fn sentry_hub_new_from_current(self) -> SentryFuture<Self> {
-        self.bind_hub(Arc::new(Hub::new_from_top(Hub::current())))
     }
 }
 
@@ -106,6 +99,3 @@ pub trait ToSentryScope {
         hub.configure_scope(|scope| self.to_scope(scope));
     }
 }
-
-// TODO(ja): Make this a thing for all functions
-// TODO(ja): Change configure_scope to take any C: ConfigureScope.

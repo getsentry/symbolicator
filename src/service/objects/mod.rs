@@ -10,8 +10,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
-use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
+use ::sentry::{configure_scope, Hub};
 use futures::{future, Future, IntoFuture, Stream};
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
@@ -258,9 +258,12 @@ impl CacheItemRequest for FetchFileDataRequest {
                             named_download_file.path().to_owned(),
                             future::Either::A(stream.fold(
                                 tryf!(named_download_file.reopen().context(ObjectErrorKind::Io)),
-                                clone!(threadpool, |mut file, chunk| threadpool.spawn_handle(
-                                    future::lazy(move || file.write_all(&chunk).map(|_| file))
-                                )),
+                                clone!(threadpool, |mut file, chunk| {
+                                    threadpool.spawn_handle(
+                                        future::lazy(move || file.write_all(&chunk).map(|_| file))
+                                            .bind_hub(Hub::current()),
+                                    )
+                                }),
                             )),
                         )
                     }
@@ -277,63 +280,66 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                 let future = download_file.and_then(clone!(threadpool, |download_file| {
                     log::trace!("Finished download of {}", cache_key);
-                    threadpool.spawn_handle(future::lazy(move || {
-                        let mut decompressed = decompress_object_file(
-                            &cache_key,
-                            &download_file_path,
-                            download_file,
-                            tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
-                        )
-                        .context(ObjectErrorKind::Io)?;
-
-                        // Seek back to the start and parse this object to we can deal with it.
-                        // Since objects in Sentry (and potentially also other sources) might be
-                        // multi-arch files (e.g. FatMach), we parse as Archive and try to
-                        // extract the wanted file.
-                        decompressed
-                            .seek(SeekFrom::Start(0))
+                    threadpool.spawn_handle(
+                        future::lazy(move || {
+                            let mut decompressed = decompress_object_file(
+                                &cache_key,
+                                &download_file_path,
+                                download_file,
+                                tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
+                            )
                             .context(ObjectErrorKind::Io)?;
-                        let view = ByteView::map_file(decompressed)?;
-                        let archive = match Archive::parse(&view) {
-                            Ok(archive) => archive,
-                            Err(_) => {
-                                return Ok(CacheStatus::Malformed);
-                            }
-                        };
 
-                        let mut persist_file =
-                            fs::File::create(&path).context(ObjectErrorKind::Io)?;
-
-                        if archive.is_multi() {
-                            let object_opt = archive
-                                .objects()
-                                .filter_map(Result::ok)
-                                .find(|object| objects::match_id(&object, &object_id));
-
-                            // If we do not find the desired object in this archive - either
-                            // because we can't parse any of the objects within, or because none
-                            // of the objects match the identifier we're looking for - we return
-                            // early.
-                            let object = match object_opt {
-                                Some(object) => object,
-                                None => return Ok(CacheStatus::Negative),
+                            // Seek back to the start and parse this object to we can deal with it.
+                            // Since objects in Sentry (and potentially also other sources) might be
+                            // multi-arch files (e.g. FatMach), we parse as Archive and try to
+                            // extract the wanted file.
+                            decompressed
+                                .seek(SeekFrom::Start(0))
+                                .context(ObjectErrorKind::Io)?;
+                            let view = ByteView::map_file(decompressed)?;
+                            let archive = match Archive::parse(&view) {
+                                Ok(archive) => archive,
+                                Err(_) => {
+                                    return Ok(CacheStatus::Malformed);
+                                }
                             };
 
-                            io::copy(&mut object.data(), &mut persist_file)
-                                .context(ObjectErrorKind::Io)?;
-                        } else {
-                            // Attempt to parse the object to capture errors. The result can be
-                            // discarded as the object's data is the entire ByteView.
-                            if archive.object_by_index(0).is_err() {
-                                return Ok(CacheStatus::Malformed);
+                            let mut persist_file =
+                                fs::File::create(&path).context(ObjectErrorKind::Io)?;
+
+                            if archive.is_multi() {
+                                let object_opt = archive
+                                    .objects()
+                                    .filter_map(Result::ok)
+                                    .find(|object| objects::match_id(&object, &object_id));
+
+                                // If we do not find the desired object in this archive - either
+                                // because we can't parse any of the objects within, or because none
+                                // of the objects match the identifier we're looking for - we return
+                                // early.
+                                let object = match object_opt {
+                                    Some(object) => object,
+                                    None => return Ok(CacheStatus::Negative),
+                                };
+
+                                io::copy(&mut object.data(), &mut persist_file)
+                                    .context(ObjectErrorKind::Io)?;
+                            } else {
+                                // Attempt to parse the object to capture errors. The result can be
+                                // discarded as the object's data is the entire ByteView.
+                                if archive.object_by_index(0).is_err() {
+                                    return Ok(CacheStatus::Malformed);
+                                }
+
+                                io::copy(&mut view.as_ref(), &mut persist_file)
+                                    .context(ObjectErrorKind::Io)?;
                             }
 
-                            io::copy(&mut view.as_ref(), &mut persist_file)
-                                .context(ObjectErrorKind::Io)?;
-                        }
-
-                        Ok(CacheStatus::Positive)
-                    }))
+                            Ok(CacheStatus::Positive)
+                        })
+                        .bind_hub(Hub::current()),
+                    )
                 }));
 
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
@@ -344,19 +350,15 @@ impl CacheItemRequest for FetchFileDataRequest {
             }
         });
 
-        let result = result
-            .map_err(|e| {
-                capture_fail(e.cause().unwrap_or(&e));
-                e
-            })
-            .sentry_hub_current();
-
         let type_name = self.0.file_id.source().type_name();
 
         Box::new(future_metrics!(
             "objects",
             Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
-            result,
+            result.map_err(|e| {
+                capture_fail(e.cause().unwrap_or(&e));
+                e
+            }),
             "source_type" => type_name,
         ))
     }
@@ -528,7 +530,7 @@ impl ObjectsActor {
         let threadpool = &self.threadpool;
         let data_cache = &self.data_cache;
 
-        let prepare_futures: Vec<_> = sources
+        let prepare_futures = sources
             .iter()
             .map(move |source| {
                 prepare_downloads(source, filetypes, &identifier)
@@ -539,7 +541,7 @@ impl ObjectsActor {
                         identifier,
                         scope,
                         |ids| {
-                            future::join_all(ids.into_iter().map(move |file_id| {
+                            let fetch_futures = ids.into_iter().map(move |file_id| {
                                 let request = FetchFileMetaRequest {
                                     scope: if file_id.source().is_public() {
                                         Scope::Global
@@ -554,19 +556,21 @@ impl ObjectsActor {
 
                                 meta_cache
                                     .compute_memoized(request.clone())
-                                    .sentry_hub_new_from_current() // new hub because of join_all
                                     .map_err(|e| {
                                         ObjectError::from(
                                             ArcFail(e).context(ObjectErrorKind::Caching),
                                         )
                                     })
                                     .then(Ok)
-                            }))
+                                    .bind_hub(Hub::new_from_top(Hub::current()))
+                            });
+
+                            future::join_all(fetch_futures)
                         }
                     ))
-                    .sentry_hub_new_from_current() // new hub because of join_all
+                    .bind_hub(Hub::new_from_top(Hub::current()))
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         future::join_all(prepare_futures).and_then(move |responses| {
             responses
