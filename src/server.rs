@@ -1,6 +1,7 @@
 use actix_rt::System;
 use actix_web::{App, HttpServer};
 use failure::{Fail, ResultExt};
+use sentry::integrations::failure::capture_fail;
 
 use crate::config::Config;
 use crate::endpoints;
@@ -26,6 +27,8 @@ symbolic::common::derive_failure!(
     doc = "Error when starting the server."
 );
 
+impl actix_web::ResponseError for ServerError {}
+
 /// Starts all actors and HTTP server based on loaded config.
 pub fn run(config: Config) -> Result<(), ServerError> {
     let sys = System::new("symbolicator");
@@ -39,10 +42,8 @@ pub fn run(config: Config) -> Result<(), ServerError> {
     HttpServer::new(clone!(service, || {
         App::new()
             .data(service.clone())
-            .wrap(middleware::Sentry)
+            .wrap(middleware::Sentry::new().error_reporter(capture_fail::<ServerError>))
             .wrap(middleware::RequestMetrics)
-            // TODO: ErrorHandlers
-            // TODO: data
             .configure(endpoints::configure)
     }))
     .bind(&service.config().bind)

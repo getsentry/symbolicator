@@ -12,7 +12,7 @@ actix-connect = "0.2.1"
 actix-multipart = "0.1.2"
 actix-rt = "0.2.4"
 actix-service = "0.4.1"
-actix-web = { version = "1.0.3", features = ["ssl", "brotli", "flate2-zlib", "secure-cookies", "client"], default-features = false }
+actix-web = { version = "1.0.5", features = ["ssl", "brotli", "flate2-zlib", "secure-cookies", "client"], default-features = false }
 apple-crash-report-parser = "0.3.1"
 failure = "0.1.5"
 serde = { version = "1.0.95", features = ["derive", "rc"] }

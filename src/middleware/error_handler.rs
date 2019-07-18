@@ -60,3 +60,18 @@
 //         }
 //     }
 // }
+
+// use actix_web::dev::ServiceResponse;
+// use actix_web::middleware::errhandlers::{ErrorHandlers, ErrorHandlerResponse};
+// use actix_web::http::StatusCode;
+
+// pub fn error_handler<B>() -> ErrorHandlers<B> {
+//     ErrorHandlers::new()
+//         .handler(StatusCode::INTERNAL_SERVER_ERROR, |response| {
+//             if let Some(error) = response.response().error() {
+
+//             }
+
+//             Ok(ErrorHandlerResponse::Response(response))
+//         })
+// }
