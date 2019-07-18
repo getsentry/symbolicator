@@ -5,46 +5,7 @@ use std::sync::Arc;
 use futures::{Future, Poll};
 use sentry::{Hub, Scope};
 
-// #[derive(Clone, Debug)]
-// pub struct RequestHub(pub Arc<Hub>);
-
-// impl RequestHub {
-//     pub fn hub(&self) -> Arc<Hub> {
-//         self.0.clone()
-//     }
-// }
-
-// impl Deref for RequestHub {
-//     type Target = Hub;
-
-//     fn deref(&self) -> &Hub {
-//         &self.0
-//     }
-// }
-
-// impl Into<Arc<Hub>> for RequestHub {
-//     fn into(self) -> Arc<Hub> {
-//         self.0
-//     }
-// }
-
-// impl FromRequest for RequestHub {
-//     type Config = ();
-//     type Error = Error;
-//     type Future = Result<Self, Error>;
-
-//     #[inline]
-//     fn from_request(req: &HttpRequest, _: &mut web::Payload) -> Self::Future {
-//         match req.extensions().get::<RequestHub>() {
-//             Some(hub) => Ok(hub.clone()),
-//             None => Err(error::ErrorInternalServerError(
-//                 "Sentry hub is not configured, use Sentry middleware",
-//             )),
-//         }
-//     }
-// }
-
-/// TODO(ja): Doc
+/// A future that bind a `Hub` to its execution.
 #[derive(Debug)]
 pub struct SentryFuture<F> {
     hub: Arc<Hub>,
@@ -52,6 +13,7 @@ pub struct SentryFuture<F> {
 }
 
 impl<F> SentryFuture<F> {
+    /// Creates a new bound future with a `Hub`.
     pub fn new(hub: Arc<Hub>, future: F) -> Self {
         Self { hub, future }
     }
@@ -69,9 +31,11 @@ where
     }
 }
 
-/// TODO(ja): Doc
+/// Future extensions for Sentry.
 pub trait SentryFutureExt: Sized {
-    /// TODO(ja): Doc
+    /// Binds a hub to the execution of this future.
+    ///
+    /// This ensures that the future is polled within the given hub.
     fn bind_hub<H>(self, hub: H) -> SentryFuture<Self>
     where
         H: Into<Arc<Hub>>,
@@ -83,18 +47,22 @@ pub trait SentryFutureExt: Sized {
     }
 }
 
-impl<F> SentryFutureExt for F {}
+impl<F> SentryFutureExt for F where F: Future {}
 
-/// Write own data to Sentry scope, only the subset that is considered useful for debugging. Right
-/// now this could've been a simple method, but the idea is that one day we want a custom derive
-/// for this.
+/// Configures the sentry `Scope` with data from this object.
 pub trait ToSentryScope {
+    /// Writes data to the given scope.
+    ///
+    /// This can be called inside `sentry::configure_scope`. There is also a shorthand
+    /// `.configure_scope` in this trait.
     fn to_scope(&self, scope: &mut Scope);
 
+    /// Configures the current scope.
     fn configure_scope(&self) {
         sentry::configure_scope(|scope| self.to_scope(scope));
     }
 
+    /// Configures the top scope on the given hub.
     fn configure_hub(&self, hub: &Hub) {
         hub.configure_scope(|scope| self.to_scope(scope));
     }

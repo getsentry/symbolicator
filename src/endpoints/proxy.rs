@@ -2,7 +2,6 @@ use std::io::Cursor;
 
 use actix_web::{error, http, web, Error, HttpRequest, HttpResponse};
 use bytes::BytesMut;
-use failure::Fail;
 use futures::{future, Future, Stream};
 use serde::Deserialize;
 use tokio::codec::{BytesCodec, FramedRead};
@@ -11,22 +10,6 @@ use crate::service::objects::{FindObject, ObjectPurpose};
 use crate::service::Service;
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
-
-/// Symstore proxy error.
-#[derive(Clone, Copy, Debug, Fail)]
-pub enum ProxyErrorKind {
-    #[fail(display = "failed to write object")]
-    Io,
-
-    #[fail(display = "failed to download object")]
-    Fetching,
-}
-
-symbolic::common::derive_failure!(
-    ProxyError,
-    ProxyErrorKind,
-    doc = "Errors happening while proxying to a symstore"
-);
 
 /// Path parameters of the symstore proxy request.
 #[derive(Debug, Deserialize)]

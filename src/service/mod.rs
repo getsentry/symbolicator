@@ -20,7 +20,6 @@ use self::symcaches::SymCacheActor;
 #[derive(Clone, Debug)]
 pub struct Service {
     config: Arc<Config>,
-    // cpu_pool: Arc<ThreadPool>,
     io_pool: Arc<ThreadPool>,
     symbolication: Arc<SymbolicationActor>,
     objects: Arc<ObjectsActor>,
@@ -62,7 +61,6 @@ impl Service {
         ));
 
         Self {
-            // cpu_pool,
             io_pool,
             symbolication,
             objects,
@@ -73,11 +71,6 @@ impl Service {
     pub fn config(&self) -> Arc<Config> {
         self.config.clone()
     }
-
-    // TODO(ja): Keep or remove?
-    // pub fn cpu_pool(&self) -> Arc<ThreadPool> {
-    //     self.cpu_pool.clone()
-    // }
 
     pub fn io_pool(&self) -> Arc<ThreadPool> {
         self.io_pool.clone()

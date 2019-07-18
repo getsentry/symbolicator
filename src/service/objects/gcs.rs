@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix_web::{client::Client, http::header};
+use actix_web::http::header;
 use chrono::{DateTime, Duration, Utc};
 use failure::ResultExt;
 use futures::{Future, IntoFuture, Stream};
@@ -175,9 +175,7 @@ pub(super) fn download_from_source(
         get_token(&source.source_key)
             .and_then(move |token| {
                 log::debug!("Got valid GCS token: {:?}", &token);
-                let client = Client::default(); // TODO(ja): Get client somehow
-
-                client
+                http::default_client()
                     .get(&url)
                     .header(
                         header::AUTHORIZATION,
@@ -222,6 +220,6 @@ pub(super) fn download_from_source(
 
     Box::new(response.map_err(|e| match e {
         tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
+        tokio_retry::Error::TimerError(_) => unreachable!(),
     }))
 }

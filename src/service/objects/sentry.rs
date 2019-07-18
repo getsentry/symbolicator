@@ -21,25 +21,6 @@ lazy_static::lazy_static! {
         Mutex::new(lru::LruCache::new(100_000));
 }
 
-// #[derive(Debug, Fail, Clone, Copy)]
-// pub enum SentryErrorKind {
-//     #[fail(display = "failed parsing JSON response from Sentry")]
-//     Parsing,
-
-//     #[fail(display = "bad status code from Sentry")]
-//     BadStatusCode,
-
-//     #[fail(display = "failed sending request to Sentry")]
-//     SendRequest,
-// }
-
-// TODO(ja): Bring back?
-// symbolic::common::derive_failure!(
-//     SentryError,
-//     SentryErrorKind,
-//     doc = "Errors happening while fetching data from Sentry"
-// );
-
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub struct SentryFileId(String);
 
@@ -188,13 +169,8 @@ pub(super) fn download_from_source(
             .get(download_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
             .header(header::AUTHORIZATION, format!("Bearer {}", token))
-            // TODO(ja): Verify the below assumption.
-            // This timeout is for the entire HTTP download *including* the response stream
-            // itself, in contrast to what the Actix-Web docs say. We have tested this
-            // manually.
-            //
-            // The intent is to disable the timeout entirely, but there is no API for that.
-            .timeout(Duration::from_secs(9999))
+            // TODO(ja): Timeout is only until receiving the response, but not reading the
+            // body. Verify this.
             .send()
     });
 
@@ -205,7 +181,7 @@ pub(super) fn download_from_source(
 
     let response = response.map_err(|e| match e {
         tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
+        tokio_retry::Error::TimerError(_) => unreachable!(),
     });
 
     let response = response.then(move |result| match result {

@@ -11,35 +11,29 @@ use futures::{future, Future, Stream};
 use ipnetwork::IpNetwork;
 use url::Url;
 
-// use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
-// use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture};
-
-// use actix_web::client::{ClientRequest, ClientResponse, SendRequestError};
-// use actix_web::{FutureResponse, HttpMessage};
-
-// use futures::future::{Either, Future, IntoFuture};
-// use futures::{Async, Poll};
-
 lazy_static::lazy_static! {
     // https://en.wikipedia.org/wiki/Reserved_IP_addresses#IPv4
-    static ref RESERVED_IP_BLOCKS: Vec<IpNetwork> = [
+    static ref RESERVED_IP_NETS: Vec<IpNetwork> = [
         "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
         "192.0.0.0/29", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15",
         "198.51.100.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
     ].iter().map(|x| x.parse().unwrap()).collect();
 }
 
-// TODO(ja): This is an ugly hack to avoid passing config through the entire system. Instead, we
-// should make all services accessible to each other. This might require a change in the
-// architecture of object actors, however (unless messages should continue to carry that piece of
-// information).
+/// Global configuration whether connections to reserved IPs are allowed.
+///
+/// This is an ugly hack to avoid passing config through the entire system. Instead, we should make
+/// all services accessible to each other. This might require a change in the architecture of object
+/// actors, however (unless messages should continue to carry that piece of information).
 static ALLOW_RESERVED_IPS: AtomicBool = AtomicBool::new(false);
 
+// TODO: AwcConnector share
+
 std::thread_local! {
-    /// TODO(ja): Doc
+    /// An HTTP client that allows connections to internal networks.
     static UNSAFE_CLIENT: Client = Client::default();
 
-    /// TODO(ja): Doc
+    /// An HTTP client that blocks connections to internal networks.
     static SAFE_CLIENT: Client = Client::build().connector(
         Connector::new().connector(
             Resolver::default()
@@ -49,13 +43,15 @@ std::thread_local! {
     ).finish();
 }
 
-/// TODO(ja): Doc
+/// A service that filters connect messages to internal IPs.
 fn filter_ip_addrs<T: Address>(mut connect: Connect<T>) -> Result<Connect<T>, ConnectError> {
     let mut addrs = connect
         .take_addrs()
-        .filter(|addr| !RESERVED_IP_BLOCKS.iter().any(|net| net.contains(addr.ip())))
+        .filter(|addr| !RESERVED_IP_NETS.iter().any(|net| net.contains(addr.ip())))
         .peekable();
 
+    // The resolver returns a connect error if no records have been found. Even though the TCP
+    // connector will also perform a similar check, this is technically more correct behavior.
     if addrs.peek().is_none() {
         return Err(ConnectError::NoRecords);
     }
@@ -63,26 +59,49 @@ fn filter_ip_addrs<T: Address>(mut connect: Connect<T>) -> Result<Connect<T>, Co
     Ok(connect.set_addrs(addrs))
 }
 
-/// TODO(ja): Doc
+/// Configures whether connections to internal networks are allowed.
+///
+/// By default, this is disabled. When setting this to true, the default client will not block
+/// connections to localhost or any local IP ranges. This corresponds to the
+/// `connect_to_reserved_ips` configuration option.
 pub fn allow_reserved_ips(allow: bool) {
     ALLOW_RESERVED_IPS.store(allow, Ordering::Relaxed);
 }
 
-/// TODO(ja): Doc
+/// Returns the default HTTP client.
+///
+/// The client contains a shared connection per thread. Between threads, clients are not shared.
+///
+/// By default, this client blocks connections to hosts in the internal network. This can bee
+/// changed via `allow_reserved_ips`.
 pub fn default_client() -> Client {
     if ALLOW_RESERVED_IPS.load(Ordering::Relaxed) {
-        return unsafe_client();
+        unsafe_client()
+    } else {
+        SAFE_CLIENT.with(Client::clone)
     }
-
-    SAFE_CLIENT.with(Client::clone)
 }
 
-/// TODO(ja): Doc
+/// Returns an HTTP client that always allows connections to internal hosts.
+///
+/// The client contains a shared connection per thread. Between threads, clients are not shared.
 pub fn unsafe_client() -> Client {
     UNSAFE_CLIENT.with(Client::clone)
 }
 
-/// TODO(ja): Doc
+// #[derive(Debug, Fail)]
+// pub enum RedirectError {
+//     #[fail(display = "{}", _0)]
+//     SendRequest(SendRequestError),
+//     #[fail(display = "invalid redirect: {}", _0)]
+//     Redirect(url::ParseError),
+// }
+
+/// Follows redirects and returns the final response.
+///
+/// When a redirect changes the host name, authorization and cookie headers are removed from the
+/// request. The redirect loop is bounded by `max_redirects`. If this number is exceeded, the final
+/// response is returned, regardless of whether it is a redirect.
 pub fn follow_redirects<F>(
     initial_url: Url,
     max_redirects: usize,
@@ -114,7 +133,7 @@ where
                 if let Some(location) = location {
                     let redirect_url = url
                         .join(location)
-                        .map_err(|e| error::ErrorInternalServerError("TODO(ja)"))?;
+                        .map_err(error::ErrorInternalServerError)?;
 
                     let is_same_origin = redirect_url.origin() == url.origin();
 

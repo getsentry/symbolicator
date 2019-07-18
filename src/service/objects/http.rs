@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use actix_web::http::header;
 use futures::{future, Future, IntoFuture, Stream};
@@ -55,13 +54,9 @@ pub(super) fn download_from_source(
                     }
                 }
 
-                request
-                    .header(header::USER_AGENT, USER_AGENT)
-                    // This timeout is for the entire HTTP download *including* the response stream
-                    // itself, in contrast to what the Actix-Web docs say. We have tested this manually.
-                    //
-                    // The intent is to disable the timeout entirely, but there is no API for that.
-                    .timeout(Duration::from_secs(9999))
+                request.header(header::USER_AGENT, USER_AGENT)
+                // TODO(ja): Timeout is only until receiving the response, but not reading the
+                // body. Verify this.
             }),
         )
     });

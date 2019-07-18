@@ -60,20 +60,11 @@ pub enum ObjectErrorKind {
     #[fail(display = "failed to parse object")]
     Parsing,
 
-    #[fail(display = "bad status code")]
-    BadStatusCode,
-
-    #[fail(display = "failed to send request to source")]
-    SendRequest,
-
     #[fail(display = "failed to look into cache")]
     Caching,
 
     #[fail(display = "object download took too long")]
     Timeout,
-
-    #[fail(display = "failed to fetch data from Sentry")]
-    Sentry,
 }
 
 symbolic::common::derive_failure!(
