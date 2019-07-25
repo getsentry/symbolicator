@@ -68,6 +68,19 @@ impl Service {
         }
     }
 
+    #[cfg(test)]
+    pub fn test(caches: bool) -> Self {
+        if caches {
+            let tempdir = tempfile::TempDir::new().unwrap();
+            Self::create(Config {
+                cache_dir: Some(tempdir.path().to_owned()),
+                ..Config::default()
+            })
+        } else {
+            Self::create(Config::default())
+        }
+    }
+
     pub fn config(&self) -> Arc<Config> {
         self.config.clone()
     }

@@ -1416,9 +1416,10 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::{Once, ONCE_INIT};
 
+    use actix_rt::{System, SystemRunner};
     use failure::Error;
 
-    use crate::app::ServiceState;
+    use crate::service::Service;
     use crate::types::FilesystemSourceConfig;
 
     static INIT: Once = ONCE_INIT;
@@ -1439,13 +1440,13 @@ mod tests {
     }
 
     fn get_symbolication_response(
-        sys: &mut actix::SystemRunner,
-        state: &ServiceState,
+        sys: &mut SystemRunner,
+        service: &Service,
         request_id: RequestId,
     ) -> Result<SymbolicationResponse, Error> {
         let response_future =
-            state
-                .symbolication
+            service
+                .symbolication()
                 .get_symbolication_status(GetSymbolicationStatus {
                     request_id,
                     timeout: None,
@@ -1459,23 +1460,22 @@ mod tests {
     }
 
     fn stackwalk_minidump(path: &str) -> Result<(), Error> {
-        use crate::app::get_test_system_with_cache;
+        let mut sys = System::new("symbolicator");
+        let service = Service::test(true);
 
-        let (_tempdir, mut sys, state) = get_test_system_with_cache();
-
-        let request_id = state.symbolication.process_minidump(
+        let request_id = service.symbolication().process_minidump(
             Scope::Global,
             File::open(path)?,
             vec![get_local_bucket()],
-        )?;
+        );
 
-        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
         insta::assert_yaml_snapshot_matches!({
             let mut cache_entries: Vec<_> = fs::read_dir(
-                state
-                    .config
+                service
+                    .config()
                     .cache_dir
                     .as_ref()
                     .unwrap()
@@ -1493,11 +1493,10 @@ mod tests {
 
     #[test]
     fn test_remove_bucket() -> Result<(), Error> {
-        use crate::app::get_test_system_with_cache;
-
         setup_logging();
 
-        let (_tempdir, mut sys, state) = get_test_system_with_cache();
+        let mut sys = System::new("symbolicator");
+        let service = Service::test(true);
 
         let mut request = SymbolicateStacktraces {
             scope: Scope::Global,
@@ -1522,18 +1521,18 @@ mod tests {
             .into()],
         };
 
-        let request_id = state
-            .symbolication
-            .symbolicate_stacktraces(request.clone())?;
-        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request.clone());
+        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
         request.sources = Arc::new(vec![]);
 
-        let request_id = state
-            .symbolication
-            .symbolicate_stacktraces(request.clone())?;
-        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request.clone());
+        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
         Ok(())
@@ -1541,11 +1540,10 @@ mod tests {
 
     #[test]
     fn test_add_bucket() -> Result<(), Error> {
-        use crate::app::get_test_system_with_cache;
-
         setup_logging();
 
-        let (_tempdir, mut sys, state) = get_test_system_with_cache();
+        let mut sys = System::new("symbolicator");
+        let service = Service::test(true);
 
         let mut request = SymbolicateStacktraces {
             scope: Scope::Global,
@@ -1570,18 +1568,18 @@ mod tests {
             .into()],
         };
 
-        let request_id = state
-            .symbolication
-            .symbolicate_stacktraces(request.clone())?;
-        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request.clone());
+        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
         request.sources = Arc::new(vec![get_local_bucket()]);
 
-        let request_id = state
-            .symbolication
-            .symbolicate_stacktraces(request.clone())?;
-        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request.clone());
+        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
         Ok(())
@@ -1604,19 +1602,18 @@ mod tests {
 
     #[test]
     fn test_apple_crash_report() -> Result<(), Error> {
-        use crate::app::get_test_system;
-
-        let (mut sys, state) = get_test_system();
+        let mut sys = System::new("symbolicator");
+        let service = Service::test(false);
 
         let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
         let sources = vec![get_local_bucket()];
 
         let request_id =
-            state
-                .symbolication
-                .process_apple_crash_report(Scope::Global, report_file, sources)?;
+            service
+                .symbolication()
+                .process_apple_crash_report(Scope::Global, report_file, sources);
 
-        let response = get_symbolication_response(&mut sys, &state, request_id)?;
+        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
         Ok(())
     }
