@@ -14,6 +14,7 @@ pub struct SentryFuture<F> {
 
 impl<F> SentryFuture<F> {
     /// Creates a new bound future with a `Hub`.
+    #[allow(unused)]
     pub fn new(hub: Arc<Hub>, future: F) -> Self {
         Self { hub, future }
     }

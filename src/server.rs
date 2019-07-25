@@ -42,7 +42,12 @@ pub fn run(config: Config) -> Result<(), ServerError> {
     HttpServer::new(clone!(service, || {
         App::new()
             .data(service.clone())
-            .wrap(middleware::Sentry::new().error_reporter(capture_fail::<ServerError>))
+            .wrap(
+                middleware::Sentry::new()
+                    .error_reporter(capture_fail::<ServerError>)
+                    .capture_server_errors(true)
+                    .emit_header(true),
+            )
             .wrap(middleware::RequestMetrics)
             .configure(endpoints::configure)
     }))

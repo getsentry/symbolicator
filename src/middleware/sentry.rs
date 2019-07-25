@@ -1,11 +1,13 @@
 use std::fmt;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header::HeaderName;
-use actix_web::{Error, ResponseError};
+use actix_web::{Error, HttpRequest, ResponseError};
+use fragile::SemiSticky;
 use futures::{future, Future, Poll};
+use sentry::protocol::{ClientSdkPackage, Request};
 use sentry::Hub;
 use uuid::Uuid;
 
@@ -25,6 +27,8 @@ impl fmt::Display for NoError {
 impl ResponseError for NoError {}
 
 pub struct Sentry<E> {
+    emit_header: bool,
+    capture_server_errors: bool,
     reporter: Rc<dyn Fn(&E) -> Uuid>,
 }
 
@@ -35,12 +39,24 @@ impl Sentry<NoError> {
 }
 
 impl<E> Sentry<E> {
+    pub fn emit_header(mut self, emit_header: bool) -> Self {
+        self.emit_header = emit_header;
+        self
+    }
+
+    pub fn capture_server_errors(mut self, capture_server_errors: bool) -> Self {
+        self.capture_server_errors = capture_server_errors;
+        self
+    }
+
     pub fn error_reporter<N, F>(self, handler: F) -> Sentry<N>
     where
         N: ResponseError + 'static,
         F: Fn(&N) -> Uuid + 'static,
     {
         Sentry {
+            emit_header: self.emit_header,
+            capture_server_errors: self.capture_server_errors,
             reporter: Rc::new(handler),
         }
     }
@@ -49,6 +65,8 @@ impl<E> Sentry<E> {
 impl Default for Sentry<NoError> {
     fn default() -> Self {
         Self {
+            emit_header: false,
+            capture_server_errors: true,
             reporter: Rc::new(|_| Uuid::nil()),
         }
     }
@@ -71,13 +89,48 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         future::ok(SentryMiddleware {
             service,
+            emit_header: self.emit_header,
+            capture_server_errors: self.capture_server_errors,
             reporter: self.reporter.clone(),
         })
     }
 }
 
+fn extract_request(http_request: &HttpRequest, include_pii: bool) -> (Option<String>, Request) {
+    let connection_info = http_request.connection_info();
+
+    // Actix Web 1.0 does not expose routes in a way where we can extract a transaction.
+    let transaction = None;
+
+    let mut request = Request {
+        url: format!(
+            "{}://{}{}",
+            connection_info.scheme(),
+            connection_info.host(),
+            http_request.uri()
+        )
+        .parse()
+        .ok(),
+        method: Some(http_request.method().to_string()),
+        headers: http_request
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.as_str().into(), v.to_str().unwrap_or("").into()))
+            .collect(),
+        ..Request::default()
+    };
+
+    if let Some(remote) = connection_info.remote().filter(|_| include_pii) {
+        request.env.insert("REMOTE_ADDR".into(), remote.into());
+    }
+
+    (transaction, request)
+}
+
 pub struct SentryMiddleware<E, S> {
     service: S,
+    emit_header: bool,
+    capture_server_errors: bool,
     reporter: Rc<dyn Fn(&E) -> Uuid>,
 }
 
@@ -99,12 +152,47 @@ where
 
     fn call(&mut self, request: ServiceRequest) -> Self::Future {
         let hub = Arc::new(Hub::new_from_top(Hub::main()));
+
+        let emit_header = self.emit_header;
+        let capture_server_errors = self.capture_server_errors;
         let reporter = self.reporter.clone();
 
-        // TODO(ja): Port everything over from sentry-actix
+        let http_request = SemiSticky::new(request.request().clone());
+        let cached_data = Arc::new(Mutex::new(None));
+        let include_pii = hub
+            .client()
+            .as_ref()
+            .map_or(false, |x| x.options().send_default_pii);
+
+        hub.configure_scope(move |scope| {
+            scope.add_event_processor(Box::new(move |mut event| {
+                let mut guard = cached_data.lock().unwrap();
+                if guard.is_none() && http_request.is_valid() {
+                    *guard = Some(extract_request(http_request.get(), include_pii));
+                }
+
+                if let Some((ref transaction, ref request)) = *guard {
+                    event.transaction = event.transaction.or_else(|| transaction.clone());
+                    event.request.get_or_insert_with(|| request.clone());
+                }
+
+                if let Some(ref mut sdk) = event.sdk {
+                    sdk.to_mut().packages.push(ClientSdkPackage {
+                        name: "sentry-actix".into(),
+                        version: env!("CARGO_PKG_VERSION").into(),
+                    });
+                }
+
+                Some(event)
+            }));
+        });
 
         let response_future = Hub::run(hub.clone(), || self.service.call(request))
             .then(move |mut result| {
+                if !capture_server_errors {
+                    return result;
+                }
+
                 // Check if we want to handle this error depending on the status code. Only handle
                 // internal server errors (status code 5XX).
                 let status = match result {
@@ -142,11 +230,13 @@ where
                 // possible if the future did not resolve to an error. The error will still be
                 // converted in to a response, but that happens at a later time. To ensure that
                 // subsequent middlewares still see the actix error, we leave that case out.
-                if let Ok(ref mut response) = result {
-                    response.response_mut().headers_mut().insert(
-                        HeaderName::from_static("x-sentry-event"),
-                        event_id.to_simple_ref().to_string().parse().unwrap(),
-                    );
+                if emit_header {
+                    if let Ok(ref mut response) = result {
+                        response.response_mut().headers_mut().insert(
+                            HeaderName::from_static("x-sentry-event"),
+                            event_id.to_simple_ref().to_string().parse().unwrap(),
+                        );
+                    }
                 }
 
                 result
