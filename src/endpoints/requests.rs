@@ -24,6 +24,8 @@ fn get_request(
     path: web::Path<PollSymbolicationRequestPath>,
     query: web::Query<PollSymbolicationRequestQueryParams>,
 ) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+    log::trace!("Received poll request for id {}", path.request_id);
+
     let response = service
         .symbolication()
         .get_symbolication_status(GetSymbolicationStatus {

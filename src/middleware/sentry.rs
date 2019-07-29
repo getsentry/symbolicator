@@ -1,11 +1,10 @@
 use std::fmt;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header::HeaderName;
-use actix_web::{Error, HttpRequest, ResponseError};
-use fragile::SemiSticky;
+use actix_web::{Error, ResponseError};
 use futures::{future, Future, Poll};
 use sentry::protocol::{ClientSdkPackage, Request};
 use sentry::Hub;
@@ -96,8 +95,11 @@ where
     }
 }
 
-fn extract_request(http_request: &HttpRequest, include_pii: bool) -> (Option<String>, Request) {
-    let connection_info = http_request.connection_info();
+fn extract_request(
+    service_request: &ServiceRequest,
+    include_pii: bool,
+) -> (Option<String>, Request) {
+    let connection_info = service_request.connection_info();
 
     // Actix Web 1.0 does not expose routes in a way where we can extract a transaction.
     let transaction = None;
@@ -107,12 +109,12 @@ fn extract_request(http_request: &HttpRequest, include_pii: bool) -> (Option<Str
             "{}://{}{}",
             connection_info.scheme(),
             connection_info.host(),
-            http_request.uri()
+            service_request.uri()
         )
         .parse()
         .ok(),
-        method: Some(http_request.method().to_string()),
-        headers: http_request
+        method: Some(service_request.method().to_string()),
+        headers: service_request
             .headers()
             .iter()
             .map(|(k, v)| (k.as_str().into(), v.to_str().unwrap_or("").into()))
@@ -157,24 +159,16 @@ where
         let capture_server_errors = self.capture_server_errors;
         let reporter = self.reporter.clone();
 
-        let http_request = SemiSticky::new(request.request().clone());
-        let cached_data = Arc::new(Mutex::new(None));
         let include_pii = hub
             .client()
             .as_ref()
             .map_or(false, |x| x.options().send_default_pii);
+        let (transaction, sentry_request) = extract_request(&request, include_pii);
 
         hub.configure_scope(move |scope| {
             scope.add_event_processor(Box::new(move |mut event| {
-                let mut guard = cached_data.lock().unwrap();
-                if guard.is_none() && http_request.is_valid() {
-                    *guard = Some(extract_request(http_request.get(), include_pii));
-                }
-
-                if let Some((ref transaction, ref request)) = *guard {
-                    event.transaction = event.transaction.or_else(|| transaction.clone());
-                    event.request.get_or_insert_with(|| request.clone());
-                }
+                event.transaction = event.transaction.or_else(|| transaction.clone());
+                event.request.get_or_insert_with(|| sentry_request.clone());
 
                 if let Some(ref mut sdk) = event.sdk {
                     sdk.to_mut().packages.push(ClientSdkPackage {

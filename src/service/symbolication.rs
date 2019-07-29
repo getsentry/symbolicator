@@ -184,7 +184,7 @@ impl SymbolicationActor {
         R: Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> + 'static,
     {
         let request_id = loop {
-            let request_id = RequestId(uuid::Uuid::new_v4().to_string());
+            let request_id = RequestId::new(uuid::Uuid::new_v4());
             if !self.requests.read().contains_key(&request_id) {
                 break request_id;
             }
@@ -1473,17 +1473,11 @@ mod tests {
         insta::assert_yaml_snapshot_matches!(response);
 
         insta::assert_yaml_snapshot_matches!({
-            let mut cache_entries: Vec<_> = fs::read_dir(
-                service
-                    .config()
-                    .cache_dir
-                    .as_ref()
-                    .unwrap()
-                    .join("object_meta/global/"),
-            )
-            .unwrap()
-            .map(|x| x.unwrap().file_name().into_string().unwrap())
-            .collect();
+            let global_dir = service.config().cache_dir("object_meta/global").unwrap();
+            let mut cache_entries: Vec<_> = fs::read_dir(global_dir)
+                .unwrap()
+                .map(|x| x.unwrap().file_name().into_string().unwrap())
+                .collect();
 
             cache_entries.sort();
             cache_entries

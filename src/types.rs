@@ -13,10 +13,24 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::minidump::processor::FrameTrust;
 use url::Url;
+use uuid::Uuid;
 
-/// Symbolication request identifier.
+/// Symbolication task identifier.
 #[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct RequestId(pub String);
+pub struct RequestId(String);
+
+impl RequestId {
+    /// Creates a new symbolication task identifier.
+    pub fn new(uuid: Uuid) -> Self {
+        Self(uuid.to_string())
+    }
+}
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h

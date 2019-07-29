@@ -56,6 +56,3 @@ fragile = "0.3.0"
 
 [dev-dependencies]
 insta = "0.8.1"
-
-[patch.crates-io]
-actix-web = {path = "../actix-web"}

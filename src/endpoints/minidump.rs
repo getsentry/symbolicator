@@ -71,6 +71,8 @@ fn post_minidump(
     params: web::Query<SymbolicationRequestQueryParams>,
     multipart: Multipart,
 ) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+    log::trace!("Received minidump");
+
     let default_sources = service.config().default_sources();
     let symbolication = service.symbolication();
     let io_pool = service.io_pool();

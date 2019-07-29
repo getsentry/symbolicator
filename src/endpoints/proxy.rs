@@ -25,8 +25,11 @@ fn get_symstore_proxy(
     let is_head = request.method() == http::Method::HEAD;
 
     if !service.config().symstore_proxy {
+        log::trace!("Ignoring proxy request (disabled in config)");
         return Box::new(future::ok(HttpResponse::NotFound().finish()));
     }
+
+    log::trace!("Received proxy {} request", request.method());
 
     let (filetypes, object_id) = match parse_symstore_path(&path.path) {
         Some((filetypes, object_id)) => (filetypes, object_id),

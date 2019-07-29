@@ -49,6 +49,8 @@ fn post_payload(
     params: web::Query<SymbolicationRequestQueryParams>,
     body: web::Json<SymbolicationRequestBody>,
 ) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+    log::trace!("Received symbolication request");
+
     let params = params.into_inner();
     params.configure_scope();
 
