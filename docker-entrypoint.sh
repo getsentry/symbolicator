@@ -2,7 +2,10 @@
 set -eu
 
 if [ "$(id -u)" == "0" ]; then
-  echo '127.0.0.1 api.local.sentry.io' >> /etc/hosts  # For tests
+  # Prepare default data directory
+  mkdir -p /data
+  chown symbolicator:symbolicator /data
+
   exec gosu symbolicator /bin/symbolicator "$@"
 else
   exec /bin/symbolicator "$@"
