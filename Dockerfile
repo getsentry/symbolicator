@@ -1,6 +1,7 @@
 FROM rust:slim-stretch AS symbolicator-build
 
 WORKDIR /work
+VOLUME /data
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git \
