@@ -1,7 +1,6 @@
 FROM rust:slim-stretch AS symbolicator-build
 
 WORKDIR /work
-VOLUME /data
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git \
@@ -17,7 +16,8 @@ COPY . .
 RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
-# Copy the compiled binary to a clean image
+#############################################
+# Copy the compiled binary to a clean image #
 FROM debian:stretch-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates gosu cabextract \
@@ -31,9 +31,9 @@ ENV \
 RUN groupadd --system symbolicator --gid $SYMBOLICATOR_GID \
     && useradd --system --gid symbolicator --uid $SYMBOLICATOR_UID symbolicator
 
-RUN mkdir /etc/symbolicator \
-    && chown symbolicator:symbolicator /etc/symbolicator
-VOLUME ["/etc/symbolicator"]
+RUN mkdir /etc/symbolicator /data \
+    && chown symbolicator:symbolicator /etc/symbolicator /data
+VOLUME ["/etc/symbolicator", "/data"]
 
 EXPOSE 3021
 
