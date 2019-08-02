@@ -1,6 +1,6 @@
 ---
-created: "2019-06-14T08:44:54.894097Z"
-creator: insta@0.8.1
+created: "2019-08-02T18:48:39.861272400Z"
+creator: insta@0.10.0
 source: src/actors/symbolication.rs
 expression: response
 ---
