@@ -48,6 +48,7 @@ pub fn run(config: Config) -> Result<(), ServerError> {
                     .capture_server_errors(true)
                     .emit_header(true),
             )
+            .wrap(middleware::ErrorHandler)
             .wrap(middleware::RequestMetrics)
             .configure(endpoints::configure)
     }))

@@ -215,7 +215,7 @@ where
 
                 // Try to handle the error using the configured reporter. If the error is of a
                 // different type, use the generic capture_message.
-                let event_id = match error_opt.and_then(|e| e.as_error::<E>()) {
+                let event_id = match error.as_error::<E>() {
                     Some(error) => reporter(error),
                     None => sentry::capture_message(&error.to_string(), sentry::Level::Error),
                 };

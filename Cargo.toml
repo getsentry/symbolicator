@@ -8,20 +8,20 @@ include = ["src/**/*", "Cargo.toml", "README.md"]
 readme = "README.md"
 
 [dependencies]
-actix-connect = "0.2.1"
+actix-connect = "0.2.2"
 actix-multipart = "0.1.2"
 actix-rt = "0.2.4"
 actix-service = "0.4.1"
 actix-web = { version = "1.0.5", features = ["ssl", "brotli", "flate2-zlib", "secure-cookies", "client"], default-features = false }
 apple-crash-report-parser = "0.3.1"
 failure = "0.1.5"
-serde = { version = "1.0.95", features = ["derive", "rc"] }
+serde = { version = "1.0.98", features = ["derive", "rc"] }
 futures = "0.1.28"
 bytes = "0.4.12"
 url = "1.7.2"
 derive_more = "0.15.0"
 url_serde = "0.2.0"
-log = { version = "0.4.7", features = ["serde"] }
+log = { version = "0.4.8", features = ["serde"] }
 tempfile = "3.1.0"
 env_logger = "0.6.2"
 structopt = "0.2.18"
@@ -34,7 +34,7 @@ parking_lot = "0.9.0"
 tokio = "0.1.22"
 uuid = "0.7.4"
 symbolic = { git = "https://github.com/getsentry/symbolic", rev = "32df00067d53e57309b7015a9bf1f62d9d011020", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
-sentry = "0.15.5"
+sentry = "0.16.0"
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
 rusoto_credential = "0.40.0"
@@ -55,4 +55,4 @@ ipnetwork = "0.14.0"
 fragile = "0.3.0"
 
 [dev-dependencies]
-insta = "0.8.1"
+insta = "0.9.0"

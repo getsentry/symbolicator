@@ -1,11 +1,6 @@
-use actix_web::web;
+use actix_web::{web, Error};
 
-#[derive(Debug, derive_more::Display)]
-struct CustomError;
-
-impl actix_web::ResponseError for CustomError {}
-
-fn get_healthcheck() -> Result<&'static str, CustomError> {
+fn get_healthcheck() -> Result<&'static str, Error> {
     Ok("ok")
 }
 
