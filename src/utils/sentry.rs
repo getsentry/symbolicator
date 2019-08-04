@@ -1,7 +1,5 @@
-// use std::ops::Deref;
 use std::sync::Arc;
 
-// use actix_web::{error, web, Error, FromRequest, HttpRequest};
 use futures::{Future, Poll};
 use sentry::{Hub, Scope};
 

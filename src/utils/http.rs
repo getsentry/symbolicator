@@ -89,14 +89,6 @@ pub fn unsafe_client() -> Client {
     UNSAFE_CLIENT.with(Client::clone)
 }
 
-// #[derive(Debug, Fail)]
-// pub enum RedirectError {
-//     #[fail(display = "{}", _0)]
-//     SendRequest(SendRequestError),
-//     #[fail(display = "invalid redirect: {}", _0)]
-//     Redirect(url::ParseError),
-// }
-
 /// Follows redirects and returns the final response.
 ///
 /// When a redirect changes the host name, authorization and cookie headers are removed from the
