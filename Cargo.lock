@@ -1220,7 +1220,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "insta"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "chrono 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1762,7 +1762,7 @@ dependencies = [
 [[package]]
 name = "pdb"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/jan-auer/pdb?rev=c117bd4c23d04ca5c867f4f56f2715d144ff88c2#c117bd4c23d04ca5c867f4f56f2715d144ff88c2"
 dependencies = [
  "fallible-iterator 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "scroll 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2530,19 +2530,19 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "6.1.3"
-source = "git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020#32df00067d53e57309b7015a9bf1f62d9d011020"
+source = "git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461#c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461"
 dependencies = [
- "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
- "symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
- "symbolic-demangle 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
- "symbolic-minidump 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
- "symbolic-symcache 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
+ "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
+ "symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
+ "symbolic-demangle 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
+ "symbolic-minidump 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
+ "symbolic-symcache 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
 ]
 
 [[package]]
 name = "symbolic-common"
 version = "6.1.3"
-source = "git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020#32df00067d53e57309b7015a9bf1f62d9d011020"
+source = "git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461#c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461"
 dependencies = [
  "debugid 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2555,7 +2555,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "6.1.3"
-source = "git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020#32df00067d53e57309b7015a9bf1f62d9d011020"
+source = "git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461#c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461"
 dependencies = [
  "dmsort 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2566,53 +2566,53 @@ dependencies = [
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazycell 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pdb 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pdb 0.5.0 (git+https://github.com/jan-auer/pdb?rev=c117bd4c23d04ca5c867f4f56f2715d144ff88c2)",
  "pest 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
+ "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
  "zip 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "symbolic-demangle"
 version = "6.1.3"
-source = "git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020#32df00067d53e57309b7015a9bf1f62d9d011020"
+source = "git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461#c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461"
 dependencies = [
  "cc 1.0.38 (registry+https://github.com/rust-lang/crates.io-index)",
  "cpp_demangle 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "msvc-demangler 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-demangle 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
+ "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
 ]
 
 [[package]]
 name = "symbolic-minidump"
 version = "6.1.3"
-source = "git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020#32df00067d53e57309b7015a9bf1f62d9d011020"
+source = "git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461#c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461"
 dependencies = [
  "cc 1.0.38 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
- "symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
+ "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
+ "symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
 ]
 
 [[package]]
 name = "symbolic-symcache"
 version = "6.1.3"
-source = "git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020#32df00067d53e57309b7015a9bf1f62d9d011020"
+source = "git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461#c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461"
 dependencies = [
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
- "symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
+ "symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
+ "symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
 ]
 
 [[package]]
@@ -2637,7 +2637,7 @@ dependencies = [
  "fragile 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "insta 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "insta 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipnetwork 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "jsonwebtoken 7.0.0 (git+https://github.com/Keats/jsonwebtoken?rev=b8627260b2902a1ab4fdda83083be3e0b0fb9b7f)",
@@ -2654,7 +2654,7 @@ dependencies = [
  "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.8.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)",
+ "symbolic 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)",
  "tempfile 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.22 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-retry 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3437,7 +3437,7 @@ dependencies = [
 "checksum idna 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "38f09e0f0b1fb55fdee1f17470ad800da77af5186a1a76c026b679358b7e844e"
 "checksum im 12.3.4 (registry+https://github.com/rust-lang/crates.io-index)" = "de38d1511a0ce7677538acb1e31b5df605147c458e061b2cdb89858afb1cd182"
 "checksum indexmap 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7e81a7c05f79578dbc15793d8b619db9ba32b4577003ef3af1a91c416798c58d"
-"checksum insta 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a915d6263f1d68fc9b693058702a3e9f47f4434dec45d4e35e2b66e490f8bc51"
+"checksum insta 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "00eef45accbe65bfb859ad16649c6b4bed246768d89493473d9ab6c6a0eb908f"
 "checksum iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dbe6e417e7d0975db6512b90796e8ce223145ac4e33c377e4a42882a0e88bb08"
 "checksum ipconfig 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "aa79fa216fbe60834a9c0737d7fcd30425b32d1c58854663e24d4c4b328ed83f"
 "checksum ipnetwork 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b3d862c86f7867f19b693ec86765e0252d82e53d4240b9b629815675a0714ad1"
@@ -3496,7 +3496,7 @@ dependencies = [
 "checksum parking_lot_core 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "94c8c7923936b28d546dfd14d4472eaf34c99b14e1c973a32b3e6d4eb04298c9"
 "checksum parking_lot_core 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "cb88cb1cb3790baa6776844f968fea3be44956cf184fa1be5a03341f5491278c"
 "checksum parking_lot_core 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b876b1b9e7ac6e1a74a6da34d25c42e17e8862aa409cbbbdcfc8d86c6f3bc62b"
-"checksum pdb 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e6b57b7067dc9dbd04b1305bb51a8ae7d0fc645956a73b6cb2807dd956ab6929"
+"checksum pdb 0.5.0 (git+https://github.com/jan-auer/pdb?rev=c117bd4c23d04ca5c867f4f56f2715d144ff88c2)" = "<none>"
 "checksum percent-encoding 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 "checksum pest 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "933085deae3f32071f135d799d75667b63c8dc1f4537159756e3d4ceab41868c"
 "checksum pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "833d1ae558dc601e9a60366421196a8d94bc0ac980476d0b67e1d0988d72b2d0"
@@ -3579,12 +3579,12 @@ dependencies = [
 "checksum strsim 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 "checksum structopt 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)" = "16c2cdbf9cc375f15d1b4141bc48aeef444806655cd0e904207edc8d68d86ed7"
 "checksum structopt-derive 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)" = "53010261a84b37689f9ed7d395165029f9cc7abb9f56bbfe86bee2597ed25107"
-"checksum symbolic 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)" = "<none>"
-"checksum symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)" = "<none>"
-"checksum symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)" = "<none>"
-"checksum symbolic-demangle 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)" = "<none>"
-"checksum symbolic-minidump 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)" = "<none>"
-"checksum symbolic-symcache 6.1.3 (git+https://github.com/getsentry/symbolic?rev=32df00067d53e57309b7015a9bf1f62d9d011020)" = "<none>"
+"checksum symbolic 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)" = "<none>"
+"checksum symbolic-common 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)" = "<none>"
+"checksum symbolic-debuginfo 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)" = "<none>"
+"checksum symbolic-demangle 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)" = "<none>"
+"checksum symbolic-minidump 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)" = "<none>"
+"checksum symbolic-symcache 6.1.3 (git+https://github.com/getsentry/symbolic?rev=c30f1bf4a39025d7ee6fb8ef1c6f4b8649f02461)" = "<none>"
 "checksum syn 0.15.42 (registry+https://github.com/rust-lang/crates.io-index)" = "eadc09306ca51a40555dd6fc2b415538e9e18bc9f870e47b1a524a79fe2dcf5e"
 "checksum synstructure 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)" = "02353edf96d6e4dc81aea2d8490a7e9db177bf8acb0e951c24940bf866cb313f"
 "checksum take_mut 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"

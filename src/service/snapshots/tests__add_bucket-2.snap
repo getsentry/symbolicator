@@ -1,7 +1,7 @@
 ---
-created: "2019-07-02T13:48:39.142460Z"
-creator: insta@0.8.1
-source: src/actors/symbolication.rs
+created: "2019-08-04T19:32:25.144162Z"
+creator: insta@0.10.0
+source: src/service/symbolication.rs
 expression: response
 ---
 status: completed

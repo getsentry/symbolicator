@@ -1,8 +1,8 @@
 ---
-created: "2019-06-28T10:55:27.269322Z"
-creator: insta@0.8.1
-source: src/actors/symbolication.rs
-expression: "{\n    let mut cache_entries: Vec<_> =\n        fs::read_dir(state.config.cache_dir.as_ref().unwrap().join(\"object_meta/global/\")).unwrap().map(|x|\n                                                                                                            x.unwrap().file_name().into_string().unwrap()).collect();\n    cache_entries.sort();\n    cache_entries\n}"
+created: "2019-08-04T19:32:25.280456Z"
+creator: insta@0.10.0
+source: src/service/symbolication.rs
+expression: "{\n    let global_dir =\n        service.config().cache_dir(\"object_meta/global\").unwrap();\n    let mut cache_entries: Vec<_> =\n        fs::read_dir(global_dir).unwrap().map(|x|\n                                                  x.unwrap().file_name().into_string().unwrap()).collect();\n    cache_entries.sort();\n    cache_entries\n}"
 ---
 - local_crash_exe_5AB380779000_crash_ex_
 - local_crash_exe_5AB380779000_crash_exe
