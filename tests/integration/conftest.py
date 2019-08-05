@@ -114,7 +114,7 @@ class HitCounter:
 
 
 @pytest.fixture
-def hitcounter(request):
+def hitcounter():
     errors = []
     hits = {}
     hitlock = threading.Lock()
@@ -134,7 +134,7 @@ def hitcounter(request):
             if path.startswith("/redirect/"):
                 path = path[len("/redirect") :]
                 start_response("302 Found", [("Location", path)])
-                yield b""
+                return [b""]
             elif path.startswith("/msdl/"):
                 path = path[len("/msdl/") :]
 
@@ -143,30 +143,30 @@ def hitcounter(request):
                     allow_redirects=False,  # test redirects with msdl
                 ) as r:
                     start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
-                    yield r.content
+                    return [r.content]
             elif path.startswith("/respond_statuscode/"):
                 statuscode = int(path.split("/")[2])
                 start_response(f"{statuscode} BOGUS", [])
-                yield b""
+                return [b""]
 
             elif path.startswith("/garbage_data/"):
                 start_response("200 OK", [])
-                yield b"bogus"
+                return [b"bogus"]
             else:
                 raise AssertionError("Bad path: {}".format(path))
         except Exception as e:
             errors.append(e)
 
-    @request.addfinalizer
-    def _():
-        for error in errors:
-            raise error
-
     server = WSGIServer(application=app, threaded=True)
     server.start()
-    request.addfinalizer(server.stop)
     rv = HitCounter(url=server.url, hits=hits)
-    return rv
+
+    yield rv
+
+    server.stop()
+
+    for error in errors:
+        raise error
 
 
 @pytest.fixture
