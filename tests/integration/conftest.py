@@ -156,6 +156,8 @@ def hitcounter():
                 raise AssertionError("Bad path: {}".format(path))
         except Exception as e:
             errors.append(e)
+            start_response("500 Internal Server Error", [])
+            return [b"error"]
 
     server = WSGIServer(application=app, threaded=True)
     server.start()
