@@ -24,7 +24,7 @@ test-rust:
 test-integration: .venv/bin/python
 	.venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist pytest-icdiff boto3
 	cargo build
-	@.venv/bin/pytest tests --reruns 5 -n12 -vv
+	@.venv/bin/pytest tests -vv
 .PHONY: test-integration
 
 # Documentation
