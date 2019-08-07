@@ -107,6 +107,11 @@ pub(super) fn download_from_source(
             )))
         }
         Err(err) => {
+            // For missing files, Amazon returns different status codes based on the given
+            // permissions.
+            // - To fetch existing objects, `GetObject` is required.
+            // - If `ListBucket` is premitted, a 404 is returned for missing objects.
+            // - Otherwise, a 403 ("access denied") is returned.
             log::debug!("Skipping response from s3:{}{}: {}", bucket, &key, err);
             Ok(None)
         }

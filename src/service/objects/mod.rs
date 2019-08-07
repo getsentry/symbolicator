@@ -1,6 +1,6 @@
 use std::cmp;
 use std::fmt;
-use std::fs;
+use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process;
@@ -164,8 +164,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
-        let path = path.to_owned();
+        let cache_key = self.get_cache_key();
+        log::trace!("Fetching file meta for {}", cache_key);
 
+        let path = path.to_owned();
         let result = self
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
@@ -173,7 +175,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .and_then(move |data| {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
-                        let mut f = fs::File::create(path).context(ObjectErrorKind::Io)?;
+                        let mut f = File::create(path).context(ObjectErrorKind::Io)?;
                         let meta = ObjectFileMetaInner {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
@@ -181,6 +183,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                             has_sources: object.has_sources(),
                         };
 
+                        log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
                         serde_json::to_writer(&mut f, &meta).context(ObjectErrorKind::Io)?;
                     }
                 }
@@ -205,6 +208,35 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 }
 
+/// The result of a remote file download operation.
+enum DownloadedFile {
+    /// A locally stored file.
+    Local(PathBuf, File),
+    /// A downloaded file stored in a temp location.
+    Temp(NamedTempFile),
+}
+
+impl DownloadedFile {
+    /// Gets the file system path of the downloaded file.
+    ///
+    /// Note that the path is only guaranteed to be valid until this instance of `DownloadedFile` is
+    /// dropped. After that, a temporary file may get deleted in the file system.
+    fn path(&self) -> &Path {
+        match self {
+            DownloadedFile::Local(path, _) => &path,
+            DownloadedFile::Temp(named) => named.path(),
+        }
+    }
+
+    /// Gets a file handle to the downloaded file.
+    fn reopen(&self) -> io::Result<File> {
+        match self {
+            DownloadedFile::Local(_, file) => file.try_clone(),
+            DownloadedFile::Temp(named) => named.reopen(),
+        }
+    }
+}
+
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
 #[derive(Clone, Debug)]
@@ -219,12 +251,12 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+        let cache_key = self.get_cache_key();
+        log::trace!("Fetching file data for {}", cache_key);
+
         let request = download_from_source(&self.0.file_id);
         let path = path.to_owned();
         let threadpool = self.0.threadpool.clone();
-
-        let cache_key = self.get_cache_key();
-
         let object_id = self.0.object_id.clone();
 
         configure_scope(|scope| {
@@ -234,20 +266,19 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let result = request.and_then(move |payload| {
             if let Some(payload) = payload {
-                log::debug!("Fetching debug file for {}", cache_key);
-
                 let download_dir =
                     tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
 
-                let (download_file_path, download_file) = match payload {
+                let download_file = match payload {
                     DownloadStream::FutureStream(stream) => {
+                        log::trace!("Downloading file for {}", cache_key);
+
                         let named_download_file = tryf!(
                             NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io)
                         );
 
-                        (
-                            named_download_file.path().to_owned(),
-                            future::Either::A(stream.fold(
+                        let future = stream
+                            .fold(
                                 tryf!(named_download_file.reopen().context(ObjectErrorKind::Io)),
                                 clone!(threadpool, |mut file, chunk| {
                                     threadpool.spawn_handle(
@@ -255,31 +286,41 @@ impl CacheItemRequest for FetchFileDataRequest {
                                             .bind_hub(Hub::current()),
                                     )
                                 }),
-                            )),
-                        )
+                            )
+                            .map(move |_| DownloadedFile::Temp(named_download_file));
+
+                        future::Either::A(future)
                     }
-                    DownloadStream::File(path) => (
-                        path.clone(),
-                        future::Either::B(
-                            fs::File::open(&path)
-                                .context(ObjectErrorKind::Io)
-                                .map_err(From::from)
-                                .into_future(),
-                        ),
-                    ),
+                    DownloadStream::File(path) => {
+                        log::trace!("Importing downloaded file for {}", cache_key);
+
+                        let future = File::open(&path)
+                            .context(ObjectErrorKind::Io)
+                            .map(|file| DownloadedFile::Local(path.clone(), file))
+                            .map_err(From::from)
+                            .into_future();
+
+                        future::Either::B(future)
+                    }
                 };
 
                 let future = download_file.and_then(clone!(threadpool, |download_file| {
                     log::trace!("Finished download of {}", cache_key);
                     threadpool.spawn_handle(
                         future::lazy(move || {
-                            let mut decompressed = decompress_object_file(
+                            let decompress_result = decompress_object_file(
                                 &cache_key,
-                                &download_file_path,
-                                download_file,
+                                download_file.path(),
+                                download_file.reopen().context(ObjectErrorKind::Io)?,
                                 tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
-                            )
-                            .context(ObjectErrorKind::Io)?;
+                            );
+
+                            // Treat decompression errors as malformed files. It is more likely that
+                            // the error comes from a corrupt file than a local file system error.
+                            let mut decompressed = match decompress_result {
+                                Ok(decompressed) => decompressed,
+                                Err(_) => return Ok(CacheStatus::Malformed),
+                            };
 
                             // Seek back to the start and parse this object to we can deal with it.
                             // Since objects in Sentry (and potentially also other sources) might be
@@ -297,7 +338,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                             };
 
                             let mut persist_file =
-                                fs::File::create(&path).context(ObjectErrorKind::Io)?;
+                                File::create(&path).context(ObjectErrorKind::Io)?;
 
                             if archive.is_multi() {
                                 let object_opt = archive
@@ -643,9 +684,9 @@ fn download_from_source(
 fn decompress_object_file(
     cache_key: &CacheKey,
     download_file_path: &Path,
-    mut download_file: fs::File,
-    mut extract_file: fs::File,
-) -> io::Result<fs::File> {
+    mut download_file: File,
+    mut extract_file: File,
+) -> io::Result<File> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
     download_file.sync_all()?;
