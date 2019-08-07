@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use actix_web::{error, http, web, Error, HttpRequest, HttpResponse};
+use actix_web::{error, guard, http, web, Error, HttpRequest, HttpResponse};
 use bytes::BytesMut;
 use futures::{future, Future, Stream};
 use serde::Deserialize;
@@ -83,6 +83,8 @@ fn get_symstore_proxy(
 pub fn configure(config: &mut web::ServiceConfig) {
     config.route(
         "/symbols/{path:.+}",
-        web::get().method(http::Method::HEAD).to(get_symstore_proxy),
+        web::get()
+            .guard(guard::Any(guard::Get()).or(guard::Head()))
+            .to(get_symstore_proxy),
     );
 }
