@@ -19,7 +19,6 @@ use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use tokio::prelude::FutureExt;
-use tokio_threadpool::ThreadPool;
 use uuid;
 
 use crate::logging::LogError;
@@ -38,6 +37,7 @@ use crate::types::{
 };
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
+use crate::utils::threadpool::ThreadPool;
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,
@@ -109,7 +109,7 @@ pub struct SymbolicationActor {
     objects: Arc<ObjectsActor>,
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     requests: ComputationMap,
 }
 
@@ -118,7 +118,7 @@ impl SymbolicationActor {
         objects: Arc<ObjectsActor>,
         symcaches: Arc<SymCacheActor>,
         cficaches: Arc<CfiCacheActor>,
-        threadpool: Arc<ThreadPool>,
+        threadpool: ThreadPool,
     ) -> Self {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
 

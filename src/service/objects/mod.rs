@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
-use tokio_threadpool::ThreadPool;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::service::cache::{CacheItemRequest, Cacher};
@@ -27,6 +26,7 @@ use crate::types::{
 };
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
+use crate::utils::threadpool::ThreadPool;
 
 mod common;
 mod filesystem;
@@ -148,7 +148,7 @@ struct FetchFileMetaRequest {
     // XXX: This kind of state is not request data. We should find a different way to get this into
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
 }
 
@@ -506,11 +506,11 @@ impl ToSentryScope for ObjectFile {
 pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: ThreadPool) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache)),
             data_cache: Arc::new(Cacher::new(data_cache)),

@@ -1,10 +1,8 @@
 use std::fs::File;
-use std::sync::Arc;
 
 use actix_multipart::{Field, Multipart};
 use actix_web::{error, web, Error};
 use futures::{future, Future, Stream};
-use tokio_threadpool::ThreadPool;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::service::symbolication::SymbolicationActor;
@@ -12,6 +10,7 @@ use crate::service::Service;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
 use crate::utils::sentry::ToSentryScope;
+use crate::utils::threadpool::ThreadPool;
 
 #[derive(Debug, Default)]
 struct MinidumpRequest {
@@ -20,7 +19,7 @@ struct MinidumpRequest {
 }
 
 fn handle_form_field(
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     mut request: MinidumpRequest,
     field: Field,
 ) -> Box<dyn Future<Item = MinidumpRequest, Error = Error>> {

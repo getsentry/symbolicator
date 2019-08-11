@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use tokio_threadpool::ThreadPool;
-
 use crate::cache::Caches;
 use crate::config::Config;
 use crate::utils::http;
+use crate::utils::threadpool::ThreadPool;
 
 pub mod cache;
 pub mod cficaches;
@@ -20,7 +19,7 @@ use self::symcaches::SymCacheActor;
 #[derive(Clone, Debug)]
 pub struct Service {
     config: Arc<Config>,
-    io_pool: Arc<ThreadPool>,
+    io_pool: ThreadPool,
     symbolication: Arc<SymbolicationActor>,
     objects: Arc<ObjectsActor>,
 }
@@ -32,8 +31,8 @@ impl Service {
         http::allow_reserved_ips(config.connect_to_reserved_ips);
 
         let caches = Caches::new(&config);
-        let cpu_pool = Arc::new(ThreadPool::new());
-        let io_pool = Arc::new(ThreadPool::new());
+        let cpu_pool = ThreadPool::new();
+        let io_pool = ThreadPool::new();
 
         let objects = Arc::new(ObjectsActor::new(
             caches.object_meta,
@@ -72,7 +71,7 @@ impl Service {
         self.config.clone()
     }
 
-    pub fn io_pool(&self) -> Arc<ThreadPool> {
+    pub fn io_pool(&self) -> ThreadPool {
         self.io_pool.clone()
     }
 

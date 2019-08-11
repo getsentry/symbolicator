@@ -44,12 +44,17 @@ const SYMBOLS_PATH: &str = "tests/fixtures/symbols";
 ///
 ///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
 ///    other logs (such as actix or symbolic).
+///  - Switches threadpools into test mode: In this mode, threadpools do not actually spawn threads,
+///    but instead return the futures that are spawned. This allows to capture console output logged
+///    from spawned tasks.
 pub(crate) fn setup() {
     env_logger::builder()
         .filter(Some("symbolicator"), LevelFilter::Trace)
         .is_test(true)
         .try_init()
         .ok();
+
+    crate::utils::threadpool::enable_test_mode();
 }
 
 /// Creates a temporary directory.

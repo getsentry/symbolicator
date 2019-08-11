@@ -1,15 +1,14 @@
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
-use std::sync::Arc;
 
 use actix_multipart::Field;
 use actix_web::{error, Error};
 use futures::{future, Future, IntoFuture, Stream};
 use sentry::Hub;
-use tokio_threadpool::ThreadPool;
 
 use crate::types::SourceConfig;
 use crate::utils::sentry::SentryFutureExt;
+use crate::utils::threadpool::ThreadPool;
 
 const MAX_SOURCES_SIZE: usize = 1_000_000;
 
@@ -31,7 +30,7 @@ pub fn read_multipart_data(
 
 pub fn read_multipart_file(
     field: Field,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 ) -> impl Future<Item = File, Error = Error> {
     tempfile::tempfile()
         .into_future()

@@ -13,7 +13,6 @@ use sentry::integrations::failure::capture_fail;
 use sentry::{configure_scope, Hub};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
-use tokio_threadpool::ThreadPool;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::service::cache::{CacheItemRequest, Cacher};
@@ -22,6 +21,7 @@ use crate::service::objects::{
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
+use crate::utils::threadpool::ThreadPool;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum SymCacheErrorKind {
@@ -57,11 +57,11 @@ impl From<io::Error> for SymCacheError {
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: Arc<ObjectsActor>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl SymCacheActor {
-    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -102,7 +102,7 @@ struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects_actor: Arc<ObjectsActor>,
     object_meta: Arc<ObjectFileMeta>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
