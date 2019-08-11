@@ -2,7 +2,6 @@ use actix_web::{error, web, Error};
 use futures::Future;
 use serde::Deserialize;
 
-use crate::service::symbolication::GetSymbolicationStatus;
 use crate::service::Service;
 use crate::types::{RequestId, SymbolicationResponse};
 
@@ -28,10 +27,7 @@ fn get_request(
 
     let response = service
         .symbolication()
-        .get_symbolication_status(GetSymbolicationStatus {
-            request_id: path.into_inner().request_id,
-            timeout: query.into_inner().timeout,
-        })
+        .get_response(path.into_inner().request_id, query.into_inner().timeout)
         .map_err(error::ErrorInternalServerError)
         .and_then(|response_opt| match response_opt {
             Some(response) => Ok(web::Json(response)),

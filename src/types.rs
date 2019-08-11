@@ -82,7 +82,7 @@ pub struct HttpSourceConfig {
     pub headers: BTreeMap<String, String>,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Configuration for reading from the local file system.
@@ -95,7 +95,7 @@ pub struct FilesystemSourceConfig {
     pub path: PathBuf,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Deserializes an S3 region string.
@@ -172,7 +172,7 @@ pub struct GcsSourceConfig {
     pub source_key: Arc<GcsSourceKey>,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Configuration for S3 symbol buckets.
@@ -193,13 +193,13 @@ pub struct S3SourceConfig {
     pub source_key: Arc<S3SourceKey>,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(default)]
-pub struct ExternalSourceConfigBase {
+pub struct CommonSourceConfig {
     /// Influence whether this source will be selected
     pub filters: SourceFilters,
 

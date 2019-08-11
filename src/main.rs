@@ -24,6 +24,9 @@ mod service;
 mod types;
 mod utils;
 
+#[cfg(test)]
+mod test;
+
 fn main() {
     match cli::execute() {
         Ok(()) => std::process::exit(0),

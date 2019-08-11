@@ -4,7 +4,7 @@ use actix_web::{error, web, Error, FromRequest};
 use futures::Future;
 use serde::Deserialize;
 
-use crate::service::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
+use crate::service::symbolication::SymbolicateStacktraces;
 use crate::service::Service;
 use crate::types::{
     RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
@@ -71,10 +71,7 @@ fn post_payload(
     let timeout = params.timeout;
 
     let future = symbolication
-        .get_symbolication_status(GetSymbolicationStatus {
-            request_id,
-            timeout,
-        })
+        .get_response(request_id, timeout)
         .then(|result| match result {
             Ok(Some(response)) => Ok(web::Json(response)),
             Ok(None) => Err(error::ErrorInternalServerError(

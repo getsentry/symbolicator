@@ -862,30 +862,19 @@ impl SymbolicationActor {
     pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
         self.create_symbolication_request(|| self.do_symbolicate(request))
     }
-}
 
-/// Status poll request.
-pub struct GetSymbolicationStatus {
-    /// The identifier of the symbolication task.
-    pub request_id: RequestId,
-    /// An optional timeout, after which the request will yield a result.
+    /// Polls the status for a started symbolication task.
     ///
-    /// If this timeout is not set, symbolication will continue until a result is ready (which is
-    /// either an error or success). If this timeout is set and no result is ready, a `pending`
-    /// status is returned.
-    pub timeout: Option<u64>,
-}
-
-impl SymbolicationActor {
-    pub fn get_symbolication_status(
+    /// If the timeout is set and no result is ready within the given time, a `pending` status is
+    /// returned. The function is guaranteed to yield after the timeout.
+    pub fn get_response(
         &self,
-        request: GetSymbolicationStatus,
+        request_id: RequestId,
+        timeout: Option<u64>,
     ) -> impl Future<Item = Option<SymbolicationResponse>, Error = SymbolicationError> {
-        let request_id = request.request_id;
-
         if let Some(channel) = self.requests.read().get(&request_id) {
             Either::A(
-                self.wrap_response_channel(request_id, request.timeout, channel.clone())
+                self.wrap_response_channel(request_id, timeout, channel.clone())
                     .map(Some),
             )
         } else {
@@ -1413,120 +1402,81 @@ mod tests {
     use super::*;
 
     use std::fs;
-    use std::path::PathBuf;
-    use std::sync::{Once, ONCE_INIT};
 
-    use actix_rt::{System, SystemRunner};
     use failure::Error;
 
+    use crate::config::Config;
     use crate::service::Service;
-    use crate::types::FilesystemSourceConfig;
+    use crate::test;
+    use crate::types::SourceConfig;
 
-    static INIT: Once = ONCE_INIT;
+    /// Setup tests and create a test service.
+    ///
+    /// This function returns a tuple containing the service to test, and a temporary cache
+    /// directory. The directory is cleaned up when the `TempDir` instance is dropped. Keep it as
+    /// guard until the test has finished.
+    ///
+    /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
+    /// symbol server to test object file downloads.
+    fn setup_service() -> (Service, test::TempDir) {
+        test::setup();
 
-    /// Setup function that is only run once, even if called multiple times.
-    fn setup_logging() {
-        INIT.call_once(|| {
-            env_logger::init();
-        });
+        let cache_dir = test::tempdir();
+
+        let mut config = Config::default();
+        config.cache_dir = Some(cache_dir.path().to_owned());
+        config.connect_to_reserved_ips = true;
+        let service = Service::create(config);
+
+        (service, cache_dir)
     }
 
-    fn get_local_bucket() -> SourceConfig {
-        SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
-            id: "local".to_owned(),
-            path: PathBuf::from("./tests/fixtures/symbols/"),
-            files: Default::default(),
-        }))
-    }
-
-    fn get_symbolication_response(
-        sys: &mut SystemRunner,
-        service: &Service,
-        request_id: RequestId,
-    ) -> Result<SymbolicationResponse, Error> {
-        let response_future =
-            service
-                .symbolication()
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                });
-
-        let response = sys
-            .block_on(response_future)?
-            .ok_or_else(|| failure::err_msg(""))?;
-
-        Ok(response)
-    }
-
-    fn stackwalk_minidump(path: &str) -> Result<(), Error> {
-        let mut sys = System::new("symbolicator");
-        let service = Service::test(true);
-
-        let request_id = service.symbolication().process_minidump(
-            Scope::Global,
-            File::open(path)?,
-            vec![get_local_bucket()],
-        );
-
-        let response = get_symbolication_response(&mut sys, &service, request_id)?;
-        insta::assert_yaml_snapshot_matches!(response);
-
-        insta::assert_yaml_snapshot_matches!({
-            let global_dir = service.config().cache_dir("object_meta/global").unwrap();
-            let mut cache_entries: Vec<_> = fs::read_dir(global_dir)
-                .unwrap()
-                .map(|x| x.unwrap().file_name().into_string().unwrap())
-                .collect();
-
-            cache_entries.sort();
-            cache_entries
-        });
-        Ok(())
-    }
-
-    #[test]
-    fn test_remove_bucket() -> Result<(), Error> {
-        setup_logging();
-
-        let mut sys = System::new("symbolicator");
-        let service = Service::test(true);
-
-        let mut request = SymbolicateStacktraces {
+    fn get_symbolication_request(sources: Vec<SourceConfig>) -> SymbolicateStacktraces {
+        SymbolicateStacktraces {
             scope: Scope::Global,
             signal: None,
-            sources: Arc::new(vec![get_local_bucket()]),
+            sources: Arc::new(sources),
             stacktraces: vec![RawStacktrace {
                 frames: vec![RawFrame {
                     instruction_addr: HexValue(0x1_0000_0fa0),
-                    ..Default::default()
+                    ..RawFrame::default()
                 }],
-                ..Default::default()
+                ..RawStacktrace::default()
             }],
-            modules: vec![RawObjectInfo {
+            modules: vec![CompleteObjectInfo::from(RawObjectInfo {
                 ty: ObjectType("macho".to_owned()),
                 code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
                 debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
                 image_addr: HexValue(0x1_0000_0000),
                 image_size: Some(4096),
-                code_file: Default::default(),
-                debug_file: Default::default(),
-            }
-            .into()],
-        };
+                code_file: None,
+                debug_file: None,
+            })],
+        }
+    }
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request.clone());
-        let response = get_symbolication_response(&mut sys, &service, request_id)?;
+    #[test]
+    fn test_remove_bucket() -> Result<(), Error> {
+        // Test with sources first, and then without. This test should verify that we do not leak
+        // cached debug files to requests that no longer specify a source.
+
+        let (service, _cache_dir) = setup_service();
+        let (_symsrv, source) = test::symbol_server();
+
+        let response = test::block_fn(|| {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot_matches!(response);
 
-        request.sources = Arc::new(vec![]);
+        let response = test::block_fn(|| {
+            let request = get_symbolication_request(vec![]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request.clone());
-        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
         Ok(())
@@ -1534,47 +1484,54 @@ mod tests {
 
     #[test]
     fn test_add_bucket() -> Result<(), Error> {
-        setup_logging();
+        // Test without sources first, then with. This test should verify that we apply a new source
+        // to requests immediately.
 
-        let mut sys = System::new("symbolicator");
-        let service = Service::test(true);
+        let (service, _cache_dir) = setup_service();
+        let (_symsrv, source) = test::symbol_server();
 
-        let mut request = SymbolicateStacktraces {
-            scope: Scope::Global,
-            signal: None,
-            sources: Arc::new(vec![]),
-            stacktraces: vec![RawStacktrace {
-                frames: vec![RawFrame {
-                    instruction_addr: HexValue(0x1_0000_0fa0),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }],
-            modules: vec![RawObjectInfo {
-                ty: ObjectType("macho".to_owned()),
-                code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
-                debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
-                image_addr: HexValue(0x1_0000_0000),
-                image_size: Some(4096),
-                code_file: Default::default(),
-                debug_file: Default::default(),
-            }
-            .into()],
-        };
+        let response = test::block_fn(|| {
+            let request = get_symbolication_request(vec![]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request.clone());
-        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
 
-        request.sources = Arc::new(vec![get_local_bucket()]);
+        let response = test::block_fn(|| {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request.clone());
-        let response = get_symbolication_response(&mut sys, &service, request_id)?;
         insta::assert_yaml_snapshot_matches!(response);
+
+        Ok(())
+    }
+
+    fn stackwalk_minidump(path: &str) -> Result<(), Error> {
+        let (service, _cache_dir) = setup_service();
+        let (_symsrv, source) = test::symbol_server();
+
+        let minidump = File::open(path)?;
+
+        let response = test::block_fn(|| {
+            let request_id =
+                service
+                    .symbolication()
+                    .process_minidump(Scope::Global, minidump, vec![source]);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
+        insta::assert_yaml_snapshot_matches!(response);
+
+        let global_dir = service.config().cache_dir("object_meta/global").unwrap();
+        let mut cache_entries = fs::read_dir(global_dir)?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+
+        cache_entries.sort();
+        insta::assert_yaml_snapshot_matches!(cache_entries);
 
         Ok(())
     }
@@ -1596,18 +1553,21 @@ mod tests {
 
     #[test]
     fn test_apple_crash_report() -> Result<(), Error> {
-        let mut sys = System::new("symbolicator");
-        let service = Service::test(false);
+        let (service, _cache_dir) = setup_service();
+        let (_symsrv, source) = test::symbol_server();
 
         let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
-        let sources = vec![get_local_bucket()];
 
-        let request_id =
-            service
-                .symbolication()
-                .process_apple_crash_report(Scope::Global, report_file, sources);
+        let response = test::block_fn(|| {
+            let request_id = service.symbolication().process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                vec![source],
+            );
 
-        let response = get_symbolication_response(&mut sys, &service, request_id)?;
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot_matches!(response);
         Ok(())
     }
@@ -1616,6 +1576,9 @@ mod tests {
     fn test_symcache_lookup_open_end_addr() {
         // The Rust SDK and some other clients sometimes send zero-sized images when no end addr
         // could be determined. Symbolicator should still resolve such images.
+
+        test::setup();
+
         let info: CompleteObjectInfo = RawObjectInfo {
             ty: ObjectType(Default::default()),
             code_id: None,

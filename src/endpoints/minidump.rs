@@ -7,7 +7,7 @@ use futures::{future, Future, Stream};
 use tokio_threadpool::ThreadPool;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::service::symbolication::{GetSymbolicationStatus, SymbolicationActor};
+use crate::service::symbolication::SymbolicationActor;
 use crate::service::Service;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
@@ -95,10 +95,7 @@ fn post_minidump(
         }))
         .and_then(move |request_id| {
             symbolication
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout,
-                })
+                .get_response(request_id, timeout)
                 .then(|result| match result {
                     Ok(Some(response)) => Ok(web::Json(response)),
                     Ok(None) => Err(error::ErrorInternalServerError(

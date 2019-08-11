@@ -61,6 +61,10 @@ fn get_symstore_proxy(
             Err(error::ErrorNotFound("File does not exist"))
         })
         .and_then(move |object_file| {
+            // TODO: Use actix_file::NamedFile here instead. This requires the ObjectCache to expose
+            // the inner file handle of the cached file, instead of the values inside the ObjectFile
+            // struct.
+
             let mut response = HttpResponse::Ok();
             response
                 .content_length(object_file.len() as u64)
@@ -83,8 +87,90 @@ fn get_symstore_proxy(
 pub fn configure(config: &mut web::ServiceConfig) {
     config.route(
         "/symbols/{path:.+}",
-        web::get()
+        web::route()
             .guard(guard::Any(guard::Get()).or(guard::Head()))
             .to(get_symstore_proxy),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::dev::Service as _;
+    use actix_web::http::{Method, StatusCode};
+
+    use crate::config::Config;
+    use crate::test::{self, TestRequest};
+
+    const VALID_PATH: &str = "/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb";
+    const INVALID_PATH: &str = "/symbols/crash.pdb/000000000000000000000000000000000/invalid.pdb";
+
+    #[test]
+    fn test_head_valid() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        config.sources = vec![test::local_source()].into();
+
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(VALID_PATH)
+            .method(Method::HEAD)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(test::read_body(response).is_empty());
+    }
+
+    #[test]
+    fn test_get_valid() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        config.sources = vec![test::local_source()].into();
+
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(VALID_PATH)
+            .method(Method::GET)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(test::read_body(response).len(), 46361);
+    }
+
+    #[test]
+    fn test_head_missing() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(INVALID_PATH)
+            .method(Method::HEAD)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_get_missing() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(INVALID_PATH)
+            .method(Method::GET)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 }

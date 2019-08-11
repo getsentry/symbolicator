@@ -670,13 +670,11 @@ fn download_from_source(
         FileId::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source.clone(), file_id)
         }
-        FileId::Http(ref source, ref file_id) => {
-            http::download_from_source(source.clone(), file_id)
-        }
-        FileId::S3(ref source, ref file_id) => s3::download_from_source(source.clone(), file_id),
-        FileId::Gcs(ref source, ref file_id) => gcs::download_from_source(source.clone(), file_id),
-        FileId::Filesystem(ref source, ref file_id) => {
-            filesystem::download_from_source(source.clone(), file_id)
+        FileId::Http(ref source, ref path) => http::download_from_source(source.clone(), path),
+        FileId::S3(ref source, ref path) => s3::download_from_source(source.clone(), path),
+        FileId::Gcs(ref source, ref path) => gcs::download_from_source(source.clone(), path),
+        FileId::Filesystem(ref source, ref path) => {
+            filesystem::download_from_source(source.clone(), path)
         }
     }
 }

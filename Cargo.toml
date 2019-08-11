@@ -8,7 +8,7 @@ include = ["src/**/*", "Cargo.toml", "README.md"]
 readme = "README.md"
 
 [dependencies]
-actix-connect = "0.2.2"
+actix-connect = "0.2.3"
 actix-multipart = "0.1.2"
 actix-rt = "0.2.4"
 actix-service = "0.4.1"
@@ -55,4 +55,7 @@ ipnetwork = "0.14.0"
 fragile = "0.3.0"
 
 [dev-dependencies]
+actix-files = "0.1.4"
+actix-http = "0.2.8"
+actix-http-test = "0.2.4"
 insta = "0.10.0"
