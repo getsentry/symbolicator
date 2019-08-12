@@ -1,53 +1,43 @@
-use actix::ResponseFuture;
-use actix_web::{http::Method, HttpResponse, Path, Query, State};
-use failure::Error;
+use actix_web::{error, web, Error};
 use futures::Future;
 use serde::Deserialize;
 
-use crate::actors::symbolication::GetSymbolicationStatus;
-use crate::app::{ServiceApp, ServiceState};
-use crate::types::RequestId;
+use crate::service::Service;
+use crate::types::{RequestId, SymbolicationResponse};
 
 /// Path parameters of the symbolication poll request.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct PollSymbolicationRequestPath {
     pub request_id: RequestId,
 }
 
 /// Query parameters of the symbolication poll request.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct PollSymbolicationRequestQueryParams {
     #[serde(default)]
     pub timeout: Option<u64>,
 }
 
-fn poll_request(
-    state: State<ServiceState>,
-    path: Path<PollSymbolicationRequestPath>,
-    query: Query<PollSymbolicationRequestQueryParams>,
-) -> ResponseFuture<HttpResponse, Error> {
-    let path = path.into_inner();
-    let query = query.into_inner();
+fn get_request(
+    service: web::Data<Service>,
+    path: web::Path<PollSymbolicationRequestPath>,
+    query: web::Query<PollSymbolicationRequestQueryParams>,
+) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+    log::trace!("Received poll request for id {}", path.request_id);
 
-    let message = GetSymbolicationStatus {
-        request_id: path.request_id,
-        timeout: query.timeout,
-    };
+    let response = service
+        .symbolication()
+        .get_response(path.into_inner().request_id, query.into_inner().timeout)
+        .map_err(error::ErrorInternalServerError)
+        .and_then(|response_opt| match response_opt {
+            Some(response) => Ok(web::Json(response)),
+            None => Err(error::ErrorNotFound("Request does not exist")),
+        });
 
-    let future = state
-        .symbolication
-        .get_symbolication_status(message)
-        .map(|response_opt| match response_opt {
-            Some(response) => HttpResponse::Ok().json(response),
-            None => HttpResponse::NotFound().finish(),
-        })
-        .map_err(Error::from);
-
-    Box::new(future)
+    Box::new(response)
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
-    app.resource("/requests/{request_id}", |r| {
-        r.method(Method::GET).with(poll_request);
-    })
+/// Adds the request poll endpoint to the app.
+pub fn configure(config: &mut web::ServiceConfig) {
+    config.route("/requests/{request_id}", web::get().to(get_request));
 }

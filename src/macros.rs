@@ -1,4 +1,4 @@
-/// Same as `try` but to be used in functions that return `Box<Future>` instead of `Result`.
+/// Same as `try` but to be used in functions that return `Box<dyn Future>` instead of `Result`.
 ///
 /// Useful when calling synchronous (but cheap enough) functions in async code.
 #[macro_export]

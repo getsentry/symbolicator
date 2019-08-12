@@ -1,22 +1,16 @@
 use std::fs::File;
-use std::sync::Arc;
 
-use actix::ResponseFuture;
-use actix_web::{
-    dev::Payload, error, http::Method, multipart, Error, HttpMessage, HttpRequest, Json, Query,
-    State,
-};
+use actix_multipart::{Field, Multipart};
+use actix_web::{error, web, Error};
 use futures::{future, Future, Stream};
-use sentry::{configure_scope, Hub};
-use sentry_actix::ActixWebHubExt;
-use tokio_threadpool::ThreadPool;
 
-use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicationActor};
-use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::service::symbolication::SymbolicationActor;
+use crate::service::Service;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
+use crate::utils::sentry::ToSentryScope;
+use crate::utils::threadpool::ThreadPool;
 
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {
@@ -24,18 +18,11 @@ struct AppleCrashReportRequest {
     apple_crash_report: Option<File>,
 }
 
-fn handle_multipart_item(
-    threadpool: Arc<ThreadPool>,
+fn handle_form_field(
     mut request: AppleCrashReportRequest,
-    item: multipart::MultipartItem<Payload>,
-) -> ResponseFuture<AppleCrashReportRequest, Error> {
-    let field = match item {
-        multipart::MultipartItem::Field(field) => field,
-        multipart::MultipartItem::Nested(nested) => {
-            return handle_multipart_stream(threadpool, request, nested);
-        }
-    };
-
+    threadpool: ThreadPool,
+    field: Field,
+) -> Box<dyn Future<Item = AppleCrashReportRequest, Error = Error>> {
     match field
         .content_disposition()
         .as_ref()
@@ -62,20 +49,6 @@ fn handle_multipart_item(
     }
 }
 
-fn handle_multipart_stream(
-    threadpool: Arc<ThreadPool>,
-    request: AppleCrashReportRequest,
-    stream: multipart::Multipart<Payload>,
-) -> ResponseFuture<AppleCrashReportRequest, Error> {
-    let future = stream
-        .map_err(Error::from)
-        .fold(request, move |request, item| {
-            handle_multipart_item(threadpool.clone(), request, item)
-        });
-
-    Box::new(future)
-}
-
 fn parse_apple_crash_report(
     symbolication: &SymbolicationActor,
     request: AppleCrashReportRequest,
@@ -89,67 +62,51 @@ fn parse_apple_crash_report(
         .sources
         .ok_or_else(|| error::ErrorBadRequest("missing sources"))?;
 
-    symbolication
-        .process_apple_crash_report(scope, report, sources)
-        .map_err(error::ErrorInternalServerError)
+    Ok(symbolication.process_apple_crash_report(scope, report, sources))
 }
 
-fn handle_apple_crash_report_request(
-    state: State<ServiceState>,
-    params: Query<SymbolicationRequestQueryParams>,
-    request: HttpRequest<ServiceState>,
-) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
-    let hub = Hub::from_request(&request);
+fn post_applecrashreport(
+    service: web::Data<Service>,
+    params: web::Query<SymbolicationRequestQueryParams>,
+    multipart: Multipart,
+) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+    log::trace!("Received apple crash report");
 
-    Hub::run(hub, || {
-        let default_sources = state.config.sources.clone();
+    let default_sources = service.config().default_sources();
+    let symbolication = service.symbolication();
+    let io_pool = service.io_pool();
 
-        let params = params.into_inner();
-        configure_scope(|scope| {
-            params.write_sentry_scope(scope);
+    let params = params.into_inner();
+    params.configure_scope();
+
+    let SymbolicationRequestQueryParams { scope, timeout } = params;
+    let response = multipart
+        .map_err(Error::from)
+        .fold(AppleCrashReportRequest::default(), move |request, item| {
+            handle_form_field(request, io_pool.clone(), item)
+        })
+        .and_then(clone!(symbolication, |mut request| {
+            if request.sources.is_none() {
+                request.sources = Some((*default_sources).clone());
+            }
+
+            parse_apple_crash_report(&symbolication, request, scope)
+        }))
+        .and_then(move |request_id| {
+            symbolication
+                .get_response(request_id, timeout)
+                .then(|result| match result {
+                    Ok(Some(response)) => Ok(web::Json(response)),
+                    Ok(None) => Err(error::ErrorInternalServerError(
+                        "symbolication request did not start",
+                    )),
+                    Err(error) => Err(error::ErrorInternalServerError(error)),
+                })
         });
 
-        let io_pool = state.io_threadpool.clone();
-        let request_future = handle_multipart_stream(
-            io_pool.clone(),
-            AppleCrashReportRequest::default(),
-            request.multipart(),
-        );
-
-        let SymbolicationRequestQueryParams { scope, timeout } = params;
-        let symbolication = state.symbolication.clone();
-
-        let response_future = request_future
-            .and_then(clone!(symbolication, |mut request| {
-                if request.sources.is_none() {
-                    request.sources = Some((*default_sources).clone());
-                }
-
-                parse_apple_crash_report(&symbolication, request, scope)
-            }))
-            .and_then(move |request_id| {
-                symbolication
-                    .get_symbolication_status(GetSymbolicationStatus {
-                        request_id,
-                        timeout,
-                    })
-                    .then(|result| match result {
-                        Ok(Some(response)) => Ok(Json(response)),
-                        Ok(None) => Err(error::ErrorInternalServerError(
-                            "symbolication request did not start",
-                        )),
-                        Err(error) => Err(error::ErrorInternalServerError(error)),
-                    })
-                    .map_err(Error::from)
-            });
-
-        Box::new(response_future.sentry_hub_current())
-    })
+    Box::new(response)
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
-    app.resource("/applecrashreport", |r| {
-        r.method(Method::POST)
-            .with(handle_apple_crash_report_request);
-    })
+pub fn configure(config: &mut web::ServiceConfig) {
+    config.route("/applecrashreport", web::post().to(post_applecrashreport));
 }

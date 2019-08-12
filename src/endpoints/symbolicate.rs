@@ -1,22 +1,18 @@
 use std::sync::Arc;
 
-use actix::ResponseFuture;
-use actix_web::{http::Method, HttpRequest, Json, Query, State};
-use failure::Error;
+use actix_web::{error, web, Error, FromRequest};
 use futures::Future;
-use sentry::{configure_scope, Hub};
-use sentry_actix::ActixWebHubExt;
 use serde::Deserialize;
 
-use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
-use crate::app::{ServiceApp, ServiceState};
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::service::symbolication::SymbolicateStacktraces;
+use crate::service::Service;
 use crate::types::{
     RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
 };
+use crate::utils::sentry::ToSentryScope;
 
 /// Query parameters of the symbolication request.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct SymbolicationRequestQueryParams {
     #[serde(default)]
     pub timeout: Option<u64>,
@@ -24,8 +20,8 @@ pub struct SymbolicationRequestQueryParams {
     pub scope: Scope,
 }
 
-impl WriteSentryScope for SymbolicationRequestQueryParams {
-    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+impl ToSentryScope for SymbolicationRequestQueryParams {
+    fn to_scope(&self, scope: &mut sentry::Scope) {
         scope.set_tag("request.scope", &self.scope);
         if let Some(timeout) = self.timeout {
             scope.set_tag("request.timeout", timeout);
@@ -36,7 +32,7 @@ impl WriteSentryScope for SymbolicationRequestQueryParams {
 }
 
 /// JSON body of the symbolication request.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct SymbolicationRequestBody {
     #[serde(default)]
     pub signal: Option<Signal>,
@@ -48,57 +44,52 @@ struct SymbolicationRequestBody {
     pub modules: Vec<RawObjectInfo>,
 }
 
-fn symbolicate_frames(
-    state: State<ServiceState>,
-    params: Query<SymbolicationRequestQueryParams>,
-    body: Json<SymbolicationRequestBody>,
-    request: HttpRequest<ServiceState>,
-) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
-    let hub = Hub::from_request(&request);
+fn post_payload(
+    service: web::Data<Service>,
+    params: web::Query<SymbolicationRequestQueryParams>,
+    body: web::Json<SymbolicationRequestBody>,
+) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+    log::trace!("Received symbolication request");
 
-    Hub::run(hub, || {
-        let params = params.into_inner();
-        let body = body.into_inner();
-        let sources = match body.sources {
+    let params = params.into_inner();
+    params.configure_scope();
+
+    let body = body.into_inner();
+    let message = SymbolicateStacktraces {
+        signal: body.signal,
+        sources: match body.sources {
             Some(sources) => Arc::new(sources),
-            None => state.config.sources.clone(),
-        };
+            None => service.config().default_sources(),
+        },
+        stacktraces: body.stacktraces,
+        modules: body.modules.into_iter().map(From::from).collect(),
+        scope: params.scope,
+    };
 
-        configure_scope(|scope| {
-            params.write_sentry_scope(scope);
+    let symbolication = service.symbolication();
+    let request_id = symbolication.symbolicate_stacktraces(message);
+    let timeout = params.timeout;
+
+    let future = symbolication
+        .get_response(request_id, timeout)
+        .then(|result| match result {
+            Ok(Some(response)) => Ok(web::Json(response)),
+            Ok(None) => Err(error::ErrorInternalServerError(
+                "symbolication request did not start",
+            )),
+            Err(error) => Err(error::ErrorInternalServerError(error)),
         });
 
-        let message = SymbolicateStacktraces {
-            signal: body.signal,
-            sources,
-            stacktraces: body.stacktraces,
-            modules: body.modules.into_iter().map(From::from).collect(),
-            scope: params.scope,
-        };
-
-        let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
-
-        let timeout = params.timeout;
-        let response = state
-            .symbolication
-            .get_symbolication_status(GetSymbolicationStatus {
-                request_id,
-                timeout,
-            })
-            .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
-            .map_err(Error::from);
-
-        Box::new(response.sentry_hub_current())
-    })
+    Box::new(future)
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
-    app.resource("/symbolicate", |r| {
-        r.method(Method::POST).with_config(
-            symbolicate_frames,
-            |(_state, _params, body, _request)| {
-                body.limit(5_000_000);
-            },
-        );
-    })
+/// Adds the payload symbolication endpoint to the app.
+pub fn configure(config: &mut web::ServiceConfig) {
+    let body_config = web::Json::<SymbolicationRequestBody>::configure(|cfg| cfg.limit(5_000_000));
+
+    let resource = web::resource("/symbolicate")
+        .route(web::post().to(post_payload))
+        .data(body_config);
+
+    config.service(resource);
 }

@@ -1,118 +1,176 @@
 use std::io::Cursor;
 
-use actix::ResponseFuture;
-use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
+use actix_web::{error, guard, http, web, Error, HttpRequest, HttpResponse};
 use bytes::BytesMut;
-use failure::{Error, Fail};
-use futures::{future::Either, Future, IntoFuture, Stream};
-use sentry::Hub;
-use sentry_actix::ActixWebHubExt;
+use futures::{future, Future, Stream};
+use serde::Deserialize;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
-use crate::app::{ServiceApp, ServiceState};
-use crate::sentry::SentryFutureExt;
+use crate::service::objects::{FindObject, ObjectPurpose};
+use crate::service::Service;
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
 
-#[derive(Fail, Debug, Clone, Copy)]
-pub enum ProxyErrorKind {
-    #[fail(display = "failed to write object")]
-    Io,
-
-    #[fail(display = "failed to download object")]
-    Fetching,
+/// Path parameters of the symstore proxy request.
+#[derive(Debug, Deserialize)]
+struct ProxyPath {
+    pub path: String,
 }
 
-symbolic::common::derive_failure!(
-    ProxyError,
-    ProxyErrorKind,
-    doc = "Errors happening while proxying to a symstore"
-);
+fn get_symstore_proxy(
+    service: web::Data<Service>,
+    path: web::Path<ProxyPath>,
+    request: HttpRequest,
+) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
+    let is_head = request.method() == http::Method::HEAD;
 
-fn proxy_symstore_request(
-    state: State<ServiceState>,
-    request: HttpRequest<ServiceState>,
-    path: Path<(String,)>,
-) -> ResponseFuture<HttpResponse, Error> {
-    let hub = Hub::from_request(&request);
-
-    let is_head = request.method() == Method::HEAD;
-
-    if !state.config.symstore_proxy {
-        return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
+    if !service.config().symstore_proxy {
+        log::trace!("Ignoring proxy request (disabled in config)");
+        return Box::new(future::ok(HttpResponse::NotFound().finish()));
     }
 
-    let (filetypes, object_id) = match parse_symstore_path(&path.0) {
-        Some(x) => x,
-        None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
+    log::trace!("Received proxy {} request", request.method());
+
+    let (filetypes, object_id) = match parse_symstore_path(&path.path) {
+        Some((filetypes, object_id)) => (filetypes, object_id),
+        None => return Box::new(future::ok(HttpResponse::NotFound().finish())),
     };
 
-    Hub::run(hub, || {
-        log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
-        let objects = state.objects.clone();
+    log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
 
-        let object_meta_opt = objects
-            .find(FindObject {
-                filetypes,
-                identifier: object_id,
-                sources: state.config.sources.clone(),
-                scope: Scope::Global,
-                purpose: ObjectPurpose::Debug,
-            })
-            .map_err(|e| e.context(ProxyErrorKind::Fetching).into());
+    let objects = service.objects();
+    let response = objects
+        .find(FindObject {
+            filetypes,
+            identifier: object_id,
+            sources: service.config().default_sources(),
+            scope: Scope::Global,
+            purpose: ObjectPurpose::Debug,
+        })
+        .and_then(move |meta_opt| match meta_opt {
+            Some(meta) => future::Either::A(objects.fetch(meta).map(Some)),
+            None => future::Either::B(future::ok(None)),
+        })
+        .map_err(error::ErrorInternalServerError)
+        .and_then(|object_opt| {
+            if let Some(object) = object_opt {
+                if object.has_object() {
+                    return Ok(object);
+                }
+            }
+            Err(error::ErrorNotFound("File does not exist"))
+        })
+        .and_then(move |object_file| {
+            // TODO: Use actix_file::NamedFile here instead. This requires the ObjectCache to expose
+            // the inner file handle of the cached file, instead of the values inside the ObjectFile
+            // struct.
 
-        let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
-            if let Some(object_meta) = object_meta_opt {
-                Either::A(
-                    objects
-                        .fetch(object_meta)
-                        .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
-                        .map(Some),
-                )
+            let mut response = HttpResponse::Ok();
+            response
+                .content_length(object_file.len() as u64)
+                .set(http::header::ContentType::octet_stream());
+
+            if is_head {
+                Ok(response.finish())
             } else {
-                Either::B(Ok(None).into_future())
+                let bytes = Cursor::new(object_file.data());
+                let async_bytes = FramedRead::new(bytes, BytesCodec::new())
+                    .map(BytesMut::freeze)
+                    .map_err(Error::from);
+                Ok(response.streaming(async_bytes))
             }
         });
 
-        Box::new(
-            object_file_opt
-                .and_then(move |object_file_opt| {
-                    let object_file = if object_file_opt
-                        .as_ref()
-                        .map(|x| x.has_object())
-                        .unwrap_or(false)
-                    {
-                        object_file_opt.unwrap()
-                    } else {
-                        return Ok(HttpResponse::NotFound().finish());
-                    };
-
-                    let length = object_file.len();
-                    let mut response = HttpResponse::Ok();
-                    response
-                        .content_length(length as u64)
-                        .header("content-type", "application/octet-stream");
-                    if is_head {
-                        Ok(response.finish())
-                    } else {
-                        let bytes = Cursor::new(ObjectFileBytes(object_file));
-                        let async_bytes = FramedRead::new(bytes, BytesCodec::new())
-                            .map(BytesMut::freeze)
-                            .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
-                            .map_err(Error::from);
-                        Ok(response.streaming(async_bytes))
-                    }
-                })
-                .sentry_hub_current(),
-        )
-    })
+    Box::new(response)
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
-    app.resource("/symbols/{path:.+}", |r| {
-        r.route()
-            .filter(pred::Any(pred::Get()).or(pred::Head()))
-            .with(proxy_symstore_request);
-    })
+pub fn configure(config: &mut web::ServiceConfig) {
+    config.route(
+        "/symbols/{path:.+}",
+        web::route()
+            .guard(guard::Any(guard::Get()).or(guard::Head()))
+            .to(get_symstore_proxy),
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::dev::Service as _;
+    use actix_web::http::{Method, StatusCode};
+
+    use crate::config::Config;
+    use crate::test::{self, TestRequest};
+
+    const VALID_PATH: &str = "/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb";
+    const INVALID_PATH: &str = "/symbols/crash.pdb/000000000000000000000000000000000/invalid.pdb";
+
+    #[test]
+    fn test_head_valid() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        config.sources = vec![test::local_source()].into();
+
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(VALID_PATH)
+            .method(Method::HEAD)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(test::read_body(response).is_empty());
+    }
+
+    #[test]
+    fn test_get_valid() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        config.sources = vec![test::local_source()].into();
+
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(VALID_PATH)
+            .method(Method::GET)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(test::read_body(response).len(), 46361);
+    }
+
+    #[test]
+    fn test_head_missing() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(INVALID_PATH)
+            .method(Method::HEAD)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_get_missing() {
+        test::setup();
+
+        let mut config = Config::default();
+        config.symstore_proxy = true;
+        let mut server = test::test_service(config);
+
+        let request = TestRequest::with_uri(INVALID_PATH)
+            .method(Method::GET)
+            .to_request();
+
+        let response = test::block_fn(|| server.call(request)).unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 }

@@ -1,26 +1,36 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt::{self, Write};
+use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::hex::HexValue;
-use crate::sentry::WriteSentryScope;
+use crate::utils::hex::HexValue;
+use crate::utils::sentry::ToSentryScope;
 
 use failure::{Backtrace, Fail};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::minidump::processor::FrameTrust;
 use url::Url;
+use uuid::Uuid;
 
-fn is_default<T: Default + PartialEq>(x: &T) -> bool {
-    x == &Default::default()
+/// Symbolication task identifier.
+#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+pub struct RequestId(String);
+
+impl RequestId {
+    /// Creates a new symbolication task identifier.
+    pub fn new(uuid: Uuid) -> Self {
+        Self(uuid.to_string())
+    }
 }
 
-/// Symbolication request identifier.
-#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct RequestId(pub String);
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
@@ -72,7 +82,7 @@ pub struct HttpSourceConfig {
     pub headers: BTreeMap<String, String>,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Configuration for reading from the local file system.
@@ -85,7 +95,7 @@ pub struct FilesystemSourceConfig {
     pub path: PathBuf,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Deserializes an S3 region string.
@@ -162,7 +172,7 @@ pub struct GcsSourceConfig {
     pub source_key: Arc<GcsSourceKey>,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Configuration for S3 symbol buckets.
@@ -183,13 +193,13 @@ pub struct S3SourceConfig {
     pub source_key: Arc<S3SourceKey>,
 
     #[serde(flatten)]
-    pub files: ExternalSourceConfigBase,
+    pub files: CommonSourceConfig,
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(default)]
-pub struct ExternalSourceConfigBase {
+pub struct CommonSourceConfig {
     /// Influence whether this source will be selected
     pub filters: SourceFilters,
 
@@ -328,8 +338,8 @@ impl SourceConfig {
     }
 }
 
-impl WriteSentryScope for SourceConfig {
-    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+impl ToSentryScope for SourceConfig {
+    fn to_scope(&self, scope: &mut sentry::Scope) {
         scope.set_tag("source.id", self.id());
         scope.set_tag("source.type", self.type_name());
         scope.set_tag("source.is_public", self.is_public());
@@ -376,6 +386,11 @@ impl fmt::Display for Scope {
 /// A map of register values.
 pub type Registers = BTreeMap<String, HexValue>;
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_frame_trust(trust: &FrameTrust) -> bool {
+    *trust == FrameTrust::None
+}
+
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
@@ -383,35 +398,35 @@ pub struct RawFrame {
     pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
 
     /// The language of the symbol (function) this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<Language>,
 
     /// The mangled name of the function this frame is located in.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
 
     /// Start address of the function this frame is located in (lower or equal to instruction_addr).
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sym_addr: Option<HexValue>,
 
     /// The demangled function name.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<String>,
 
     /// Source file path relative to the compilation directory.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
     /// Absolute source file path.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub abs_path: Option<String>,
 
     /// The line number within the source file, starting at 1 for the first line.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lineno: Option<u32>,
 
     /// Source context before the context line
@@ -427,7 +442,7 @@ pub struct RawFrame {
     pub post_context: Vec<String>,
 
     /// Information about how the raw frame was created.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "is_default_frame_trust")]
     pub trust: FrameTrust,
 }
 
@@ -453,26 +468,26 @@ pub struct RawObjectInfo {
     pub ty: ObjectType,
 
     /// Identifier of the code file.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_id: Option<String>,
 
     /// Name of the code file.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_file: Option<String>,
 
     /// Identifier of the debug file.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub debug_id: Option<String>,
 
     /// Name of the debug file.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_file: Option<String>,
 
     /// Absolute address at which the image was mounted into virtual memory.
     pub image_addr: HexValue,
 
     /// Size of the image in virtual memory.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
 }
 
@@ -528,7 +543,7 @@ pub struct SymbolicatedFrame {
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct CompleteStacktrace {
     /// ID of thread that had this stacktrace. Returned when a minidump was processed.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<u64>,
 
     /// If a dump was produced as a result of a crash, this will point to the thread that crashed.
@@ -536,11 +551,11 @@ pub struct CompleteStacktrace {
     /// Breakpad information, this will point to the thread that requested the dump.
     ///
     /// Currently only `Some` for minidumps.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub is_requesting: Option<bool>,
 
     /// Registers, only useful when returning a processed minidump.
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, skip_serializing_if = "Registers::is_empty")]
     pub registers: Registers,
 
     /// Frames of this stack trace.
@@ -596,7 +611,7 @@ pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
     pub debug_status: ObjectFileStatus,
     /// Status for fetching the file with unwind info (for minidump stackwalking).
-    #[serde(skip_serializing_if = "is_default", default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unwind_status: Option<ObjectFileStatus>,
     /// Actual architecture of this debug file.
     pub arch: Arch,
@@ -650,31 +665,31 @@ pub enum SymbolicationResponse {
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 
     /// The signal that caused this crash.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signal: Option<Signal>,
 
     /// Information about the operating system.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub system_info: Option<SystemInfo>,
 
     /// True if the process crashed, false if the dump was produced outside of an exception
     /// handler. Only set for minidumps.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub crashed: Option<bool>,
 
     /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
     /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
     /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub crash_reason: Option<String>,
 
     /// If there was an assertion that was hit, a textual representation of that assertion,
     /// possibly including the file and line at which it occurred.
-    #[serde(skip_serializing_if = "is_default")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub assertion: Option<String>,
 
     /// The threads containing symbolicated stack frames.
@@ -815,20 +830,6 @@ pub struct ObjectId {
 }
 
 impl ObjectId {
-    /// Returns the cache key for this object.
-    pub fn cache_key(&self) -> String {
-        let mut rv = String::new();
-        if let Some(ref debug_id) = self.debug_id {
-            rv.push_str(&debug_id.to_string());
-        }
-        rv.push_str("_");
-        if let Some(ref code_id) = self.code_id {
-            write!(rv, "{}", code_id).ok();
-        }
-
-        rv
-    }
-
     pub fn code_file_basename(&self) -> Option<&str> {
         Some(split_path(self.code_file.as_ref()?).1)
     }
@@ -838,8 +839,8 @@ impl ObjectId {
     }
 }
 
-impl WriteSentryScope for ObjectId {
-    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+impl ToSentryScope for ObjectId {
+    fn to_scope(&self, scope: &mut sentry::Scope) {
         scope.set_tag(
             "object_id.code_id",
             self.code_id
