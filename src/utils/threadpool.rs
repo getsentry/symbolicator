@@ -26,7 +26,7 @@ pub struct ThreadPool {
 impl ThreadPool {
     /// Create a new `ThreadPool` with default values.
     pub fn new() -> Self {
-        let inner = if IS_TEST.load(Ordering::Relaxed) {
+        let inner = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
             None
         } else {
             Some(Arc::new(TokioPool::new()))
