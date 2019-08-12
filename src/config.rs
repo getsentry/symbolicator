@@ -190,10 +190,20 @@ fn default_bind() -> String {
     }
 }
 
+/// Default value for the "cache_dir" configuration.
+fn default_cache_dir() -> Option<PathBuf> {
+    if is_docker() {
+        // Docker image already defines `/data` as a persistent volume
+        Some(PathBuf::from("/data"))
+    } else {
+        None
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
-            cache_dir: None,
+            cache_dir: default_cache_dir(),
             bind: default_bind(),
             logging: Logging::default(),
             metrics: Metrics::default(),
