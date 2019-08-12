@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use apple_crash_report_parser::AppleCrashReport;
 use failure::Fail;
-use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
+use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::integrations::failure::capture_fail;
@@ -143,12 +143,9 @@ impl SymbolicationActor {
         timeout: Option<u64>,
         channel: ComputationChannel,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let rv =
-            channel
-                .map(|item| (*item).clone())
-                .map_err(|_: SharedError<oneshot::Canceled>| {
-                    SymbolicationErrorKind::CanceledChannel.into()
-                });
+        let rv = channel
+            .map(|item| (*item).clone())
+            .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
         let requests = &self.requests;
 
