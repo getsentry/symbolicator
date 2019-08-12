@@ -96,6 +96,10 @@ fn request_new_token(
         // for some inexplicable reason we otherwise get gzipped data back that actix-web client has
         // no idea what to do with.
         .header(header::ACCEPT_ENCODING, "identity")
+        // Disable timeouts. The timeout wraps the entire client response future, and
+        // thus also counts the request waiting for getting queued in the connector.
+        // Instead, rely on the outer future's timeout to cancel the request.
+        .timeout(std::time::Duration::from_secs(9999))
         .send_form(&OAuth2Grant {
             grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
             assertion: auth_jwt,
@@ -181,6 +185,10 @@ pub(super) fn download_from_source(
                         header::AUTHORIZATION,
                         format!("Bearer {}", token.access_token),
                     )
+                    // Disable timeouts. The timeout wraps the entire client response future, and
+                    // thus also counts the request waiting for getting queued in the connector.
+                    // Instead, rely on the outer future's timeout to cancel the request.
+                    .timeout(std::time::Duration::from_secs(9999))
                     .send()
                     .map_err(ObjectError::io)
             })
