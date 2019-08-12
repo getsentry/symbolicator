@@ -29,15 +29,15 @@ settings in this case.
 Write this to a file (`config.yml`):
 
 ```yaml
-cache_dir: '/tmp/symbolicator'
-bind: '0.0.0.0:3021'
+cache_dir: "/tmp/symbolicator"
+bind: "0.0.0.0:3021"
 logging:
-  level: 'info'
-  format: 'pretty'
+  level: "info"
+  format: "pretty"
   enable_backtraces: true
 metrics:
-  statsd: '127.0.0.1:8125'
-  prefix: 'symbolicator'
+  statsd: "127.0.0.1:8125"
+  prefix: "symbolicator"
 ```
 
 - `cache_dir`: Path to a directory to cache downloaded files and symbolication
@@ -46,18 +46,18 @@ metrics:
   strictly recommended to configure caches in production!**
 - `bind`: Host and port for HTTP interface.
 - `logging`: Command line logging behavior.
-  - `level`: Log level, defaults to `info`. Can be one of `off`, `error`,
-    `warn`, `info`, `debug`, or `trace`.
-  - `format`: The format with which to print logs. Defaults to `auto`. Can be
-    one of: `json`, `simplified`, `pretty`, or `auto` (pretty on console,
-    simplified on tty).
-  - `enable_backtraces`: Whether backtraces for errors should be computed. This
-    causes a slight performance hit but improves debuggability. Defaults to
-    `true`.
+    - `level`: Log level, defaults to `info`. Can be one of `off`, `error`,
+      `warn`, `info`, `debug`, or `trace`.
+    - `format`: The format with which to print logs. Defaults to `auto`. Can be
+      one of: `json`, `simplified`, `pretty`, or `auto` (pretty on console,
+      simplified on tty).
+    - `enable_backtraces`: Whether backtraces for errors should be computed. This
+      causes a slight performance hit but improves debuggability. Defaults to
+      `true`.
 - `metrics`: Configure a statsd server to send metrics to.
-  - `statsd`: The host and port to send metrics to. Defaults to `null`, which
-    disables metric submission.
-  - `prefix`: A prefix for every metric, defaults to `symbolicator`.
+    - `statsd`: The host and port to send metrics to. Defaults to `null`, which
+      disables metric submission.
+    - `prefix`: A prefix for every metric, defaults to `symbolicator`.
 - `sentry_dsn`: DSN to a Sentry project for internal error reporting. Defaults
   to `null`, which disables reporting to Sentry.
 - `sources`: An optional list of preconfigured sources. If these are configured
