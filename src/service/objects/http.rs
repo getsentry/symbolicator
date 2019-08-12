@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::http::header;
 use futures::{future, Future, IntoFuture, Stream};
@@ -54,9 +55,12 @@ pub(super) fn download_from_source(
                     }
                 }
 
-                request.header(header::USER_AGENT, USER_AGENT)
-                // TODO(ja): Timeout is only until receiving the response, but not reading the
-                // body. Verify this.
+                request
+                    .header(header::USER_AGENT, USER_AGENT)
+                    // Disable timeouts. The timeout wraps the entire client response future, and
+                    // thus also counts the request waiting for getting queued in the connector.
+                    // Instead, rely on the outer future's timeout to cancel the request.
+                    .timeout(Duration::from_secs(9999))
             }),
         )
     });
