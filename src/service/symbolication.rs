@@ -44,54 +44,60 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     format: DemangleFormat::Short,
 };
 
-/// Errors during symbolication
+/// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
-pub enum SymbolicationError {
+pub enum SymbolicationErrorKind {
     #[fail(display = "symbolication took too long")]
     Timeout,
 
-    #[fail(display = "internal IO failed: {}", _0)]
-    Io(#[cause] std::io::Error),
+    #[fail(display = "internal IO failed")]
+    Io,
 
     /// Unclear when this can happen. Potentially when the system is shutting down.
     #[fail(display = "response channel unexpectedly canceled")]
     CanceledChannel,
 
     #[fail(display = "failed to process minidump")]
-    Minidump(#[cause] ProcessMinidumpError),
+    Minidump,
 
     #[fail(display = "failed to parse apple crash report")]
-    AppleCrashReport(#[cause] apple_crash_report_parser::ParseError),
+    AppleCrashReport,
 }
+
+symbolic::common::derive_failure!(
+    SymbolicationError,
+    SymbolicationErrorKind,
+    doc = "Error when starting the server."
+);
 
 impl From<std::io::Error> for SymbolicationError {
     fn from(err: std::io::Error) -> Self {
-        SymbolicationError::Io(err)
+        err.context(SymbolicationErrorKind::Io).into()
     }
 }
 
 impl From<ProcessMinidumpError> for SymbolicationError {
     fn from(err: ProcessMinidumpError) -> Self {
-        SymbolicationError::Minidump(err)
+        err.context(SymbolicationErrorKind::Minidump).into()
     }
 }
 
 impl From<apple_crash_report_parser::ParseError> for SymbolicationError {
     fn from(err: apple_crash_report_parser::ParseError) -> Self {
-        SymbolicationError::AppleCrashReport(err)
+        err.context(SymbolicationErrorKind::AppleCrashReport).into()
     }
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match err {
-            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::CanceledChannel => SymbolicationResponse::InternalError,
-            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
+        match err.kind() {
+            SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::CanceledChannel => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::Minidump => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
-            SymbolicationError::AppleCrashReport(err) => SymbolicationResponse::Failed {
+            SymbolicationErrorKind::AppleCrashReport => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
         }
@@ -137,9 +143,12 @@ impl SymbolicationActor {
         timeout: Option<u64>,
         channel: ComputationChannel,
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
-        let rv = channel
-            .map(|item| (*item).clone())
-            .map_err(|_: SharedError<oneshot::Canceled>| SymbolicationError::CanceledChannel);
+        let rv =
+            channel
+                .map(|item| (*item).clone())
+                .map_err(|_: SharedError<oneshot::Canceled>| {
+                    SymbolicationErrorKind::CanceledChannel.into()
+                });
 
         let requests = &self.requests;
 
@@ -203,14 +212,15 @@ impl SymbolicationActor {
                     match result {
                         Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
                         Err(ref e) => {
-                            capture_fail(e.cause().unwrap_or(e));
+                            log::warn!("we had an error: {}", e);
+                            capture_fail(e);
                             e.into()
                         }
                     },
                 ))
                 .map_err(|_| ())
             })
-            .bind_hub(Hub::new_from_top(Hub::main()));
+            .bind_hub(Hub::new_from_top(Hub::current()));
 
         actix_rt::spawn(request_future);
 
@@ -854,7 +864,10 @@ impl SymbolicationActor {
 
         future_metrics!(
             "symbolicate",
-            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(3600),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             result
         )
     }
@@ -1146,7 +1159,10 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             future,
         ))
     }
@@ -1305,7 +1321,10 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             request_future,
         ))
     }
