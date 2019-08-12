@@ -191,10 +191,10 @@ fn default_bind() -> String {
 }
 
 /// Default value for the "cache_dir" configuration.
-fn default_cache_dir() -> String {
+fn default_cache_dir() -> Option<PathBuf> {
     if is_docker() {
         // Docker image alread defines /data as a persistent volume
-        "/data".to_owned()
+        Some(PathBuf::from("/data"))
     } else {
         None
     }
