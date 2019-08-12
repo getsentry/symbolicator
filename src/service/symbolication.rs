@@ -147,40 +147,33 @@ impl SymbolicationActor {
             .map(|item| (*item).clone())
             .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
-        let requests = &self.requests;
-
-        if let Some(timeout) = timeout {
-            Either::A(
-                rv.timeout(Duration::from_secs(timeout))
-                    .then(clone!(requests, |result| {
-                        match result {
-                            Ok((finished_at, x)) => {
-                                requests.write().remove(&request_id);
-                                metric!(timer("requests.response_idling") = finished_at.elapsed());
-                                Ok(x)
-                            }
-                            Err(e) => {
-                                if let Some(inner) = e.into_inner() {
-                                    Err(inner)
-                                } else {
-                                    Ok(SymbolicationResponse::Pending {
-                                        request_id,
-                                        // XXX(markus): Probably need a better estimation at some
-                                        // point.
-                                        retry_after: 30,
-                                    })
-                                }
-                            }
-                        }
-                    })),
-            )
+        let requests = self.requests.clone();
+        if let Some(timeout) = timeout.map(Duration::from_secs) {
+            Either::A(rv.timeout(timeout).then(move |result| {
+                match result {
+                    Ok((finished_at, response)) => {
+                        requests.write().remove(&request_id);
+                        metric!(timer("requests.response_idling") = finished_at.elapsed());
+                        Ok(response)
+                    }
+                    Err(timeout_error) => match timeout_error.into_inner() {
+                        Some(error) => Err(error),
+                        None => Ok(SymbolicationResponse::Pending {
+                            request_id,
+                            // XXX(markus): Probably need a better estimation at some
+                            // point.
+                            retry_after: 30,
+                        }),
+                    },
+                }
+            }))
         } else {
-            Either::B(rv.then(clone!(requests, |result| {
+            Either::B(rv.then(move |result| {
                 requests.write().remove(&request_id);
-                let (finished_at, x) = result?;
+                let (finished_at, response) = result?;
                 metric!(timer("requests.response_idling") = finished_at.elapsed());
-                Ok(x)
-            })))
+                Ok(response)
+            }))
         }
     }
 
@@ -196,26 +189,23 @@ impl SymbolicationActor {
             }
         };
 
-        let (tx, rx) = oneshot::channel();
+        let (sender, receiver) = oneshot::channel();
 
         self.requests
             .write()
-            .insert(request_id.clone(), rx.shared());
+            .insert(request_id.clone(), receiver.shared());
 
         let request_future = f()
             .then(move |result| {
-                tx.send((
-                    Instant::now(),
-                    match result {
-                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
-                        Err(ref e) => {
-                            log::warn!("we had an error: {}", e);
-                            capture_fail(e);
-                            e.into()
-                        }
-                    },
-                ))
-                .map_err(|_| ())
+                let response = match result {
+                    Ok(response) => SymbolicationResponse::Completed(Box::new(response)),
+                    Err(ref error) => {
+                        capture_fail(error);
+                        error.into()
+                    }
+                };
+
+                sender.send((Instant::now(), response)).map_err(|_| ())
             })
             .bind_hub(Hub::new_from_top(Hub::current()));
 
