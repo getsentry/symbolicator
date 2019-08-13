@@ -1,4 +1,4 @@
-FROM rust:slim-stretch AS symbolicator-build
+FROM rust:slim-buster AS symbolicator-build
 
 WORKDIR /work
 
@@ -7,18 +7,19 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Build only dependencies to speed up subsequent builds
-ADD Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs ./
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
     && RUSTFLAGS=-g cargo build --release --locked
 
-COPY . .
+COPY src ./src/
+COPY .git ./.git/
 RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
 #############################################
 # Copy the compiled binary to a clean image #
-FROM debian:stretch-slim
+FROM debian:buster-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates gosu cabextract \
     && rm -rf /var/lib/apt/lists/*
@@ -31,15 +32,14 @@ ENV \
 RUN groupadd --system symbolicator --gid $SYMBOLICATOR_GID \
     && useradd --system --gid symbolicator --uid $SYMBOLICATOR_UID symbolicator
 
-RUN mkdir /etc/symbolicator /data \
-    && chown symbolicator:symbolicator /etc/symbolicator /data
-VOLUME ["/etc/symbolicator", "/data"]
+VOLUME ["/data"]
+RUN mkdir /etc/symbolicator && \
+    chown symbolicator:symbolicator /etc/symbolicator /data
+ONBUILD COPY --chown=symbolicator:symbolicator config.yml /etc/symbolicator/config.yml
 
 EXPOSE 3021
 
-COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
-# Smoke test
-RUN symbolicator --version && symbolicator --help
+COPY --from=symbolicator-build --chown=symbolicator:symbolicator /usr/local/bin/symbolicator /bin
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
