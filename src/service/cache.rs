@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use futures::future::{self, Future, Shared};
 use futures::sync::oneshot;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use sentry::Hub;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
@@ -20,7 +20,7 @@ use crate::utils::sentry::SentryFutureExt;
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
 
-type ComputationMap<T, E> = Arc<RwLock<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
+type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
 
 /// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
 /// it:
@@ -55,7 +55,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache) -> Self {
         Cacher {
             config,
-            current_computations: Arc::new(RwLock::new(BTreeMap::new())),
+            current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 }
@@ -205,7 +205,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = future::lazy(clone!(key, || slf.compute(request, key)))
             .then(move |result| {
-                current_computations.write().remove(&key);
+                current_computations.lock().remove(&key);
                 sender
                     .send(match result {
                         Ok(item) => Ok(Arc::new(item)),
@@ -230,21 +230,20 @@ impl<T: CacheItemRequest> Cacher<T> {
         let key = request.get_cache_key();
         let name = self.config.name();
 
-        let current_computations = &self.current_computations;
-        let channel_opt = current_computations.read().get(&key).cloned();
-
-        let channel = if let Some(channel) = channel_opt {
-            // A concurrent cache lookup was deduplicated.
-            metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
-            channel.clone()
-        } else {
-            // A concurrent cache lookup is considered new. This does not imply a cache miss.
-            metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
-            let channel = self.create_channel(request, key.clone());
-            current_computations
-                .write()
-                .insert(key.clone(), channel.clone());
-            channel
+        let channel = {
+            let mut current_computations = self.current_computations.lock();
+            if let Some(channel) = current_computations.get(&key) {
+                // A concurrent cache lookup was deduplicated.
+                metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
+                channel.clone()
+            } else {
+                // A concurrent cache lookup is considered new. This does not imply a cache miss.
+                metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+                let channel = self.create_channel(request, key.clone());
+                let evicted = current_computations.insert(key.clone(), channel.clone());
+                debug_assert!(evicted.is_none());
+                channel
+            }
         };
 
         let future = channel
