@@ -61,4 +61,5 @@ actix-http-test = "0.2.4"
 insta = "0.10.1"
 
 [patch.crates-io]
-actix-http = { git = "https://github.com/actix/actix-web", branch = "bugfix/open-waiting-connection-h2" }
+# Waiting for actix-http 0.2.9
+actix-http = { git = "https://github.com/actix/actix-web", rev = "192dfff6805a9360ee1858419f98f98066ff87c0" }
