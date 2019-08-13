@@ -14,6 +14,9 @@ RUN mkdir -p src \
 
 COPY src ./src/
 COPY .git ./.git/
+# Ignore missing (deleted) files for dirty-check in `git describe` call for version
+# This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
+RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
