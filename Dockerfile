@@ -42,7 +42,7 @@ ONBUILD COPY --chown=symbolicator:symbolicator config.yml /etc/symbolicator/conf
 
 EXPOSE 3021
 
-COPY --from=symbolicator-build --chown=symbolicator:symbolicator /usr/local/bin/symbolicator /bin
+COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
