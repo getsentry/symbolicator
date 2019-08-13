@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use futures::{future::IntoFuture, Future, Stream};
+use futures::{future, Future, Stream};
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
@@ -62,7 +62,7 @@ pub(super) fn prepare_downloads(
     )
     .map(|download_path| FileId::S3(source.clone(), download_path))
     .collect();
-    Box::new(Ok(ids).into_future())
+    Box::new(future::ok(ids))
 }
 
 pub(super) fn download_from_source(

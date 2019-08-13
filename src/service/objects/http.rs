@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix_web::http::header;
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{future, Future, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
@@ -27,7 +27,7 @@ pub(super) fn prepare_downloads(
     .map(|download_path| FileId::Http(source.clone(), download_path))
     .collect();
 
-    Box::new(Ok(ids).into_future())
+    Box::new(future::ok(ids))
 }
 
 pub(super) fn download_from_source(

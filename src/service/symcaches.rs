@@ -5,10 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
-use futures::{
-    future::{Either, IntoFuture},
-    Future,
-};
+use futures::{future, future::Either, Future};
 use sentry::integrations::failure::capture_fail;
 use sentry::{configure_scope, Hub};
 use symbolic::common::{Arch, ByteView};
@@ -220,17 +217,14 @@ impl SymCacheActor {
                     }))
                 })
                 .unwrap_or_else(move || {
-                    Either::B(
-                        Ok(Arc::new(SymCacheFile {
-                            object_type,
-                            identifier,
-                            scope,
-                            data: ByteView::from_slice(b""),
-                            status: CacheStatus::Negative,
-                            arch: Arch::Unknown,
-                        }))
-                        .into_future(),
-                    )
+                    Either::B(future::ok(Arc::new(SymCacheFile {
+                        object_type,
+                        identifier,
+                        scope,
+                        data: ByteView::from_slice(b""),
+                        status: CacheStatus::Negative,
+                        arch: Arch::Unknown,
+                    })))
                 })
         })
     }
