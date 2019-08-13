@@ -11,7 +11,7 @@ use crate::metrics;
 use crate::middleware;
 use crate::service::Service;
 
-/// Errors t
+/// Variants of `ServerError`.
 #[derive(Clone, Copy, Debug, Fail)]
 pub enum ServerErrorKind {
     /// Failed to bind to a port.

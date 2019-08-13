@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 
 use apple_crash_report_parser::AppleCrashReport;
 use failure::Fail;
-use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
+use futures::future::{self, join_all, Either, Future, Shared};
 use futures::sync::oneshot;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use sentry::integrations::failure::capture_fail;
 use sentry::Hub;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
@@ -44,54 +44,60 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     format: DemangleFormat::Short,
 };
 
-/// Errors during symbolication
+/// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
-pub enum SymbolicationError {
+pub enum SymbolicationErrorKind {
     #[fail(display = "symbolication took too long")]
     Timeout,
 
-    #[fail(display = "internal IO failed: {}", _0)]
-    Io(#[cause] std::io::Error),
+    #[fail(display = "internal IO failed")]
+    Io,
 
     /// Unclear when this can happen. Potentially when the system is shutting down.
     #[fail(display = "response channel unexpectedly canceled")]
     CanceledChannel,
 
     #[fail(display = "failed to process minidump")]
-    Minidump(#[cause] ProcessMinidumpError),
+    Minidump,
 
     #[fail(display = "failed to parse apple crash report")]
-    AppleCrashReport(#[cause] apple_crash_report_parser::ParseError),
+    AppleCrashReport,
 }
+
+symbolic::common::derive_failure!(
+    SymbolicationError,
+    SymbolicationErrorKind,
+    doc = "Error when starting the server."
+);
 
 impl From<std::io::Error> for SymbolicationError {
     fn from(err: std::io::Error) -> Self {
-        SymbolicationError::Io(err)
+        err.context(SymbolicationErrorKind::Io).into()
     }
 }
 
 impl From<ProcessMinidumpError> for SymbolicationError {
     fn from(err: ProcessMinidumpError) -> Self {
-        SymbolicationError::Minidump(err)
+        err.context(SymbolicationErrorKind::Minidump).into()
     }
 }
 
 impl From<apple_crash_report_parser::ParseError> for SymbolicationError {
     fn from(err: apple_crash_report_parser::ParseError) -> Self {
-        SymbolicationError::AppleCrashReport(err)
+        err.context(SymbolicationErrorKind::AppleCrashReport).into()
     }
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match err {
-            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::CanceledChannel => SymbolicationResponse::InternalError,
-            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
+        match err.kind() {
+            SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::CanceledChannel => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::Minidump => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
-            SymbolicationError::AppleCrashReport(err) => SymbolicationResponse::Failed {
+            SymbolicationErrorKind::AppleCrashReport => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
         }
@@ -102,7 +108,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 // global write lock.
 type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
-type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
+type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
 
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
@@ -120,7 +126,7 @@ impl SymbolicationActor {
         cficaches: Arc<CfiCacheActor>,
         threadpool: ThreadPool,
     ) -> Self {
-        let requests = Arc::new(RwLock::new(BTreeMap::new()));
+        let requests = Arc::new(Mutex::new(BTreeMap::new()));
 
         SymbolicationActor {
             objects,
@@ -139,42 +145,35 @@ impl SymbolicationActor {
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_: SharedError<oneshot::Canceled>| SymbolicationError::CanceledChannel);
+            .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
-        let requests = &self.requests;
-
-        if let Some(timeout) = timeout {
-            Either::A(
-                rv.timeout(Duration::from_secs(timeout))
-                    .then(clone!(requests, |result| {
-                        match result {
-                            Ok((finished_at, x)) => {
-                                requests.write().remove(&request_id);
-                                metric!(timer("requests.response_idling") = finished_at.elapsed());
-                                Ok(x)
-                            }
-                            Err(e) => {
-                                if let Some(inner) = e.into_inner() {
-                                    Err(inner)
-                                } else {
-                                    Ok(SymbolicationResponse::Pending {
-                                        request_id,
-                                        // XXX(markus): Probably need a better estimation at some
-                                        // point.
-                                        retry_after: 30,
-                                    })
-                                }
-                            }
-                        }
-                    })),
-            )
+        let requests = self.requests.clone();
+        if let Some(timeout) = timeout.map(Duration::from_secs) {
+            Either::A(rv.timeout(timeout).then(move |result| {
+                match result {
+                    Ok((finished_at, response)) => {
+                        requests.lock().remove(&request_id);
+                        metric!(timer("requests.response_idling") = finished_at.elapsed());
+                        Ok(response)
+                    }
+                    Err(timeout_error) => match timeout_error.into_inner() {
+                        Some(error) => Err(error),
+                        None => Ok(SymbolicationResponse::Pending {
+                            request_id,
+                            // XXX(markus): Probably need a better estimation at some
+                            // point.
+                            retry_after: 30,
+                        }),
+                    },
+                }
+            }))
         } else {
-            Either::B(rv.then(clone!(requests, |result| {
-                requests.write().remove(&request_id);
-                let (finished_at, x) = result?;
+            Either::B(rv.then(move |result| {
+                requests.lock().remove(&request_id);
+                let (finished_at, response) = result?;
                 metric!(timer("requests.response_idling") = finished_at.elapsed());
-                Ok(x)
-            })))
+                Ok(response)
+            }))
         }
     }
 
@@ -183,34 +182,28 @@ impl SymbolicationActor {
         F: FnOnce() -> R,
         R: Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> + 'static,
     {
-        let request_id = loop {
-            let request_id = RequestId::new(uuid::Uuid::new_v4());
-            if !self.requests.read().contains_key(&request_id) {
-                break request_id;
-            }
-        };
+        let (sender, receiver) = oneshot::channel();
 
-        let (tx, rx) = oneshot::channel();
-
-        self.requests
-            .write()
-            .insert(request_id.clone(), rx.shared());
+        let request_id = RequestId::new(uuid::Uuid::new_v4());
+        let evicted = self
+            .requests
+            .lock()
+            .insert(request_id.clone(), receiver.shared());
+        debug_assert!(evicted.is_none());
 
         let request_future = f()
             .then(move |result| {
-                tx.send((
-                    Instant::now(),
-                    match result {
-                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
-                        Err(ref e) => {
-                            capture_fail(e.cause().unwrap_or(e));
-                            e.into()
-                        }
-                    },
-                ))
-                .map_err(|_| ())
+                let response = match result {
+                    Ok(response) => SymbolicationResponse::Completed(Box::new(response)),
+                    Err(ref error) => {
+                        capture_fail(error);
+                        error.into()
+                    }
+                };
+
+                sender.send((Instant::now(), response)).map_err(|_| ())
             })
-            .bind_hub(Hub::new_from_top(Hub::main()));
+            .bind_hub(Hub::new_from_top(Hub::current()));
 
         actix_rt::spawn(request_future);
 
@@ -291,7 +284,7 @@ impl SourceLookup {
             .map(move |(i, (mut object_info, _))| {
                 if !referenced_objects.contains(&i) {
                     object_info.debug_status = ObjectFileStatus::Unused;
-                    return Either::B(Ok((object_info, None)).into_future());
+                    return Either::B(future::ok((object_info, None)));
                 }
 
                 Either::A(
@@ -305,7 +298,7 @@ impl SourceLookup {
                         })
                         .and_then(clone!(objects, |opt_object_file_meta| {
                             match opt_object_file_meta {
-                                None => Either::A(Ok(None).into_future()),
+                                None => Either::A(future::ok(None)),
                                 Some(object_file_meta) => {
                                     Either::B(objects.fetch(object_file_meta).and_then(
                                         |x| -> Result<_, ObjectError> {
@@ -477,7 +470,7 @@ impl SymCacheLookup {
             .map(move |(i, (mut object_info, _))| {
                 if !referenced_objects.contains(&i) {
                     object_info.debug_status = ObjectFileStatus::Unused;
-                    return Either::B(Ok((object_info, None)).into_future());
+                    return Either::B(future::ok((object_info, None)));
                 }
 
                 Either::A(
@@ -854,7 +847,10 @@ impl SymbolicationActor {
 
         future_metrics!(
             "symbolicate",
-            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(3600),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             result
         )
     }
@@ -872,17 +868,19 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
     ) -> impl Future<Item = Option<SymbolicationResponse>, Error = SymbolicationError> {
-        if let Some(channel) = self.requests.read().get(&request_id) {
-            Either::A(
-                self.wrap_response_channel(request_id, timeout, channel.clone())
+        let channel_opt = self.requests.lock().get(&request_id).cloned();
+        match channel_opt {
+            Some(channel) => Either::A(
+                self.wrap_response_channel(request_id, timeout, channel)
                     .map(Some),
-            )
-        } else {
-            // This is okay to occur during deploys, but if it happens all the time we have a state
-            // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
-            // scopes).
-            metric!(counter("symbolication.request_id_unknown") += 1);
-            Either::B(Ok(None).into_future())
+            ),
+            None => {
+                // This is okay to occur during deploys, but if it happens all the time we have a state
+                // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
+                // scopes).
+                metric!(counter("symbolication.request_id_unknown") += 1);
+                Either::B(future::ok(None))
+            }
         }
     }
 }
@@ -965,7 +963,7 @@ impl SymbolicationActor {
                         sources: sources.clone(),
                         scope: scope.clone(),
                     })
-                    .then(move |result| Ok((code_module_id, result)).into_future())
+                    .then(move |result| future::ok((code_module_id, result)))
                     .bind_hub(Hub::new_from_top(Hub::current()))
             });
 
@@ -1146,7 +1144,10 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             future,
         ))
     }
@@ -1305,7 +1306,10 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             request_future,
         ))
     }

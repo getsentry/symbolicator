@@ -82,7 +82,12 @@ pub fn execute() -> Result<(), CliError> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config())?;
 
-    let _sentry = sentry::init(config.sentry_dsn.clone());
+    let _sentry = sentry::init(sentry::ClientOptions {
+        dsn: config.sentry_dsn.clone(),
+        release: Some(env!("SYMBOLICATOR_RELEASE").into()),
+        ..Default::default()
+    });
+
     logging::init_logging(&config);
     sentry::integrations::panic::register_panic_handler();
 
