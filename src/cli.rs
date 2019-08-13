@@ -84,7 +84,7 @@ pub fn execute() -> Result<(), CliError> {
 
     let _sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
-        release: Some(env!("SYMBOLICATOR_GIT_VERSION").into()),
+        release: Some(env!("SYMBOLICATOR_RELEASE").into()),
         ..Default::default()
     });
 
