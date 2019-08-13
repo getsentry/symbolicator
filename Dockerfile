@@ -38,7 +38,7 @@ RUN groupadd --system symbolicator --gid $SYMBOLICATOR_GID \
 VOLUME ["/data"]
 RUN mkdir /etc/symbolicator && \
     chown symbolicator:symbolicator /etc/symbolicator /data
-ONBUILD COPY --chown=symbolicator:symbolicator config.yml /etc/symbolicator/config.yml
+ONBUILD COPY config.yml /etc/symbolicator/config.yml
 
 EXPOSE 3021
 
