@@ -248,13 +248,8 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let future = channel
             .map_err(move |_cancelled_error| {
-                Arc::new(
-                    io::Error::new(
-                        io::ErrorKind::Interrupted,
-                        format!("{} computation channel dropped", name),
-                    )
-                    .into(),
-                )
+                let message = format!("{} computation channel dropped", name);
+                Arc::new(io::Error::new(io::ErrorKind::Interrupted, message).into())
             })
             .and_then(|shared| (*shared).clone());
 
