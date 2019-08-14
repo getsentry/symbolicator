@@ -38,6 +38,14 @@ steps:
         ".",
       ]
 
+  - name: "us.gcr.io/$PROJECT_ID/symbolicator:latest"
+    args: ['--version']
+    id: "smoke test 1"
+
+  - name: "us.gcr.io/$PROJECT_ID/symbolicator:latest"
+    args: ['--help']
+    id: "smoke test 2"
+
   # Only tag "latest" when on master
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
