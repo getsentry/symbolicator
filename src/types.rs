@@ -16,13 +16,15 @@ use url::Url;
 use uuid::Uuid;
 
 /// Symbolication task identifier.
-#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct RequestId(String);
+///
+/// TODO: consider deserializing invalid inputs into a nil uuid?
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+pub struct RequestId(Uuid);
 
 impl RequestId {
     /// Creates a new symbolication task identifier.
     pub fn new(uuid: Uuid) -> Self {
-        Self(uuid.to_string())
+        Self(uuid)
     }
 }
 

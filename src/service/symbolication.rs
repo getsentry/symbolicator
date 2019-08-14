@@ -35,6 +35,7 @@ use crate::types::{
     Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
     SystemInfo,
 };
+use crate::utils::helpers::CallOnDrop;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 use crate::utils::threadpool::ThreadPool;
@@ -147,12 +148,10 @@ impl SymbolicationActor {
             .map(|item| (*item).clone())
             .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
-        let requests = self.requests.clone();
         if let Some(timeout) = timeout.map(Duration::from_secs) {
             Either::A(rv.timeout(timeout).then(move |result| {
                 match result {
                     Ok((finished_at, response)) => {
-                        requests.lock().remove(&request_id);
                         metric!(timer("requests.response_idling") = finished_at.elapsed());
                         Ok(response)
                     }
@@ -169,7 +168,6 @@ impl SymbolicationActor {
             }))
         } else {
             Either::B(rv.then(move |result| {
-                requests.lock().remove(&request_id);
                 let (finished_at, response) = result?;
                 metric!(timer("requests.response_idling") = finished_at.elapsed());
                 Ok(response)
@@ -184,12 +182,14 @@ impl SymbolicationActor {
     {
         let (sender, receiver) = oneshot::channel();
 
+        let requests = self.requests.clone();
         let request_id = RequestId::new(uuid::Uuid::new_v4());
-        let evicted = self
-            .requests
-            .lock()
-            .insert(request_id.clone(), receiver.shared());
+        let evicted = requests.lock().insert(request_id, receiver.shared());
         debug_assert!(evicted.is_none());
+
+        let drop_token = CallOnDrop::new(move || {
+            requests.lock().remove(&request_id);
+        });
 
         let request_future = f()
             .then(move |result| {
@@ -201,8 +201,10 @@ impl SymbolicationActor {
                     }
                 };
 
-                sender.send((Instant::now(), response)).map_err(|_| ())
+                sender.send((Instant::now(), response)).ok();
+                tokio::timer::Delay::new(Instant::now() + Duration::from_secs(90))
             })
+            .then(move |_| Ok(drop(drop_token)))
             .bind_hub(Hub::new_from_top(Hub::current()));
 
         actix_rt::spawn(request_future);

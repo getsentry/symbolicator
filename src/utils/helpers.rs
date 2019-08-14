@@ -1,3 +1,4 @@
+/// Execute a callback on dropping of the container type.
 pub struct CallOnDrop {
     f: Option<Box<dyn FnOnce() + 'static>>,
 }
