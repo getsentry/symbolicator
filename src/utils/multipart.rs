@@ -3,7 +3,7 @@ use std::io::{Seek, SeekFrom, Write};
 
 use actix_multipart::Field;
 use actix_web::{error, Error};
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{future, Future, Stream};
 use sentry::Hub;
 
 use crate::types::SourceConfig;
@@ -32,8 +32,7 @@ pub fn read_multipart_file(
     field: Field,
     threadpool: ThreadPool,
 ) -> impl Future<Item = File, Error = Error> {
-    tempfile::tempfile()
-        .into_future()
+    future::result(tempfile::tempfile())
         .map_err(Error::from)
         .and_then(clone!(threadpool, |file| {
             field

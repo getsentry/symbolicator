@@ -3,7 +3,7 @@ use std::sync::Arc;
 use actix_web::http::header;
 use chrono::{DateTime, Duration, Utc};
 use failure::ResultExt;
-use futures::{Future, IntoFuture, Stream};
+use futures::{future, Future, Stream};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -88,7 +88,7 @@ fn request_new_token(
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = match get_auth_jwt(source_key, expires_at.timestamp() + 30) {
         Ok(auth_jwt) => auth_jwt,
-        Err(err) => return Box::new(Err(err).into_future()),
+        Err(err) => return Box::new(future::err(err)),
     };
 
     let response = http::default_client()
@@ -125,7 +125,7 @@ fn get_token(
 ) -> Box<dyn Future<Item = Arc<GcsToken>, Error = ObjectError>> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at < Utc::now() {
-            return Box::new(Ok(token.clone()).into_future());
+            return Box::new(future::ok(token.clone()));
         }
     }
 
@@ -151,7 +151,7 @@ pub(super) fn prepare_downloads(
     .map(|download_path| FileId::Gcs(source.clone(), download_path))
     .collect();
 
-    Box::new(Ok(ids).into_future())
+    Box::new(future::ok(ids))
 }
 
 pub(super) fn download_from_source(

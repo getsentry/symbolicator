@@ -12,7 +12,7 @@ use failure::{Fail, ResultExt};
 
 use ::sentry::integrations::failure::capture_fail;
 use ::sentry::{configure_scope, Hub};
-use futures::{future, Future, IntoFuture, Stream};
+use futures::{future, Future, Stream};
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -294,13 +294,12 @@ impl CacheItemRequest for FetchFileDataRequest {
                     DownloadStream::File(path) => {
                         log::trace!("Importing downloaded file for {}", cache_key);
 
-                        let future = File::open(&path)
+                        let result = File::open(&path)
                             .context(ObjectErrorKind::Io)
                             .map(|file| DownloadedFile::Local(path.clone(), file))
-                            .map_err(From::from)
-                            .into_future();
+                            .map_err(From::from);
 
-                        future::Either::B(future)
+                        future::Either::B(future::result(result))
                     }
                 };
 
@@ -377,8 +376,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
             } else {
                 log::debug!("No debug file found for {}", cache_key);
-                Box::new(Ok(CacheStatus::Negative).into_future())
-                    as Box<dyn Future<Item = _, Error = _>>
+                Box::new(future::ok(CacheStatus::Negative)) as Box<dyn Future<Item = _, Error = _>>
             }
         });
 

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::sync::Arc;
 
-use futures::{Future, IntoFuture};
+use futures::{future, Future};
 
 use crate::service::objects::common::{prepare_download_paths, DownloadPath};
 use crate::service::objects::{DownloadStream, FileId, ObjectError, ObjectErrorKind};
@@ -22,7 +22,7 @@ pub(super) fn prepare_downloads(
     .map(|download_path| FileId::Filesystem(source.clone(), download_path))
     .collect();
 
-    Box::new(Ok(ids).into_future())
+    Box::new(future::ok(ids))
 }
 
 pub(super) fn download_from_source(
@@ -40,5 +40,5 @@ pub(super) fn download_from_source(
         },
     };
 
-    Box::new(res.into_future())
+    Box::new(future::result(res))
 }
