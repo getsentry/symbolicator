@@ -11,9 +11,11 @@ use parking_lot::Mutex;
 use sentry::Hub;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use tokio::prelude::FutureExt;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
+use crate::utils::helpers::CallOnDrop;
 use crate::utils::sentry::SentryFutureExt;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -201,18 +203,16 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let slf = self.clone();
         let current_computations = self.current_computations.clone();
+        let remove_computation_token = CallOnDrop::new(clone!(key, || {
+            current_computations.lock().remove(&key);
+        }));
 
         // Run the computation and wrap the result in Arcs to make them clonable.
-        let channel = future::lazy(clone!(key, || slf.compute(request, key)))
-            .then(move |result| {
-                current_computations.lock().remove(&key);
-                sender
-                    .send(match result {
-                        Ok(item) => Ok(Arc::new(item)),
-                        Err(error) => Err(Arc::new(error)),
-                    })
-                    .map_err(|_| ())
-            })
+        let channel = future::lazy(move || slf.compute(request, key))
+            .inspect(move |_| drop(remove_computation_token))
+            .then(move |result| sender.send(result.map(Arc::new).map_err(Arc::new)))
+            .timeout(std::time::Duration::from_secs(60))
+            .map_err(|_| ())
             .bind_hub(Hub::new_from_top(Hub::main()));
 
         actix_rt::spawn(channel);
@@ -247,7 +247,15 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
 
         let future = channel
-            .map_err(move |_| panic!("{} computation channel dropped", name))
+            .map_err(move |_cancelled_error| {
+                Arc::new(
+                    io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        format!("{} computation channel dropped", name),
+                    )
+                    .into(),
+                )
+            })
             .and_then(|shared| (*shared).clone());
 
         Box::new(future)

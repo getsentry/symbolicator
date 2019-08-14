@@ -80,10 +80,6 @@ fn perform_search(
             .get(index_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
             .header(header::AUTHORIZATION, format!("Bearer {}", token.clone()))
-            // Disable timeouts. The timeout wraps the entire client response future, and
-            // thus also counts the request waiting for getting queued in the connector.
-            // Instead, rely on the outer future's timeout to cancel the request.
-            .timeout(Duration::from_secs(9999))
             .send()
             .map_err(ObjectError::io)
             .and_then(move |mut response| {
@@ -173,10 +169,6 @@ pub(super) fn download_from_source(
             .get(download_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
             .header(header::AUTHORIZATION, format!("Bearer {}", token))
-            // Disable timeouts. The timeout wraps the entire client response future, and
-            // thus also counts the request waiting for getting queued in the connector.
-            // Instead, rely on the outer future's timeout to cancel the request.
-            .timeout(Duration::from_secs(9999))
             .send()
     });
 
