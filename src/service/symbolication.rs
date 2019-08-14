@@ -204,7 +204,10 @@ impl SymbolicationActor {
                 sender.send((Instant::now(), response)).ok();
                 tokio::timer::Delay::new(Instant::now() + Duration::from_secs(90))
             })
-            .then(move |_| Ok(drop(drop_token)))
+            .then(move |_| {
+                drop(drop_token);
+                Ok(())
+            })
             .bind_hub(Hub::new_from_top(Hub::current()));
 
         actix_rt::spawn(request_future);
