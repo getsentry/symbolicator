@@ -16,19 +16,29 @@ use url::Url;
 use uuid::Uuid;
 
 /// Symbolication task identifier.
-#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct RequestId(String);
+#[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+pub struct RequestId(Uuid);
 
 impl RequestId {
     /// Creates a new symbolication task identifier.
     pub fn new(uuid: Uuid) -> Self {
-        Self(uuid.to_string())
+        Self(uuid)
     }
 }
 
 impl fmt::Display for RequestId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl<'de> Deserialize<'de> for RequestId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let uuid = Uuid::deserialize(deserializer);
+        Ok(Self(uuid.unwrap_or_default()))
     }
 }
 

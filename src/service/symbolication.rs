@@ -18,7 +18,7 @@ use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
-use tokio::prelude::FutureExt;
+use tokio::{prelude::FutureExt, timer::Delay};
 use uuid;
 
 use crate::logging::LogError;
@@ -35,14 +35,19 @@ use crate::types::{
     Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
     SystemInfo,
 };
+use crate::utils::helpers::CallOnDrop;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 use crate::utils::threadpool::ThreadPool;
 
+/// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,
     format: DemangleFormat::Short,
 };
+
+/// The maximum delay we allow for polling a finished request before dropping it.
+const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
 
 /// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
@@ -147,12 +152,10 @@ impl SymbolicationActor {
             .map(|item| (*item).clone())
             .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
-        let requests = self.requests.clone();
         if let Some(timeout) = timeout.map(Duration::from_secs) {
             Either::A(rv.timeout(timeout).then(move |result| {
                 match result {
                     Ok((finished_at, response)) => {
-                        requests.lock().remove(&request_id);
                         metric!(timer("requests.response_idling") = finished_at.elapsed());
                         Ok(response)
                     }
@@ -169,7 +172,6 @@ impl SymbolicationActor {
             }))
         } else {
             Either::B(rv.then(move |result| {
-                requests.lock().remove(&request_id);
                 let (finished_at, response) = result?;
                 metric!(timer("requests.response_idling") = finished_at.elapsed());
                 Ok(response)
@@ -184,12 +186,14 @@ impl SymbolicationActor {
     {
         let (sender, receiver) = oneshot::channel();
 
+        let requests = self.requests.clone();
         let request_id = RequestId::new(uuid::Uuid::new_v4());
-        let evicted = self
-            .requests
-            .lock()
-            .insert(request_id.clone(), receiver.shared());
+        let evicted = requests.lock().insert(request_id, receiver.shared());
         debug_assert!(evicted.is_none());
+
+        let remove_symbolication_token = CallOnDrop::new(move || {
+            requests.lock().remove(&request_id);
+        });
 
         let request_future = f()
             .then(move |result| {
@@ -201,7 +205,12 @@ impl SymbolicationActor {
                     }
                 };
 
-                sender.send((Instant::now(), response)).map_err(|_| ())
+                sender.send((Instant::now(), response)).ok();
+                Delay::new(Instant::now() + MAX_POLL_DELAY)
+            })
+            .then(move |_| {
+                drop(remove_symbolication_token);
+                Ok(())
             })
             .bind_hub(Hub::new_from_top(Hub::current()));
 

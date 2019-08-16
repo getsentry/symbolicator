@@ -14,6 +14,7 @@ use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
+use crate::utils::helpers::CallOnDrop;
 use crate::utils::sentry::SentryFutureExt;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -201,17 +202,16 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let slf = self.clone();
         let current_computations = self.current_computations.clone();
+        let remove_computation_token = CallOnDrop::new(clone!(key, || {
+            current_computations.lock().remove(&key);
+        }));
 
         // Run the computation and wrap the result in Arcs to make them clonable.
-        let channel = future::lazy(clone!(key, || slf.compute(request, key)))
+        let channel = future::lazy(move || slf.compute(request, key))
             .then(move |result| {
-                current_computations.lock().remove(&key);
-                sender
-                    .send(match result {
-                        Ok(item) => Ok(Arc::new(item)),
-                        Err(error) => Err(Arc::new(error)),
-                    })
-                    .map_err(|_| ())
+                drop(remove_computation_token);
+                sender.send(result.map(Arc::new).map_err(Arc::new)).ok();
+                Ok(())
             })
             .bind_hub(Hub::new_from_top(Hub::main()));
 
@@ -247,7 +247,10 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
 
         let future = channel
-            .map_err(move |_| panic!("{} computation channel dropped", name))
+            .map_err(move |_cancelled_error| {
+                let message = format!("{} computation channel dropped", name);
+                Arc::new(io::Error::new(io::ErrorKind::Interrupted, message).into())
+            })
             .and_then(|shared| (*shared).clone());
 
         Box::new(future)
