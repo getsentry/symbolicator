@@ -24,6 +24,7 @@ use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
+use crate::utils::helpers::FutureExt;
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
 use crate::utils::threadpool::ThreadPool;
@@ -254,7 +255,6 @@ impl CacheItemRequest for FetchFileDataRequest {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
-        let request = download_from_source(&self.0.file_id);
         let path = path.to_owned();
         let threadpool = self.0.threadpool.clone();
         let object_id = self.0.object_id.clone();
@@ -264,48 +264,48 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.to_scope(scope);
         });
 
-        let result = request.and_then(move |payload| {
-            if let Some(payload) = payload {
-                let download_dir =
-                    tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
+        let future = download_from_source(&self.0.file_id)
+            .and_then(move |payload| {
+                if let Some(payload) = payload {
+                    let download_dir =
+                        tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
 
-                let download_file = match payload {
-                    DownloadStream::FutureStream(stream) => {
-                        log::trace!("Downloading file for {}", cache_key);
+                    let download_file = match payload {
+                        DownloadStream::FutureStream(stream) => {
+                            log::trace!("Downloading file for {}", cache_key);
 
-                        let named_download_file = tryf!(
-                            NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io)
-                        );
+                            let named_download_file =
+                                tryf!(NamedTempFile::new_in(&download_dir)
+                                    .context(ObjectErrorKind::Io));
 
-                        let future = stream
-                            .fold(
-                                tryf!(named_download_file.reopen().context(ObjectErrorKind::Io)),
-                                clone!(threadpool, |mut file, chunk| {
-                                    threadpool.spawn_handle(
+                            let future = stream
+                                .fold(
+                                    tryf!(named_download_file
+                                        .reopen()
+                                        .context(ObjectErrorKind::Io)),
+                                    clone!(threadpool, |mut file, chunk| {
                                         future::lazy(move || file.write_all(&chunk).map(|_| file))
-                                            .bind_hub(Hub::current()),
-                                    )
-                                }),
-                            )
-                            .map(move |_| DownloadedFile::Temp(named_download_file));
+                                            .spawn_on(&threadpool)
+                                    }),
+                                )
+                                .map(move |_| DownloadedFile::Temp(named_download_file));
 
-                        future::Either::A(future)
-                    }
-                    DownloadStream::File(path) => {
-                        log::trace!("Importing downloaded file for {}", cache_key);
+                            future::Either::A(future)
+                        }
+                        DownloadStream::File(path) => {
+                            log::trace!("Importing downloaded file for {}", cache_key);
 
-                        let result = File::open(&path)
-                            .context(ObjectErrorKind::Io)
-                            .map(|file| DownloadedFile::Local(path.clone(), file))
-                            .map_err(From::from);
+                            let result = File::open(&path)
+                                .context(ObjectErrorKind::Io)
+                                .map(|file| DownloadedFile::Local(path.clone(), file))
+                                .map_err(From::from);
 
-                        future::Either::B(future::result(result))
-                    }
-                };
+                            future::Either::B(future::result(result))
+                        }
+                    };
 
-                let future = download_file.and_then(clone!(threadpool, |download_file| {
-                    log::trace!("Finished download of {}", cache_key);
-                    threadpool.spawn_handle(
+                    let future = download_file.and_then(move |download_file| {
+                        log::trace!("Finished download of {}", cache_key);
                         future::lazy(move || {
                             let decompress_result = decompress_object_file(
                                 &cache_key,
@@ -369,28 +369,25 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                             Ok(CacheStatus::Positive)
                         })
-                        .bind_hub(Hub::current()),
-                    )
-                }));
+                        .spawn_on(&threadpool)
+                    });
 
-                Box::new(future) as Box<dyn Future<Item = _, Error = _>>
-            } else {
-                log::debug!("No debug file found for {}", cache_key);
-                Box::new(future::ok(CacheStatus::Negative)) as Box<dyn Future<Item = _, Error = _>>
-            }
-        });
-
-        let type_name = self.0.file_id.source().type_name();
-
-        Box::new(future_metrics!(
-            "objects",
-            Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
-            result.map_err(|e| {
+                    Box::new(future) as Box<dyn Future<Item = _, Error = _>>
+                } else {
+                    log::debug!("No debug file found for {}", cache_key);
+                    Box::new(future::ok(CacheStatus::Negative))
+                        as Box<dyn Future<Item = _, Error = _>>
+                }
+            })
+            .timeout(Duration::from_secs(600), || ObjectErrorKind::Timeout)
+            // let type_name = self.0.file_id.source().type_name();
+            .measure("objects") // TODO(ja): "source_type" => type_name
+            .map_err(|e| {
                 capture_fail(e.cause().unwrap_or(&e));
                 e
-            }),
-            "source_type" => type_name,
-        ))
+            });
+
+        Box::new(future)
     }
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {

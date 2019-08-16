@@ -4,10 +4,9 @@ use std::io::{Seek, SeekFrom, Write};
 use actix_multipart::Field;
 use actix_web::{error, Error};
 use futures::{future, Future, Stream};
-use sentry::Hub;
 
 use crate::types::SourceConfig;
-use crate::utils::sentry::SentryFutureExt;
+use crate::utils::helpers::FutureExt;
 use crate::utils::threadpool::ThreadPool;
 
 const MAX_SOURCES_SIZE: usize = 1_000_000;
@@ -38,28 +37,22 @@ pub fn read_multipart_file(
             field
                 .map_err(Error::from)
                 .fold(file, move |mut file, chunk| {
-                    threadpool
-                        .spawn_handle(
-                            future::lazy(move || -> std::io::Result<File> {
-                                file.write_all(&chunk)?;
-                                Ok(file)
-                            })
-                            .bind_hub(Hub::current()),
-                        )
-                        .map_err(Error::from)
+                    future::lazy(move || -> std::io::Result<File> {
+                        file.write_all(&chunk)?;
+                        Ok(file)
+                    })
+                    .spawn_on(&threadpool)
+                    .map_err(Error::from)
                 })
         }))
         .and_then(move |mut file| {
-            threadpool
-                .spawn_handle(
-                    future::lazy(move || -> std::io::Result<File> {
-                        file.sync_all()?;
-                        file.seek(SeekFrom::Start(0))?;
-                        Ok(file)
-                    })
-                    .bind_hub(Hub::current()),
-                )
-                .map_err(Error::from)
+            future::lazy(move || -> std::io::Result<File> {
+                file.sync_all()?;
+                file.seek(SeekFrom::Start(0))?;
+                Ok(file)
+            })
+            .spawn_on(&threadpool)
+            .map_err(Error::from)
         })
 }
 

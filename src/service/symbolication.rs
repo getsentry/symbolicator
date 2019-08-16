@@ -18,7 +18,7 @@ use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
-use tokio::{prelude::FutureExt, timer::Delay};
+use tokio::timer::Delay;
 use uuid;
 
 use crate::logging::LogError;
@@ -30,12 +30,12 @@ use crate::service::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
 use crate::types::{
-    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
-    FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
-    Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
-    SystemInfo,
+    CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType, FrameStatus,
+    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
+    RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::helpers::CallOnDrop;
+use crate::utils::helpers::FutureExt;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 use crate::utils::threadpool::ThreadPool;
@@ -153,7 +153,7 @@ impl SymbolicationActor {
             .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
         if let Some(timeout) = timeout.map(Duration::from_secs) {
-            Either::A(rv.timeout(timeout).then(move |result| {
+            Either::A(tokio::timer::Timeout::new(rv, timeout).then(move |result| {
                 match result {
                     Ok((finished_at, response)) => {
                         metric!(timer("requests.response_idling") = finished_at.elapsed());
@@ -327,9 +327,11 @@ impl SourceLookup {
                 )
             });
 
-        future::join_all(futures).map(|results| SourceLookup {
-            inner: results.into_iter().collect(),
-        })
+        future::join_all(futures)
+            .map(|results| SourceLookup {
+                inner: results.into_iter().collect(),
+            })
+            .measure("fetch_sources")
     }
 
     pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
@@ -506,9 +508,11 @@ impl SymCacheLookup {
                 )
             });
 
-        future::join_all(futures).map(|results| SymCacheLookup {
-            inner: results.into_iter().collect(),
-        })
+        future::join_all(futures)
+            .map(|results| SymCacheLookup {
+                inner: results.into_iter().collect(),
+            })
+            .measure("fetch_symcaches")
     }
 
     fn lookup_symcache(
@@ -761,7 +765,7 @@ impl SymbolicationActor {
     fn do_symbolicate(
         &self,
         request: SymbolicateStacktraces,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
+    ) -> Box<dyn Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError>> {
         let signal = request.signal;
         let stacktraces = request.stacktraces.clone();
         let objects = self.objects.clone();
@@ -773,47 +777,45 @@ impl SymbolicationActor {
 
         let threadpool = self.threadpool.clone();
 
-        let result = symcache_lookup
+        let future = symcache_lookup
             .fetch_symcaches(self.symcaches.clone(), request)
             .and_then(clone!(threadpool, |symcache_lookup| {
-                threadpool.spawn_handle(
-                    future::lazy(move || {
-                        let stacktraces: Vec<_> = stacktraces
-                            .into_iter()
-                            .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
-                            .collect();
+                future::lazy(move || {
+                    let stacktraces: Vec<_> = stacktraces
+                        .into_iter()
+                        .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
+                        .collect();
 
-                        let modules: Vec<_> = symcache_lookup
-                            .inner
-                            .into_iter()
-                            .map(|(object_info, _)| {
-                                metric!(
-                                    counter("symbolication.debug_status") += 1,
-                                    "status" => object_info.debug_status.name()
-                                );
+                    let modules: Vec<_> = symcache_lookup
+                        .inner
+                        .into_iter()
+                        .map(|(object_info, _)| {
+                            metric!(
+                                counter("symbolication.debug_status") += 1,
+                                "status" => object_info.debug_status.name()
+                            );
 
-                                object_info
-                            })
-                            .collect();
-
-                        metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
-                        metric!(
-                            time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64
-                        );
-                        metric!(
-                            time_raw("symbolication.num_frames") =
-                                stacktraces.iter().map(|s| s.frames.len() as u64).sum()
-                        );
-
-                        Ok(CompletedSymbolicationResponse {
-                            signal,
-                            modules,
-                            stacktraces,
-                            ..Default::default()
+                            object_info
                         })
+                        .collect();
+
+                    metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+                    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+                    metric!(
+                        time_raw("symbolication.num_frames") =
+                            stacktraces.iter().map(|s| s.frames.len() as u64).sum()
+                    );
+
+                    Ok(CompletedSymbolicationResponse {
+                        signal,
+                        modules,
+                        stacktraces,
+                        ..Default::default()
                     })
-                    .bind_hub(Hub::current()),
-                )
+                })
+                .timeout(Duration::from_secs(60), || SymbolicationErrorKind::Timeout)
+                .measure("symbolicate_stacktraces")
+                .spawn_on(&threadpool)
             }))
             .and_then(move |response| {
                 source_lookup
@@ -821,47 +823,43 @@ impl SymbolicationActor {
                     .map(move |source_lookup| (source_lookup, response))
             })
             .and_then(move |(source_lookup, mut response)| {
-                threadpool.spawn_handle(
-                    future::lazy(move || {
-                        let debug_sessions = source_lookup.prepare_debug_sessions();
+                future::lazy(move || {
+                    let debug_sessions = source_lookup.prepare_debug_sessions();
 
-                        for trace in &mut response.stacktraces {
-                            for frame in &mut trace.frames {
-                                let (abs_path, lineno) =
-                                    match (&frame.raw.abs_path, frame.raw.lineno) {
-                                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
-                                        _ => continue,
-                                    };
+                    for trace in &mut response.stacktraces {
+                        for frame in &mut trace.frames {
+                            let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                                (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                                _ => continue,
+                            };
 
-                                let result = source_lookup.get_context_lines(
-                                    &debug_sessions,
-                                    frame.raw.instruction_addr.0,
-                                    abs_path,
-                                    lineno,
-                                    5,
-                                );
+                            let result = source_lookup.get_context_lines(
+                                &debug_sessions,
+                                frame.raw.instruction_addr.0,
+                                abs_path,
+                                lineno,
+                                5,
+                            );
 
-                                if let Some((pre_context, context_line, post_context)) = result {
-                                    frame.raw.pre_context = pre_context;
-                                    frame.raw.context_line = Some(context_line);
-                                    frame.raw.post_context = post_context;
-                                }
+                            if let Some((pre_context, context_line, post_context)) = result {
+                                frame.raw.pre_context = pre_context;
+                                frame.raw.context_line = Some(context_line);
+                                frame.raw.post_context = post_context;
                             }
                         }
-                        Ok(response)
-                    })
-                    .bind_hub(Hub::current()),
-                )
-            });
+                    }
+                    Ok(response)
+                })
+                .timeout(Duration::from_secs(60), || SymbolicationErrorKind::Timeout)
+                .measure("lookup_sources")
+                .spawn_on(&threadpool)
+            })
+            .timeout(Duration::from_secs(1200), || {
+                SymbolicationErrorKind::Timeout
+            })
+            .measure("symbolicate");
 
-        future_metrics!(
-            "symbolicate",
-            Some((
-                Duration::from_secs(3600),
-                SymbolicationErrorKind::Timeout.into()
-            )),
-            result
-        )
+        Box::new(future)
     }
 
     pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
@@ -929,7 +927,7 @@ impl SymbolicationActor {
         &self,
         minidump: ByteView<'static>,
     ) -> impl Future<Item = Vec<(CodeModuleId, RawObjectInfo)>, Error = SymbolicationError> {
-        let lazy = future::lazy(move || {
+        future::lazy(move || {
             log::debug!("Processing minidump ({} bytes)", minidump.len());
             metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
             let state = ProcessState::from_minidump(&minidump, None)?;
@@ -949,12 +947,13 @@ impl SymbolicationActor {
                 .collect();
 
             Ok(cfi_modules)
-        });
-
-        self.threadpool.spawn_handle(lazy.bind_hub(Hub::current()))
+        })
+        .timeout(Duration::from_secs(60), || SymbolicationErrorKind::Timeout)
+        .measure("get_referenced_modules")
+        .spawn_on(&self.threadpool)
     }
 
-    fn load_cfi_caches(
+    fn fetch_cficaches(
         &self,
         scope: Scope,
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
@@ -976,7 +975,7 @@ impl SymbolicationActor {
                     .bind_hub(Hub::new_from_top(Hub::current()))
             });
 
-        Box::new(join_all(futures))
+        Box::new(join_all(futures).measure("fetch_cficaches"))
     }
 
     fn stackwalk_minidump_with_cfi(
@@ -995,10 +994,7 @@ impl SymbolicationActor {
                 let cache_file = match result {
                     Ok(x) => x,
                     Err(e) => {
-                        log::info!(
-                            "Error while fetching cficache: {}",
-                            LogError(&ArcFail(e.clone()))
-                        );
+                        log::info!("Error while fetching cficache: {}", LogError(&**e));
                         unwind_statuses.insert(code_module_id, (&**e).into());
                         continue;
                     }
@@ -1125,10 +1121,12 @@ impl SymbolicationActor {
             Ok((request, minidump_state))
         });
 
-        Box::new(
-            self.threadpool
-                .spawn_handle(stackwalk_future.bind_hub(Hub::current())),
-        )
+        let bounded_future = stackwalk_future
+            .timeout(Duration::from_secs(60), || SymbolicationErrorKind::Timeout)
+            .measure("stackwalk_with_cfi")
+            .spawn_on(&self.threadpool);
+
+        Box::new(bounded_future)
     }
 
     fn do_stackwalk_minidump(
@@ -1145,20 +1143,17 @@ impl SymbolicationActor {
         let future = slf
             .get_referenced_modules_from_minidump(minidump.clone())
             .and_then(clone!(slf, scope, sources, |referenced_modules| {
-                slf.load_cfi_caches(scope, referenced_modules, sources)
+                slf.fetch_cficaches(scope, referenced_modules, sources)
             }))
             .and_then(move |cfi_caches| {
                 slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
-            });
+            })
+            .timeout(Duration::from_secs(1200), || {
+                SymbolicationErrorKind::Timeout
+            })
+            .measure("minidump_stackwalk");
 
-        Box::new(future_metrics!(
-            "minidump_stackwalk",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into()
-            )),
-            future,
-        ))
+        Box::new(future)
     }
 
     fn do_process_minidump(
@@ -1309,18 +1304,12 @@ impl SymbolicationActor {
             Ok((request, state))
         });
 
-        let request_future = self
-            .threadpool
-            .spawn_handle(parse_future.bind_hub(Hub::current()));
+        let request_future = parse_future
+            .spawn_on(&self.threadpool)
+            .timeout(Duration::from_secs(60), || SymbolicationErrorKind::Timeout)
+            .measure("parse_applecrashreport");
 
-        Box::new(future_metrics!(
-            "minidump_stackwalk",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into()
-            )),
-            request_future,
-        ))
+        Box::new(request_future)
     }
 
     fn do_process_apple_crash_report(
