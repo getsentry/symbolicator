@@ -6,8 +6,7 @@ use actix_web::{error, Error};
 use futures::{future, Future, Stream};
 
 use crate::types::SourceConfig;
-use crate::utils::helpers::FutureExt;
-use crate::utils::threadpool::ThreadPool;
+use crate::utils::futures::{FutureExt, ThreadPool};
 
 const MAX_SOURCES_SIZE: usize = 1_000_000;
 

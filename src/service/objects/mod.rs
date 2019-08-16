@@ -24,10 +24,9 @@ use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
-use crate::utils::helpers::FutureExt;
+use crate::utils::futures::{FutureExt, ThreadPool};
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
-use crate::utils::threadpool::ThreadPool;
 
 mod common;
 mod filesystem;

@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::service::objects::{DownloadStream, FileId, ObjectError, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
-use crate::utils::helpers::FutureExt;
+use crate::utils::futures::FutureExt;
 use crate::utils::http;
 
 lazy_static::lazy_static! {

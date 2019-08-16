@@ -34,11 +34,9 @@ use crate::types::{
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
     RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
-use crate::utils::helpers::CallOnDrop;
-use crate::utils::helpers::FutureExt;
+use crate::utils::futures::{CallOnDrop, FutureExt, ThreadPool};
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
-use crate::utils::threadpool::ThreadPool;
 
 /// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {

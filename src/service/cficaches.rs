@@ -16,9 +16,8 @@ use crate::service::objects::{
     FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
-use crate::utils::helpers::FutureExt;
+use crate::utils::futures::{FutureExt, ThreadPool};
 use crate::utils::sentry::ToSentryScope;
-use crate::utils::threadpool::ThreadPool;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum CfiCacheErrorKind {

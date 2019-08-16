@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::cache::Caches;
 use crate::config::Config;
+use crate::utils::futures::ThreadPool;
 use crate::utils::http;
-use crate::utils::threadpool::ThreadPool;
 
 pub mod cache;
 pub mod cficaches;
