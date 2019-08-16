@@ -11,7 +11,6 @@ use parking_lot::Mutex;
 use sentry::Hub;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
-use tokio::prelude::FutureExt;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
@@ -209,10 +208,11 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = future::lazy(move || slf.compute(request, key))
-            .inspect(move |_| drop(remove_computation_token))
-            .then(move |result| sender.send(result.map(Arc::new).map_err(Arc::new)))
-            .timeout(std::time::Duration::from_secs(60))
-            .map_err(|_| ())
+            .then(move |result| {
+                drop(remove_computation_token);
+                sender.send(result.map(Arc::new).map_err(Arc::new)).ok();
+                Ok(())
+            })
             .bind_hub(Hub::new_from_top(Hub::main()));
 
         actix_rt::spawn(channel);

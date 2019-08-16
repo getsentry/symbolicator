@@ -18,7 +18,7 @@ use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
-use tokio::prelude::FutureExt;
+use tokio::{prelude::FutureExt, timer::Delay};
 use uuid;
 
 use crate::logging::LogError;
@@ -40,10 +40,14 @@ use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 use crate::utils::threadpool::ThreadPool;
 
+/// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,
     format: DemangleFormat::Short,
 };
+
+/// The maximum delay we allow for polling a finished request before dropping it.
+const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
 
 /// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
@@ -187,7 +191,7 @@ impl SymbolicationActor {
         let evicted = requests.lock().insert(request_id, receiver.shared());
         debug_assert!(evicted.is_none());
 
-        let drop_token = CallOnDrop::new(move || {
+        let remove_symbolication_token = CallOnDrop::new(move || {
             requests.lock().remove(&request_id);
         });
 
@@ -202,10 +206,10 @@ impl SymbolicationActor {
                 };
 
                 sender.send((Instant::now(), response)).ok();
-                tokio::timer::Delay::new(Instant::now() + Duration::from_secs(90))
+                Delay::new(Instant::now() + MAX_POLL_DELAY)
             })
             .then(move |_| {
-                drop(drop_token);
+                drop(remove_symbolication_token);
                 Ok(())
             })
             .bind_hub(Hub::new_from_top(Hub::current()));
