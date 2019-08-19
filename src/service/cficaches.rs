@@ -1,13 +1,13 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::{future, future::Either, Future};
+use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
-use sentry::{configure_scope, Hub};
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -16,8 +16,8 @@ use crate::service::objects::{
     FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
-use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
-use crate::utils::threadpool::ThreadPool;
+use crate::utils::futures::{FutureExt, ThreadPool};
+use crate::utils::sentry::ToSentryScope;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum CfiCacheErrorKind {
@@ -87,6 +87,39 @@ impl CfiCacheFile {
     }
 }
 
+fn compute_cficache(
+    object: Arc<ObjectFile>,
+    path: PathBuf,
+    threadpool: &ThreadPool,
+) -> Box<dyn Future<Item = CacheStatus, Error = CfiCacheError>> {
+    if object.status() != CacheStatus::Positive {
+        return Box::new(future::ok(object.status()));
+    }
+
+    let compute_future = futures::lazy(move || -> Result<CacheStatus, CfiCacheError> {
+        let status = if let Err(e) = write_cficache(&path, &*object) {
+            log::warn!("Failed to write cficache: {}", e);
+            capture_fail(e.cause().unwrap_or(&e));
+            CacheStatus::Malformed
+        } else {
+            CacheStatus::Positive
+        };
+
+        Ok(status)
+    });
+
+    let bounded_future = compute_future
+        .timeout(Duration::from_secs(60), || CfiCacheErrorKind::Timeout)
+        .measure("compute_cficache")
+        .map_err(|e| {
+            capture_fail(e.cause().unwrap_or(&e));
+            e
+        })
+        .spawn_on(threadpool);
+
+    Box::new(bounded_future)
+}
+
 #[derive(Clone, Debug)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
@@ -105,42 +138,16 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
-        let object = self
+        let threadpool = self.threadpool.clone();
+
+        let future = self
             .objects_actor
             .fetch(self.object_meta.clone())
-            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)));
-        let threadpool = &self.threadpool;
+            .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
+            .and_then(move |object| compute_cficache(object, path, &threadpool))
+            .measure("cficaches");
 
-        let result = object.and_then(clone!(threadpool, |object| {
-            threadpool.spawn_handle(
-                futures::lazy(move || {
-                    if object.status() != CacheStatus::Positive {
-                        return Ok(object.status());
-                    }
-
-                    let status = if let Err(e) = write_cficache(&path, &*object) {
-                        log::warn!("Could not write cficache: {}", e);
-                        capture_fail(e.cause().unwrap_or(&e));
-
-                        CacheStatus::Malformed
-                    } else {
-                        CacheStatus::Positive
-                    };
-
-                    Ok(status)
-                })
-                .bind_hub(Hub::current()),
-            )
-        }));
-
-        let num_sources = self.request.sources.len();
-
-        Box::new(future_metrics!(
-            "cficaches",
-            Some((Duration::from_secs(1200), CfiCacheErrorKind::Timeout.into())),
-            result,
-            "num_sources" => &num_sources.to_string()
-        ))
+        Box::new(future)
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

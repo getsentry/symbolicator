@@ -1,13 +1,13 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::{future, future::Either, Future};
+use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
-use sentry::{configure_scope, Hub};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 
@@ -17,8 +17,8 @@ use crate::service::objects::{
     FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
-use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
-use crate::utils::threadpool::ThreadPool;
+use crate::utils::futures::{FutureExt, ThreadPool};
+use crate::utils::sentry::ToSentryScope;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum SymCacheErrorKind {
@@ -94,6 +94,39 @@ impl SymCacheFile {
     }
 }
 
+fn compute_symcache(
+    object: Arc<ObjectFile>,
+    path: PathBuf,
+    threadpool: &ThreadPool,
+) -> Box<dyn Future<Item = CacheStatus, Error = SymCacheError>> {
+    if object.status() != CacheStatus::Positive {
+        return Box::new(future::ok(object.status()));
+    }
+
+    let compute_future = futures::lazy(move || -> Result<CacheStatus, SymCacheError> {
+        let status = if let Err(e) = write_symcache(&path, &*object) {
+            log::warn!("Failed to write symcache: {}", e);
+            capture_fail(e.cause().unwrap_or(&e));
+            CacheStatus::Malformed
+        } else {
+            CacheStatus::Positive
+        };
+
+        Ok(status)
+    });
+
+    let bounded_future = compute_future
+        .timeout(Duration::from_secs(300), || SymCacheErrorKind::Timeout)
+        .measure("compute_symcache")
+        .map_err(|e| {
+            capture_fail(e.cause().unwrap_or(&e));
+            e
+        })
+        .spawn_on(threadpool);
+
+    Box::new(bounded_future)
+}
+
 #[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
     request: FetchSymCache,
@@ -112,42 +145,16 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
-        let object = self
+        let threadpool = self.threadpool.clone();
+
+        let future = self
             .objects_actor
             .fetch(self.object_meta.clone())
-            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)));
-        let threadpool = &self.threadpool;
+            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)))
+            .and_then(move |object| compute_symcache(object, path, &threadpool))
+            .measure("symcaches");
 
-        let result = object.and_then(clone!(threadpool, |object| {
-            threadpool.spawn_handle(
-                futures::lazy(move || {
-                    if object.status() != CacheStatus::Positive {
-                        return Ok(object.status());
-                    }
-
-                    let status = if let Err(e) = write_symcache(&path, &*object) {
-                        log::warn!("Failed to write symcache: {}", e);
-                        capture_fail(e.cause().unwrap_or(&e));
-
-                        CacheStatus::Malformed
-                    } else {
-                        CacheStatus::Positive
-                    };
-
-                    Ok(status)
-                })
-                .bind_hub(Hub::current()),
-            )
-        }));
-
-        let num_sources = self.request.sources.len();
-
-        Box::new(future_metrics!(
-            "symcaches",
-            Some((Duration::from_secs(1200), SymCacheErrorKind::Timeout.into())),
-            result,
-            "num_sources" => &num_sources.to_string()
-        ))
+        Box::new(future)
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

@@ -31,16 +31,21 @@ static ALLOW_RESERVED_IPS: AtomicBool = AtomicBool::new(false);
 
 std::thread_local! {
     /// An HTTP client that allows connections to internal networks.
-    static UNSAFE_CLIENT: Client = Client::default();
+    static UNSAFE_CLIENT: Client = Client::build()
+        .disable_redirects()
+        .finish();
 
     /// An HTTP client that blocks connections to internal networks.
-    static SAFE_CLIENT: Client = Client::build().connector(
-        Connector::new().connector(
-            Resolver::default()
-                .and_then(filter_ip_addrs)
-                .and_then(TcpConnector::new())
-        ).finish()
-    ).finish();
+    static SAFE_CLIENT: Client = Client::build()
+        .connector(
+            Connector::new().connector(
+                Resolver::default()
+                    .and_then(filter_ip_addrs)
+                    .and_then(TcpConnector::new())
+            ).finish()
+        )
+        .disable_redirects()
+        .finish();
 }
 
 /// A service that filters connect messages to internal IPs.

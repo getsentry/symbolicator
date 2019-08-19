@@ -14,6 +14,7 @@ use url::Url;
 
 use crate::service::objects::{DownloadStream, FileId, ObjectError, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
+use crate::utils::futures::FutureExt;
 use crate::utils::http;
 
 lazy_static::lazy_static! {
@@ -108,13 +109,10 @@ fn perform_search(
             SENTRY_SEARCH_RESULTS
                 .lock()
                 .put(query, (Instant::now(), entries.clone()));
-        });
+        })
+        .measure("downloads.sentry.index");
 
-    Box::new(future_metrics!(
-        "downloads.sentry.index",
-        None,
-        index_request
-    ))
+    Box::new(index_request)
 }
 
 pub(super) fn prepare_downloads(

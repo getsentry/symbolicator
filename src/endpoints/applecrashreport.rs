@@ -8,9 +8,9 @@ use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::service::symbolication::SymbolicationActor;
 use crate::service::Service;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
+use crate::utils::futures::ThreadPool;
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
 use crate::utils::sentry::ToSentryScope;
-use crate::utils::threadpool::ThreadPool;
 
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {
