@@ -1,13 +1,17 @@
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use cadence::{prelude::*, Metric, MetricBuilder};
 use futures::{Async, Future, Poll};
 use sentry::Hub;
 use tokio::timer::Timeout as TokioTimeout;
 use tokio_threadpool::{SpawnHandle as TokioHandle, ThreadPool as TokioPool};
 
+use crate::metrics;
 use crate::utils::sentry::SentryFutureExt;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
@@ -97,6 +101,9 @@ impl<T, E> Future for SpawnHandle<T, E> {
 }
 
 /// Execute a callback on dropping of the container type.
+///
+/// The callback must not panic under any circumstance. Since it is called while dropping an item,
+/// this might result in aborting program execution.
 pub struct CallOnDrop {
     f: Option<Box<dyn FnOnce() + 'static>>,
 }
@@ -115,15 +122,20 @@ impl Drop for CallOnDrop {
     }
 }
 
+/// The completion result of a future.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-enum FutureMetricResult {
+enum FutureCompletion {
+    /// The future resolved to an item.
     Ok,
+    /// The future resolved to an error.
     Error,
+    /// The future timed out during execution.
     Timeout,
+    /// The future was dropped before completing.
     Dropped,
 }
 
-impl FutureMetricResult {
+impl FutureCompletion {
     fn name(self) -> &'static str {
         match self {
             Self::Ok => "ok",
@@ -134,75 +146,150 @@ impl FutureMetricResult {
     }
 }
 
+/// The state of a measured future.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-enum FutureMetricState {
+enum FutureState {
+    /// The future is waiting to be polled for the first time.
     Waiting(Instant),
+    /// The future has been polled and is computing.
     Started(Instant),
-    Done(FutureMetricResult),
+    /// The future has terminated.
+    Done(FutureCompletion),
 }
 
-impl Default for FutureMetricState {
+impl Default for FutureState {
     fn default() -> Self {
-        FutureMetricState::Waiting(Instant::now())
+        FutureState::Waiting(Instant::now())
     }
 }
 
-#[derive(Debug, Clone)]
-struct FutureMetric<'a> {
-    task_name: &'a str,
-    state: FutureMetricState,
+/// A builder-like map for metrics tags.
+#[derive(Clone, Debug, Default)]
+pub struct TagMap(BTreeMap<&'static str, Cow<'static, str>>);
+
+impl TagMap {
+    /// Creates a new tag map.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a new tag to the map, returning the instance.
+    pub fn add<S>(mut self, tag: &'static str, value: S) -> Self
+    where
+        S: Into<Cow<'static, str>>,
+    {
+        self.0.insert(tag, value.into());
+        self
+    }
 }
 
-impl<'a> FutureMetric<'a> {
-    pub fn new(task_name: &'a str) -> Self {
+/// Extension trait to add multiple tags to a metrics builder.
+trait MetricBuilderExt<'m> {
+    /// Adds all given tags to the metrics builder.
+    fn with_tags(self, tags: &'m TagMap) -> Self;
+}
+
+impl<'m, 'c, T> MetricBuilderExt<'m> for MetricBuilder<'m, 'c, T>
+where
+    T: Metric + From<String>,
+{
+    fn with_tags(mut self, tags: &'m TagMap) -> Self {
+        for (tag, value) in &tags.0 {
+            self = self.with_tag(tag, &value);
+        }
+        self
+    }
+}
+
+/// State machine for measuring futures.
+#[derive(Debug, Clone)]
+struct FutureMetric {
+    task_name: &'static str,
+    state: FutureState,
+    tags: TagMap,
+}
+
+impl FutureMetric {
+    /// Creates a new future metric without tags.
+    #[allow(unused)]
+    pub fn new(task_name: &'static str) -> Self {
+        Self::tagged(task_name, TagMap::new())
+    }
+
+    /// Creates a new future metric with custom tags.
+    pub fn tagged(task_name: &'static str, tags: TagMap) -> Self {
         FutureMetric {
             task_name,
-            state: FutureMetricState::Waiting(Instant::now()),
+            state: FutureState::Waiting(Instant::now()),
+            tags,
         }
     }
 
+    /// Indicates the start of future execution.
+    ///
+    /// If called multiple times, only the first call is recorded. A `futures.wait_time` metric is
+    /// emitted.
     pub fn start(&mut self) {
-        if let FutureMetricState::Waiting(creation_time) = self.state {
+        if let FutureState::Waiting(creation_time) = self.state {
             let elapsed = creation_time.elapsed();
-            self.state = FutureMetricState::Started(Instant::now());
-            metric!(
-                timer("futures.wait_time") = elapsed,
-                "task_name" => self.task_name,
-            );
+            self.state = FutureState::Started(Instant::now());
+
+            metrics::with_client(|client| {
+                client
+                    .time_duration_with_tags("futures.wait_time", elapsed)
+                    .with_tags(&self.tags)
+                    .with_tag("task_name", self.task_name)
+                    .send();
+            });
         }
     }
 
-    pub fn finish(&mut self, result: FutureMetricResult) {
+    /// Indicates that the future has terminated with the given completion.
+    ///
+    /// If called multiple times, only the first call is recorded. A `futures.done` metric is
+    /// emitted for the configured task.
+    pub fn complete(&mut self, completion: FutureCompletion) {
         let elapsed = match self.state {
-            FutureMetricState::Waiting(creation_time) => creation_time.elapsed(),
-            FutureMetricState::Started(start_time) => start_time.elapsed(),
-            FutureMetricState::Done(_) => return,
+            FutureState::Waiting(creation_time) => creation_time.elapsed(),
+            FutureState::Started(start_time) => start_time.elapsed(),
+            FutureState::Done(_) => return,
         };
 
-        metric!(
-            timer("futures.done") = elapsed,
-            "task_name" => self.task_name,
-            "status" => result.name(),
-        );
-        self.state = FutureMetricState::Done(result);
+        metrics::with_client(|client| {
+            client
+                .time_duration_with_tags("futures.done", elapsed)
+                .with_tags(&self.tags)
+                .with_tag("task_name", self.task_name)
+                .with_tag("status", completion.name())
+                .send();
+        });
+
+        self.state = FutureState::Done(completion);
     }
 }
 
-impl<'a> Drop for FutureMetric<'a> {
+/// Emits a `futures.done` metric if dropped before completion.
+impl Drop for FutureMetric {
     fn drop(&mut self) {
-        self.finish(FutureMetricResult::Dropped);
+        self.complete(FutureCompletion::Dropped);
     }
 }
 
+/// A measured `Future` that emits metrics when it starts and completes.
 pub struct Measured<F> {
     inner: F,
-    metric: FutureMetric<'static>,
+    metric: FutureMetric,
 }
 
 impl<F> Measured<F>
 where
     F: Future,
 {
+    /// Creates a `Future` that execute for a limited time.
+    ///
+    /// If the future completes before the timeout has expired, then `Timeout` returns the completed
+    /// value. Otherwise, it returns the error by invoking the callback. The timeout is measured as
+    /// a separate completion state in the metric.
     #[allow(unused)]
     #[deprecated(note = "call .timeout() first, then .measure()")]
     pub fn timeout<E, R>(self, duration: Duration, map_err: E) -> Timeout<F, E>
@@ -229,26 +316,42 @@ where
         match self.inner.poll() {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(item)) => {
-                self.metric.finish(FutureMetricResult::Ok);
+                self.metric.complete(FutureCompletion::Ok);
                 Ok(Async::Ready(item))
             }
             Err(error) => {
-                self.metric.finish(FutureMetricResult::Error);
+                self.metric.complete(FutureCompletion::Error);
                 Err(error)
             }
         }
     }
 }
 
+/// A `Future` that only executes for a limited time.
 pub struct Timeout<F, E> {
     inner: TokioTimeout<F>,
     map_err: Option<E>,
-    metric: Option<FutureMetric<'static>>,
+    metric: Option<FutureMetric>,
 }
 
 impl<F, E> Timeout<F, E> {
-    pub fn measure(mut self, task_name: &'static str) -> Self {
-        self.metric = Some(FutureMetric::new(task_name));
+    /// Creates a `Future` that measures its execution timing.
+    ///
+    /// There are two metrics that are being recorded:
+    ///
+    ///  - `futures.wait_time` when the future polls for the first time. This indicates how long a
+    ///    future had to wait for execution, e.g. in the queue of a thread pool.
+    ///  - `futures.done` when the future completes or terminates. This also logs the completion
+    ///    state as a tag: `ok`, `err`, `timeout` or `dropped`.
+    pub fn measure(self, task_name: &'static str) -> Self {
+        self.measure_tagged(task_name, TagMap::new())
+    }
+
+    /// Creates a `Future` that measures its execution timing.
+    ///
+    /// This is the same as `measure`, except with a custom list of tags.
+    pub fn measure_tagged(mut self, task_name: &'static str, tags: TagMap) -> Self {
+        self.metric = Some(FutureMetric::tagged(task_name, tags));
         self
     }
 }
@@ -271,20 +374,20 @@ where
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(item)) => {
                 if let Some(ref mut metric) = self.metric {
-                    metric.finish(FutureMetricResult::Ok);
+                    metric.complete(FutureCompletion::Ok);
                 }
                 Ok(Async::Ready(item))
             }
             Err(error) => match error.into_inner() {
                 Some(error) => {
                     if let Some(ref mut metric) = self.metric {
-                        metric.finish(FutureMetricResult::Error);
+                        metric.complete(FutureCompletion::Error);
                     }
                     Err(error)
                 }
                 None => {
                     if let Some(ref mut metric) = self.metric {
-                        metric.finish(FutureMetricResult::Timeout);
+                        metric.complete(FutureCompletion::Timeout);
                     }
                     Err(self.map_err.take().unwrap()().into())
                 }
@@ -293,17 +396,41 @@ where
     }
 }
 
+/// Extensions on the `Future` trait.
 pub trait FutureExt: Future {
+    /// Creates a `Future` that measures its execution timing.
+    ///
+    /// There are two metrics that are being recorded:
+    ///
+    ///  - `futures.wait_time` when the future polls for the first time. This indicates how long a
+    ///    future had to wait for execution, e.g. in the queue of a thread pool.
+    ///  - `futures.done` when the future completes or terminates. This also logs the completion
+    ///    state as a tag: `ok`, `err`, `timeout` or `dropped`.
+    #[inline]
     fn measure(self, task_name: &'static str) -> Measured<Self>
+    where
+        Self: Sized,
+    {
+        self.measure_tagged(task_name, TagMap::new())
+    }
+
+    /// Creates a `Future` that measures its execution timing.
+    ///
+    /// This is the same as `measure`, except with a custom list of tags.
+    fn measure_tagged(self, task_name: &'static str, tags: TagMap) -> Measured<Self>
     where
         Self: Sized,
     {
         Measured {
             inner: self,
-            metric: FutureMetric::new(task_name),
+            metric: FutureMetric::tagged(task_name, tags),
         }
     }
 
+    /// Creates a `Future` that execute for a limited time.
+    ///
+    /// If the future completes before the timeout has expired, then `Timeout` returns the completed
+    /// value. Otherwise, it returns the error by invoking the callback.
     fn timeout<E, R>(self, duration: Duration, map_err: E) -> Timeout<Self, E>
     where
         Self: Sized,
@@ -317,6 +444,9 @@ pub trait FutureExt: Future {
         }
     }
 
+    /// Spawns the future on the given thread pool.
+    ///
+    /// The currently active `sentry::Hub` is propagated to the spawned future (shared).
     fn spawn_on(self, pool: &ThreadPool) -> SpawnHandle<Self::Item, Self::Error>
     where
         Self: Sized + Send + 'static,

@@ -24,7 +24,7 @@ use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
-use crate::utils::futures::{FutureExt, ThreadPool};
+use crate::utils::futures::{FutureExt, TagMap, ThreadPool};
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
 
@@ -257,6 +257,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         let path = path.to_owned();
         let threadpool = self.0.threadpool.clone();
         let object_id = self.0.object_id.clone();
+        let type_name = self.0.file_id.source().type_name();
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
@@ -379,8 +380,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                 }
             })
             .timeout(Duration::from_secs(600), || ObjectErrorKind::Timeout)
-            // let type_name = self.0.file_id.source().type_name();
-            .measure("objects") // TODO(ja): "source_type" => type_name
+            .measure_tagged("objects", TagMap::new().add("source_type", type_name))
             .map_err(|e| {
                 capture_fail(e.cause().unwrap_or(&e));
                 e
