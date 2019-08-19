@@ -7,12 +7,10 @@ use std::time::{Duration, Instant};
 
 use cadence::{prelude::*, Metric, MetricBuilder};
 use futures::{Async, Future, Poll};
-use sentry::Hub;
 use tokio::timer::Timeout as TokioTimeout;
 use tokio_threadpool::{SpawnHandle as TokioHandle, ThreadPool as TokioPool};
 
 use crate::metrics;
-use crate::utils::sentry::SentryFutureExt;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
 
@@ -453,7 +451,7 @@ pub trait FutureExt: Future {
         Self::Item: Send + 'static,
         Self::Error: Send + 'static,
     {
-        pool.spawn_handle(self.bind_hub(Hub::current()))
+        pool.spawn_handle(self)
     }
 }
 
