@@ -4,6 +4,8 @@ use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::Error;
 use futures::{future, Future, Poll};
 
+use crate::utils::futures::ResultFuture;
+
 /// Middleware for timing request durations.
 #[derive(Clone, Debug, Default)]
 pub struct RequestMetrics;
@@ -37,7 +39,7 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = ResultFuture<Self::Response, Self::Error>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         self.service.poll_ready()

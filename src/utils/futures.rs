@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use actix_rt::Arbiter;
 use cadence::{prelude::*, Metric, MetricBuilder};
-use futures::{Async, Future, Poll};
+use futures::{future, sync::oneshot, Async, Future, Poll, Stream};
 use tokio::timer::Timeout as TokioTimeout;
 use tokio_threadpool::{SpawnHandle as TokioHandle, ThreadPool as TokioPool};
 
@@ -22,6 +23,61 @@ static IS_TEST: AtomicBool = AtomicBool::new(false);
 #[cfg(test)]
 pub fn enable_test_mode() {
     IS_TEST.store(true, Ordering::Relaxed);
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RemoteError<E> {
+    Error(E),
+    Canceled,
+}
+
+impl<E> RemoteError<E> {
+    pub fn map_cancelled<F, R>(self, f: F) -> E
+    where
+        F: FnOnce() -> R,
+        R: Into<E>,
+    {
+        match self {
+            Self::Error(e) => e,
+            Self::Canceled => f().into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoteThread {
+    arbiter: Arbiter,
+}
+
+impl RemoteThread {
+    pub fn new() -> Self {
+        Self {
+            arbiter: Arbiter::new(),
+        }
+    }
+
+    pub fn spawn<F, R, T, E>(&self, factory: F) -> impl Future<Item = T, Error = RemoteError<E>>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: futures::IntoFuture<Item = T, Error = E> + 'static,
+        T: Send + 'static,
+        E: Send + 'static,
+    {
+        let (sender, receiver) = oneshot::channel();
+
+        self.arbiter.exec_fn(move || {
+            let future = future::lazy(factory)
+                .then(|result| sender.send(result))
+                .map_err(|_| ());
+
+            actix_rt::spawn(future);
+        });
+
+        receiver.then(|r| match r {
+            Ok(r) => r.map_err(RemoteError::Error),
+            Err(_) => Err(RemoteError::Canceled),
+        })
+    }
 }
 
 /// Work-stealing based thread pool for executing futures.
@@ -40,6 +96,16 @@ impl ThreadPool {
         };
 
         ThreadPool { inner }
+    }
+
+    pub fn spawn<F>(&self, future: F)
+    where
+        F: Future<Item = (), Error = ()> + Send + 'static,
+    {
+        match self.inner {
+            Some(ref pool) => pool.spawn(future),
+            None => actix_rt::spawn(future),
+        }
     }
 
     /// Spawn a future on to the thread pool, return a future representing the produced value.
@@ -61,7 +127,7 @@ impl ThreadPool {
 
 enum SpawnHandleInner<T, E> {
     Tokio(TokioHandle<T, E>),
-    Future(Box<dyn Future<Item = T, Error = E>>),
+    Future(ResultFuture<T, E>),
 }
 
 impl<T, E> fmt::Debug for SpawnHandleInner<T, E> {
@@ -103,11 +169,11 @@ impl<T, E> Future for SpawnHandle<T, E> {
 /// The callback must not panic under any circumstance. Since it is called while dropping an item,
 /// this might result in aborting program execution.
 pub struct CallOnDrop {
-    f: Option<Box<dyn FnOnce() + 'static>>,
+    f: Option<Box<dyn FnOnce() + Send + 'static>>,
 }
 
 impl CallOnDrop {
-    pub fn new<F: FnOnce() + 'static>(f: F) -> CallOnDrop {
+    pub fn new<F: FnOnce() + Send + 'static>(f: F) -> CallOnDrop {
         CallOnDrop {
             f: Some(Box::new(f)),
         }
@@ -442,17 +508,25 @@ pub trait FutureExt: Future {
         }
     }
 
-    /// Spawns the future on the given thread pool.
-    ///
-    /// The currently active `sentry::Hub` is propagated to the spawned future (shared).
-    fn spawn_on(self, pool: &ThreadPool) -> SpawnHandle<Self::Item, Self::Error>
-    where
-        Self: Sized + Send + 'static,
-        Self::Item: Send + 'static,
-        Self::Error: Send + 'static,
-    {
-        pool.spawn_handle(self)
-    }
+    // /// Spawns the future on the given thread pool.
+    // ///
+    // /// The currently active `sentry::Hub` is propagated to the spawned future (shared).
+    // fn spawn_on(self, pool: &ThreadPool) -> SpawnHandle<Self::Item, Self::Error>
+    // where
+    //     Self: Sized + Send + 'static,
+    //     Self::Item: Send + 'static,
+    //     Self::Error: Send + 'static,
+    // {
+    //     pool.spawn_handle(self)
+    // }
 }
 
 impl<F> FutureExt for F where F: Future {}
+
+pub type ResultFuture<T, E> = Box<dyn Future<Item = T, Error = E>>;
+
+pub type SendFuture<T, E> = Box<dyn Future<Item = T, Error = E> + Send + 'static>;
+
+pub type ResultStream<T, E> = Box<dyn Stream<Item = T, Error = E>>;
+
+pub type SendStream<T, E> = Box<dyn Stream<Item = T, Error = E> + Send + 'static>;

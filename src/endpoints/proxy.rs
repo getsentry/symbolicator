@@ -9,6 +9,7 @@ use tokio::codec::{BytesCodec, FramedRead};
 use crate::service::objects::{FindObject, ObjectPurpose};
 use crate::service::Service;
 use crate::types::Scope;
+use crate::utils::futures::ResultFuture;
 use crate::utils::paths::parse_symstore_path;
 
 /// Path parameters of the symstore proxy request.
@@ -21,7 +22,7 @@ fn get_symstore_proxy(
     service: web::Data<Service>,
     path: web::Path<ProxyPath>,
     request: HttpRequest,
-) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
+) -> ResultFuture<HttpResponse, Error> {
     let is_head = request.method() == http::Method::HEAD;
 
     if !service.config().symstore_proxy {

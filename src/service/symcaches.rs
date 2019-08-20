@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::{future, future::Either, Future};
+use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
-use sentry::{configure_scope, Hub};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 
@@ -17,8 +17,8 @@ use crate::service::objects::{
     FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
-use crate::utils::futures::{FutureExt, ThreadPool};
-use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
+use crate::utils::futures::{FutureExt, SendFuture, ThreadPool};
+use crate::utils::sentry::ToSentryScope;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum SymCacheErrorKind {
@@ -54,15 +54,13 @@ impl From<io::Error> for SymCacheError {
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: Arc<ObjectsActor>,
-    threadpool: ThreadPool,
 }
 
 impl SymCacheActor {
     pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache)),
+            symcaches: Arc::new(Cacher::new(cache, threadpool)),
             objects,
-            threadpool,
         }
     }
 }
@@ -97,8 +95,7 @@ impl SymCacheFile {
 fn compute_symcache(
     object: Arc<ObjectFile>,
     path: PathBuf,
-    threadpool: &ThreadPool,
-) -> Box<dyn Future<Item = CacheStatus, Error = SymCacheError>> {
+) -> SendFuture<CacheStatus, SymCacheError> {
     if object.status() != CacheStatus::Positive {
         return Box::new(future::ok(object.status()));
     }
@@ -121,9 +118,7 @@ fn compute_symcache(
         .map_err(|e| {
             capture_fail(e.cause().unwrap_or(&e));
             e
-        })
-        .bind_hub(Hub::current())
-        .spawn_on(threadpool);
+        });
 
     Box::new(bounded_future)
 }
@@ -133,7 +128,6 @@ struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects_actor: Arc<ObjectsActor>,
     object_meta: Arc<ObjectFileMeta>,
-    threadpool: ThreadPool,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -144,15 +138,14 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key().clone()
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> SendFuture<CacheStatus, Self::Error> {
         let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
 
         let future = self
             .objects_actor
             .fetch(self.object_meta.clone())
             .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)))
-            .and_then(move |object| compute_symcache(object, path, &threadpool))
+            .and_then(move |object| compute_symcache(object, path))
             .measure("symcaches");
 
         Box::new(future)
@@ -194,7 +187,7 @@ impl SymCacheActor {
     pub fn fetch(
         &self,
         request: FetchSymCache,
-    ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
+    ) -> SendFuture<Arc<SymCacheFile>, Arc<SymCacheError>> {
         let object = self
             .objects
             .find(FindObject {
@@ -207,21 +200,19 @@ impl SymCacheActor {
             .map_err(|e| Arc::new(SymCacheError::from(e.context(SymCacheErrorKind::Fetching))));
 
         let symcaches = self.symcaches.clone();
-        let threadpool = self.threadpool.clone();
         let objects = self.objects.clone();
 
         let object_type = request.object_type.clone();
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.and_then(move |object| {
+        let future = object.and_then(move |object| {
             object
                 .map(move |object| {
                     Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: objects,
                         object_meta: object,
-                        threadpool,
                     }))
                 })
                 .unwrap_or_else(move || {
@@ -234,7 +225,9 @@ impl SymCacheActor {
                         arch: Arch::Unknown,
                     })))
                 })
-        })
+        });
+
+        Box::new(future)
     }
 }
 

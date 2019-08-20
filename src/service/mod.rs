@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::{RemoteThread, ThreadPool};
 use crate::utils::http;
 
 pub mod cache;
@@ -19,7 +19,6 @@ use self::symcaches::SymCacheActor;
 #[derive(Clone, Debug)]
 pub struct Service {
     config: Arc<Config>,
-    io_pool: ThreadPool,
     symbolication: Arc<SymbolicationActor>,
     objects: Arc<ObjectsActor>,
 }
@@ -31,36 +30,38 @@ impl Service {
         http::allow_reserved_ips(config.connect_to_reserved_ips);
 
         let caches = Caches::new(&config);
-        let cpu_pool = ThreadPool::new();
-        let io_pool = ThreadPool::new();
+
+        let cache_pool = ThreadPool::new();
+        let symbolication_pool = ThreadPool::new();
+        let download_thread = RemoteThread::new();
 
         let objects = Arc::new(ObjectsActor::new(
             caches.object_meta,
             caches.objects,
-            io_pool.clone(),
+            cache_pool.clone(),
+            download_thread,
         ));
 
         let symcaches = Arc::new(SymCacheActor::new(
             caches.symcaches,
             objects.clone(),
-            cpu_pool.clone(),
+            cache_pool.clone(),
         ));
 
         let cficaches = Arc::new(CfiCacheActor::new(
             caches.cficaches,
             objects.clone(),
-            cpu_pool.clone(),
+            cache_pool.clone(),
         ));
 
         let symbolication = Arc::new(SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
-            cpu_pool.clone(),
+            symbolication_pool,
         ));
 
         Self {
-            io_pool,
             symbolication,
             objects,
             config,
@@ -69,10 +70,6 @@ impl Service {
 
     pub fn config(&self) -> Arc<Config> {
         self.config.clone()
-    }
-
-    pub fn io_pool(&self) -> ThreadPool {
-        self.io_pool.clone()
     }
 
     pub fn symbolication(&self) -> Arc<SymbolicationActor> {

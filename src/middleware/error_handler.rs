@@ -8,6 +8,7 @@ use futures::{future, Future, Poll};
 use serde::{Deserialize, Serialize};
 
 use crate::server::ServerError;
+use crate::utils::futures::ResultFuture;
 
 /// An error response from an api.
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -80,7 +81,7 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Future = Box<dyn Future<Item = ServiceResponse<B>, Error = Error>>;
+    type Future = ResultFuture<ServiceResponse<B>, Error>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         self.0.poll_ready()

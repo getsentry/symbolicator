@@ -14,7 +14,7 @@ use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
-use crate::utils::futures::CallOnDrop;
+use crate::utils::futures::{CallOnDrop, SendFuture, ThreadPool};
 use crate::utils::sentry::SentryFutureExt;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
@@ -37,8 +37,7 @@ type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E
 #[derive(Debug)]
 pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
-
-    /// Used for deduplicating cache lookups.
+    threadpool: ThreadPool,
     current_computations: ComputationMap<T::Item, T::Error>,
 }
 
@@ -47,15 +46,17 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         // https://github.com/rust-lang/rust/issues/26925
         Cacher {
             config: self.config.clone(),
+            threadpool: self.threadpool.clone(),
             current_computations: self.current_computations.clone(),
         }
     }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache) -> Self {
+    pub fn new(config: Cache, threadpool: ThreadPool) -> Self {
         Cacher {
             config,
+            threadpool,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -68,18 +69,18 @@ impl fmt::Display for CacheKey {
 }
 
 pub trait CacheItemRequest: 'static + Send {
-    type Item: 'static + Send;
+    type Item: 'static + Send + Sync;
 
     // XXX: Probably should have our own concrete error type for cacheactor instead of forcing our
     // ioerrors into other errors
-    type Error: 'static + From<io::Error> + Send;
+    type Error: 'static + From<io::Error> + Send + Sync;
 
     /// Returns the key by which this item is cached.
     fn get_cache_key(&self) -> CacheKey;
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>>;
+    fn compute(&self, path: &Path) -> SendFuture<CacheStatus, Self::Error>;
 
     /// Determines whether this item should be loaded.
     fn should_load(&self, _data: &[u8]) -> bool {
@@ -135,11 +136,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// If the item is in the file system cache, it is returned immediately. Otherwise, it is
     /// computed using `T::compute`, and then persisted to the cache.
-    fn compute(
-        &self,
-        request: T,
-        key: CacheKey,
-    ) -> Box<dyn Future<Item = T::Item, Error = T::Error>> {
+    fn compute(&self, request: T, key: CacheKey) -> SendFuture<T::Item, T::Error> {
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
             if let Some(item) = tryf!(self.lookup_cache(&request, &key, &path)) {
@@ -223,10 +220,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// The actual computation is deduplicated between concurrent requests. Finally, the result is
     /// inserted into the cache and all subsequent calls fetch from the cache.
-    pub fn compute_memoized(
-        &self,
-        request: T,
-    ) -> Box<dyn Future<Item = Arc<T::Item>, Error = Arc<T::Error>>> {
+    pub fn compute_memoized(&self, request: T) -> SendFuture<Arc<T::Item>, Arc<T::Error>> {
         let key = request.get_cache_key();
         let name = self.config.name();
 

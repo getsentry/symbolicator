@@ -1,19 +1,20 @@
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use actix_web::{http::header, HttpMessage};
-use futures::future::Either;
-use futures::{future, Future, Stream};
+use futures::{future, future::Either, Future, Stream};
 use parking_lot::Mutex;
 use serde::Deserialize;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::service::objects::{DownloadStream, FileId, ObjectError, USER_AGENT};
+use crate::service::objects::common::{DownloadedFile, ObjectError};
+use crate::service::objects::{FileId, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
-use crate::utils::futures::FutureExt;
+use crate::utils::futures::{FutureExt, ResultFuture};
 use crate::utils::http;
 
 lazy_static::lazy_static! {
@@ -62,9 +63,7 @@ struct SearchQuery {
     token: String,
 }
 
-fn perform_search(
-    query: SearchQuery,
-) -> Box<dyn Future<Item = Vec<SearchResult>, Error = ObjectError>> {
+fn perform_search(query: SearchQuery) -> ResultFuture<Vec<SearchResult>, ObjectError> {
     if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
         if created.elapsed() < Duration::from_secs(3600) {
             return Box::new(future::ok(entries.clone()));
@@ -118,7 +117,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> ResultFuture<Vec<FileId>, ObjectError> {
     let index_url = {
         let mut url = source.url.clone();
         if let Some(ref debug_id) = object_id.debug_id {
@@ -150,9 +149,10 @@ pub(super) fn prepare_downloads(
 }
 
 pub(super) fn download_from_source(
+    download_dir: PathBuf,
     source: Arc<SentrySourceConfig>,
     file_id: &SentryFileId,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
     let download_url = {
         let mut url = source.url.clone();
         url.query_pairs_mut().append_pair("id", &file_id.0);
@@ -183,20 +183,20 @@ pub(super) fn download_from_source(
         Ok(mut response) => {
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);
-                let stream = Box::new(response.take_payload().map_err(ObjectError::io));
-                Ok(Some(DownloadStream::FutureStream(stream)))
+                let stream = response.take_payload().map_err(ObjectError::io);
+                Either::A(DownloadedFile::streaming(&download_dir, stream).map(Some))
             } else {
                 log::debug!(
                     "Unexpected status code from {}: {}",
                     download_url,
                     response.status()
                 );
-                Ok(None)
+                Either::B(future::ok(None))
             }
         }
         Err(e) => {
             log::warn!("Skipping response from {}: {}", download_url, e);
-            Ok(None)
+            Either::B(future::ok(None))
         }
     });
 

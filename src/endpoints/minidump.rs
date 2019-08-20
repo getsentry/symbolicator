@@ -8,7 +8,7 @@ use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::service::symbolication::SymbolicationActor;
 use crate::service::Service;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::ResultFuture;
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
 use crate::utils::sentry::ToSentryScope;
 
@@ -19,10 +19,9 @@ struct MinidumpRequest {
 }
 
 fn handle_form_field(
-    threadpool: ThreadPool,
     mut request: MinidumpRequest,
     field: Field,
-) -> Box<dyn Future<Item = MinidumpRequest, Error = Error>> {
+) -> ResultFuture<MinidumpRequest, Error> {
     match field
         .content_disposition()
         .as_ref()
@@ -36,7 +35,7 @@ fn handle_form_field(
             Box::new(future)
         }
         Some("upload_file_minidump") => {
-            let future = read_multipart_file(field, threadpool).map(move |minidump| {
+            let future = read_multipart_file(field).map(move |minidump| {
                 request.minidump = Some(minidump);
                 request
             });
@@ -69,12 +68,11 @@ fn post_minidump(
     service: web::Data<Service>,
     params: web::Query<SymbolicationRequestQueryParams>,
     multipart: Multipart,
-) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+) -> ResultFuture<web::Json<SymbolicationResponse>, Error> {
     log::trace!("Received minidump");
 
     let default_sources = service.config().default_sources();
     let symbolication = service.symbolication();
-    let io_pool = service.io_pool();
 
     let params = params.into_inner();
     params.configure_scope();
@@ -83,7 +81,7 @@ fn post_minidump(
     let response = multipart
         .map_err(Error::from)
         .fold(MinidumpRequest::default(), move |request, item| {
-            handle_form_field(io_pool.clone(), request, item)
+            handle_form_field(request, item)
         })
         .and_then(clone!(symbolication, |mut request| {
             if request.sources.is_none() {

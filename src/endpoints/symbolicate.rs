@@ -9,6 +9,7 @@ use crate::service::Service;
 use crate::types::{
     RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
 };
+use crate::utils::futures::ResultFuture;
 use crate::utils::sentry::ToSentryScope;
 
 /// Query parameters of the symbolication request.
@@ -48,7 +49,7 @@ fn post_payload(
     service: web::Data<Service>,
     params: web::Query<SymbolicationRequestQueryParams>,
     body: web::Json<SymbolicationRequestBody>,
-) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+) -> ResultFuture<web::Json<SymbolicationResponse>, Error> {
     log::trace!("Received symbolication request");
 
     let params = params.into_inner();

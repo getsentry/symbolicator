@@ -1,13 +1,17 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix_web::{http::header, HttpMessage};
-use futures::{future, Future, Stream};
+use futures::{future, future::Either, Future, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
-use crate::service::objects::common::{prepare_download_paths, DownloadPath};
-use crate::service::objects::{DownloadStream, FileId, ObjectError, USER_AGENT};
+use crate::service::objects::common::{
+    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError,
+};
+use crate::service::objects::{FileId, USER_AGENT};
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
+use crate::utils::futures::ResultFuture;
 use crate::utils::http;
 
 const MAX_HTTP_REDIRECTS: usize = 10;
@@ -16,7 +20,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> ResultFuture<Vec<FileId>, ObjectError> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -30,9 +34,10 @@ pub(super) fn prepare_downloads(
 }
 
 pub(super) fn download_from_source(
+    download_dir: PathBuf,
     source: Arc<HttpSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
     // XXX: Probably should send an error if the URL turns out to be invalid
     let download_url = match source.url.join(&download_path) {
         Ok(x) => x,
@@ -69,20 +74,20 @@ pub(super) fn download_from_source(
             Ok(mut response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = Box::new(response.take_payload().map_err(ObjectError::io));
-                    Ok(Some(DownloadStream::FutureStream(stream)))
+                    let stream = response.take_payload().map_err(ObjectError::io);
+                    Either::A(DownloadedFile::streaming(&download_dir, stream).map(Some))
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
                         download_url,
                         response.status()
                     );
-                    Ok(None)
+                    Either::B(future::ok(None))
                 }
             }
             Err(e) => {
                 log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(None)
+                Either::B(future::ok(None))
             }
         });
 

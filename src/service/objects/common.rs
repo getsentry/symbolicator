@@ -1,7 +1,14 @@
 use std::fmt;
-use std::path::Path;
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+use failure::{Fail, ResultExt};
+use futures::{Future, Stream};
+use tempfile::NamedTempFile;
 
 use crate::types::{DirectoryLayout, FileType, Glob, ObjectId, SourceFilters};
+use crate::utils::futures::ResultFuture;
 use crate::utils::paths::get_directory_path;
 
 const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
@@ -9,6 +16,64 @@ const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
     require_literal_separator: false,
     require_literal_leading_dot: false,
 };
+
+/// A helper that renders any error as context for `ObjectError`.
+#[derive(Debug, Fail)]
+struct DisplayError(String);
+
+impl fmt::Display for DisplayError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Fail, Clone, Copy)]
+pub enum ObjectErrorKind {
+    #[fail(display = "failed to download")]
+    Io,
+
+    #[fail(display = "unable to get directory for tempfiles")]
+    NoTempDir,
+
+    #[fail(display = "failed to parse object")]
+    Parsing,
+
+    #[fail(display = "failed to look into cache")]
+    Caching,
+
+    #[fail(display = "object download took too long")]
+    Timeout,
+}
+
+symbolic::common::derive_failure!(
+    ObjectError,
+    ObjectErrorKind,
+    doc = "Errors happening while fetching objects"
+);
+
+impl ObjectError {
+    #[inline]
+    pub fn from_error<E>(error: E, kind: ObjectErrorKind) -> Self
+    where
+        E: fmt::Display,
+    {
+        DisplayError(error.to_string()).context(kind).into()
+    }
+
+    #[inline]
+    pub fn io<E>(error: E) -> Self
+    where
+        E: fmt::Display,
+    {
+        Self::from_error(error, ObjectErrorKind::Io)
+    }
+}
+
+impl From<io::Error> for ObjectError {
+    fn from(e: io::Error) -> Self {
+        e.context(ObjectErrorKind::Io).into()
+    }
+}
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub(super) struct DownloadPath(String);
@@ -42,6 +107,59 @@ impl std::ops::Deref for DownloadPath {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// The result of a remote file download operation.
+pub enum DownloadedFile {
+    /// A locally stored file.
+    Local(PathBuf, File),
+    /// A downloaded file stored in a temp location.
+    Temp(NamedTempFile),
+}
+
+impl DownloadedFile {
+    pub fn local(path: PathBuf) -> Result<Self, ObjectError> {
+        let file = File::open(&path).context(ObjectErrorKind::Io)?;
+        Ok(Self::Local(path, file))
+    }
+
+    pub fn streaming<S>(download_dir: &Path, stream: S) -> ResultFuture<Self, ObjectError>
+    where
+        S: Stream<Error = ObjectError> + 'static,
+        S::Item: AsRef<[u8]>,
+    {
+        let named_download_file =
+            tryf!(NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io));
+
+        let file = tryf!(named_download_file.reopen().context(ObjectErrorKind::Io));
+
+        let future = stream
+            .fold(file, |mut file, chunk| {
+                file.write_all(chunk.as_ref()).map(|_| file)
+            })
+            .map(move |_| DownloadedFile::Temp(named_download_file));
+
+        Box::new(future)
+    }
+
+    /// Gets the file system path of the downloaded file.
+    ///
+    /// Note that the path is only guaranteed to be valid until this instance of `DownloadedFile` is
+    /// dropped. After that, a temporary file may get deleted in the file system.
+    pub fn path(&self) -> &Path {
+        match self {
+            DownloadedFile::Local(path, _) => &path,
+            DownloadedFile::Temp(named) => named.path(),
+        }
+    }
+
+    /// Gets a file handle to the downloaded file.
+    pub fn reopen(&self) -> io::Result<File> {
+        match self {
+            DownloadedFile::Local(_, file) => file.try_clone(),
+            DownloadedFile::Temp(named) => named.reopen(),
+        }
     }
 }
 

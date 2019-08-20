@@ -10,6 +10,7 @@ use sentry::protocol::{ClientSdkPackage, Request};
 use sentry::Hub;
 use uuid::Uuid;
 
+use crate::utils::futures::ResultFuture;
 use crate::utils::sentry::SentryFutureExt;
 
 #[doc(hidden)]
@@ -146,7 +147,7 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Future = Box<dyn Future<Item = ServiceResponse<B>, Error = Error>>;
+    type Future = ResultFuture<ServiceResponse<B>, Error>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         self.service.poll_ready()

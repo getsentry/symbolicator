@@ -1,18 +1,22 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix_web::{http::header, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::ResultExt;
-use futures::{future, Future, Stream};
+use futures::{future, future::Either, Future, Stream};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use crate::service::objects::common::{prepare_download_paths, DownloadPath};
-use crate::service::objects::{DownloadStream, FileId, ObjectError, ObjectErrorKind};
+use crate::service::objects::common::{
+    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError, ObjectErrorKind,
+};
+use crate::service::objects::FileId;
 use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
+use crate::utils::futures::ResultFuture;
 use crate::utils::http;
 
 lazy_static::lazy_static! {
@@ -82,9 +86,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
     Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8).context(ObjectErrorKind::Io)?)
 }
 
-fn request_new_token(
-    source_key: &GcsSourceKey,
-) -> Box<dyn Future<Item = GcsToken, Error = ObjectError>> {
+fn request_new_token(source_key: &GcsSourceKey) -> ResultFuture<GcsToken, ObjectError> {
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = match get_auth_jwt(source_key, expires_at.timestamp() + 30) {
         Ok(auth_jwt) => auth_jwt,
@@ -116,9 +118,7 @@ fn request_new_token(
     Box::new(response)
 }
 
-fn get_token(
-    source_key: &Arc<GcsSourceKey>,
-) -> Box<dyn Future<Item = Arc<GcsToken>, Error = ObjectError>> {
+fn get_token(source_key: &Arc<GcsSourceKey>) -> ResultFuture<Arc<GcsToken>, ObjectError> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at < Utc::now() {
             return Box::new(future::ok(token.clone()));
@@ -137,7 +137,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<GcsSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> ResultFuture<Vec<FileId>, ObjectError> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -151,9 +151,10 @@ pub(super) fn prepare_downloads(
 }
 
 pub(super) fn download_from_source(
+    download_dir: PathBuf,
     source: Arc<GcsSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
     let key = {
         let prefix = source.prefix.trim_matches(&['/'][..]);
         if prefix.is_empty() {
@@ -184,12 +185,12 @@ pub(super) fn download_from_source(
                     .send()
                     .map_err(ObjectError::io)
             })
-            .then(move |result| match result {
+            .then(clone!(download_dir, |result| match result {
                 Ok(mut response) => {
                     if response.status().is_success() {
                         log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                        let stream = Box::new(response.take_payload().map_err(ObjectError::io));
-                        Ok(Some(DownloadStream::FutureStream(stream)))
+                        let stream = response.take_payload().map_err(ObjectError::io);
+                        Either::A(DownloadedFile::streaming(&download_dir, stream).map(Some))
                     } else {
                         log::trace!(
                             "Unexpected status code from GCS {} (from {}): {}",
@@ -197,7 +198,7 @@ pub(super) fn download_from_source(
                             source.bucket,
                             response.status()
                         );
-                        Ok(None)
+                        Either::B(future::ok(None))
                     }
                 }
                 Err(e) => {
@@ -208,9 +209,9 @@ pub(super) fn download_from_source(
                         &e,
                         &e
                     );
-                    Ok(None)
+                    Either::B(future::ok(None))
                 }
-            })
+            }))
     };
 
     let response = Retry::spawn(
