@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix_web::http::header;
+use actix_web::{http::header, HttpMessage};
 use futures::{future, Future, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
@@ -66,10 +66,10 @@ pub(super) fn download_from_source(
             tokio_retry::Error::TimerError(_) => unreachable!(),
         })
         .then(move |result| match result {
-            Ok(response) => {
+            Ok(mut response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = Box::new(response.map_err(ObjectError::io));
+                    let stream = Box::new(response.take_payload().map_err(ObjectError::io));
                     Ok(Some(DownloadStream::FutureStream(stream)))
                 } else {
                     log::trace!(

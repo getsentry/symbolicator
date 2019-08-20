@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::{future, future::Either, Future};
-use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
+use sentry::{configure_scope, Hub};
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -17,7 +17,7 @@ use crate::service::objects::{
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
 use crate::utils::futures::{FutureExt, ThreadPool};
-use crate::utils::sentry::ToSentryScope;
+use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum CfiCacheErrorKind {
@@ -115,6 +115,7 @@ fn compute_cficache(
             capture_fail(e.cause().unwrap_or(&e));
             e
         })
+        .bind_hub(Hub::current())
         .spawn_on(threadpool);
 
     Box::new(bounded_future)

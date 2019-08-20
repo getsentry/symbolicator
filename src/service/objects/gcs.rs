@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix_web::http::header;
+use actix_web::{http::header, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::ResultExt;
 use futures::{future, Future, Stream};
@@ -185,10 +185,10 @@ pub(super) fn download_from_source(
                     .map_err(ObjectError::io)
             })
             .then(move |result| match result {
-                Ok(response) => {
+                Ok(mut response) => {
                     if response.status().is_success() {
                         log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                        let stream = Box::new(response.map_err(ObjectError::io));
+                        let stream = Box::new(response.take_payload().map_err(ObjectError::io));
                         Ok(Some(DownloadStream::FutureStream(stream)))
                     } else {
                         log::trace!(
