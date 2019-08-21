@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -7,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use actix_rt::Arbiter;
 use cadence::{prelude::*, Metric, MetricBuilder};
-use futures::{future, sync::oneshot, Async, Future, Poll, Stream};
+use futures::{future, sync::oneshot, Async, Future, IntoFuture, Poll};
 use tokio::timer::Timeout as TokioTimeout;
 use tokio_threadpool::{SpawnHandle as TokioHandle, ThreadPool as TokioPool};
 
@@ -15,11 +17,11 @@ use crate::metrics;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
 
-/// Enables test mode of all thread pools.
+/// Enables test mode of all thread pools and remote threads.
 ///
-/// In this mode, threadpools do not spawn any futures into threads, but instead just return them.
-/// This is useful to ensure deterministic test execution, and also allows to capture console output
-/// from spawned tasks.
+/// In this mode, futures are not spawned into threads, but instead run on the current thread. This
+/// is useful to ensure deterministic test execution, and also allows to capture console output from
+/// spawned tasks.
 #[cfg(test)]
 pub fn enable_test_mode() {
     IS_TEST.store(true, Ordering::Relaxed);
@@ -32,7 +34,7 @@ pub enum RemoteError<E> {
 }
 
 impl<E> RemoteError<E> {
-    pub fn map_cancelled<F, R>(self, f: F) -> E
+    pub fn map_canceled<F, R>(self, f: F) -> E
     where
         F: FnOnce() -> R,
         R: Into<E>,
@@ -44,39 +46,80 @@ impl<E> RemoteError<E> {
     }
 }
 
+/// A future returned from spawning into a `RemoteThread`.
+///
+/// The future resolves when the remote thread has finished executing the spawned future. If the
+/// remote thread restarts due to panics, `RemoteError::Canceled` is returned.
+#[derive(Debug)]
+pub struct RemoteFuture<T, E>(oneshot::Receiver<Result<T, E>>);
+
+impl<T, E> Future for RemoteFuture<T, E> {
+    type Item = T;
+    type Error = RemoteError<E>;
+
+    fn poll(&mut self) -> Poll<T, RemoteError<E>> {
+        match self.0.poll() {
+            Ok(Async::Ready(Ok(item))) => Ok(Async::Ready(item)),
+            Ok(Async::Ready(Err(error))) => Err(RemoteError::Error(error)),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(_) => Err(RemoteError::Canceled),
+        }
+    }
+}
+
+/// A remote thread that can run non-sendable futures.
 #[derive(Clone, Debug)]
 pub struct RemoteThread {
-    arbiter: Arbiter,
+    arbiter: Option<Arbiter>,
 }
 
 impl RemoteThread {
+    /// Spawns a new remote thread.
     pub fn new() -> Self {
-        Self {
-            arbiter: Arbiter::new(),
-        }
+        let arbiter = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
+            None
+        } else {
+            Some(Arbiter::new())
+        };
+
+        Self { arbiter }
     }
 
-    pub fn spawn<F, R, T, E>(&self, factory: F) -> impl Future<Item = T, Error = RemoteError<E>>
+    /// Constructs a future in the remote thread and runs it.
+    ///
+    /// The returned future resolves when the future has completed execution in the remote thread.
+    /// If the remote thread restarts or execution of the future is canceled,
+    /// `RemoteError::Canceled` is returned.
+    pub fn spawn<F, R, T, E>(&self, factory: F) -> RemoteFuture<T, E>
     where
         F: FnOnce() -> R + Send + 'static,
-        R: futures::IntoFuture<Item = T, Error = E> + 'static,
+        R: IntoFuture<Item = T, Error = E> + 'static,
         T: Send + 'static,
         E: Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
-        self.arbiter.exec_fn(move || {
-            let future = future::lazy(factory)
-                .then(|result| sender.send(result))
-                .map_err(|_| ());
+        match self.arbiter {
+            Some(ref arbiter) => {
+                arbiter.exec_fn(move || {
+                    let future = factory()
+                        .into_future()
+                        .then(|result| sender.send(result))
+                        .map_err(|_| ());
 
-            actix_rt::spawn(future);
-        });
+                    actix_rt::spawn(future)
+                });
+            }
+            None => {
+                let future = future::lazy(factory)
+                    .then(|result| sender.send(result))
+                    .map_err(|_| ());
 
-        receiver.then(|r| match r {
-            Ok(r) => r.map_err(RemoteError::Error),
-            Err(_) => Err(RemoteError::Canceled),
-        })
+                actix_rt::spawn(future);
+            }
+        }
+
+        RemoteFuture(receiver)
     }
 }
 
@@ -173,6 +216,7 @@ pub struct CallOnDrop {
 }
 
 impl CallOnDrop {
+    /// Creates a new `CallOnDrop`.
     pub fn new<F: FnOnce() + Send + 'static>(f: F) -> CallOnDrop {
         CallOnDrop {
             f: Some(Box::new(f)),
@@ -507,26 +551,17 @@ pub trait FutureExt: Future {
             metric: None,
         }
     }
-
-    // /// Spawns the future on the given thread pool.
-    // ///
-    // /// The currently active `sentry::Hub` is propagated to the spawned future (shared).
-    // fn spawn_on(self, pool: &ThreadPool) -> SpawnHandle<Self::Item, Self::Error>
-    // where
-    //     Self: Sized + Send + 'static,
-    //     Self::Item: Send + 'static,
-    //     Self::Error: Send + 'static,
-    // {
-    //     pool.spawn_handle(self)
-    // }
 }
 
 impl<F> FutureExt for F where F: Future {}
 
+/// A dynamically dispatched future.
+///
+/// This future cannot be shared across threads, which makes it not eligible for the use in thread
+/// pools.
 pub type ResultFuture<T, E> = Box<dyn Future<Item = T, Error = E>>;
 
+/// A sendable, dynamically dispatched future.
+///
+/// This future can be shared across threads, which makes it eligible for the use in thread pools.
 pub type SendFuture<T, E> = Box<dyn Future<Item = T, Error = E> + Send + 'static>;
-
-pub type ResultStream<T, E> = Box<dyn Stream<Item = T, Error = E>>;
-
-pub type SendStream<T, E> = Box<dyn Stream<Item = T, Error = E> + Send + 'static>;

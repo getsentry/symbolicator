@@ -187,9 +187,9 @@ impl CacheItemRequest for FetchFileDataRequest {
             .spawn(clone!(download_dir, || {
                 download_from_source(download_dir, &file_id)
             }))
-            .map_err(|error| error.map_cancelled(|| ObjectErrorKind::Timeout))
+            .map_err(|error| error.map_canceled(|| ObjectErrorKind::Canceled))
             .and_then(move |downloaded_file| {
-                handle_downloaded_file(downloaded_file, &download_dir, &path, object_id, cache_key)
+                handle_object(downloaded_file, &download_dir, &path, object_id, cache_key)
             })
             .timeout(Duration::from_secs(600), || ObjectErrorKind::Timeout)
             .measure_tagged("objects", TagMap::new().add("source_type", type_name))
@@ -383,7 +383,7 @@ impl ObjectsActor {
                     .spawn(clone!(source, identifier, || {
                         prepare_downloads(&source, filetypes, &identifier)
                     }))
-                    .map_err(|error| error.map_cancelled(|| ObjectErrorKind::Timeout))
+                    .map_err(|error| error.map_canceled(|| ObjectErrorKind::Canceled))
                     .and_then(clone!(
                         meta_cache,
                         data_cache,
@@ -492,7 +492,7 @@ fn download_from_source(
     }
 }
 
-fn decompress_object_file(
+fn decompress_file(
     cache_key: &CacheKey,
     download_file_path: &Path,
     mut download_file: File,
@@ -581,7 +581,7 @@ fn decompress_object_file(
     }
 }
 
-fn handle_downloaded_file(
+fn handle_object(
     file_opt: Option<DownloadedFile>,
     temp_path: &Path,
     target_path: &Path,
@@ -598,7 +598,7 @@ fn handle_downloaded_file(
 
     log::trace!("Finished download of {}", cache_key);
 
-    let decompress_result = decompress_object_file(
+    let decompress_result = decompress_file(
         &cache_key,
         downloaded_file.path(),
         downloaded_file.reopen().context(ObjectErrorKind::Io)?,

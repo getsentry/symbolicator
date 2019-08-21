@@ -56,9 +56,8 @@ pub enum SymbolicationErrorKind {
     #[fail(display = "internal IO failed")]
     Io,
 
-    /// Unclear when this can happen. Potentially when the system is shutting down.
-    #[fail(display = "response channel unexpectedly canceled")]
-    CanceledChannel,
+    #[fail(display = "symbolication canceled due to shutdown")]
+    Canceled,
 
     #[fail(display = "failed to process minidump")]
     Minidump,
@@ -96,7 +95,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
         match err.kind() {
             SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
             SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
-            SymbolicationErrorKind::CanceledChannel => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::Canceled => SymbolicationResponse::InternalError,
             SymbolicationErrorKind::Minidump => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
@@ -148,7 +147,7 @@ impl SymbolicationActor {
     ) -> SendFuture<SymbolicationResponse, SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
+            .map_err(|_| SymbolicationErrorKind::Canceled.into());
 
         if let Some(timeout) = timeout.map(Duration::from_secs) {
             Box::new(tokio::timer::Timeout::new(rv, timeout).then(move |result| {
@@ -1125,6 +1124,7 @@ impl SymbolicationActor {
                 slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
             })
             .timeout(Duration::from_secs(1200), || {
+                println!("do stackwalk timeout");
                 SymbolicationErrorKind::Timeout
             })
             .measure("minidump_stackwalk");

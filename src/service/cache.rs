@@ -212,7 +212,8 @@ impl<T: CacheItemRequest> Cacher<T> {
             })
             .bind_hub(Hub::new_from_top(Hub::main()));
 
-        actix_rt::spawn(channel);
+        self.threadpool.spawn(channel);
+
         receiver.shared()
     }
 

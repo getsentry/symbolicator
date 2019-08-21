@@ -43,6 +43,9 @@ pub enum ObjectErrorKind {
 
     #[fail(display = "object download took too long")]
     Timeout,
+
+    #[fail(display = "object download canceled due to shutdown")]
+    Canceled,
 }
 
 symbolic::common::derive_failure!(
@@ -52,6 +55,10 @@ symbolic::common::derive_failure!(
 );
 
 impl ObjectError {
+    /// Constructs an object error from any generic error that implements `Display`.
+    ///
+    /// This can be used for errors that do not carry stack traces and do not implement `std::Error`
+    /// or `failure::Fail`.
     #[inline]
     pub fn from_error<E>(error: E, kind: ObjectErrorKind) -> Self
     where
@@ -60,6 +67,7 @@ impl ObjectError {
         DisplayError(error.to_string()).context(kind).into()
     }
 
+    /// Constructs an IO object error from any generic error that implements `Display`.
     #[inline]
     pub fn io<E>(error: E) -> Self
     where
@@ -75,6 +83,7 @@ impl From<io::Error> for ObjectError {
     }
 }
 
+/// A relative path of an object file in a source.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub(super) struct DownloadPath(String);
 
@@ -119,11 +128,17 @@ pub enum DownloadedFile {
 }
 
 impl DownloadedFile {
-    pub fn local(path: PathBuf) -> Result<Self, ObjectError> {
+    /// Loads a locally stored file at the given location.
+    pub fn local<P>(path: P) -> Result<Self, ObjectError>
+    where
+        P: Into<PathBuf>,
+    {
+        let path = path.into();
         let file = File::open(&path).context(ObjectErrorKind::Io)?;
         Ok(Self::Local(path, file))
     }
 
+    /// Streams a remote file into a temporary location.
     pub fn streaming<S>(download_dir: &Path, stream: S) -> ResultFuture<Self, ObjectError>
     where
         S: Stream<Error = ObjectError> + 'static,
@@ -165,10 +180,10 @@ impl DownloadedFile {
 
 /// Generate a list of filepaths to try downloading from.
 ///
-/// `object_id`: Information about the image we want to download.
-/// `filetypes`: Limit search to these filetypes.
-/// `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
-/// `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
+///  - `object_id`: Information about the image we want to download.
+///  - `filetypes`: Limit search to these filetypes.
+///  - `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
+///  - `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
 pub(super) fn prepare_download_paths<'a>(
     object_id: &'a ObjectId,
     filetypes: &'static [FileType],

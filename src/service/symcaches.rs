@@ -248,12 +248,10 @@ fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError>
     log::debug!("Converting symcache for {}", object.cache_key());
 
     if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
-        match e.kind() {
-            symcache::SymCacheErrorKind::WriteFailed => {
-                return Err(e.context(SymCacheErrorKind::Io).into())
-            }
-            _ => return Err(e.context(SymCacheErrorKind::ObjectParsing).into()),
-        }
+        return Err(match e.kind() {
+            symcache::SymCacheErrorKind::WriteFailed => e.context(SymCacheErrorKind::Io).into(),
+            _ => e.context(SymCacheErrorKind::ObjectParsing).into(),
+        });
     }
 
     let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
