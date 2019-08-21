@@ -27,27 +27,6 @@ lazy_static::lazy_static! {
 /// actors, however (unless messages should continue to carry that piece of information).
 static ALLOW_RESERVED_IPS: AtomicBool = AtomicBool::new(false);
 
-// TODO: AwcConnector share
-
-std::thread_local! {
-    /// An HTTP client that allows connections to internal networks.
-    static UNSAFE_CLIENT: Client = Client::build()
-        .disable_redirects()
-        .finish();
-
-    /// An HTTP client that blocks connections to internal networks.
-    static SAFE_CLIENT: Client = Client::build()
-        .connector(
-            Connector::new().connector(
-                Resolver::default()
-                    .and_then(filter_ip_addrs)
-                    .and_then(TcpConnector::new())
-            ).finish()
-        )
-        .disable_redirects()
-        .finish();
-}
-
 /// A service that filters connect messages to internal IPs.
 fn filter_ip_addrs<T: Address>(mut connect: Connect<T>) -> Result<Connect<T>, ConnectError> {
     let mut addrs = connect
@@ -75,23 +54,30 @@ pub fn allow_reserved_ips(allow: bool) {
 
 /// Returns the default HTTP client.
 ///
-/// The client contains a shared connection per thread. Between threads, clients are not shared.
-///
 /// By default, this client blocks connections to hosts in the internal network. This can bee
 /// changed via `allow_reserved_ips`.
 pub fn default_client() -> Client {
     if ALLOW_RESERVED_IPS.load(Ordering::Relaxed) {
-        unsafe_client()
-    } else {
-        SAFE_CLIENT.with(Client::clone)
+        return unsafe_client();
     }
+
+    Client::build()
+        .connector(
+            Connector::new()
+                .connector(
+                    Resolver::default()
+                        .and_then(filter_ip_addrs)
+                        .and_then(TcpConnector::new()),
+                )
+                .finish(),
+        )
+        .disable_redirects()
+        .finish()
 }
 
 /// Returns an HTTP client that always allows connections to internal hosts.
-///
-/// The client contains a shared connection per thread. Between threads, clients are not shared.
 pub fn unsafe_client() -> Client {
-    UNSAFE_CLIENT.with(Client::clone)
+    Client::build().disable_redirects().finish()
 }
 
 /// Follows redirects and returns the final response.
