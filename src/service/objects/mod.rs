@@ -1,4 +1,5 @@
 use std::cmp;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -22,9 +23,7 @@ use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
-use crate::utils::futures::{
-    FutureExt, RemoteThread, ResultFuture, SendFuture, TagMap, ThreadPool,
-};
+use crate::utils::futures::{FutureExt, RemoteThread, SendFuture, TagMap, ThreadPool};
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
 
@@ -94,7 +93,7 @@ struct FetchFileMetaRequest {
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    download_thread: RemoteThread,
+    downloader: Arc<Downloader>,
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
@@ -171,7 +170,6 @@ impl CacheItemRequest for FetchFileDataRequest {
         log::trace!("Fetching file data for {}", cache_key);
 
         let path = path.to_owned();
-        let download_thread = &self.0.download_thread;
         let object_id = self.0.object_id.clone();
         let file_id = self.0.file_id.clone();
         let type_name = file_id.source().type_name();
@@ -181,15 +179,13 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.to_scope(scope);
         });
 
-        let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
+        let downloader = &self.0.downloader;
+        let temp_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
 
-        let future = download_thread
-            .spawn(clone!(download_dir, || {
-                download_from_source(download_dir, &file_id)
-            }))
-            .map_err(|error| error.map_canceled(|| ObjectErrorKind::Canceled))
+        let future = downloader
+            .download(file_id, temp_dir.clone())
             .and_then(move |downloaded_file| {
-                handle_object(downloaded_file, &download_dir, &path, object_id, cache_key)
+                handle_object(downloaded_file, &temp_dir, &path, object_id, cache_key)
             })
             .timeout(Duration::from_secs(600), || ObjectErrorKind::Timeout)
             .measure_tagged("objects", TagMap::new().add("source_type", type_name))
@@ -308,26 +304,11 @@ impl ToSentryScope for ObjectFile {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ObjectsActor {
-    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
-    data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    download_thread: RemoteThread,
-}
-
-impl ObjectsActor {
-    pub fn new(
-        meta_cache: Cache,
-        data_cache: Cache,
-        cache_pool: ThreadPool,
-        download_thread: RemoteThread,
-    ) -> Self {
-        ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache, cache_pool.clone())),
-            data_cache: Arc::new(Cacher::new(data_cache, cache_pool)),
-            download_thread,
-        }
-    }
+#[derive(Debug, Copy, Clone)]
+pub enum ObjectPurpose {
+    Unwind,
+    Debug,
+    Source,
 }
 
 /// Fetch a Object from external sources or internal cache.
@@ -340,14 +321,27 @@ pub struct FindObject {
     pub sources: Arc<Vec<SourceConfig>>,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum ObjectPurpose {
-    Unwind,
-    Debug,
-    Source,
+#[derive(Clone, Debug)]
+pub struct ObjectsActor {
+    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
+    data_cache: Arc<Cacher<FetchFileDataRequest>>,
+    downloader: Arc<Downloader>,
 }
 
 impl ObjectsActor {
+    pub fn new(
+        meta_cache: Cache,
+        data_cache: Cache,
+        cache_pool: ThreadPool,
+        downloader: Downloader,
+    ) -> Self {
+        ObjectsActor {
+            meta_cache: Arc::new(Cacher::new(meta_cache, cache_pool.clone())),
+            data_cache: Arc::new(Cacher::new(data_cache, cache_pool)),
+            downloader: Arc::new(downloader),
+        }
+    }
+
     pub fn fetch(
         &self,
         shallow_file: Arc<ObjectFileMeta>,
@@ -374,24 +368,21 @@ impl ObjectsActor {
 
         let meta_cache = self.meta_cache.clone();
         let data_cache = self.data_cache.clone();
-        let download_thread = self.download_thread.clone();
+        let downloader = self.downloader.clone();
 
         let prepare_futures = sources
             .iter()
             .map(move |source| {
-                download_thread
-                    .spawn(clone!(source, identifier, || {
-                        prepare_downloads(&source, filetypes, &identifier)
-                    }))
-                    .map_err(|error| error.map_canceled(|| ObjectErrorKind::Canceled))
+                downloader
+                    .list_files(&source, filetypes, &identifier)
                     .and_then(clone!(
                         meta_cache,
                         data_cache,
-                        download_thread,
+                        downloader,
                         identifier,
                         scope,
-                        |ids| {
-                            let fetch_futures = ids.into_iter().map(move |file_id| {
+                        |file_ids| {
+                            let fetch_futures = file_ids.into_iter().map(move |file_id| {
                                 let request = FetchFileMetaRequest {
                                     scope: if file_id.source().is_public() {
                                         Scope::Global
@@ -401,7 +392,7 @@ impl ObjectsActor {
                                     file_id,
                                     object_id: identifier.clone(),
                                     data_cache: data_cache.clone(),
-                                    download_thread: download_thread.clone(),
+                                    downloader: downloader.clone(),
                                 };
 
                                 meta_cache
@@ -453,42 +444,70 @@ impl ObjectsActor {
     }
 }
 
-fn prepare_downloads(
-    source: &SourceConfig,
-    filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> ResultFuture<Vec<FileId>, ObjectError> {
-    match *source {
-        SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::S3(ref source) => s3::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Gcs(ref source) => gcs::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Filesystem(ref source) => {
-            filesystem::prepare_downloads(source, filetypes, object_id)
+pub struct Downloader {
+    fs: self::filesystem::FilesystemDownloader,
+    gcs: self::gcs::GcsDownloader,
+    http: self::http::HttpDownloader,
+    s3: self::s3::S3Downloader,
+    sentry: self::sentry::SentryDownloader,
+}
+
+impl Downloader {
+    pub fn new() -> Self {
+        let thread = RemoteThread::new();
+
+        Self {
+            fs: self::filesystem::FilesystemDownloader::new(),
+            gcs: self::gcs::GcsDownloader::new(thread.clone()),
+            http: self::http::HttpDownloader::new(thread.clone()),
+            s3: self::s3::S3Downloader::new(thread.clone()),
+            sentry: self::sentry::SentryDownloader::new(thread),
+        }
+    }
+
+    fn list_files(
+        &self,
+        source: &SourceConfig,
+        filetypes: &'static [FileType],
+        object_id: &ObjectId,
+    ) -> SendFuture<Vec<FileId>, ObjectError> {
+        match *source {
+            SourceConfig::Sentry(ref source) => {
+                self.sentry.list_files(source.clone(), filetypes, object_id)
+            }
+            SourceConfig::Http(ref source) => {
+                self.http.list_files(source.clone(), filetypes, object_id)
+            }
+            SourceConfig::S3(ref source) => {
+                self.s3.list_files(source.clone(), filetypes, object_id)
+            }
+            SourceConfig::Gcs(ref source) => {
+                self.gcs.list_files(source.clone(), filetypes, object_id)
+            }
+            SourceConfig::Filesystem(ref source) => {
+                self.fs.list_files(source.clone(), filetypes, object_id)
+            }
+        }
+    }
+
+    fn download(
+        &self,
+        file_id: FileId,
+        temp_dir: PathBuf,
+    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+        match file_id {
+            FileId::Sentry(source, file_id) => self.sentry.download(source, file_id, temp_dir),
+            FileId::Http(source, path) => self.http.download(source, path, temp_dir),
+            FileId::S3(source, path) => self.s3.download(source, path, temp_dir),
+            FileId::Gcs(source, path) => self.gcs.download(source, path, temp_dir),
+            FileId::Filesystem(source, path) => self.fs.download(source, path, temp_dir),
         }
     }
 }
 
-fn download_from_source(
-    download_dir: PathBuf,
-    file_id: &FileId,
-) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
-    match *file_id {
-        FileId::Sentry(ref source, ref file_id) => {
-            sentry::download_from_source(download_dir, source.clone(), file_id)
-        }
-        FileId::Http(ref source, ref path) => {
-            http::download_from_source(download_dir, source.clone(), path)
-        }
-        FileId::S3(ref source, ref path) => {
-            s3::download_from_source(download_dir, source.clone(), path)
-        }
-        FileId::Gcs(ref source, ref path) => {
-            gcs::download_from_source(download_dir, source.clone(), path)
-        }
-        FileId::Filesystem(ref source, ref path) => {
-            filesystem::download_from_source(download_dir, source.clone(), path)
-        }
+impl fmt::Debug for Downloader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Downloader")
     }
 }
 

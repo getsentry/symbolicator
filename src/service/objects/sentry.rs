@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix_web::{http::header, HttpMessage};
+use actix_web::{http::header, web::Bytes, HttpMessage};
 use futures::{future, future::Either, Future, Stream};
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -11,16 +11,11 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::service::objects::common::{DownloadedFile, ObjectError};
+use crate::service::objects::common::{DownloadedFile, ObjectError, ObjectErrorKind};
 use crate::service::objects::{FileId, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
-use crate::utils::futures::{FutureExt, ResultFuture};
+use crate::utils::futures::{FutureExt, RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
-
-lazy_static::lazy_static! {
-    static ref SENTRY_SEARCH_RESULTS: Mutex<lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>> =
-        Mutex::new(lru::LruCache::new(100_000));
-}
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub struct SentryFileId(String);
@@ -63,17 +58,7 @@ struct SearchQuery {
     token: String,
 }
 
-fn perform_search(query: SearchQuery) -> ResultFuture<Vec<SearchResult>, ObjectError> {
-    if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
-        if created.elapsed() < Duration::from_secs(3600) {
-            return Box::new(future::ok(entries.clone()));
-        }
-    }
-
-    let index_url = query.index_url.clone();
-    let token = query.token.clone();
-
-    log::debug!("Fetching list of Sentry debug files from {}", index_url);
+fn search(index_url: Url, token: String) -> ResultFuture<Bytes, ObjectError> {
     let index_request = move || {
         http::unsafe_client()
             .get(index_url.as_str())
@@ -84,11 +69,7 @@ fn perform_search(query: SearchQuery) -> ResultFuture<Vec<SearchResult>, ObjectE
             .and_then(move |mut response| {
                 if response.status().is_success() {
                     log::trace!("Success fetching index from Sentry");
-                    Either::A(
-                        response
-                            .json::<Vec<SearchResult>>()
-                            .map_err(ObjectError::io),
-                    )
+                    Either::A(response.body().map_err(ObjectError::io))
                 } else {
                     let message = format!("Sentry returned status code {}", response.status());
                     log::warn!("{}", message);
@@ -98,69 +79,19 @@ fn perform_search(query: SearchQuery) -> ResultFuture<Vec<SearchResult>, ObjectE
     };
 
     let retries = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-    let index_request = Retry::spawn(retries, index_request)
-        .map_err(|e| match e {
-            tokio_retry::Error::OperationError(e) => e,
-            tokio_retry::Error::TimerError(_) => unreachable!(),
-        })
-        .inspect(move |entries| {
-            SENTRY_SEARCH_RESULTS
-                .lock()
-                .put(query, (Instant::now(), entries.clone()));
-        })
-        .measure("downloads.sentry.index");
+    let index_request = Retry::spawn(retries, index_request).map_err(|e| match e {
+        tokio_retry::Error::OperationError(e) => e,
+        tokio_retry::Error::TimerError(_) => unreachable!(),
+    });
 
     Box::new(index_request)
 }
 
-pub(super) fn prepare_downloads(
-    source: &Arc<SentrySourceConfig>,
-    _filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> ResultFuture<Vec<FileId>, ObjectError> {
-    let index_url = {
-        let mut url = source.url.clone();
-        if let Some(ref debug_id) = object_id.debug_id {
-            url.query_pairs_mut()
-                .append_pair("debug_id", &debug_id.to_string());
-        }
-
-        if let Some(ref code_id) = object_id.code_id {
-            url.query_pairs_mut()
-                .append_pair("code_id", &code_id.to_string());
-        }
-
-        url
-    };
-
-    let query = SearchQuery {
-        index_url,
-        token: source.token.clone(),
-    };
-
-    let entries = perform_search(query.clone()).map(clone!(source, |entries| {
-        entries
-            .into_iter()
-            .map(move |api_response| FileId::Sentry(source.clone(), api_response.id))
-            .collect()
-    }));
-
-    Box::new(entries)
-}
-
-pub(super) fn download_from_source(
-    download_dir: PathBuf,
-    source: Arc<SentrySourceConfig>,
-    file_id: &SentryFileId,
+fn download(
+    download_url: Arc<Url>,
+    token: String,
+    temp_dir: PathBuf,
 ) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
-    let download_url = {
-        let mut url = source.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.0);
-        Arc::new(url)
-    };
-
-    log::debug!("Fetching debug file from {}", download_url);
-    let token = source.token.clone();
     let try_download = clone!(download_url, || {
         http::unsafe_client()
             .get(download_url.as_str())
@@ -184,7 +115,7 @@ pub(super) fn download_from_source(
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);
                 let stream = response.take_payload().map_err(ObjectError::io);
-                Either::A(DownloadedFile::streaming(&download_dir, stream).map(Some))
+                Either::A(DownloadedFile::streaming(&temp_dir, stream).map(Some))
             } else {
                 log::debug!(
                     "Unexpected status code from {}: {}",
@@ -201,4 +132,110 @@ pub(super) fn download_from_source(
     });
 
     Box::new(response)
+}
+
+type SearchCache = lru::LruCache<SearchQuery, (Instant, Arc<Vec<SearchResult>>)>;
+
+pub(super) struct SentryDownloader {
+    thread: RemoteThread,
+    cache: Arc<Mutex<SearchCache>>,
+}
+
+impl SentryDownloader {
+    pub fn new(thread: RemoteThread) -> Self {
+        Self {
+            thread,
+            cache: Arc::new(Mutex::new(SearchCache::new(100_000))),
+        }
+    }
+
+    fn perform_search(
+        &self,
+        query: SearchQuery,
+    ) -> SendFuture<Arc<Vec<SearchResult>>, ObjectError> {
+        if let Some((created, entries)) = self.cache.lock().get(&query) {
+            if created.elapsed() < Duration::from_secs(3600) {
+                return Box::new(future::ok(entries.clone()));
+            }
+        }
+
+        let index_url = query.index_url.clone();
+        let token = query.token.clone();
+        let cache = self.cache.clone();
+
+        log::debug!("Fetching list of Sentry debug files from {}", index_url);
+
+        let future = self
+            .thread
+            .spawn(move || search(index_url, token))
+            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled))
+            .and_then(|data| {
+                serde_json::from_slice::<Vec<SearchResult>>(&data)
+                    .map(Arc::new)
+                    .map_err(ObjectError::io)
+            })
+            .inspect(move |entries| {
+                cache.lock().put(query, (Instant::now(), entries.clone()));
+            })
+            .measure("downloads.sentry.index");
+
+        Box::new(future)
+    }
+
+    pub fn list_files(
+        &self,
+        source: Arc<SentrySourceConfig>,
+        _filetypes: &'static [FileType],
+        object_id: &ObjectId,
+    ) -> SendFuture<Vec<FileId>, ObjectError> {
+        let index_url = {
+            let mut url = source.url.clone();
+            if let Some(ref debug_id) = object_id.debug_id {
+                url.query_pairs_mut()
+                    .append_pair("debug_id", &debug_id.to_string());
+            }
+
+            if let Some(ref code_id) = object_id.code_id {
+                url.query_pairs_mut()
+                    .append_pair("code_id", &code_id.to_string());
+            }
+
+            url
+        };
+
+        let query = SearchQuery {
+            index_url,
+            token: source.token.clone(),
+        };
+
+        let entries = self.perform_search(query.clone()).map(|entries| {
+            entries
+                .iter()
+                .map(move |api_response| FileId::Sentry(source.clone(), api_response.id.clone()))
+                .collect()
+        });
+
+        Box::new(entries)
+    }
+
+    pub fn download(
+        &self,
+        source: Arc<SentrySourceConfig>,
+        file_id: SentryFileId,
+        temp_dir: PathBuf,
+    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+        let mut url = source.url.clone();
+        url.query_pairs_mut().append_pair("id", &file_id.0);
+        let url = Arc::new(url);
+
+        log::debug!("Fetching debug file from {}", url);
+        let token = source.token.clone();
+
+        let future = self
+            .thread
+            .spawn(move || download(url, token, temp_dir))
+            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled));
+
+        Box::new(future)
+    }
 }

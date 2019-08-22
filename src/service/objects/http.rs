@@ -5,47 +5,23 @@ use actix_web::{http::header, HttpMessage};
 use futures::{future, future::Either, Future, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
+use url::Url;
 
 use crate::service::objects::common::{
-    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError,
+    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError, ObjectErrorKind,
 };
 use crate::service::objects::{FileId, USER_AGENT};
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
-use crate::utils::futures::ResultFuture;
+use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
 
 const MAX_HTTP_REDIRECTS: usize = 10;
 
-pub(super) fn prepare_downloads(
-    source: &Arc<HttpSourceConfig>,
-    filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> ResultFuture<Vec<FileId>, ObjectError> {
-    let ids = prepare_download_paths(
-        object_id,
-        filetypes,
-        &source.files.filters,
-        source.files.layout,
-    )
-    .map(|download_path| FileId::Http(source.clone(), download_path))
-    .collect();
-
-    Box::new(future::ok(ids))
-}
-
-pub(super) fn download_from_source(
-    download_dir: PathBuf,
+fn download(
     source: Arc<HttpSourceConfig>,
-    download_path: &DownloadPath,
+    download_url: Url,
+    temp_dir: PathBuf,
 ) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
-    // XXX: Probably should send an error if the URL turns out to be invalid
-    let download_url = match source.url.join(&download_path) {
-        Ok(x) => x,
-        Err(_) => return Box::new(future::ok(None)),
-    };
-
-    log::debug!("Fetching debug file from {}", download_url);
-
     let try_download = clone!(download_url, source, || {
         http::follow_redirects(
             download_url.clone(),
@@ -75,7 +51,7 @@ pub(super) fn download_from_source(
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
                     let stream = response.take_payload().map_err(ObjectError::io);
-                    Either::A(DownloadedFile::streaming(&download_dir, stream).map(Some))
+                    Either::A(DownloadedFile::streaming(&temp_dir, stream).map(Some))
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
@@ -92,4 +68,54 @@ pub(super) fn download_from_source(
         });
 
     Box::new(response)
+}
+
+pub(super) struct HttpDownloader {
+    thread: RemoteThread,
+}
+
+impl HttpDownloader {
+    pub fn new(thread: RemoteThread) -> Self {
+        Self { thread }
+    }
+
+    pub fn list_files(
+        &self,
+        source: Arc<HttpSourceConfig>,
+        filetypes: &'static [FileType],
+        object_id: &ObjectId,
+    ) -> SendFuture<Vec<FileId>, ObjectError> {
+        let ids = prepare_download_paths(
+            object_id,
+            filetypes,
+            &source.files.filters,
+            source.files.layout,
+        )
+        .map(|download_path| FileId::Http(source.clone(), download_path))
+        .collect();
+
+        Box::new(future::ok(ids))
+    }
+
+    pub fn download(
+        &self,
+        source: Arc<HttpSourceConfig>,
+        download_path: DownloadPath,
+        temp_dir: PathBuf,
+    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+        // XXX: Probably should send an error if the URL turns out to be invalid
+        let download_url = match source.url.join(&download_path) {
+            Ok(x) => x,
+            Err(_) => return Box::new(future::ok(None)),
+        };
+
+        log::debug!("Fetching debug file from {}", download_url);
+
+        let future = self
+            .thread
+            .spawn(move || download(source, download_url, temp_dir))
+            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled));
+
+        Box::new(future)
+    }
 }
