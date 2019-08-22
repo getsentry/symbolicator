@@ -10,40 +10,50 @@ use crate::service::objects::common::{
 };
 use crate::service::objects::FileId;
 use crate::types::{FileType, FilesystemSourceConfig, ObjectId};
-use crate::utils::futures::ResultFuture;
+use crate::utils::futures::SendFuture;
 
-pub(super) fn prepare_downloads(
-    source: &Arc<FilesystemSourceConfig>,
-    filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> ResultFuture<Vec<FileId>, ObjectError> {
-    let ids = prepare_download_paths(
-        object_id,
-        filetypes,
-        &source.files.filters,
-        source.files.layout,
-    )
-    .map(|download_path| FileId::Filesystem(source.clone(), download_path))
-    .collect();
+pub(super) struct FilesystemDownloader;
 
-    Box::new(future::ok(ids))
-}
+impl FilesystemDownloader {
+    pub fn new() -> Self {
+        Self
+    }
 
-pub(super) fn download_from_source(
-    _download_dir: PathBuf,
-    source: Arc<FilesystemSourceConfig>,
-    download_path: &DownloadPath,
-) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
-    let download_abspath = source.path.join(download_path);
-    log::debug!("Fetching debug file from {:?}", download_abspath);
+    pub fn list_files(
+        &self,
+        source: Arc<FilesystemSourceConfig>,
+        filetypes: &'static [FileType],
+        object_id: &ObjectId,
+    ) -> SendFuture<Vec<FileId>, ObjectError> {
+        let ids = prepare_download_paths(
+            object_id,
+            filetypes,
+            &source.files.filters,
+            source.files.layout,
+        )
+        .map(|download_path| FileId::Filesystem(source.clone(), download_path))
+        .collect();
 
-    let res = match File::open(download_abspath.clone()) {
-        Ok(_) => DownloadedFile::local(download_abspath).map(Some),
-        Err(e) => match e.kind() {
-            io::ErrorKind::NotFound => Ok(None),
-            _ => Err(ObjectError::from(ObjectErrorKind::Io)),
-        },
-    };
+        Box::new(future::ok(ids))
+    }
 
-    Box::new(future::result(res))
+    pub fn download(
+        &self,
+        source: Arc<FilesystemSourceConfig>,
+        download_path: DownloadPath,
+        _temp_dir: PathBuf,
+    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+        let download_abspath = source.path.join(download_path);
+        log::debug!("Fetching debug file from {:?}", download_abspath);
+
+        let res = match File::open(download_abspath.clone()) {
+            Ok(_) => DownloadedFile::local(download_abspath).map(Some),
+            Err(e) => match e.kind() {
+                io::ErrorKind::NotFound => Ok(None),
+                _ => Err(ObjectError::from(ObjectErrorKind::Io)),
+            },
+        };
+
+        Box::new(future::result(res))
+    }
 }
