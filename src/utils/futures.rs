@@ -381,7 +381,8 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         self.metric.start();
-        match self.inner.poll() {
+        match metric!(timer("futures.poll"), { self.inner.poll() }, "task_name" => self.metric.task_name)
+        {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(item)) => {
                 self.metric.complete(FutureCompletion::Ok);
@@ -434,11 +435,14 @@ where
     type Error = F::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if let Some(ref mut metric) = self.metric {
+        let async_result = if let Some(ref mut metric) = self.metric {
             metric.start();
-        }
+            metric!(timer("futures.poll"), { self.inner.poll() }, "task_name" => metric.task_name)
+        } else {
+            self.inner.poll()
+        };
 
-        match self.inner.poll() {
+        match async_result {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(item)) => {
                 if let Some(ref mut metric) = self.metric {
