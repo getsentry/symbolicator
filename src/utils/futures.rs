@@ -381,7 +381,7 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         self.metric.start();
-        match metric!(timer("futures.poll"), { self.inner.poll() }, "task_name" => self.metric.task_name)
+        match metric!(timer("futures.poll_time"), { self.inner.poll() }, "task_name" => self.metric.task_name)
         {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(item)) => {
@@ -437,7 +437,7 @@ where
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let async_result = if let Some(ref mut metric) = self.metric {
             metric.start();
-            metric!(timer("futures.poll"), { self.inner.poll() }, "task_name" => metric.task_name)
+            metric!(timer("futures.poll_time"), { self.inner.poll() }, "task_name" => metric.task_name)
         } else {
             self.inner.poll()
         };
