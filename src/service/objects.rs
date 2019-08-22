@@ -1,16 +1,14 @@
 use std::cmp;
-use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::{Fail, ResultExt};
-
 use ::sentry::integrations::failure::capture_fail;
 use ::sentry::{configure_scope, Hub};
+use failure::{Fail, ResultExt};
 use futures::{future, Future};
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
@@ -19,64 +17,45 @@ use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::service::cache::{CacheItemRequest, Cacher};
-use crate::types::{
-    ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
-    S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
-};
-use crate::utils::futures::{FutureExt, RemoteThread, SendFuture, TagMap, ThreadPool};
+use crate::service::download::{DownloadedFile, Downloader, FileId};
+use crate::types::{ArcFail, FileType, ObjectId, Scope, SourceConfig};
+use crate::utils::futures::{FutureExt, SendFuture, TagMap, ThreadPool};
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
 
-mod common;
-mod filesystem;
-mod gcs;
-mod http;
-mod s3;
-mod sentry;
+#[derive(Debug, Fail, Clone, Copy)]
+pub enum ObjectErrorKind {
+    #[fail(display = "failed to download")]
+    Io,
 
-use self::common::*;
-use self::sentry::SentryFileId;
+    #[fail(display = "unable to get directory for tempfiles")]
+    NoTempDir,
 
-pub use self::common::{ObjectError, ObjectErrorKind};
+    #[fail(display = "failed to parse object")]
+    Parsing,
 
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+    #[fail(display = "failed to look into cache")]
+    Caching,
 
-#[derive(Debug, Clone)]
-enum FileId {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId),
-    S3(Arc<S3SourceConfig>, DownloadPath),
-    Gcs(Arc<GcsSourceConfig>, DownloadPath),
-    Http(Arc<HttpSourceConfig>, DownloadPath),
-    Filesystem(Arc<FilesystemSourceConfig>, DownloadPath),
+    #[fail(display = "failed to list files on remote source")]
+    ListFailed,
+
+    #[fail(display = "failed to download from a remote source")]
+    DownloadFailed,
+
+    #[fail(display = "object download took too long")]
+    Timeout,
 }
 
-impl FileId {
-    fn source(&self) -> SourceConfig {
-        match *self {
-            FileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            FileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            FileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            FileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-            FileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
-        }
-    }
+symbolic::common::derive_failure!(
+    ObjectError,
+    ObjectErrorKind,
+    doc = "Errors happening while fetching objects"
+);
 
-    fn cache_key(&self) -> String {
-        match self {
-            FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path),
-            FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path),
-            FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path),
-            FileId::Sentry(ref source, ref file_id) => {
-                format!("{}.{}.sentryinternal", source.id, file_id)
-            }
-            FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path),
-        }
-    }
-}
-
-impl ToSentryScope for FileId {
-    fn to_scope(&self, scope: &mut ::sentry::Scope) {
-        self.source().to_scope(scope);
+impl From<io::Error> for ObjectError {
+    fn from(e: io::Error) -> Self {
+        e.context(ObjectErrorKind::Io).into()
     }
 }
 
@@ -184,6 +163,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let future = downloader
             .download(file_id, temp_dir.clone())
+            .map_err(|e| e.context(ObjectErrorKind::DownloadFailed).into())
             .and_then(move |downloaded_file| {
                 handle_object(downloaded_file, &temp_dir, &path, object_id, cache_key)
             })
@@ -375,6 +355,7 @@ impl ObjectsActor {
             .map(move |source| {
                 downloader
                     .list_files(&source, filetypes, &identifier)
+                    .map_err(|e| e.context(ObjectErrorKind::ListFailed).into())
                     .and_then(clone!(
                         meta_cache,
                         data_cache,
@@ -441,73 +422,6 @@ impl ObjectsActor {
         });
 
         Box::new(selected_future)
-    }
-}
-
-pub struct Downloader {
-    fs: self::filesystem::FilesystemDownloader,
-    gcs: self::gcs::GcsDownloader,
-    http: self::http::HttpDownloader,
-    s3: self::s3::S3Downloader,
-    sentry: self::sentry::SentryDownloader,
-}
-
-impl Downloader {
-    pub fn new() -> Self {
-        let thread = RemoteThread::new();
-
-        Self {
-            fs: self::filesystem::FilesystemDownloader::new(),
-            gcs: self::gcs::GcsDownloader::new(thread.clone()),
-            http: self::http::HttpDownloader::new(thread.clone()),
-            s3: self::s3::S3Downloader::new(thread.clone()),
-            sentry: self::sentry::SentryDownloader::new(thread),
-        }
-    }
-
-    fn list_files(
-        &self,
-        source: &SourceConfig,
-        filetypes: &'static [FileType],
-        object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, ObjectError> {
-        match *source {
-            SourceConfig::Sentry(ref source) => {
-                self.sentry.list_files(source.clone(), filetypes, object_id)
-            }
-            SourceConfig::Http(ref source) => {
-                self.http.list_files(source.clone(), filetypes, object_id)
-            }
-            SourceConfig::S3(ref source) => {
-                self.s3.list_files(source.clone(), filetypes, object_id)
-            }
-            SourceConfig::Gcs(ref source) => {
-                self.gcs.list_files(source.clone(), filetypes, object_id)
-            }
-            SourceConfig::Filesystem(ref source) => {
-                self.fs.list_files(source.clone(), filetypes, object_id)
-            }
-        }
-    }
-
-    fn download(
-        &self,
-        file_id: FileId,
-        temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
-        match file_id {
-            FileId::Sentry(source, file_id) => self.sentry.download(source, file_id, temp_dir),
-            FileId::Http(source, path) => self.http.download(source, path, temp_dir),
-            FileId::S3(source, path) => self.s3.download(source, path, temp_dir),
-            FileId::Gcs(source, path) => self.gcs.download(source, path, temp_dir),
-            FileId::Filesystem(source, path) => self.fs.download(source, path, temp_dir),
-        }
-    }
-}
-
-impl fmt::Debug for Downloader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Downloader")
     }
 }
 

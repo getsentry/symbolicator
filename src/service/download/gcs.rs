@@ -11,10 +11,10 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use crate::service::objects::common::{
-    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError, ObjectErrorKind,
+use crate::service::download::common::{
+    prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
 };
-use crate::service::objects::FileId;
+use crate::service::download::FileId;
 use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
 use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
@@ -49,7 +49,7 @@ struct GcsToken {
     expires_at: DateTime<Utc>,
 }
 
-fn key_from_string(mut s: &str) -> Result<Vec<u8>, ObjectError> {
+fn key_from_string(mut s: &str) -> Result<Vec<u8>, DownloadError> {
     if s.starts_with("-----BEGIN PRIVATE KEY-----") {
         s = s.splitn(5, "-----").nth(2).unwrap();
     }
@@ -61,10 +61,10 @@ fn key_from_string(mut s: &str) -> Result<Vec<u8>, ObjectError> {
         .filter(|b| !b.is_ascii_whitespace())
         .collect::<Vec<u8>>();
 
-    Ok(base64::decode(bytes).context(ObjectErrorKind::Io)?)
+    Ok(base64::decode(bytes).context(DownloadErrorKind::Io)?)
 }
 
-fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, ObjectError> {
+fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, DownloadError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
 
     let jwt_claims = JwtClaims {
@@ -78,10 +78,10 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
     let key = key_from_string(&source_key.private_key)?;
     let pkcs8 = jsonwebtoken::Key::Pkcs8(&key);
 
-    Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8).context(ObjectErrorKind::Io)?)
+    Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8).context(DownloadErrorKind::Io)?)
 }
 
-fn request_token(auth_jwt: String) -> ResultFuture<Bytes, ObjectError> {
+fn request_token(auth_jwt: String) -> ResultFuture<Bytes, DownloadError> {
     let future = http::default_client()
         .post("https://www.googleapis.com/oauth2/v4/token")
         // for some inexplicable reason we otherwise get gzipped data back that actix-web client has
@@ -93,9 +93,9 @@ fn request_token(auth_jwt: String) -> ResultFuture<Bytes, ObjectError> {
         })
         .map_err(|err| {
             log::debug!("Failed to authenticate against GCS: {}", err);
-            ObjectError::io(err)
+            DownloadError::io(err)
         })
-        .and_then(move |mut response| response.body().map_err(ObjectError::io));
+        .and_then(move |mut response| response.body().map_err(DownloadError::io));
 
     Box::new(future)
 }
@@ -106,7 +106,7 @@ fn download(
     url: String,
     key: String,
     temp_dir: PathBuf,
-) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
+) -> ResultFuture<Option<DownloadedFile>, DownloadError> {
     let future = http::default_client()
         .get(&url)
         .header(
@@ -114,12 +114,12 @@ fn download(
             format!("Bearer {}", token.access_token),
         )
         .send()
-        .map_err(ObjectError::io)
+        .map_err(DownloadError::io)
         .then(clone!(temp_dir, |result| match result {
             Ok(mut response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                    let stream = response.take_payload().map_err(ObjectError::io);
+                    let stream = response.take_payload().map_err(DownloadError::io);
                     Either::A(DownloadedFile::streaming(&temp_dir, stream).map(Some))
                 } else {
                     log::trace!(
@@ -155,7 +155,7 @@ struct GcsDownloaderHandle {
 }
 
 impl GcsDownloaderHandle {
-    fn request_token(&self, source_key: &GcsSourceKey) -> SendFuture<GcsToken, ObjectError> {
+    fn request_token(&self, source_key: &GcsSourceKey) -> SendFuture<GcsToken, DownloadError> {
         let expires_at = Utc::now() + Duration::minutes(58);
         let auth_jwt = match get_auth_jwt(source_key, expires_at.timestamp() + 30) {
             Ok(auth_jwt) => auth_jwt,
@@ -165,10 +165,10 @@ impl GcsDownloaderHandle {
         let response = self
             .thread
             .spawn(move || request_token(auth_jwt))
-            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled))
+            .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled))
             .and_then(move |data| {
                 serde_json::from_slice::<GcsTokenResponse>(&data)
-                    .map_err(ObjectError::io)
+                    .map_err(DownloadError::io)
                     .map(move |token| GcsToken {
                         access_token: token.access_token,
                         expires_at,
@@ -178,7 +178,10 @@ impl GcsDownloaderHandle {
         Box::new(response)
     }
 
-    fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> SendFuture<Arc<GcsToken>, ObjectError> {
+    fn get_token(
+        &self,
+        source_key: &Arc<GcsSourceKey>,
+    ) -> SendFuture<Arc<GcsToken>, DownloadError> {
         if let Some(token) = self.tokens.lock().get(source_key) {
             if token.expires_at < Utc::now() {
                 return Box::new(future::ok(token.clone()));
@@ -216,7 +219,7 @@ impl GcsDownloader {
         source: Arc<GcsSourceConfig>,
         filetypes: &'static [FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, ObjectError> {
+    ) -> SendFuture<Vec<FileId>, DownloadError> {
         let ids = prepare_download_paths(
             object_id,
             filetypes,
@@ -234,7 +237,7 @@ impl GcsDownloader {
         source: Arc<GcsSourceConfig>,
         download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
         let key = {
             let prefix = source.prefix.trim_matches(&['/'][..]);
             if prefix.is_empty() {
@@ -264,7 +267,7 @@ impl GcsDownloader {
                     handle
                         .thread
                         .spawn(move || download(source, token, url, key, temp_dir))
-                        .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled))
+                        .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled))
                 }))
         };
 

@@ -11,8 +11,8 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::service::objects::common::{DownloadedFile, ObjectError, ObjectErrorKind};
-use crate::service::objects::{FileId, USER_AGENT};
+use crate::service::download::common::{DownloadError, DownloadErrorKind, DownloadedFile};
+use crate::service::download::{FileId, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
 use crate::utils::futures::{FutureExt, RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
@@ -58,22 +58,22 @@ struct SearchQuery {
     token: String,
 }
 
-fn search(index_url: Url, token: String) -> ResultFuture<Bytes, ObjectError> {
+fn search(index_url: Url, token: String) -> ResultFuture<Bytes, DownloadError> {
     let index_request = move || {
         http::unsafe_client()
             .get(index_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
             .header(header::AUTHORIZATION, format!("Bearer {}", token.clone()))
             .send()
-            .map_err(ObjectError::io)
+            .map_err(DownloadError::io)
             .and_then(move |mut response| {
                 if response.status().is_success() {
                     log::trace!("Success fetching index from Sentry");
-                    Either::A(response.body().map_err(ObjectError::io))
+                    Either::A(response.body().map_err(DownloadError::io))
                 } else {
                     let message = format!("Sentry returned status code {}", response.status());
                     log::warn!("{}", message);
-                    Either::B(future::err(ObjectError::io(message)))
+                    Either::B(future::err(DownloadError::io(message)))
                 }
             })
     };
@@ -91,7 +91,7 @@ fn download(
     download_url: Arc<Url>,
     token: String,
     temp_dir: PathBuf,
-) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
+) -> ResultFuture<Option<DownloadedFile>, DownloadError> {
     let try_download = clone!(download_url, || {
         http::unsafe_client()
             .get(download_url.as_str())
@@ -114,7 +114,7 @@ fn download(
         Ok(mut response) => {
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);
-                let stream = response.take_payload().map_err(ObjectError::io);
+                let stream = response.take_payload().map_err(DownloadError::io);
                 Either::A(DownloadedFile::streaming(&temp_dir, stream).map(Some))
             } else {
                 log::debug!(
@@ -152,7 +152,7 @@ impl SentryDownloader {
     fn perform_search(
         &self,
         query: SearchQuery,
-    ) -> SendFuture<Arc<Vec<SearchResult>>, ObjectError> {
+    ) -> SendFuture<Arc<Vec<SearchResult>>, DownloadError> {
         if let Some((created, entries)) = self.cache.lock().get(&query) {
             if created.elapsed() < Duration::from_secs(3600) {
                 return Box::new(future::ok(entries.clone()));
@@ -168,11 +168,11 @@ impl SentryDownloader {
         let future = self
             .thread
             .spawn(move || search(index_url, token))
-            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled))
+            .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled))
             .and_then(|data| {
                 serde_json::from_slice::<Vec<SearchResult>>(&data)
                     .map(Arc::new)
-                    .map_err(ObjectError::io)
+                    .map_err(DownloadError::io)
             })
             .inspect(move |entries| {
                 cache.lock().put(query, (Instant::now(), entries.clone()));
@@ -187,7 +187,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         _filetypes: &'static [FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, ObjectError> {
+    ) -> SendFuture<Vec<FileId>, DownloadError> {
         let index_url = {
             let mut url = source.url.clone();
             if let Some(ref debug_id) = object_id.debug_id {
@@ -223,7 +223,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         file_id: SentryFileId,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
         let mut url = source.url.clone();
         url.query_pairs_mut().append_pair("id", &file_id.0);
         let url = Arc::new(url);
@@ -234,7 +234,7 @@ impl SentryDownloader {
         let future = self
             .thread
             .spawn(move || download(url, token, temp_dir))
-            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled));
+            .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled));
 
         Box::new(future)
     }

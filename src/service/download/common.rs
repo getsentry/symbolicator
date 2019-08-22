@@ -17,7 +17,7 @@ const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
     require_literal_leading_dot: false,
 };
 
-/// A helper that renders any error as context for `ObjectError`.
+/// A helper that renders any error as context for `DownloadError`.
 #[derive(Debug, Fail)]
 struct DisplayError(String);
 
@@ -28,39 +28,27 @@ impl fmt::Display for DisplayError {
 }
 
 #[derive(Debug, Fail, Clone, Copy)]
-pub enum ObjectErrorKind {
+pub enum DownloadErrorKind {
     #[fail(display = "failed to download")]
     Io,
 
-    #[fail(display = "unable to get directory for tempfiles")]
-    NoTempDir,
-
-    #[fail(display = "failed to parse object")]
-    Parsing,
-
-    #[fail(display = "failed to look into cache")]
-    Caching,
-
-    #[fail(display = "object download took too long")]
-    Timeout,
-
-    #[fail(display = "object download canceled due to shutdown")]
+    #[fail(display = "download canceled due to shutdown")]
     Canceled,
 }
 
 symbolic::common::derive_failure!(
-    ObjectError,
-    ObjectErrorKind,
-    doc = "Errors happening while fetching objects"
+    DownloadError,
+    DownloadErrorKind,
+    doc = "Errors happening while downloading files"
 );
 
-impl ObjectError {
+impl DownloadError {
     /// Constructs an object error from any generic error that implements `Display`.
     ///
     /// This can be used for errors that do not carry stack traces and do not implement `std::Error`
     /// or `failure::Fail`.
     #[inline]
-    pub fn from_error<E>(error: E, kind: ObjectErrorKind) -> Self
+    pub fn from_error<E>(error: E, kind: DownloadErrorKind) -> Self
     where
         E: fmt::Display,
     {
@@ -73,19 +61,19 @@ impl ObjectError {
     where
         E: fmt::Display,
     {
-        Self::from_error(error, ObjectErrorKind::Io)
+        Self::from_error(error, DownloadErrorKind::Io)
     }
 }
 
-impl From<io::Error> for ObjectError {
+impl From<io::Error> for DownloadError {
     fn from(e: io::Error) -> Self {
-        e.context(ObjectErrorKind::Io).into()
+        e.context(DownloadErrorKind::Io).into()
     }
 }
 
 /// A relative path of an object file in a source.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub(super) struct DownloadPath(String);
+pub struct DownloadPath(String);
 
 impl From<String> for DownloadPath {
     fn from(path: String) -> Self {
@@ -129,25 +117,25 @@ pub enum DownloadedFile {
 
 impl DownloadedFile {
     /// Loads a locally stored file at the given location.
-    pub fn local<P>(path: P) -> Result<Self, ObjectError>
+    pub fn local<P>(path: P) -> Result<Self, DownloadError>
     where
         P: Into<PathBuf>,
     {
         let path = path.into();
-        let file = File::open(&path).context(ObjectErrorKind::Io)?;
+        let file = File::open(&path).context(DownloadErrorKind::Io)?;
         Ok(Self::Local(path, file))
     }
 
     /// Streams a remote file into a temporary location.
-    pub fn streaming<S>(download_dir: &Path, stream: S) -> ResultFuture<Self, ObjectError>
+    pub fn streaming<S>(download_dir: &Path, stream: S) -> ResultFuture<Self, DownloadError>
     where
-        S: Stream<Error = ObjectError> + 'static,
+        S: Stream<Error = DownloadError> + 'static,
         S::Item: AsRef<[u8]>,
     {
         let named_download_file =
-            tryf!(NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io));
+            tryf!(NamedTempFile::new_in(&download_dir).context(DownloadErrorKind::Io));
 
-        let file = tryf!(named_download_file.reopen().context(ObjectErrorKind::Io));
+        let file = tryf!(named_download_file.reopen().context(DownloadErrorKind::Io));
 
         let future = stream
             .fold(file, |mut file, chunk| {

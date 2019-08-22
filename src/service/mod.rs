@@ -7,12 +7,14 @@ use crate::utils::http;
 
 pub mod cache;
 pub mod cficaches;
+pub mod download;
 pub mod objects;
 pub mod symbolication;
 pub mod symcaches;
 
 use self::cficaches::CfiCacheActor;
-use self::objects::{Downloader, ObjectsActor};
+use self::download::Downloader;
+use self::objects::ObjectsActor;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 

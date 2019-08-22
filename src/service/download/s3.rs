@@ -7,10 +7,10 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use crate::service::objects::common::{
-    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError, ObjectErrorKind,
+use crate::service::download::common::{
+    prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
 };
-use crate::service::objects::FileId;
+use crate::service::download::FileId;
 use crate::types::{FileType, ObjectId, S3SourceConfig, S3SourceKey};
 use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 
@@ -19,7 +19,7 @@ fn get_object(
     bucket: String,
     key: String,
     temp_dir: PathBuf,
-) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
+) -> ResultFuture<Option<DownloadedFile>, DownloadError> {
     let future = client
         .get_object(rusoto_s3::GetObjectRequest {
             key: key.clone(),
@@ -38,7 +38,7 @@ fn get_object(
 
                 let stream = FramedRead::new(body_read, BytesCodec::new())
                     .map(BytesMut::freeze)
-                    .map_err(|_err| ObjectError::from(ObjectErrorKind::Io));
+                    .map_err(|_err| DownloadError::from(DownloadErrorKind::Io));
 
                 Either::A(DownloadedFile::streaming(&temp_dir, stream).map(Some))
             }
@@ -78,7 +78,7 @@ impl S3Downloader {
         source: Arc<S3SourceConfig>,
         filetypes: &'static [FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, ObjectError> {
+    ) -> SendFuture<Vec<FileId>, DownloadError> {
         let ids = prepare_download_paths(
             object_id,
             filetypes,
@@ -113,7 +113,7 @@ impl S3Downloader {
         source: Arc<S3SourceConfig>,
         download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
         let key = {
             let prefix = source.prefix.trim_matches(&['/'][..]);
             if prefix.is_empty() {
@@ -132,7 +132,7 @@ impl S3Downloader {
         let response = self
             .thread
             .spawn(move || get_object(client, bucket, key, temp_dir))
-            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled));
+            .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled));
 
         Box::new(response)
     }

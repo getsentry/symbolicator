@@ -7,10 +7,10 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::service::objects::common::{
-    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError, ObjectErrorKind,
+use crate::service::download::common::{
+    prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
 };
-use crate::service::objects::{FileId, USER_AGENT};
+use crate::service::download::{FileId, USER_AGENT};
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
 use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
@@ -21,7 +21,7 @@ fn download(
     source: Arc<HttpSourceConfig>,
     download_url: Url,
     temp_dir: PathBuf,
-) -> ResultFuture<Option<DownloadedFile>, ObjectError> {
+) -> ResultFuture<Option<DownloadedFile>, DownloadError> {
     let try_download = clone!(download_url, source, || {
         http::follow_redirects(
             download_url.clone(),
@@ -50,7 +50,7 @@ fn download(
             Ok(mut response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = response.take_payload().map_err(ObjectError::io);
+                    let stream = response.take_payload().map_err(DownloadError::io);
                     Either::A(DownloadedFile::streaming(&temp_dir, stream).map(Some))
                 } else {
                     log::trace!(
@@ -84,7 +84,7 @@ impl HttpDownloader {
         source: Arc<HttpSourceConfig>,
         filetypes: &'static [FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, ObjectError> {
+    ) -> SendFuture<Vec<FileId>, DownloadError> {
         let ids = prepare_download_paths(
             object_id,
             filetypes,
@@ -102,7 +102,7 @@ impl HttpDownloader {
         source: Arc<HttpSourceConfig>,
         download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
         // XXX: Probably should send an error if the URL turns out to be invalid
         let download_url = match source.url.join(&download_path) {
             Ok(x) => x,
@@ -114,7 +114,7 @@ impl HttpDownloader {
         let future = self
             .thread
             .spawn(move || download(source, download_url, temp_dir))
-            .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled));
+            .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled));
 
         Box::new(future)
     }

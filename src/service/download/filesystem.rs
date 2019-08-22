@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use futures::future;
 
-use crate::service::objects::common::{
-    prepare_download_paths, DownloadPath, DownloadedFile, ObjectError, ObjectErrorKind,
+use crate::service::download::common::{
+    prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
 };
-use crate::service::objects::FileId;
+use crate::service::download::FileId;
 use crate::types::{FileType, FilesystemSourceConfig, ObjectId};
 use crate::utils::futures::SendFuture;
 
@@ -24,7 +24,7 @@ impl FilesystemDownloader {
         source: Arc<FilesystemSourceConfig>,
         filetypes: &'static [FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, ObjectError> {
+    ) -> SendFuture<Vec<FileId>, DownloadError> {
         let ids = prepare_download_paths(
             object_id,
             filetypes,
@@ -42,7 +42,7 @@ impl FilesystemDownloader {
         source: Arc<FilesystemSourceConfig>,
         download_path: DownloadPath,
         _temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, ObjectError> {
+    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
         let download_abspath = source.path.join(download_path);
         log::debug!("Fetching debug file from {:?}", download_abspath);
 
@@ -50,7 +50,7 @@ impl FilesystemDownloader {
             Ok(_) => DownloadedFile::local(download_abspath).map(Some),
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => Ok(None),
-                _ => Err(ObjectError::from(ObjectErrorKind::Io)),
+                _ => Err(DownloadError::from(DownloadErrorKind::Io)),
             },
         };
 
