@@ -313,6 +313,7 @@ pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     download_thread: RemoteThread,
+    cache_pool: ThreadPool,
 }
 
 impl ObjectsActor {
@@ -324,8 +325,9 @@ impl ObjectsActor {
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, cache_pool.clone())),
-            data_cache: Arc::new(Cacher::new(data_cache, cache_pool)),
+            data_cache: Arc::new(Cacher::new(data_cache, cache_pool.clone())),
             download_thread,
+            cache_pool,
         }
     }
 }
@@ -375,13 +377,14 @@ impl ObjectsActor {
         let meta_cache = self.meta_cache.clone();
         let data_cache = self.data_cache.clone();
         let download_thread = self.download_thread.clone();
+        let cache_pool = self.cache_pool.clone();
 
         let prepare_futures = sources
             .iter()
             .map(move |source| {
                 download_thread
-                    .spawn(clone!(source, identifier, || {
-                        prepare_downloads(&source, filetypes, &identifier)
+                    .spawn(clone!(source, identifier, cache_pool, || {
+                        prepare_downloads(&source, filetypes, &identifier, cache_pool)
                     }))
                     .map_err(|error| error.map_canceled(|| ObjectErrorKind::Canceled))
                     .and_then(clone!(
@@ -457,9 +460,12 @@ fn prepare_downloads(
     source: &SourceConfig,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
+    thread_pool: ThreadPool,
 ) -> ResultFuture<Vec<FileId>, ObjectError> {
     match *source {
-        SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
+        SourceConfig::Sentry(ref source) => {
+            sentry::prepare_downloads(source, filetypes, object_id, thread_pool)
+        }
         SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
         SourceConfig::S3(ref source) => s3::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Gcs(ref source) => gcs::prepare_downloads(source, filetypes, object_id),

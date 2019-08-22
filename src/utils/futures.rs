@@ -52,7 +52,7 @@ impl<E> RemoteError<E> {
 /// The future resolves when the remote thread has finished executing the spawned future. If the
 /// remote thread restarts due to panics, `RemoteError::Canceled` is returned.
 #[derive(Debug)]
-pub struct RemoteFuture<T, E>(oneshot::Receiver<Result<T, E>>);
+pub struct RemoteFuture<T, E>(pub oneshot::Receiver<Result<T, E>>);
 
 impl<T, E> Future for RemoteFuture<T, E> {
     type Item = T;
