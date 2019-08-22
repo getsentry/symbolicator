@@ -9,8 +9,8 @@ use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::service::download::common::{
     prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
+    ObjectDownloader,
 };
-use crate::service::download::FileId;
 use crate::types::{FileType, ObjectId, S3SourceConfig, S3SourceKey};
 use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 
@@ -58,7 +58,7 @@ fn get_object(
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 
-pub(super) struct S3Downloader {
+pub struct S3Downloader {
     thread: RemoteThread,
     http_client: Arc<rusoto_core::HttpClient>,
     s3_clients: Arc<Mutex<ClientCache>>,
@@ -71,23 +71,6 @@ impl S3Downloader {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             s3_clients: Arc::new(Mutex::new(ClientCache::new(100))),
         }
-    }
-
-    pub fn list_files(
-        &self,
-        source: Arc<S3SourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, DownloadError> {
-        let ids = prepare_download_paths(
-            object_id,
-            filetypes,
-            &source.files.filters,
-            source.files.layout,
-        )
-        .map(|download_path| FileId::S3(source.clone(), download_path))
-        .collect();
-        Box::new(future::ok(ids))
     }
 
     fn get_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
@@ -107,13 +90,35 @@ impl S3Downloader {
             s3
         }
     }
+}
 
-    pub fn download(
+impl ObjectDownloader for S3Downloader {
+    type Config = Arc<S3SourceConfig>;
+    type ListResponse = Result<Vec<DownloadPath>, DownloadError>;
+    type DownloadResponse = SendFuture<Option<DownloadedFile>, DownloadError>;
+
+    fn list_files(
         &self,
-        source: Arc<S3SourceConfig>,
+        source: Self::Config,
+        filetypes: &[FileType],
+        object_id: &ObjectId,
+    ) -> Self::ListResponse {
+        let paths = prepare_download_paths(
+            object_id,
+            filetypes,
+            &source.files.filters,
+            source.files.layout,
+        );
+
+        Ok(paths.collect())
+    }
+
+    fn download(
+        &self,
+        source: Self::Config,
         download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
+    ) -> Self::DownloadResponse {
         let key = {
             let prefix = source.prefix.trim_matches(&['/'][..]);
             if prefix.is_empty() {

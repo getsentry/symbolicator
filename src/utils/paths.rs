@@ -344,6 +344,8 @@ pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     fn pattern(x: &str) -> Glob {
         Glob(x.parse().unwrap())
     }

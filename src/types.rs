@@ -64,6 +64,18 @@ pub enum SourceConfig {
     Filesystem(Arc<FilesystemSourceConfig>),
 }
 
+impl SourceConfig {
+    pub fn cache_key(&self, download_path: &str) -> String {
+        match self {
+            Self::Sentry(config) => format!("{}.{}.sentryinternal", config.id, download_path),
+            Self::Http(config) => format!("{}.{}", config.id, download_path),
+            Self::S3(config) => format!("{}.{}", config.id, download_path),
+            Self::Gcs(config) => format!("{}.{}", config.id, download_path),
+            Self::Filesystem(config) => format!("{}.{}", config.id, download_path),
+        }
+    }
+}
+
 /// Configuration for the Sentry-internal debug files endpoint.
 #[derive(Deserialize, Clone, Debug)]
 pub struct SentrySourceConfig {

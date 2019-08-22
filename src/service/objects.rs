@@ -17,7 +17,7 @@ use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::service::cache::{CacheItemRequest, Cacher};
-use crate::service::download::{DownloadedFile, Downloader, FileId};
+use crate::service::download::{DownloadPath, DownloadedFile, Downloader};
 use crate::types::{ArcFail, FileType, ObjectId, Scope, SourceConfig};
 use crate::utils::futures::{FutureExt, SendFuture, TagMap, ThreadPool};
 use crate::utils::objects;
@@ -64,8 +64,8 @@ impl From<io::Error> for ObjectError {
 struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
-    /// Source-type specific attributes.
-    file_id: FileId,
+    source: SourceConfig,
+    path: DownloadPath,
     object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
@@ -81,7 +81,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: self.file_id.cache_key(),
+            cache_key: self.source.cache_key(&self.path),
             scope: self.scope.clone(),
         }
     }
@@ -150,19 +150,20 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let path = path.to_owned();
         let object_id = self.0.object_id.clone();
-        let file_id = self.0.file_id.clone();
-        let type_name = file_id.source().type_name();
+        let source = self.0.source.clone();
+        let download_path = self.0.path.clone();
+        let type_name = source.type_name();
 
         configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.0.file_id.to_scope(scope);
+            source.to_scope(scope);
         });
 
         let downloader = &self.0.downloader;
         let temp_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
 
         let future = downloader
-            .download(file_id, temp_dir.clone())
+            .download(source, download_path, temp_dir.clone())
             .map_err(|e| e.context(ObjectErrorKind::DownloadFailed).into())
             .and_then(move |downloaded_file| {
                 handle_object(downloaded_file, &temp_dir, &path, object_id, cache_key)
@@ -182,7 +183,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             object_id: self.0.object_id.clone(),
             scope,
 
-            file_id: self.0.file_id.clone(),
+            source: self.0.source.clone(),
             cache_key: self.get_cache_key(),
 
             status,
@@ -226,7 +227,8 @@ pub struct ObjectFile {
     object_id: ObjectId,
     scope: Scope,
 
-    file_id: FileId,
+    // file_id: FileId,
+    source: SourceConfig,
     cache_key: CacheKey,
 
     /// The mmapped object.
@@ -273,7 +275,7 @@ impl ObjectFile {
 impl ToSentryScope for ObjectFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.to_scope(scope);
-        self.file_id.to_scope(scope);
+        self.source.to_scope(scope);
 
         scope.set_tag("object_file.scope", self.scope());
 
@@ -353,8 +355,9 @@ impl ObjectsActor {
         let prepare_futures = sources
             .iter()
             .map(move |source| {
+                let source = source.clone();
                 downloader
-                    .list_files(&source, filetypes, &identifier)
+                    .list_files(source.clone(), filetypes, &identifier)
                     .map_err(|e| e.context(ObjectErrorKind::ListFailed).into())
                     .and_then(clone!(
                         meta_cache,
@@ -362,30 +365,32 @@ impl ObjectsActor {
                         downloader,
                         identifier,
                         scope,
-                        |file_ids| {
-                            let fetch_futures = file_ids.into_iter().map(move |file_id| {
-                                let request = FetchFileMetaRequest {
-                                    scope: if file_id.source().is_public() {
-                                        Scope::Global
-                                    } else {
-                                        scope.clone()
-                                    },
-                                    file_id,
-                                    object_id: identifier.clone(),
-                                    data_cache: data_cache.clone(),
-                                    downloader: downloader.clone(),
-                                };
+                        |download_paths| {
+                            let fetch_futures =
+                                download_paths.into_iter().map(move |download_path| {
+                                    let request = FetchFileMetaRequest {
+                                        scope: if source.is_public() {
+                                            Scope::Global
+                                        } else {
+                                            scope.clone()
+                                        },
+                                        source: source.clone(),
+                                        path: download_path,
+                                        object_id: identifier.clone(),
+                                        data_cache: data_cache.clone(),
+                                        downloader: downloader.clone(),
+                                    };
 
-                                meta_cache
-                                    .compute_memoized(request.clone())
-                                    .map_err(|e| {
-                                        ObjectError::from(
-                                            ArcFail(e).context(ObjectErrorKind::Caching),
-                                        )
-                                    })
-                                    .then(Ok)
-                                    .bind_hub(Hub::new_from_top(Hub::current()))
-                            });
+                                    meta_cache
+                                        .compute_memoized(request.clone())
+                                        .map_err(|e| {
+                                            ObjectError::from(
+                                                ArcFail(e).context(ObjectErrorKind::Caching),
+                                            )
+                                        })
+                                        .then(Ok)
+                                        .bind_hub(Hub::new_from_top(Hub::current()))
+                                });
 
                             future::join_all(fetch_futures)
                         }

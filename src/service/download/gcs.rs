@@ -13,8 +13,8 @@ use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use crate::service::download::common::{
     prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
+    ObjectDownloader,
 };
-use crate::service::download::FileId;
 use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
 use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
@@ -200,7 +200,7 @@ impl GcsDownloaderHandle {
     }
 }
 
-pub(super) struct GcsDownloader {
+pub struct GcsDownloader {
     handle: GcsDownloaderHandle,
 }
 
@@ -213,31 +213,35 @@ impl GcsDownloader {
             },
         }
     }
+}
 
-    pub fn list_files(
+impl ObjectDownloader for GcsDownloader {
+    type Config = Arc<GcsSourceConfig>;
+    type ListResponse = Result<Vec<DownloadPath>, DownloadError>;
+    type DownloadResponse = SendFuture<Option<DownloadedFile>, DownloadError>;
+
+    fn list_files(
         &self,
-        source: Arc<GcsSourceConfig>,
+        source: Self::Config,
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, DownloadError> {
-        let ids = prepare_download_paths(
+    ) -> Self::ListResponse {
+        let paths = prepare_download_paths(
             object_id,
             filetypes,
             &source.files.filters,
             source.files.layout,
-        )
-        .map(|download_path| FileId::Gcs(source.clone(), download_path))
-        .collect();
+        );
 
-        Box::new(future::ok(ids))
+        Ok(paths.collect())
     }
 
-    pub fn download(
+    fn download(
         &self,
-        source: Arc<GcsSourceConfig>,
+        source: Self::Config,
         download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
+    ) -> Self::DownloadResponse {
         let key = {
             let prefix = source.prefix.trim_matches(&['/'][..]);
             if prefix.is_empty() {

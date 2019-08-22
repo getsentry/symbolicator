@@ -1,4 +1,3 @@
-use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,45 +10,17 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::service::download::common::{DownloadError, DownloadErrorKind, DownloadedFile};
-use crate::service::download::{FileId, USER_AGENT};
+use crate::service::download::common::{
+    DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile, ObjectDownloader, USER_AGENT,
+};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
 use crate::utils::futures::{FutureExt, RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
-pub struct SentryFileId(String);
-
-impl From<String> for SentryFileId {
-    fn from(path: String) -> Self {
-        Self(path)
-    }
-}
-
-impl fmt::Display for SentryFileId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl AsRef<str> for SentryFileId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for SentryFileId {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
+/// The minimum required fields to parse a response.
 #[derive(Clone, Debug, Deserialize)]
 struct SearchResult {
-    id: SentryFileId,
-    // TODO: Add more fields
+    id: DownloadPath,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -136,7 +107,7 @@ fn download(
 
 type SearchCache = lru::LruCache<SearchQuery, (Instant, Arc<Vec<SearchResult>>)>;
 
-pub(super) struct SentryDownloader {
+pub struct SentryDownloader {
     thread: RemoteThread,
     cache: Arc<Mutex<SearchCache>>,
 }
@@ -181,13 +152,19 @@ impl SentryDownloader {
 
         Box::new(future)
     }
+}
 
-    pub fn list_files(
+impl ObjectDownloader for SentryDownloader {
+    type Config = Arc<SentrySourceConfig>;
+    type ListResponse = SendFuture<Vec<DownloadPath>, DownloadError>;
+    type DownloadResponse = SendFuture<Option<DownloadedFile>, DownloadError>;
+
+    fn list_files(
         &self,
-        source: Arc<SentrySourceConfig>,
+        source: Self::Config,
         _filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, DownloadError> {
+    ) -> Self::ListResponse {
         let index_url = {
             let mut url = source.url.clone();
             if let Some(ref debug_id) = object_id.debug_id {
@@ -203,29 +180,24 @@ impl SentryDownloader {
             url
         };
 
-        let query = SearchQuery {
-            index_url,
-            token: source.token.clone(),
-        };
+        let future = self
+            .perform_search(SearchQuery {
+                index_url,
+                token: source.token.clone(),
+            })
+            .map(|results| results.iter().map(|res| res.id.clone()).collect());
 
-        let entries = self.perform_search(query.clone()).map(|entries| {
-            entries
-                .iter()
-                .map(move |api_response| FileId::Sentry(source.clone(), api_response.id.clone()))
-                .collect()
-        });
-
-        Box::new(entries)
+        Box::new(future)
     }
 
-    pub fn download(
+    fn download(
         &self,
-        source: Arc<SentrySourceConfig>,
-        file_id: SentryFileId,
+        source: Self::Config,
+        download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
+    ) -> Self::DownloadResponse {
         let mut url = source.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.0);
+        url.query_pairs_mut().append_pair("id", &download_path);
         let url = Arc::new(url);
 
         log::debug!("Fetching debug file from {}", url);

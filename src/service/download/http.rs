@@ -9,8 +9,8 @@ use url::Url;
 
 use crate::service::download::common::{
     prepare_download_paths, DownloadError, DownloadErrorKind, DownloadPath, DownloadedFile,
+    ObjectDownloader, USER_AGENT,
 };
-use crate::service::download::{FileId, USER_AGENT};
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
 use crate::utils::futures::{RemoteThread, ResultFuture, SendFuture};
 use crate::utils::http;
@@ -70,7 +70,7 @@ fn download(
     Box::new(response)
 }
 
-pub(super) struct HttpDownloader {
+pub struct HttpDownloader {
     thread: RemoteThread,
 }
 
@@ -78,31 +78,35 @@ impl HttpDownloader {
     pub fn new(thread: RemoteThread) -> Self {
         Self { thread }
     }
+}
 
-    pub fn list_files(
+impl ObjectDownloader for HttpDownloader {
+    type Config = Arc<HttpSourceConfig>;
+    type ListResponse = Result<Vec<DownloadPath>, DownloadError>;
+    type DownloadResponse = SendFuture<Option<DownloadedFile>, DownloadError>;
+
+    fn list_files(
         &self,
-        source: Arc<HttpSourceConfig>,
+        source: Self::Config,
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> SendFuture<Vec<FileId>, DownloadError> {
-        let ids = prepare_download_paths(
+    ) -> Self::ListResponse {
+        let paths = prepare_download_paths(
             object_id,
             filetypes,
             &source.files.filters,
             source.files.layout,
-        )
-        .map(|download_path| FileId::Http(source.clone(), download_path))
-        .collect();
+        );
 
-        Box::new(future::ok(ids))
+        Ok(paths.collect())
     }
 
-    pub fn download(
+    fn download(
         &self,
-        source: Arc<HttpSourceConfig>,
+        source: Self::Config,
         download_path: DownloadPath,
         temp_dir: PathBuf,
-    ) -> SendFuture<Option<DownloadedFile>, DownloadError> {
+    ) -> Self::DownloadResponse {
         // XXX: Probably should send an error if the URL turns out to be invalid
         let download_url = match source.url.join(&download_path) {
             Ok(x) => x,

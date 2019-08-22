@@ -4,12 +4,15 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use failure::{Fail, ResultExt};
-use futures::{Future, Stream};
+use futures::{Future, IntoFuture, Stream};
+use serde::Deserialize;
 use tempfile::NamedTempFile;
 
 use crate::types::{DirectoryLayout, FileType, ObjectId, SourceFilters};
 use crate::utils::futures::ResultFuture;
 use crate::utils::paths::get_directory_path;
+
+pub const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
 /// A helper that renders any error as context for `DownloadError`.
 #[derive(Debug, Fail)]
@@ -66,7 +69,7 @@ impl From<io::Error> for DownloadError {
 }
 
 /// A relative path of an object file in a source.
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq, Deserialize)]
 pub struct DownloadPath(String);
 
 impl From<String> for DownloadPath {
@@ -209,7 +212,7 @@ impl Iterator for DownloadPathIter<'_> {
 ///  - `filetypes`: Limit search to these filetypes.
 ///  - `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
 ///  - `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
-pub(super) fn prepare_download_paths<'a>(
+pub fn prepare_download_paths<'a>(
     object_id: &'a ObjectId,
     filetypes: &'a [FileType],
     filters: &'a SourceFilters,
@@ -222,4 +225,32 @@ pub(super) fn prepare_download_paths<'a>(
         layout,
         next: None,
     }
+}
+
+/// Trait for all downloaders.
+pub trait ObjectDownloader {
+    /// Source configuration type.
+    type Config;
+
+    /// The type returned from the `list_files` operation.
+    type ListResponse: IntoFuture<Item = Vec<DownloadPath>, Error = DownloadError>;
+
+    /// The type returned from the `download_files` operation.
+    type DownloadResponse: IntoFuture<Item = Option<DownloadedFile>, Error = DownloadError>;
+
+    /// Lists files that can be downloaded from the given source.
+    fn list_files(
+        &self,
+        source: Self::Config,
+        filetypes: &[FileType],
+        object_id: &ObjectId,
+    ) -> Self::ListResponse;
+
+    /// Downloads files from the given source.
+    fn download(
+        &self,
+        source: Self::Config,
+        download_path: DownloadPath,
+        temp_dir: PathBuf,
+    ) -> Self::DownloadResponse;
 }
