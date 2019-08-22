@@ -82,7 +82,7 @@ impl HttpDownloader {
     pub fn list_files(
         &self,
         source: Arc<HttpSourceConfig>,
-        filetypes: &'static [FileType],
+        filetypes: &[FileType],
         object_id: &ObjectId,
     ) -> SendFuture<Vec<FileId>, DownloadError> {
         let ids = prepare_download_paths(

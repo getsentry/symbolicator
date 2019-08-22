@@ -185,7 +185,7 @@ impl SentryDownloader {
     pub fn list_files(
         &self,
         source: Arc<SentrySourceConfig>,
-        _filetypes: &'static [FileType],
+        _filetypes: &[FileType],
         object_id: &ObjectId,
     ) -> SendFuture<Vec<FileId>, DownloadError> {
         let index_url = {

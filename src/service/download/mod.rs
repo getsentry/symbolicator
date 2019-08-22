@@ -85,7 +85,7 @@ impl Downloader {
     pub fn list_files(
         &self,
         source: &SourceConfig,
-        filetypes: &'static [FileType],
+        filetypes: &[FileType],
         object_id: &ObjectId,
     ) -> SendFuture<Vec<FileId>, DownloadError> {
         match *source {

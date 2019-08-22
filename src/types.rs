@@ -5,15 +5,16 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::utils::hex::HexValue;
-use crate::utils::sentry::ToSentryScope;
-
 use failure::{Backtrace, Fail};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::minidump::processor::FrameTrust;
 use url::Url;
 use uuid::Uuid;
+
+use crate::utils::hex::HexValue;
+use crate::utils::paths;
+use crate::utils::sentry::ToSentryScope;
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -236,6 +237,13 @@ pub struct SourceFilters {
     /// If a debug image does not contain any path information it will be treated like an image
     /// whose path doesn't match any pattern.
     pub path_patterns: Vec<Glob>,
+}
+
+impl SourceFilters {
+    pub fn is_allowed(&self, object_id: &ObjectId, filetype: FileType) -> bool {
+        (self.filetypes.is_empty() || self.filetypes.contains(&filetype))
+            && paths::matches_path_patterns(object_id, &self.path_patterns)
+    }
 }
 
 #[derive(Debug, Clone)]
