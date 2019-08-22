@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use actix_web::{http::header, HttpMessage};
-use futures::sync::oneshot;
 use futures::{future, future::Either, Future, Stream};
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -12,10 +11,10 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::service::objects::common::{DownloadedFile, ObjectError, ObjectErrorKind};
+use crate::service::objects::common::{DownloadedFile, ObjectError};
 use crate::service::objects::{FileId, USER_AGENT};
 use crate::types::{FileType, ObjectId, SentrySourceConfig};
-use crate::utils::futures::{FutureExt, RemoteFuture, ResultFuture, ThreadPool};
+use crate::utils::futures::{FutureExt, ResultFuture};
 use crate::utils::http;
 
 lazy_static::lazy_static! {
@@ -64,10 +63,7 @@ struct SearchQuery {
     token: String,
 }
 
-fn perform_search(
-    query: SearchQuery,
-    thread_pool: ThreadPool,
-) -> ResultFuture<Vec<SearchResult>, ObjectError> {
+fn perform_search(query: SearchQuery) -> ResultFuture<Vec<SearchResult>, ObjectError> {
     if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
         if created.elapsed() < Duration::from_secs(3600) {
             return Box::new(future::ok(entries.clone()));
@@ -79,7 +75,6 @@ fn perform_search(
 
     log::debug!("Fetching list of Sentry debug files from {}", index_url);
     let index_request = move || {
-        let thread_pool = thread_pool.clone();
         http::unsafe_client()
             .get(index_url.as_str())
             .header(header::USER_AGENT, USER_AGENT)
@@ -88,37 +83,11 @@ fn perform_search(
             .map_err(ObjectError::io)
             .and_then(move |mut response| {
                 if response.status().is_success() {
-                    let (sender, receiver) = oneshot::channel();
+                    log::trace!("Success fetching index from Sentry");
                     Either::A(
                         response
-                            .body()
-                            .limit(1024_1024)
-                            .map_err(ObjectError::io)
-                            .and_then(move |body| {
-                                metric!(
-                                    time_raw("downloads.sentry.index.bytes_received") =
-                                        body.len() as u64
-                                );
-                                thread_pool.spawn(future::lazy(move || {
-                                    sender
-                                        .send(
-                                            serde_json::from_slice::<Vec<SearchResult>>(&body)
-                                                .map_err(|e| {
-                                                    ObjectError::from_error(
-                                                        e,
-                                                        ObjectErrorKind::Parsing,
-                                                    )
-                                                }),
-                                        )
-                                        .ok();
-                                    Ok(())
-                                }));
-                                Ok(())
-                            })
-                            .and_then(move |_| {
-                                RemoteFuture(receiver)
-                                    .map_err(|err| err.map_canceled(|| ObjectErrorKind::Canceled))
-                            }),
+                            .json::<Vec<SearchResult>>()
+                            .map_err(ObjectError::io),
                     )
                 } else {
                     let message = format!("Sentry returned status code {}", response.status());
@@ -148,7 +117,6 @@ pub(super) fn prepare_downloads(
     source: &Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
-    thread_pool: ThreadPool,
 ) -> ResultFuture<Vec<FileId>, ObjectError> {
     let index_url = {
         let mut url = source.url.clone();
@@ -170,7 +138,7 @@ pub(super) fn prepare_downloads(
         token: source.token.clone(),
     };
 
-    let entries = perform_search(query.clone(), thread_pool).map(clone!(source, |entries| {
+    let entries = perform_search(query.clone()).map(clone!(source, |entries| {
         entries
             .into_iter()
             .map(move |api_response| FileId::Sentry(source.clone(), api_response.id))
