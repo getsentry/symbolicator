@@ -233,7 +233,7 @@ impl Default for FutureState {
 
 /// A builder-like map for metrics tags.
 #[derive(Clone, Debug, Default)]
-pub struct TagMap(BTreeMap<&'static str, Cow<'static, str>>);
+pub struct TagMap(smallvec::SmallVec<[(&'static str, Cow<'static, str>); 2]>);
 
 impl TagMap {
     /// Creates a new tag map.
@@ -246,7 +246,7 @@ impl TagMap {
     where
         S: Into<Cow<'static, str>>,
     {
-        self.0.insert(tag, value.into());
+        self.0.push((tag, value.into()));
         self
     }
 }

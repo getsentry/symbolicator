@@ -51,7 +51,7 @@ tokio-retry = "0.2.0"
 jsonwebtoken = { git = "https://github.com/Keats/jsonwebtoken", rev = "b8627260b2902a1ab4fdda83083be3e0b0fb9b7f" }
 base64 = "0.10.1"
 ipnetwork = "0.14.0"
-fragile = "0.3.0"
+smallvec = "0.6.10"
 
 [dev-dependencies]
 actix-files = "0.1.4"
