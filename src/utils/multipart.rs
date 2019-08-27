@@ -26,13 +26,10 @@ pub fn read_multipart_data(
 pub fn read_multipart_file(field: Field) -> impl Future<Item = Bytes, Error = Error> {
     field
         .map_err(Error::from)
-        .fold(
-            BytesMut::new(),
-            |mut bytes, chunk| -> Result<BytesMut, Error> {
-                bytes.extend_from_slice(&chunk);
-                Ok(bytes)
-            },
-        )
+        .fold(BytesMut::new(), |mut bytes, chunk| {
+            bytes.extend_from_slice(&chunk);
+            Ok::<BytesMut, Error>(bytes)
+        })
         .and_then(|bytes| Ok(bytes.freeze()))
 }
 
