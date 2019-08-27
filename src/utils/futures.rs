@@ -1,8 +1,4 @@
-#![allow(unused)]
-
 use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -12,7 +8,6 @@ use cadence::{prelude::*, Metric, MetricBuilder};
 use futures::{future, sync::oneshot, Async, Future, IntoFuture, Poll};
 use tokio::runtime::Runtime as TokioRuntime;
 use tokio::timer::Timeout as TokioTimeout;
-use tokio_threadpool::{SpawnHandle as TokioHandle, ThreadPool as TokioPool};
 
 use crate::metrics;
 
@@ -149,20 +144,6 @@ impl ThreadPool {
         match self.inner {
             Some(ref runtime) => runtime.executor().spawn(future),
             None => actix_rt::spawn(future),
-        }
-    }
-}
-
-enum SpawnHandleInner<T, E> {
-    Tokio(TokioHandle<T, E>),
-    Future(ResultFuture<T, E>),
-}
-
-impl<T, E> fmt::Debug for SpawnHandleInner<T, E> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SpawnHandleInner::Tokio(_) => write!(f, "SpawnHandle::Tokio(tokio::SpawnHandle)"),
-            SpawnHandleInner::Future(_) => write!(f, "SpawnHandle::Future(dyn Future)"),
         }
     }
 }
