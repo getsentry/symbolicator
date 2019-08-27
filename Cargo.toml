@@ -27,7 +27,6 @@ env_logger = "0.6.2"
 structopt = "0.2.18"
 serde_yaml = "0.8.9"
 void = "1.0.2"
-tokio-threadpool = "0.1.15"
 cadence = "0.17.1"
 lazy_static = "1.3.0"
 parking_lot = "0.9.0"
@@ -46,13 +45,12 @@ chrono = "0.4.7"
 zstd = "0.4.27"
 flate2 = "1.0.9"
 glob = "0.3.0"
-itertools = "0.8.0"
 tokio-retry = "0.2.0"
 # needed for gcs, see https://github.com/Keats/jsonwebtoken/pull/89
 jsonwebtoken = { git = "https://github.com/Keats/jsonwebtoken", rev = "b8627260b2902a1ab4fdda83083be3e0b0fb9b7f" }
 base64 = "0.10.1"
 ipnetwork = "0.14.0"
-fragile = "0.3.0"
+smallvec = "0.6.10"
 
 [dev-dependencies]
 actix-files = "0.1.4"

@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use crate::service::Service;
 use crate::types::{RequestId, SymbolicationResponse};
+use crate::utils::futures::ResultFuture;
 
 /// Path parameters of the symbolication poll request.
 #[derive(Debug, Deserialize)]
@@ -22,7 +23,7 @@ fn get_request(
     service: web::Data<Service>,
     path: web::Path<PollSymbolicationRequestPath>,
     query: web::Query<PollSymbolicationRequestQueryParams>,
-) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+) -> ResultFuture<web::Json<SymbolicationResponse>, Error> {
     log::trace!("Received poll request for id {}", path.request_id);
 
     let response = service

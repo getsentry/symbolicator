@@ -7,11 +7,13 @@ use crate::utils::http;
 
 pub mod cache;
 pub mod cficaches;
+pub mod download;
 pub mod objects;
 pub mod symbolication;
 pub mod symcaches;
 
 use self::cficaches::CfiCacheActor;
+use self::download::Downloader;
 use self::objects::ObjectsActor;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
@@ -19,7 +21,6 @@ use self::symcaches::SymCacheActor;
 #[derive(Clone, Debug)]
 pub struct Service {
     config: Arc<Config>,
-    io_pool: ThreadPool,
     symbolication: Arc<SymbolicationActor>,
     objects: Arc<ObjectsActor>,
 }
@@ -31,36 +32,38 @@ impl Service {
         http::allow_reserved_ips(config.connect_to_reserved_ips);
 
         let caches = Caches::new(&config);
-        let cpu_pool = ThreadPool::new();
-        let io_pool = ThreadPool::new();
+
+        let cache_pool = ThreadPool::new();
+        let symbolication_pool = ThreadPool::new();
+        let downloader = Downloader::new();
 
         let objects = Arc::new(ObjectsActor::new(
             caches.object_meta,
             caches.objects,
-            io_pool.clone(),
+            cache_pool.clone(),
+            downloader,
         ));
 
         let symcaches = Arc::new(SymCacheActor::new(
             caches.symcaches,
             objects.clone(),
-            cpu_pool.clone(),
+            cache_pool.clone(),
         ));
 
         let cficaches = Arc::new(CfiCacheActor::new(
             caches.cficaches,
             objects.clone(),
-            cpu_pool.clone(),
+            cache_pool.clone(),
         ));
 
         let symbolication = Arc::new(SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
-            cpu_pool.clone(),
+            symbolication_pool,
         ));
 
         Self {
-            io_pool,
             symbolication,
             objects,
             config,
@@ -69,10 +72,6 @@ impl Service {
 
     pub fn config(&self) -> Arc<Config> {
         self.config.clone()
-    }
-
-    pub fn io_pool(&self) -> ThreadPool {
-        self.io_pool.clone()
     }
 
     pub fn symbolication(&self) -> Arc<SymbolicationActor> {

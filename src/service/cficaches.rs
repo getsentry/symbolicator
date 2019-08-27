@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::{future, future::Either, Future};
+use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
-use sentry::{configure_scope, Hub};
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -16,8 +16,8 @@ use crate::service::objects::{
     FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
-use crate::utils::futures::{FutureExt, ThreadPool};
-use crate::utils::sentry::{SentryFutureExt, ToSentryScope};
+use crate::utils::futures::{FutureExt, SendFuture, ThreadPool};
+use crate::utils::sentry::ToSentryScope;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum CfiCacheErrorKind {
@@ -53,15 +53,13 @@ impl From<io::Error> for CfiCacheError {
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: Arc<ObjectsActor>,
-    threadpool: ThreadPool,
 }
 
 impl CfiCacheActor {
     pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache)),
+            cficaches: Arc::new(Cacher::new(cache, threadpool)),
             objects,
-            threadpool,
         }
     }
 }
@@ -90,8 +88,7 @@ impl CfiCacheFile {
 fn compute_cficache(
     object: Arc<ObjectFile>,
     path: PathBuf,
-    threadpool: &ThreadPool,
-) -> Box<dyn Future<Item = CacheStatus, Error = CfiCacheError>> {
+) -> SendFuture<CacheStatus, CfiCacheError> {
     if object.status() != CacheStatus::Positive {
         return Box::new(future::ok(object.status()));
     }
@@ -114,9 +111,7 @@ fn compute_cficache(
         .map_err(|e| {
             capture_fail(e.cause().unwrap_or(&e));
             e
-        })
-        .bind_hub(Hub::current())
-        .spawn_on(threadpool);
+        });
 
     Box::new(bounded_future)
 }
@@ -126,7 +121,6 @@ struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: Arc<ObjectsActor>,
     object_meta: Arc<ObjectFileMeta>,
-    threadpool: ThreadPool,
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -137,15 +131,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.object_meta.cache_key().clone()
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> SendFuture<CacheStatus, Self::Error> {
         let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
 
         let future = self
             .objects_actor
             .fetch(self.object_meta.clone())
             .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)))
-            .and_then(move |object| compute_cficache(object, path, &threadpool))
+            .and_then(move |object| compute_cficache(object, path))
             .measure("cficaches");
 
         Box::new(future)
@@ -181,7 +174,7 @@ impl CfiCacheActor {
     pub fn fetch(
         &self,
         request: FetchCfiCache,
-    ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
+    ) -> SendFuture<Arc<CfiCacheFile>, Arc<CfiCacheError>> {
         let object = self
             .objects
             .find(FindObject {
@@ -194,21 +187,19 @@ impl CfiCacheActor {
             .map_err(|e| Arc::new(CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching))));
 
         let cficaches = self.cficaches.clone();
-        let threadpool = self.threadpool.clone();
         let objects = self.objects.clone();
 
         let object_type = request.object_type.clone();
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.and_then(move |object| {
+        let future = object.and_then(move |object| {
             object
                 .map(move |object| {
                     Either::A(cficaches.compute_memoized(FetchCfiCacheInternal {
                         request,
                         objects_actor: objects,
                         object_meta: object,
-                        threadpool,
                     }))
                 })
                 .unwrap_or_else(move || {
@@ -220,7 +211,9 @@ impl CfiCacheActor {
                         status: CacheStatus::Negative,
                     })))
                 })
-        })
+        });
+
+        Box::new(future)
     }
 }
 

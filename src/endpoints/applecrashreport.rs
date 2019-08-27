@@ -1,6 +1,5 @@
-use std::fs::File;
-
 use actix_multipart::{Field, Multipart};
+use actix_web::web::Bytes;
 use actix_web::{error, web, Error};
 use futures::{future, Future, Stream};
 
@@ -8,21 +7,20 @@ use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::service::symbolication::SymbolicationActor;
 use crate::service::Service;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::ResultFuture;
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
 use crate::utils::sentry::ToSentryScope;
 
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {
     sources: Option<Vec<SourceConfig>>,
-    apple_crash_report: Option<File>,
+    apple_crash_report: Option<Bytes>,
 }
 
 fn handle_form_field(
     mut request: AppleCrashReportRequest,
-    threadpool: ThreadPool,
     field: Field,
-) -> Box<dyn Future<Item = AppleCrashReportRequest, Error = Error>> {
+) -> ResultFuture<AppleCrashReportRequest, Error> {
     match field
         .content_disposition()
         .as_ref()
@@ -36,7 +34,7 @@ fn handle_form_field(
             Box::new(future)
         }
         Some("apple_crash_report") => {
-            let future = read_multipart_file(field, threadpool).map(move |apple_crash_report| {
+            let future = read_multipart_file(field).map(move |apple_crash_report| {
                 request.apple_crash_report = Some(apple_crash_report);
                 request
             });
@@ -69,12 +67,11 @@ fn post_applecrashreport(
     service: web::Data<Service>,
     params: web::Query<SymbolicationRequestQueryParams>,
     multipart: Multipart,
-) -> Box<dyn Future<Item = web::Json<SymbolicationResponse>, Error = Error>> {
+) -> ResultFuture<web::Json<SymbolicationResponse>, Error> {
     log::trace!("Received apple crash report");
 
     let default_sources = service.config().default_sources();
     let symbolication = service.symbolication();
-    let io_pool = service.io_pool();
 
     let params = params.into_inner();
     params.configure_scope();
@@ -83,7 +80,7 @@ fn post_applecrashreport(
     let response = multipart
         .map_err(Error::from)
         .fold(AppleCrashReportRequest::default(), move |request, item| {
-            handle_form_field(request, io_pool.clone(), item)
+            handle_form_field(request, item)
         })
         .and_then(clone!(symbolication, |mut request| {
             if request.sources.is_none() {
