@@ -3,12 +3,14 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use actix_web::web::Bytes;
 use failure::{Fail, ResultExt};
 use futures::{Future, IntoFuture, Stream};
 use serde::Deserialize;
 use tempfile::NamedTempFile;
 
 use crate::types::{DirectoryLayout, FileType, ObjectId, SourceFilters};
+use crate::utils::fs::blocking_io;
 use crate::utils::futures::ResultFuture;
 use crate::utils::paths::get_directory_path;
 
@@ -126,8 +128,7 @@ impl DownloadedFile {
     /// Streams a remote file into a temporary location.
     pub fn streaming<S>(download_dir: &Path, stream: S) -> ResultFuture<Self, DownloadError>
     where
-        S: Stream<Error = DownloadError> + 'static,
-        S::Item: AsRef<[u8]>,
+        S: Stream<Item = Bytes, Error = DownloadError> + 'static,
     {
         let named_download_file =
             tryf!(NamedTempFile::new_in(&download_dir).context(DownloadErrorKind::Io));
@@ -136,7 +137,12 @@ impl DownloadedFile {
 
         let future = stream
             .fold(file, |mut file, chunk| {
-                file.write_all(chunk.as_ref()).map(|_| file)
+                blocking_io(move || {
+                    file.write_all(&chunk)
+                        .map(|_| file)
+                        .map_err(DownloadError::io)
+                })
+                .map_err(|e| e.map_canceled(|| DownloadError::from(DownloadErrorKind::Canceled)))
             })
             .map(move |_| DownloadedFile::Temp(named_download_file));
 

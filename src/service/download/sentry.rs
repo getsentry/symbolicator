@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix_web::{http::header, web::Bytes, HttpMessage};
+use actix_web::{http::header, HttpMessage};
 use futures::{future, future::Either, Future, Stream};
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -29,7 +29,7 @@ struct SearchQuery {
     token: String,
 }
 
-fn search(index_url: Url, token: String) -> ResultFuture<Bytes, DownloadError> {
+fn search(index_url: Url, token: String) -> ResultFuture<Vec<SearchResult>, DownloadError> {
     let index_request = move || {
         http::unsafe_client()
             .get(index_url.as_str())
@@ -40,7 +40,7 @@ fn search(index_url: Url, token: String) -> ResultFuture<Bytes, DownloadError> {
             .and_then(move |mut response| {
                 if response.status().is_success() {
                     log::trace!("Success fetching index from Sentry");
-                    Either::A(response.body().map_err(DownloadError::io))
+                    Either::A(response.json().map_err(DownloadError::io))
                 } else {
                     let message = format!("Sentry returned status code {}", response.status());
                     log::warn!("{}", message);
@@ -139,12 +139,8 @@ impl SentryDownloader {
         let future = self
             .thread
             .spawn(move || search(index_url, token))
+            .map(Arc::new)
             .map_err(|e| e.map_canceled(|| DownloadErrorKind::Canceled))
-            .and_then(|data| {
-                serde_json::from_slice::<Vec<SearchResult>>(&data)
-                    .map(Arc::new)
-                    .map_err(DownloadError::io)
-            })
             .inspect(move |entries| {
                 cache.lock().put(query, (Instant::now(), entries.clone()));
             })
