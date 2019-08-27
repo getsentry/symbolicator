@@ -1,6 +1,5 @@
-use std::fs::File;
-
 use actix_multipart::{Field, Multipart};
+use actix_web::web::Bytes;
 use actix_web::{error, web, Error};
 use futures::{future, Future, Stream};
 
@@ -15,7 +14,7 @@ use crate::utils::sentry::ToSentryScope;
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {
     sources: Option<Vec<SourceConfig>>,
-    apple_crash_report: Option<File>,
+    apple_crash_report: Option<Bytes>,
 }
 
 fn handle_form_field(

@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
-use std::fs::File;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use actix_web::web::Bytes;
 use apple_crash_report_parser::AppleCrashReport;
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, Shared};
@@ -917,8 +917,9 @@ impl MinidumpState {
 impl SymbolicationActor {
     fn get_referenced_modules_from_minidump(
         &self,
-        minidump: ByteView<'static>,
+        minidump: Bytes,
     ) -> Result<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
+        let minidump = ByteView::from_slice(&minidump);
         log::debug!("Processing minidump ({} bytes)", minidump.len());
         metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
         let state = ProcessState::from_minidump(&minidump, None)?;
@@ -968,10 +969,11 @@ impl SymbolicationActor {
     fn stackwalk_minidump_with_cfi(
         &self,
         scope: Scope,
-        minidump: ByteView<'static>,
+        minidump: Bytes,
         sources: Arc<Vec<SourceConfig>>,
         cfi_results: Vec<CfiCacheResult>,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+        let minidump = ByteView::from_slice(&minidump);
         let mut frame_info_map = FrameInfoMap::new();
         let mut unwind_statuses = BTreeMap::new();
 
@@ -1109,12 +1111,11 @@ impl SymbolicationActor {
     fn do_stackwalk_minidump(
         &self,
         scope: Scope,
-        minidump: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> SendFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let slf = self.clone();
         let sources = Arc::new(sources);
-        let minidump = tryf!(ByteView::map_file(minidump));
 
         let future = future::result(slf.get_referenced_modules_from_minidump(minidump.clone()))
             .and_then(clone!(slf, scope, sources, |referenced_modules| {
@@ -1135,7 +1136,7 @@ impl SymbolicationActor {
     fn do_process_minidump(
         &self,
         scope: Scope,
-        minidump: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> SendFuture<CompletedSymbolicationResponse, SymbolicationError> {
         let slf = self.clone();
@@ -1157,7 +1158,7 @@ impl SymbolicationActor {
     pub fn process_minidump(
         &self,
         scope: Scope,
-        minidump: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> RequestId {
         let slf = self.clone();
@@ -1214,10 +1215,10 @@ impl SymbolicationActor {
     fn parse_apple_crash_report(
         &self,
         scope: Scope,
-        file: File,
+        file: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
-        let mut report = AppleCrashReport::from_reader(file)?;
+        let mut report = AppleCrashReport::from_reader(&file[..])?;
 
         let arch = report
             .code_type
@@ -1285,7 +1286,7 @@ impl SymbolicationActor {
     fn do_process_apple_crash_report(
         &self,
         scope: Scope,
-        report: File,
+        report: Bytes,
         sources: Vec<SourceConfig>,
     ) -> SendFuture<CompletedSymbolicationResponse, SymbolicationError> {
         let slf = self.clone();
@@ -1306,7 +1307,7 @@ impl SymbolicationActor {
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
-        apple_crash_report: File,
+        apple_crash_report: Bytes,
         sources: Vec<SourceConfig>,
     ) -> RequestId {
         let slf = self.clone();
@@ -1487,7 +1488,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let minidump = File::open(path)?;
+        let minidump = Bytes::from(fs::read(path)?);
 
         let response = test::block_fn(|| {
             let request_id =
@@ -1530,7 +1531,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
+        let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
 
         let response = test::block_fn(|| {
             let request_id = service.symbolication().process_apple_crash_report(

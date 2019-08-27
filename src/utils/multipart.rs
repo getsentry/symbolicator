@@ -1,9 +1,7 @@
-use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
-
 use actix_multipart::Field;
+use actix_web::web::{Bytes, BytesMut};
 use actix_web::{error, Error};
-use futures::{future, Future, Stream};
+use futures::{Future, Stream};
 
 use crate::types::SourceConfig;
 
@@ -25,22 +23,17 @@ pub fn read_multipart_data(
         })
 }
 
-pub fn read_multipart_file(field: Field) -> impl Future<Item = File, Error = Error> {
-    future::result(tempfile::tempfile())
+pub fn read_multipart_file(field: Field) -> impl Future<Item = Bytes, Error = Error> {
+    field
         .map_err(Error::from)
-        .and_then(|file| {
-            field
-                .map_err(Error::from)
-                .fold(file, |mut file, chunk| -> Result<File, Error> {
-                    file.write_all(&chunk)?;
-                    Ok(file)
-                })
-        })
-        .and_then(|mut file| {
-            file.sync_all()?;
-            file.seek(SeekFrom::Start(0))?;
-            Ok(file)
-        })
+        .fold(
+            BytesMut::new(),
+            |mut bytes, chunk| -> Result<BytesMut, Error> {
+                bytes.extend_from_slice(&chunk);
+                Ok(bytes)
+            },
+        )
+        .and_then(|bytes| Ok(bytes.freeze()))
 }
 
 pub fn read_multipart_sources(

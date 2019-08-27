@@ -1,6 +1,5 @@
-use std::fs::File;
-
 use actix_multipart::{Field, Multipart};
+use actix_web::web::Bytes;
 use actix_web::{error, web, Error};
 use futures::{future, Future, Stream};
 
@@ -15,7 +14,7 @@ use crate::utils::sentry::ToSentryScope;
 #[derive(Debug, Default)]
 struct MinidumpRequest {
     sources: Option<Vec<SourceConfig>>,
-    minidump: Option<File>,
+    minidump: Option<Bytes>,
 }
 
 fn handle_form_field(
