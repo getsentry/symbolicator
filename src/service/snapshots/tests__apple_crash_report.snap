@@ -1,6 +1,4 @@
 ---
-created: "2019-08-04T19:30:15.398774Z"
-creator: insta@0.10.0
 source: src/service/symbolication.rs
 expression: response
 ---

@@ -1444,7 +1444,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot_matches!(response);
+        insta::assert_yaml_snapshot!(response);
 
         let response = test::block_fn(|| {
             let request = get_symbolication_request(vec![]);
@@ -1452,7 +1452,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot_matches!(response);
+        insta::assert_yaml_snapshot!(response);
 
         Ok(())
     }
@@ -1471,7 +1471,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot_matches!(response);
+        insta::assert_yaml_snapshot!(response);
 
         let response = test::block_fn(|| {
             let request = get_symbolication_request(vec![source]);
@@ -1479,7 +1479,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot_matches!(response);
+        insta::assert_yaml_snapshot!(response);
 
         Ok(())
     }
@@ -1498,7 +1498,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot_matches!(response);
+        insta::assert_yaml_snapshot!(response);
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries = fs::read_dir(global_dir)?
@@ -1506,7 +1506,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         cache_entries.sort();
-        insta::assert_yaml_snapshot_matches!(cache_entries);
+        insta::assert_yaml_snapshot!(cache_entries);
 
         Ok(())
     }
@@ -1543,7 +1543,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot_matches!(response);
+        insta::assert_yaml_snapshot!(response);
         Ok(())
     }
 

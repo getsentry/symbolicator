@@ -1,8 +1,6 @@
 ---
-created: "2019-08-04T19:32:25.187680Z"
-creator: insta@0.10.0
 source: src/service/symbolication.rs
-expression: "{\n    let global_dir =\n        service.config().cache_dir(\"object_meta/global\").unwrap();\n    let mut cache_entries: Vec<_> =\n        fs::read_dir(global_dir).unwrap().map(|x|\n                                                  x.unwrap().file_name().into_string().unwrap()).collect();\n    cache_entries.sort();\n    cache_entries\n}"
+expression: cache_entries
 ---
 - local_5d_7b6259552275a3c17bd4c3fd05f5a6bf40caa5
 - local_5d_7b6259552275a3c17bd4c3fd05f5a6bf40caa5_debug
