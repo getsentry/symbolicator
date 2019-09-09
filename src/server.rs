@@ -65,6 +65,7 @@ pub fn run(config: Config) -> Result<(), ServerError> {
     if let Some(ref statsd) = config.metrics.statsd {
         metrics::configure_statsd(&config.metrics.prefix, statsd);
     }
+    metric!(counter("server.starting") += 1);
 
     let bind = config.bind.clone();
     let service = Service::create(config);
