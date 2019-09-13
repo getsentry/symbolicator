@@ -5,13 +5,14 @@ expression: response
 status: completed
 timestamp: 1547055742
 system_info:
-  os_name: Mac OS X 10.14.0 (18A391)
-  os_version: ""
-  os_build: ""
+  os_name: macOS
+  os_version: 10.14.0
+  os_build: 18A391
   cpu_arch: x86_64
   device_model: "MacBookPro14,3"
 crashed: true
-crash_reason: "objc_msgSend() selector name: respondsToSelector:\n  more information here"
+crash_reason: SIGSEGV
+crash_details: "objc_msgSend() selector name: respondsToSelector:\n  more information here"
 stacktraces:
   - thread_id: 0
     is_requesting: false

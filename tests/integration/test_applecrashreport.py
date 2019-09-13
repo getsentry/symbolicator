@@ -1,7 +1,8 @@
 import json
 
 APPLE_CRASH_REPORT_SUCCESS = {
-    "crash_reason": "objc_msgSend() selector name: respondsToSelector:\n"
+    "crash_reason": "SIGSEGV",
+    "crash_details": "objc_msgSend() selector name: respondsToSelector:\n"
     "  more information here",
     "crashed": True,
     "modules": [
@@ -215,9 +216,9 @@ APPLE_CRASH_REPORT_SUCCESS = {
     "system_info": {
         "cpu_arch": "x86_64",
         "device_model": "MacBookPro14,3",
-        "os_build": "",
-        "os_name": "Mac OS X 10.14.0 (18A391)",
-        "os_version": "",
+        "os_build": "18A391",
+        "os_name": "macOS",
+        "os_version": "10.14.0",
     },
     "timestamp": 1547055742,
 }
