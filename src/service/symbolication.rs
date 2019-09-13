@@ -1131,7 +1131,6 @@ impl SymbolicationActor {
                 slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
             })
             .timeout(Duration::from_secs(1200), || {
-                println!("do stackwalk timeout");
                 SymbolicationErrorKind::Timeout
             })
             .measure("minidump_stackwalk");
