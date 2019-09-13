@@ -717,6 +717,11 @@ pub struct CompletedSymbolicationResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crash_reason: Option<String>,
 
+    /// A detailed explanation of the crash, potentially in human readable form. This may
+    /// include a string representation of the crash reason or application-specific info.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crash_details: Option<String>,
+
     /// If there was an assertion that was hit, a textual representation of that assertion,
     /// possibly including the file and line at which it occurred.
     #[serde(skip_serializing_if = "Option::is_none")]

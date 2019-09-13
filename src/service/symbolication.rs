@@ -10,6 +10,7 @@ use failure::Fail;
 use futures::future::{self, join_all, Either, Future, Shared};
 use futures::sync::oneshot;
 use parking_lot::Mutex;
+use regex::Regex;
 use sentry::integrations::failure::capture_fail;
 use sentry::Hub;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
@@ -46,6 +47,11 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
 
 /// The maximum delay we allow for polling a finished request before dropping it.
 const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
+
+lazy_static::lazy_static! {
+    /// Format sent by Unreal Engine on macOS
+    static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
+}
 
 /// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
@@ -1125,7 +1131,6 @@ impl SymbolicationActor {
                 slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
             })
             .timeout(Duration::from_secs(1200), || {
-                println!("do stackwalk timeout");
                 SymbolicationErrorKind::Timeout
             })
             .measure("minidump_stackwalk");
@@ -1170,7 +1175,8 @@ impl SymbolicationActor {
 struct AppleCrashReportState {
     timestamp: Option<u64>,
     system_info: SystemInfo,
-    app_info: Option<String>,
+    crash_reason: Option<String>,
+    crash_details: Option<String>,
 }
 
 impl AppleCrashReportState {
@@ -1186,7 +1192,8 @@ impl AppleCrashReportState {
 
         response.timestamp = self.timestamp;
         response.system_info = Some(self.system_info);
-        response.crash_reason = self.app_info;
+        response.crash_reason = self.crash_reason;
+        response.crash_details = self.crash_details;
         response.crashed = Some(true);
     }
 }
@@ -1218,7 +1225,8 @@ impl SymbolicationActor {
         file: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
-        let mut report = AppleCrashReport::from_reader(&file[..])?;
+        let report = AppleCrashReport::from_reader(&file[..])?;
+        let mut metadata = report.metadata;
 
         let arch = report
             .code_type
@@ -1269,15 +1277,38 @@ impl SymbolicationActor {
             stacktraces,
         };
 
+        let mut system_info = SystemInfo {
+            os_name: metadata.remove("OS Version").unwrap_or_default(),
+            device_model: metadata.remove("Hardware Model").unwrap_or_default(),
+            cpu_arch: arch,
+            ..SystemInfo::default()
+        };
+
+        if let Some(captures) = OS_MACOS_REGEX.captures(&system_info.os_name) {
+            system_info.os_version = captures
+                .name("version")
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            system_info.os_build = captures
+                .name("build")
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            system_info.os_name = "macOS".to_string();
+        }
+
+        // https://developer.apple.com/library/archive/technotes/tn2151/_index.html
+        let crash_reason = metadata.remove("Exception Type");
+        let crash_details = report
+            .application_specific_information
+            .or_else(|| metadata.remove("Exception Message"))
+            .or_else(|| metadata.remove("Exception Subtype"))
+            .or_else(|| metadata.remove("Exception Codes"));
+
         let state = AppleCrashReportState {
             timestamp: report.timestamp.map(|t| t.timestamp() as u64),
-            system_info: SystemInfo {
-                os_name: report.metadata.remove("OS Version").unwrap_or_default(),
-                device_model: report.metadata.remove("Hardware Model").unwrap_or_default(),
-                cpu_arch: arch,
-                ..SystemInfo::default()
-            },
-            app_info: report.application_specific_information,
+            system_info,
+            crash_reason,
+            crash_details,
         };
 
         Ok((request, state))
