@@ -57,7 +57,7 @@ images:
     "us.gcr.io/$PROJECT_ID/symbolicator:builder",
     "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
   ]
-timeout: 60m
+timeout: 3600s
 options:
   # Run on bigger machines
   machineType: 'N1_HIGHCPU_8'
