@@ -156,19 +156,6 @@ pub struct Config {
     pub connect_to_reserved_ips: bool,
 }
 
-impl Config {
-    pub fn cache_dir<P>(&self, dir: P) -> Option<PathBuf>
-    where
-        P: AsRef<Path>,
-    {
-        self.cache_dir.as_ref().map(|base| base.join(dir))
-    }
-
-    pub fn default_sources(&self) -> Arc<Vec<SourceConfig>> {
-        self.sources.clone()
-    }
-}
-
 /// Checks if we are running in docker.
 fn is_docker() -> bool {
     if fs::metadata("/.dockerenv").is_ok() {

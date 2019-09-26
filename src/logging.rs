@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use chrono::{DateTime, Utc};
 use failure::AsFail;
 use log::{Level, LevelFilter};
-use sentry::integrations::log::{breadcrumb_from_record, event_from_record};
+use sentry::integrations::log as sentry_log;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{Config, LogFormat};
@@ -86,42 +86,6 @@ fn json_logger() -> env_logger::Builder {
     builder
 }
 
-/// A delegating logger that also logs breadcrumbs.
-pub struct BreadcrumbLogger<L> {
-    inner: L,
-}
-
-impl<L> BreadcrumbLogger<L> {
-    /// Initializes a new breadcrumb logger.
-    pub fn new(inner: L) -> Self {
-        Self { inner }
-    }
-}
-
-impl<L> log::Log for BreadcrumbLogger<L>
-where
-    L: log::Log,
-{
-    fn enabled(&self, md: &log::Metadata<'_>) -> bool {
-        self.inner.enabled(md)
-    }
-
-    fn log(&self, record: &log::Record<'_>) {
-        if self.inner.enabled(record.metadata()) {
-            if record.level() == log::Level::Error {
-                sentry::capture_event(event_from_record(record, false));
-            }
-
-            sentry::add_breadcrumb(|| breadcrumb_from_record(record));
-            self.inner.log(record);
-        }
-    }
-
-    fn flush(&self) {
-        self.inner.flush();
-    }
-}
-
 /// Initializes logging for the symbolicator.
 ///
 /// This considers the `RUST_LOG` environment variable and defaults it to the level specified in the
@@ -148,11 +112,16 @@ pub fn init_logging(config: &Config) {
         Err(_) => builder.filter_level(config.logging.level),
     };
 
-    let logger = builder.build();
-    log::set_max_level(logger.filter());
+    let logger = Box::new(builder.build());
+    let global_filter = logger.filter();
 
-    let breadcrumb_logger = Box::new(BreadcrumbLogger::new(logger));
-    log::set_boxed_logger(breadcrumb_logger).unwrap();
+    sentry_log::init(
+        Some(logger),
+        sentry_log::LoggerOptions {
+            global_filter: Some(global_filter),
+            ..Default::default()
+        },
+    );
 }
 
 /// Returns whether backtrace printing is enabled.

@@ -2,27 +2,24 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
     args:
-      [
-        "-c",
-        "docker pull us.gcr.io/$PROJECT_ID/symbolicator:latest || true"
-      ]
+      ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:latest || true"]
 
   # Pull the image with the first build stage
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
     args:
-      [
-        "-c",
-        "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"
-      ]
+      ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"]
 
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
         "build",
-        "--target", "symbolicator-build",
-        "-t", "us.gcr.io/$PROJECT_ID/symbolicator:builder",
-        "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:builder",
+        "--target",
+        "symbolicator-build",
+        "-t",
+        "us.gcr.io/$PROJECT_ID/symbolicator:builder",
+        "--cache-from",
+        "us.gcr.io/$PROJECT_ID/symbolicator:builder",
         ".",
       ]
 
@@ -30,10 +27,14 @@ steps:
     args:
       [
         "build",
-        "-t", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
-        "-t", "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
-        "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:builder",
-        "--cache-from", "us.gcr.io/$PROJECT_ID/symbolicator:latest",
+        "-t",
+        "us.gcr.io/$PROJECT_ID/symbolicator:latest",
+        "-t",
+        "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
+        "--cache-from",
+        "us.gcr.io/$PROJECT_ID/symbolicator:builder",
+        "--cache-from",
+        "us.gcr.io/$PROJECT_ID/symbolicator:latest",
         ".",
       ]
 
@@ -46,11 +47,11 @@ steps:
     id: "smoke test 2"
 
   # Only tag "latest" when on master
-  - name: 'gcr.io/cloud-builders/docker'
-    entrypoint: 'bash'
+  - name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
     args:
-    - '-c'
-    - '[[ "$BRANCH_NAME" == "master" ]] && docker push us.gcr.io/$PROJECT_ID/symbolicator:latest || true'
+      - "-c"
+      - '[[ "$BRANCH_NAME" == "master" ]] && docker push us.gcr.io/$PROJECT_ID/symbolicator:latest || true'
 
 images:
   [
@@ -60,4 +61,4 @@ images:
 timeout: 3600s
 options:
   # Run on bigger machines
-  machineType: 'N1_HIGHCPU_8'
+  machineType: "N1_HIGHCPU_8"
