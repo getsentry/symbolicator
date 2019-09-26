@@ -1441,14 +1441,14 @@ mod tests {
 
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::{Once, ONCE_INIT};
+    use std::sync::Once;
 
     use failure::Error;
 
     use crate::app::ServiceState;
     use crate::types::FilesystemSourceConfig;
 
-    static INIT: Once = ONCE_INIT;
+    static INIT: Once = Once::new();
 
     /// Setup function that is only run once, even if called multiple times.
     fn setup_logging() {

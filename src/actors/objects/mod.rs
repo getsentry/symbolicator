@@ -738,10 +738,10 @@ fn decompress_object_file(
                 .status()?;
 
             if !status.success() {
-                Err(std::io::Error::new(
+                return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "failed to decompress cab file",
-                ))?;
+                ));
             }
 
             Ok(extract_file)
