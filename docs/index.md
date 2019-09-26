@@ -41,9 +41,8 @@ metrics:
 ```
 
 - `cache_dir`: Path to a directory to cache downloaded files and symbolication
-  caches. Defaults to `/data` inside Docker which is already defined as a
-  persistent volume, and `null` otherwise, which disables caching. **It is
-  strictly recommended to configure caches in production!**
+  caches. Defaults to `null`, which disables caching. **It is strictly
+  recommended to configure caches in production!**
 - `bind`: Host and port for HTTP interface.
 - `logging`: Command line logging behavior.
     - `level`: Log level, defaults to `info`. Can be one of `off`, `error`,

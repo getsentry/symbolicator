@@ -1,17 +1,10 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
+use itertools::Itertools;
 use symbolic::common::{CodeId, DebugId, Uuid};
 
-use crate::types::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId,
-};
-
-const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
-    case_sensitive: false,
-    require_literal_separator: false,
-    require_literal_leading_dot: false,
-};
+use crate::types::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId};
 
 fn get_gdb_path(identifier: &ObjectId) -> Option<String> {
     let code_id = identifier.code_id.as_ref()?.as_str();
@@ -245,10 +238,7 @@ pub fn get_directory_path(
 }
 
 pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
-    let mut split = path.splitn(3, '/');
-    let leading_fn = split.next()?;
-    let signature = split.next()?;
-    let trailing_fn = split.next()?;
+    let (leading_fn, signature, trailing_fn) = path.splitn(3, '/').collect_tuple()?;
 
     let leading_fn_lower = leading_fn.to_lowercase();
     if !leading_fn_lower.eq_ignore_ascii_case(trailing_fn) {
@@ -317,80 +307,5 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 debug_file: None,
             },
         ))
-    }
-}
-
-pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
-    fn canonicalize_path(s: &str) -> String {
-        s.replace(r"\", "/")
-    }
-
-    if patterns.is_empty() {
-        return true;
-    }
-
-    for pattern in patterns {
-        for path in &[&object_id.code_file, &object_id.debug_file] {
-            if let Some(ref path) = path {
-                if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn pattern(x: &str) -> Glob {
-        Glob(x.parse().unwrap())
-    }
-
-    #[test]
-    fn test_matches_path_patterns_empty() {
-        assert!(matches_path_patterns(
-            &ObjectId {
-                code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-                ..Default::default()
-            },
-            &[]
-        ));
-    }
-
-    #[test]
-    fn test_matches_path_patterns_single_star() {
-        assert!(matches_path_patterns(
-            &ObjectId {
-                code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-                ..Default::default()
-            },
-            &[pattern("c:/windows/*")]
-        ));
-    }
-
-    #[test]
-    fn test_matches_path_patterns_drive_letter_wildcard() {
-        assert!(matches_path_patterns(
-            &ObjectId {
-                code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-                ..Default::default()
-            },
-            &[pattern("?:/windows/*")]
-        ));
-    }
-
-    #[test]
-    fn test_matches_path_patterns_drive_letter() {
-        assert!(!matches_path_patterns(
-            &ObjectId {
-                code_file: Some("C:\\Windows\\System32\\kernel32.dll".to_owned()),
-                ..Default::default()
-            },
-            &[pattern("d:/windows/**")]
-        ));
     }
 }

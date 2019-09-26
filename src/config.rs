@@ -156,19 +156,6 @@ pub struct Config {
     pub connect_to_reserved_ips: bool,
 }
 
-impl Config {
-    pub fn cache_dir<P>(&self, dir: P) -> Option<PathBuf>
-    where
-        P: AsRef<Path>,
-    {
-        self.cache_dir.as_ref().map(|base| base.join(dir))
-    }
-
-    pub fn default_sources(&self) -> Arc<Vec<SourceConfig>> {
-        self.sources.clone()
-    }
-}
-
 /// Checks if we are running in docker.
 fn is_docker() -> bool {
     if fs::metadata("/.dockerenv").is_ok() {
@@ -190,20 +177,10 @@ fn default_bind() -> String {
     }
 }
 
-/// Default value for the "cache_dir" configuration.
-fn default_cache_dir() -> Option<PathBuf> {
-    if is_docker() {
-        // Docker image already defines `/data` as a persistent volume
-        Some(PathBuf::from("/data"))
-    } else {
-        None
-    }
-}
-
 impl Default for Config {
     fn default() -> Self {
         Config {
-            cache_dir: default_cache_dir(),
+            cache_dir: None,
             bind: default_bind(),
             logging: Logging::default(),
             metrics: Metrics::default(),

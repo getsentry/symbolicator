@@ -15,6 +15,7 @@ branches:
   only:
     - master
     - /^release\/[\d.]+$/
+    - tmp/actix-07-rollback
 
 matrix:
   include:

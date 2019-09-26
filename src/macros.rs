@@ -1,4 +1,4 @@
-/// Same as `try` but to be used in functions that return `Box<dyn Future>` instead of `Result`.
+/// Same as `try` but to be used in functions that return `Box<Future>` instead of `Result`.
 ///
 /// Useful when calling synchronous (but cheap enough) functions in async code.
 #[macro_export]
@@ -8,7 +8,7 @@ macro_rules! tryf {
             Ok(value) => value,
             Err(e) => {
                 return Box::new(::futures::future::err(::std::convert::From::from(e)))
-                    as Box<dyn ::futures::Future<Item = _, Error = _> + Send>;
+                    as Box<dyn Future<Item = _, Error = _>>;
             }
         }
     };
