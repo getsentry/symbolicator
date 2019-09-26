@@ -365,7 +365,7 @@ impl Default for Scope {
 }
 
 impl fmt::Display for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Scope::Global => f.write_str("global"),
             Scope::Scoped(ref scope) => f.write_str(&scope),
@@ -725,7 +725,7 @@ impl<T: Fail> Fail for ArcFail<T> {
 }
 
 impl<T: fmt::Display> fmt::Display for ArcFail<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         self.0.fmt(f)
     }
 }

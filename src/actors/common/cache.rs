@@ -60,7 +60,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 }
 
 impl fmt::Display for CacheKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} (scope {})", self.cache_key, self.scope)
     }
 }

@@ -3,7 +3,7 @@
 macro_rules! impl_hex_ser {
     ($type:path) => {
         impl ::std::fmt::Display for $type {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 write!(f, "{:#x}", self.0)
             }
         }
@@ -46,7 +46,7 @@ macro_rules! impl_hex_de {
                 impl<'de> ::serde::de::Visitor<'de> for HexVisitor {
                     type Value = $type;
 
-                    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    fn expecting(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                         write!(f, "a number or hex string")
                     }
 
