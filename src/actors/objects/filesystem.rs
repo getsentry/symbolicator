@@ -12,7 +12,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<FilesystemSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -28,7 +28,7 @@ pub(super) fn prepare_downloads(
 pub(super) fn download_from_source(
     source: Arc<FilesystemSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let download_abspath = source.path.join(&download_path.0);
     log::debug!("Fetching debug file from {:?}", download_abspath);
 

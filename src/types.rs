@@ -715,7 +715,7 @@ pub struct SystemInfo {
 pub struct ArcFail<T>(pub Arc<T>);
 
 impl<T: Fail> Fail for ArcFail<T> {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.0.cause()
     }
 

@@ -636,7 +636,7 @@ fn prepare_downloads(
     source: &SourceConfig,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     match *source {
         SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
@@ -650,7 +650,7 @@ fn prepare_downloads(
 
 fn download_from_source(
     file_id: &FileId,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *file_id {
         FileId::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source.clone(), file_id)

@@ -116,7 +116,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     let index_url = {
         let mut url = source.url.clone();
         if let Some(ref debug_id) = object_id.debug_id {
@@ -150,7 +150,7 @@ pub(super) fn prepare_downloads(
 pub(super) fn download_from_source(
     source: Arc<SentrySourceConfig>,
     file_id: &SentryFileId,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let download_url = {
         let mut url = source.url.clone();
         url.query_pairs_mut().append_pair("id", &file_id.0);

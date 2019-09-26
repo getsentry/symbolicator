@@ -19,7 +19,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -35,7 +35,7 @@ pub(super) fn prepare_downloads(
 pub(super) fn download_from_source(
     source: Arc<HttpSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     // XXX: Probably should send an error if the URL turns out to be invalid
     let download_url = match source.url.join(&download_path.0) {
         Ok(x) => x,

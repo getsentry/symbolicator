@@ -83,7 +83,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Ob
 
 fn request_new_token(
     source_key: &GcsSourceKey,
-) -> Box<Future<Item = GcsToken, Error = ObjectError>> {
+) -> Box<dyn Future<Item = GcsToken, Error = ObjectError>> {
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = match get_auth_jwt(source_key, expires_at.timestamp() + 30) {
         Ok(auth_jwt) => auth_jwt,
@@ -121,7 +121,7 @@ fn request_new_token(
 
 fn get_token(
     source_key: &Arc<GcsSourceKey>,
-) -> Box<Future<Item = Arc<GcsToken>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Arc<GcsToken>, Error = ObjectError>> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at < Utc::now() {
             return Box::new(Ok(token.clone()).into_future());
@@ -140,7 +140,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<GcsSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
@@ -156,7 +156,7 @@ pub(super) fn prepare_downloads(
 pub(super) fn download_from_source(
     source: Arc<GcsSourceConfig>,
     download_path: &DownloadPath,
-) -> Box<Future<Item = Option<DownloadStream>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let key = {
         let prefix = source.prefix.trim_matches(&['/'][..]);
         if prefix.is_empty() {
