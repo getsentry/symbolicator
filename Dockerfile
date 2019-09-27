@@ -21,6 +21,7 @@ RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $
 RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
+COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
 RUN sentry-cli --version \
     && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator)" \
     && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
