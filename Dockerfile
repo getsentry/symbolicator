@@ -1,3 +1,4 @@
+FROM getsentry/sentry-cli:1 AS sentry-cli
 FROM rust:slim-buster AS symbolicator-build
 
 WORKDIR /work
@@ -20,8 +21,15 @@ RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $
 RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin
 
+COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
+RUN sentry-cli --version \
+    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator)" \
+    && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
+
 #############################################
 # Copy the compiled binary to a clean image #
+#############################################
+
 FROM debian:buster-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates gosu cabextract \
@@ -42,6 +50,7 @@ RUN mkdir /etc/symbolicator && \
 EXPOSE 3021
 
 COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
+COPY --from=symbolicator-build /opt/symbolicator.src.zip /opt/symbolicator.src.zip
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
