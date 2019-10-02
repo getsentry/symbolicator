@@ -33,7 +33,7 @@ impl rusoto_core::DispatchSignedRequest for SharedHttpClient {
 
 fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     let mut container = S3_CLIENTS.lock();
-    if let Some(client) = container.get(&key) {
+    if let Some(client) = container.get(&*key) {
         client.clone()
     } else {
         let s3 = Arc::new(rusoto_s3::S3Client::new_with(
