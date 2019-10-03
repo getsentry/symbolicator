@@ -25,7 +25,7 @@ struct Cli {
         short = "z",
         multiple = true,
         parse(from_occurrences),
-        raw(takes_value = "false")
+        takes_value(false)
     )]
     pub compression_level: usize,
 
