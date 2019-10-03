@@ -52,16 +52,13 @@ fn get_long_crate_version() -> &'static str {
 }
 
 #[derive(StructOpt)]
-#[structopt(raw(version = "get_crate_version()"))]
-#[structopt(raw(long_version = "get_long_crate_version()"))]
+#[structopt(
+    version = get_crate_version(),
+    long_version = get_long_crate_version(),
+)]
 struct Cli {
     /// Path to your configuration file.
-    #[structopt(
-        long = "config",
-        short = "c",
-        raw(global = "true"),
-        value_name = "FILE"
-    )]
+    #[structopt(long = "config", short = "c", global(true), value_name = "FILE")]
     pub config: Option<PathBuf>,
 
     #[structopt(subcommand)]
