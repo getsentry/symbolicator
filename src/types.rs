@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt::{self, Write};
+use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -820,20 +820,6 @@ pub struct ObjectId {
 }
 
 impl ObjectId {
-    /// Returns the cache key for this object.
-    pub fn cache_key(&self) -> String {
-        let mut rv = String::new();
-        if let Some(ref debug_id) = self.debug_id {
-            rv.push_str(&debug_id.to_string());
-        }
-        rv.push_str("_");
-        if let Some(ref code_id) = self.code_id {
-            write!(rv, "{}", code_id).ok();
-        }
-
-        rv
-    }
-
     pub fn code_file_basename(&self) -> Option<&str> {
         Some(split_path(self.code_file.as_ref()?).1)
     }

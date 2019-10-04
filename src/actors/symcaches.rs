@@ -29,9 +29,6 @@ pub enum SymCacheErrorKind {
     #[fail(display = "failed to download object")]
     Fetching,
 
-    #[fail(display = "failed sending message to objects actor")]
-    Mailbox,
-
     #[fail(display = "failed to parse symcache")]
     Parsing,
 

@@ -44,17 +44,8 @@ pub enum ObjectErrorKind {
     #[fail(display = "unable to get directory for tempfiles")]
     NoTempDir,
 
-    #[fail(display = "failed dispatch internal message")]
-    Mailbox,
-
     #[fail(display = "failed to parse object")]
     Parsing,
-
-    #[fail(display = "bad status code")]
-    BadStatusCode,
-
-    #[fail(display = "failed to send request to source")]
-    SendRequest,
 
     #[fail(display = "failed to look into cache")]
     Caching,
