@@ -33,6 +33,7 @@ type ComputationMap<T, E> = Arc<RwLock<BTreeMap<CacheKey, ComputationChannel<T, 
 /// trait and associated types.
 ///
 /// Internally deduplicates concurrent cache lookups (in-memory).
+#[derive(Debug)]
 pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
 

@@ -1,5 +1,6 @@
 //! A library version of the symbolicator.
 #![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
 
 #[macro_use]
 mod macros;

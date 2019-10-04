@@ -79,7 +79,7 @@ impl From<io::Error> for ObjectError {
 }
 
 /// This requests metadata of a single file at a specific path/url.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
@@ -96,7 +96,7 @@ struct FetchFileMetaRequest {
 
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct FetchFileDataRequest(FetchFileMetaRequest);
 
 #[derive(Debug, Clone)]
@@ -411,7 +411,7 @@ impl AsRef<[u8]> for ObjectFileBytes {
 /// Handle to local metadata file of an object. Having an instance of this type does not mean there
 /// is a downloaded object file behind it. We cache metadata separately (ObjectFileMetaInner) because
 /// every symcache lookup requires reading this metadata.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectFileMeta {
     request: FetchFileMetaRequest,
     scope: Scope,
@@ -498,7 +498,7 @@ impl WriteSentryScope for ObjectFile {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,

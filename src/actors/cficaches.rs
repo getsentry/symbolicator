@@ -53,6 +53,7 @@ impl From<io::Error> for CfiCacheError {
     }
 }
 
+#[derive(Debug)]
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: Arc<ObjectsActor>,
@@ -69,7 +70,7 @@ impl CfiCacheActor {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CfiCacheFile {
     object_type: ObjectType,
     identifier: ObjectId,
@@ -90,7 +91,7 @@ impl CfiCacheFile {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: Arc<ObjectsActor>,
