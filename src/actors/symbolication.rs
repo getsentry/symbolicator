@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use failure::Fail;
-use futures::future::{self, join_all, Either, Future, IntoFuture, Shared, SharedError};
+use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
 use parking_lot::RwLock;
 use regex::Regex;
@@ -50,54 +50,60 @@ lazy_static::lazy_static! {
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
 
-/// Errors during symbolication
+/// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
-pub enum SymbolicationError {
+pub enum SymbolicationErrorKind {
     #[fail(display = "symbolication took too long")]
     Timeout,
 
-    #[fail(display = "internal IO failed: {}", _0)]
-    Io(#[cause] std::io::Error),
+    #[fail(display = "internal IO failed")]
+    Io,
 
-    /// Unclear when this can happen. Potentially when the system is shutting down.
     #[fail(display = "response channel unexpectedly canceled")]
     CanceledChannel,
 
     #[fail(display = "failed to process minidump")]
-    Minidump(#[cause] ProcessMinidumpError),
+    InvalidMinidump,
 
     #[fail(display = "failed to parse apple crash report")]
-    AppleCrashReport(#[cause] apple_crash_report_parser::ParseError),
+    InvalidAppleCrashReport,
 }
+
+symbolic::common::derive_failure!(
+    SymbolicationError,
+    SymbolicationErrorKind,
+    doc = "Errors during symbolication."
+);
 
 impl From<std::io::Error> for SymbolicationError {
     fn from(err: std::io::Error) -> Self {
-        SymbolicationError::Io(err)
+        err.context(SymbolicationErrorKind::Io).into()
     }
 }
 
 impl From<ProcessMinidumpError> for SymbolicationError {
     fn from(err: ProcessMinidumpError) -> Self {
-        SymbolicationError::Minidump(err)
+        err.context(SymbolicationErrorKind::InvalidMinidump).into()
     }
 }
 
 impl From<apple_crash_report_parser::ParseError> for SymbolicationError {
     fn from(err: apple_crash_report_parser::ParseError) -> Self {
-        SymbolicationError::AppleCrashReport(err)
+        err.context(SymbolicationErrorKind::InvalidAppleCrashReport)
+            .into()
     }
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match err {
-            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::CanceledChannel => SymbolicationResponse::InternalError,
-            SymbolicationError::Minidump(err) => SymbolicationResponse::Failed {
+        match err.kind() {
+            SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::CanceledChannel => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::InvalidMinidump => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
-            SymbolicationError::AppleCrashReport(err) => SymbolicationResponse::Failed {
+            SymbolicationErrorKind::InvalidAppleCrashReport => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
         }
@@ -145,7 +151,7 @@ impl SymbolicationActor {
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_: SharedError<oneshot::Canceled>| SymbolicationError::CanceledChannel);
+            .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
 
         let requests = &self.requests;
 
@@ -209,7 +215,7 @@ impl SymbolicationActor {
                     match result {
                         Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
                         Err(ref e) => {
-                            capture_fail(e.cause().unwrap_or(e));
+                            capture_fail(e);
                             e.into()
                         }
                     },
@@ -852,7 +858,10 @@ impl SymbolicationActor {
 
         future_metrics!(
             "symbolicate",
-            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(3600),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             result
         )
     }
@@ -1159,7 +1168,10 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             future,
         ))
     }
@@ -1343,7 +1355,10 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
+            Some((
+                Duration::from_secs(1200),
+                SymbolicationErrorKind::Timeout.into()
+            )),
             request_future,
         ))
     }
