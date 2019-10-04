@@ -29,6 +29,9 @@ mod middlewares;
 mod types;
 mod utils;
 
+#[cfg(test)]
+mod test;
+
 fn main() {
     self::app::main();
 }

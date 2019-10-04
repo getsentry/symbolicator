@@ -174,7 +174,7 @@ fn cleanup_caches(config: Config) -> Result<(), CliError> {
     Ok(())
 }
 
-fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
+pub(crate) fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
     let config = Arc::new(config);
 
     if let Some(ref statsd) = config.metrics.statsd {
@@ -236,44 +236,28 @@ fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) {
     (sys, state)
 }
 
-#[cfg(test)]
-pub(crate) fn get_test_system() -> (actix::SystemRunner, ServiceState) {
-    get_system(Default::default())
-}
+fn create_app(state: ServiceState) -> ServiceApp {
+    let mut app = App::with_state(state)
+        .middleware(Metrics)
+        .middleware(ErrorHandlers)
+        .middleware(sentry_actix::SentryMiddleware::new());
 
-#[cfg(test)]
-pub(crate) fn get_test_system_with_cache() -> (tempfile::TempDir, actix::SystemRunner, ServiceState)
-{
-    let tempdir = tempfile::TempDir::new().unwrap();
-    let (runner, state) = get_system(Config {
-        cache_dir: Some(tempdir.path().to_owned()),
-        ..Default::default()
-    });
+    app = endpoints::applecrashreport::register(app);
+    app = endpoints::healthcheck::register(app);
+    app = endpoints::minidump::register(app);
+    app = endpoints::requests::register(app);
+    app = endpoints::symbolicate::register(app);
+    app = endpoints::proxy::register(app);
 
-    (tempdir, runner, state)
+    app
 }
 
 /// Starts all actors and HTTP server based on loaded config.
 fn run_server(config: Config) -> Result<(), CliError> {
     let (sys, state) = get_system(config);
 
-    fn get_app(state: ServiceState) -> ServiceApp {
-        let mut app = App::with_state(state)
-            .middleware(Metrics)
-            .middleware(ErrorHandlers)
-            .middleware(sentry_actix::SentryMiddleware::new());
-
-        app = endpoints::applecrashreport::register(app);
-        app = endpoints::healthcheck::register(app);
-        app = endpoints::minidump::register(app);
-        app = endpoints::requests::register(app);
-        app = endpoints::symbolicate::register(app);
-        app = endpoints::proxy::register(app);
-        app
-    }
-
     metric!(counter("server.starting") += 1);
-    server::new(clone!(state, || get_app(state.clone())))
+    server::new(clone!(state, || create_app(state.clone())))
         .bind(&state.config.bind)?
         .start();
 
