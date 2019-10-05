@@ -85,7 +85,7 @@ enum Command {
 }
 
 /// The shared state for the service.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ServiceState {
     /// Thread pool instance reserved for CPU-intensive tasks.
     pub cpu_threadpool: Arc<ThreadPool>,

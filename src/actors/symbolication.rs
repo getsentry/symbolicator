@@ -110,7 +110,7 @@ type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationRespon
 
 type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     objects: Arc<ObjectsActor>,
     symcaches: Arc<SymCacheActor>,
@@ -866,6 +866,7 @@ impl SymbolicationActor {
 }
 
 /// Status poll request.
+#[derive(Clone, Debug)]
 pub struct GetSymbolicationStatus {
     /// The identifier of the symbolication task.
     pub request_id: RequestId,
