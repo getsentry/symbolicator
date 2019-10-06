@@ -1,6 +1,4 @@
 ---
-created: "2019-08-02T18:48:40.251040800Z"
-creator: insta@0.10.0
 source: src/actors/symbolication.rs
 expression: "{\n    let mut cache_entries: Vec<_> =\n        fs::read_dir(state.config.cache_dir.as_ref().unwrap().join(\"object_meta/global/\")).unwrap().map(|x|\n                                                                                                            x.unwrap().file_name().into_string().unwrap()).collect();\n    cache_entries.sort();\n    cache_entries\n}"
 ---
