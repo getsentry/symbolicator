@@ -6,7 +6,9 @@ before_install:
   - export PATH=~/.cargo/bin/:$PATH
 
 cache:
-  cargo: true
+  directories:
+    - $HOME/.cargo
+    - $TRAVIS_BUILD_DIR/target
 
 git:
   depth: 1
