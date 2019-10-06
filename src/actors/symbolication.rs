@@ -190,7 +190,7 @@ impl SymbolicationActor {
         R: Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> + 'static,
     {
         let request_id = loop {
-            let request_id = RequestId(uuid::Uuid::new_v4().to_string());
+            let request_id = RequestId::new(uuid::Uuid::new_v4());
             if !self.requests.read().contains_key(&request_id) {
                 break request_id;
             }
@@ -198,9 +198,7 @@ impl SymbolicationActor {
 
         let (tx, rx) = oneshot::channel();
 
-        self.requests
-            .write()
-            .insert(request_id.clone(), rx.shared());
+        self.requests.write().insert(request_id, rx.shared());
 
         actix::spawn(
             f().then(move |result| {
