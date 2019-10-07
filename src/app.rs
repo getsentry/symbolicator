@@ -17,10 +17,10 @@ use crate::actors::{
 use crate::cache::{Cache, CleanupError};
 use crate::config::{Config, ConfigError};
 use crate::endpoints;
-use crate::http::SafeResolver;
 use crate::logging;
 use crate::metrics;
 use crate::middlewares::{ErrorHandlers, Metrics};
+use crate::utils::http::SafeResolver;
 
 /// An enum representing a CLI error.
 #[derive(Fail, Debug, derive_more::From)]

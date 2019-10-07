@@ -13,8 +13,8 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
-use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
+use crate::utils::sentry::SentryFutureExt;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.

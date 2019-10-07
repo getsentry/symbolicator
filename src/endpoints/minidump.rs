@@ -14,9 +14,9 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicationActor};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
+use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 #[derive(Debug, Default)]
 struct MinidumpRequest {

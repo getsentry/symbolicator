@@ -20,12 +20,12 @@ use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
 use crate::utils::objects;
+use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 mod common;
 mod filesystem;
