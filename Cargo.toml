@@ -42,7 +42,6 @@ chrono = "0.4.9"
 zstd = "0.4.28"
 flate2 = "1.0.11"
 glob = "0.3.0"
-itertools = "0.8.0"
 tokio-retry = "0.2.0"
 # needed for gcs, see https://github.com/Keats/jsonwebtoken/pull/89
 jsonwebtoken = { git = "https://github.com/Keats/jsonwebtoken", rev = "b8627260b2902a1ab4fdda83083be3e0b0fb9b7f" }
