@@ -11,9 +11,9 @@ use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
-use crate::sentry::SentryFutureExt;
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
+use crate::utils::sentry::SentryFutureExt;
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum ProxyErrorKind {

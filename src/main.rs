@@ -14,16 +14,11 @@ mod macros;
 #[macro_use]
 mod metrics;
 
-#[macro_use]
-mod sentry;
-
 mod actors;
 mod app;
 mod cache;
 mod config;
 mod endpoints;
-mod hex;
-mod http;
 mod logging;
 mod middlewares;
 mod types;

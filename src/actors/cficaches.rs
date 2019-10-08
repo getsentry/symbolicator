@@ -17,8 +17,8 @@ use tokio_threadpool::ThreadPool;
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::sentry::{SentryFutureExt, WriteSentryScope};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
+use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 #[derive(Fail, Debug, Clone, Copy)]
 pub enum CfiCacheErrorKind {

@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
-use itertools::Itertools;
 use symbolic::common::{CodeId, DebugId, Uuid};
 
 use crate::types::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, ObjectId};
@@ -238,7 +237,10 @@ pub fn get_directory_path(
 }
 
 pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
-    let (leading_fn, signature, trailing_fn) = path.splitn(3, '/').collect_tuple()?;
+    let mut split = path.splitn(3, '/');
+    let leading_fn = split.next()?;
+    let signature = split.next()?;
+    let trailing_fn = split.next()?;
 
     let leading_fn_lower = leading_fn.to_lowercase();
     if !leading_fn_lower.eq_ignore_ascii_case(trailing_fn) {

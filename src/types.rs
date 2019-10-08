@@ -5,8 +5,8 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::hex::HexValue;
-use crate::sentry::WriteSentryScope;
+use crate::utils::hex::HexValue;
+use crate::utils::sentry::WriteSentryScope;
 
 use failure::{Backtrace, Fail};
 use serde::{de, Deserialize, Deserializer, Serialize};

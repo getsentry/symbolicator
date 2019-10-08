@@ -30,15 +30,15 @@ use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActo
 use crate::actors::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
-use crate::hex::HexValue;
 use crate::logging::LogError;
-use crate::sentry::SentryFutureExt;
 use crate::types::{
     ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
     FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
     Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
     SystemInfo,
 };
+use crate::utils::hex::HexValue;
+use crate::utils::sentry::SentryFutureExt;
 
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,

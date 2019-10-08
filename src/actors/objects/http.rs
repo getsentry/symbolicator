@@ -12,8 +12,8 @@ use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{
     DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, USER_AGENT,
 };
-use crate::http;
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
+use crate::utils::http;
 
 pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
