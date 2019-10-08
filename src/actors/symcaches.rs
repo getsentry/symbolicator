@@ -13,12 +13,12 @@ use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
-use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
+use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -37,6 +37,9 @@ pub enum SymCacheErrorKind {
 
     #[fail(display = "symcache building took too long")]
     Timeout,
+
+    #[fail(display = "computation was canceled internally")]
+    Canceled,
 }
 
 symbolic::common::derive_failure!(
@@ -55,11 +58,11 @@ impl From<io::Error> for SymCacheError {
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: Arc<ObjectsActor>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl SymCacheActor {
-    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -100,7 +103,7 @@ struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects_actor: Arc<ObjectsActor>,
     object_meta: Arc<ObjectFileMeta>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -117,31 +120,30 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .objects_actor
             .fetch(self.object_meta.clone())
             .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)));
-        let threadpool = &self.threadpool;
 
-        let result = object
-            .and_then(clone!(threadpool, |object| {
-                threadpool.spawn_handle(
-                    futures::lazy(move || {
-                        if object.status() != CacheStatus::Positive {
-                            return Ok(object.status());
-                        }
+        let threadpool = self.threadpool.clone();
+        let result = object.and_then(move |object| {
+            let future = futures::lazy(move || {
+                if object.status() != CacheStatus::Positive {
+                    return Ok(object.status());
+                }
 
-                        let status = if let Err(e) = write_symcache(&path, &*object) {
-                            log::warn!("Failed to write symcache: {}", e);
-                            capture_fail(e.cause().unwrap_or(&e));
+                let status = if let Err(e) = write_symcache(&path, &*object) {
+                    log::warn!("Failed to write symcache: {}", e);
+                    capture_fail(e.cause().unwrap_or(&e));
 
-                            CacheStatus::Malformed
-                        } else {
-                            CacheStatus::Positive
-                        };
+                    CacheStatus::Malformed
+                } else {
+                    CacheStatus::Positive
+                };
 
-                        Ok(status)
-                    })
-                    .sentry_hub_current(),
-                )
-            }))
-            .sentry_hub_current();
+                Ok(status)
+            });
+
+            threadpool
+                .spawn_handle(future.sentry_hub_current())
+                .map_err(|e| e.map_canceled(|| SymCacheErrorKind::Canceled))
+        });
 
         let num_sources = self.request.sources.len();
 

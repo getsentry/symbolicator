@@ -43,8 +43,7 @@ pub(crate) fn setup() {
         .try_init()
         .ok();
 
-    // TODO(ja): Implement thread pool test mode
-    // crate::utils::futures::enable_test_mode();
+    crate::utils::futures::enable_test_mode();
 }
 
 /// Creates a temporary directory.
