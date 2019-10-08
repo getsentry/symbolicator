@@ -61,7 +61,7 @@ fn symbolicate_frames(
         let body = body.into_inner();
         let sources = match body.sources {
             Some(sources) => Arc::new(sources),
-            None => state.config.sources.clone(),
+            None => state.config.default_sources(),
         };
 
         configure_scope(|scope| {

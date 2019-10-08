@@ -101,7 +101,7 @@ fn handle_apple_crash_report_request(
     let hub = Hub::from_request(&request);
 
     Hub::run(hub, || {
-        let default_sources = state.config.sources.clone();
+        let default_sources = state.config.default_sources();
 
         let params = params.into_inner();
         configure_scope(|scope| {
