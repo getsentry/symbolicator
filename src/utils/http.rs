@@ -3,22 +3,15 @@ use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
-use tokio::net::tcp::ConnectFuture;
-use tokio::net::TcpStream;
-use tokio::timer::Delay;
-
-use url::Url;
-
 use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
 use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture};
-
 use actix_web::client::{ClientRequest, ClientResponse, SendRequestError};
-use actix_web::{FutureResponse, HttpMessage};
-
-use futures::future::{Either, Future, IntoFuture};
-use futures::{Async, Poll};
-
+use actix_web::{http::header, HttpMessage};
+use futures::{future, future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
+use tokio::net::{tcp::ConnectFuture, TcpStream};
+use tokio::timer::Delay;
+use url::Url;
 
 lazy_static::lazy_static! {
     static ref RESERVED_IP_BLOCKS: Vec<Ipv4Network> = vec![
@@ -29,66 +22,50 @@ lazy_static::lazy_static! {
     ].into_iter().map(|x| x.parse().unwrap()).collect();
 }
 
-pub fn follow_redirects(
-    uri: Url,
-    make_request: Box<dyn Fn(Url) -> ClientRequest>,
+pub fn follow_redirects<F>(
+    initial_url: Url,
     max_redirects: usize,
-) -> FutureResponse<ClientResponse, SendRequestError> {
-    let base = Url::parse(&uri.to_string());
-    let req = make_request(uri);
+    make_request: F,
+) -> ResponseFuture<ClientResponse, SendRequestError>
+where
+    F: Fn(&str) -> ClientRequest + Send + 'static,
+{
+    let state = (initial_url, max_redirects, true);
+    Box::new(future::loop_fn(state, move |(url, redirects, trusted)| {
+        let mut request = make_request(url.as_str());
 
-    Box::new(req.send().and_then(move |response| {
-        if response.status().is_redirection() && max_redirects > 0 {
-            if let Some(location) = response
-                .headers()
-                .get("location")
-                .and_then(|x| x.to_str().ok())
-            {
-                let base = match base.as_ref() {
-                    Ok(base) => base,
-                    Err(err) => {
-                        return Either::B(
-                            Err(SendRequestError::Io(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                format!("bad request uri: {}", err),
-                            )))
-                            .into_future(),
-                        );
-                    }
-                };
-                let target_uri = match base.join(location) {
-                    Ok(uri) => uri,
-                    Err(err) => {
-                        return Either::B(
-                            Err(SendRequestError::Io(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("bad redirect: {}", err),
-                            )))
-                            .into_future(),
-                        );
-                    }
-                };
-
-                let same_host = target_uri.origin() == base.origin();
-
-                log::trace!("Following redirect: {:?}", &target_uri);
-
-                return Either::A(follow_redirects(
-                    target_uri,
-                    Box::new(move |uri| {
-                        let mut req = make_request(uri);
-                        if !same_host {
-                            req.headers_mut().remove("authorization");
-                            req.headers_mut().remove("cookie");
-                        }
-                        req
-                    }),
-                    max_redirects - 1,
-                ));
-            }
+        if !trusted {
+            let headers = request.headers_mut();
+            headers.remove(header::AUTHORIZATION);
+            headers.remove(header::COOKIE);
         }
 
-        Either::B(Ok(response).into_future())
+        request.send().and_then(move |response| {
+            if response.status().is_redirection() && redirects > 0 {
+                let location = response
+                    .headers()
+                    .get(header::LOCATION)
+                    .and_then(|l| l.to_str().ok());
+
+                if let Some(location) = location {
+                    let redirect_url = url.join(location).map_err(|e| {
+                        let message = format!("bad request uri: {}", e);
+                        SendRequestError::Io(io::Error::new(io::ErrorKind::InvalidData, message))
+                    })?;
+
+                    log::trace!("Following redirect: {:?}", &redirect_url);
+                    let is_same_origin = redirect_url.origin() == url.origin();
+
+                    return Ok(future::Loop::Continue((
+                        redirect_url,
+                        redirects - 1,
+                        trusted && is_same_origin,
+                    )));
+                }
+            }
+
+            Ok(future::Loop::Break(response))
+        })
     }))
 }
 
