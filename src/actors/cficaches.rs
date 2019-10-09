@@ -12,12 +12,12 @@ use futures::{
 use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
-use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
+use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 #[derive(Fail, Debug, Clone, Copy)]
@@ -36,6 +36,9 @@ pub enum CfiCacheErrorKind {
 
     #[fail(display = "cficache building took too long")]
     Timeout,
+
+    #[fail(display = "computation was canceled internally")]
+    Canceled,
 }
 
 symbolic::common::derive_failure!(
@@ -54,11 +57,11 @@ impl From<io::Error> for CfiCacheError {
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: Arc<ObjectsActor>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -93,7 +96,7 @@ struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: Arc<ObjectsActor>,
     object_meta: Arc<ObjectFileMeta>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -110,31 +113,30 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .objects_actor
             .fetch(self.object_meta.clone())
             .map_err(|e| CfiCacheError::from(e.context(CfiCacheErrorKind::Fetching)));
-        let threadpool = &self.threadpool;
 
-        let result = object
-            .and_then(clone!(threadpool, |object| {
-                threadpool.spawn_handle(
-                    futures::lazy(move || {
-                        if object.status() != CacheStatus::Positive {
-                            return Ok(object.status());
-                        }
+        let threadpool = self.threadpool.clone();
+        let result = object.and_then(move |object| {
+            let future = futures::lazy(move || {
+                if object.status() != CacheStatus::Positive {
+                    return Ok(object.status());
+                }
 
-                        let status = if let Err(e) = write_cficache(&path, &*object) {
-                            log::warn!("Could not write cficache: {}", e);
-                            capture_fail(e.cause().unwrap_or(&e));
+                let status = if let Err(e) = write_cficache(&path, &*object) {
+                    log::warn!("Could not write cficache: {}", e);
+                    capture_fail(e.cause().unwrap_or(&e));
 
-                            CacheStatus::Malformed
-                        } else {
-                            CacheStatus::Positive
-                        };
+                    CacheStatus::Malformed
+                } else {
+                    CacheStatus::Positive
+                };
 
-                        Ok(status)
-                    })
-                    .sentry_hub_current(),
-                )
-            }))
-            .sentry_hub_current();
+                Ok(status)
+            });
+
+            threadpool
+                .spawn_handle(future.sentry_hub_current())
+                .map_err(|e| e.map_canceled(|| CfiCacheErrorKind::Canceled))
+        });
 
         let num_sources = self.request.sources.len();
 

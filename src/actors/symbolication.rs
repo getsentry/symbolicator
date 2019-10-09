@@ -20,7 +20,6 @@ use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use tokio::prelude::FutureExt;
-use tokio_threadpool::ThreadPool;
 use uuid;
 
 use crate::actors::cficaches::{
@@ -37,6 +36,7 @@ use crate::types::{
     Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
     SystemInfo,
 };
+use crate::utils::futures::ThreadPool;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 
@@ -59,8 +59,8 @@ pub enum SymbolicationErrorKind {
     #[fail(display = "internal IO failed")]
     Io,
 
-    #[fail(display = "response channel unexpectedly canceled")]
-    CanceledChannel,
+    #[fail(display = "computation was canceled internally")]
+    Canceled,
 
     #[fail(display = "failed to process minidump")]
     InvalidMinidump,
@@ -99,7 +99,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
         match err.kind() {
             SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
             SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
-            SymbolicationErrorKind::CanceledChannel => SymbolicationResponse::InternalError,
+            SymbolicationErrorKind::Canceled => SymbolicationResponse::InternalError,
             SymbolicationErrorKind::InvalidMinidump => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
@@ -121,7 +121,7 @@ pub struct SymbolicationActor {
     objects: Arc<ObjectsActor>,
     symcaches: Arc<SymCacheActor>,
     cficaches: Arc<CfiCacheActor>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     requests: ComputationMap,
 }
 
@@ -130,7 +130,7 @@ impl SymbolicationActor {
         objects: Arc<ObjectsActor>,
         symcaches: Arc<SymCacheActor>,
         cficaches: Arc<CfiCacheActor>,
-        threadpool: Arc<ThreadPool>,
+        threadpool: ThreadPool,
     ) -> Self {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
 
@@ -151,7 +151,7 @@ impl SymbolicationActor {
     ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_| SymbolicationErrorKind::CanceledChannel.into());
+            .map_err(|_| SymbolicationErrorKind::Canceled.into());
 
         let requests = &self.requests;
 
@@ -762,58 +762,56 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let signal = request.signal;
-        let stacktraces = request.stacktraces.clone();
         let objects = self.objects.clone();
+        let threadpool = self.threadpool.clone();
 
         let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
         let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
+        let stacktraces = request.stacktraces.clone();
         let sources = request.sources.clone();
         let scope = request.scope.clone();
-
-        let threadpool = self.threadpool.clone();
+        let signal = request.signal;
 
         let result = symcache_lookup
             .fetch_symcaches(self.symcaches.clone(), request)
             .and_then(clone!(threadpool, |symcache_lookup| {
-                threadpool.spawn_handle(
-                    future::lazy(move || {
-                        let stacktraces: Vec<_> = stacktraces
-                            .into_iter()
-                            .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
-                            .collect();
+                let future = future::lazy(move || {
+                    let stacktraces: Vec<_> = stacktraces
+                        .into_iter()
+                        .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
+                        .collect();
 
-                        let modules: Vec<_> = symcache_lookup
-                            .inner
-                            .into_iter()
-                            .map(|(object_info, _)| {
-                                metric!(
-                                    counter("symbolication.debug_status") += 1,
-                                    "status" => object_info.debug_status.name()
-                                );
+                    let modules: Vec<_> = symcache_lookup
+                        .inner
+                        .into_iter()
+                        .map(|(object_info, _)| {
+                            metric!(
+                                counter("symbolication.debug_status") += 1,
+                                "status" => object_info.debug_status.name()
+                            );
 
-                                object_info
-                            })
-                            .collect();
-
-                        metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
-                        metric!(
-                            time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64
-                        );
-                        metric!(
-                            time_raw("symbolication.num_frames") =
-                                stacktraces.iter().map(|s| s.frames.len() as u64).sum()
-                        );
-
-                        Ok(CompletedSymbolicationResponse {
-                            signal,
-                            modules,
-                            stacktraces,
-                            ..Default::default()
+                            object_info
                         })
+                        .collect();
+
+                    metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+                    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+                    metric!(
+                        time_raw("symbolication.num_frames") =
+                            stacktraces.iter().map(|s| s.frames.len() as u64).sum()
+                    );
+
+                    Ok(CompletedSymbolicationResponse {
+                        signal,
+                        modules,
+                        stacktraces,
+                        ..Default::default()
                     })
-                    .sentry_hub_current(),
-                )
+                });
+
+                threadpool
+                    .spawn_handle(future.sentry_hub_current())
+                    .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
             }))
             .and_then(move |response| {
                 source_lookup
@@ -821,37 +819,37 @@ impl SymbolicationActor {
                     .map(move |source_lookup| (source_lookup, response))
             })
             .and_then(move |(source_lookup, mut response)| {
-                threadpool.spawn_handle(
-                    future::lazy(move || {
-                        let debug_sessions = source_lookup.prepare_debug_sessions();
+                let future = future::lazy(move || {
+                    let debug_sessions = source_lookup.prepare_debug_sessions();
 
-                        for trace in &mut response.stacktraces {
-                            for frame in &mut trace.frames {
-                                let (abs_path, lineno) =
-                                    match (&frame.raw.abs_path, frame.raw.lineno) {
-                                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
-                                        _ => continue,
-                                    };
+                    for trace in &mut response.stacktraces {
+                        for frame in &mut trace.frames {
+                            let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                                (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                                _ => continue,
+                            };
 
-                                let result = source_lookup.get_context_lines(
-                                    &debug_sessions,
-                                    frame.raw.instruction_addr.0,
-                                    abs_path,
-                                    lineno,
-                                    5,
-                                );
+                            let result = source_lookup.get_context_lines(
+                                &debug_sessions,
+                                frame.raw.instruction_addr.0,
+                                abs_path,
+                                lineno,
+                                5,
+                            );
 
-                                if let Some((pre_context, context_line, post_context)) = result {
-                                    frame.raw.pre_context = pre_context;
-                                    frame.raw.context_line = Some(context_line);
-                                    frame.raw.post_context = post_context;
-                                }
+                            if let Some((pre_context, context_line, post_context)) = result {
+                                frame.raw.pre_context = pre_context;
+                                frame.raw.context_line = Some(context_line);
+                                frame.raw.post_context = post_context;
                             }
                         }
-                        Ok(response)
-                    })
-                    .sentry_hub_current(),
-                )
+                    }
+                    Ok(response)
+                });
+
+                threadpool
+                    .spawn_handle(future.sentry_hub_current())
+                    .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
             });
 
         future_metrics!(
@@ -964,7 +962,10 @@ impl SymbolicationActor {
             Ok(cfi_modules)
         });
 
-        let future = self.threadpool.spawn_handle(lazy.sentry_hub_current());
+        let future = self
+            .threadpool
+            .spawn_handle(lazy.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled));
 
         Box::new(future)
     }
@@ -1140,10 +1141,12 @@ impl SymbolicationActor {
             Ok((request, minidump_state))
         });
 
-        Box::new(
-            self.threadpool
-                .spawn_handle(stackwalk_future.sentry_hub_current()),
-        )
+        let future = self
+            .threadpool
+            .spawn_handle(stackwalk_future.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled));
+
+        Box::new(future)
     }
 
     fn do_stackwalk_minidump(
@@ -1350,7 +1353,8 @@ impl SymbolicationActor {
 
         let request_future = self
             .threadpool
-            .spawn_handle(parse_future.sentry_hub_current());
+            .spawn_handle(parse_future.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled));
 
         Box::new(future_metrics!(
             "minidump_stackwalk",

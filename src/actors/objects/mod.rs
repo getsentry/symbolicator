@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
-use tokio_threadpool::ThreadPool;
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -24,6 +23,7 @@ use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
     S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
+use crate::utils::futures::ThreadPool;
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -55,6 +55,9 @@ pub enum ObjectErrorKind {
 
     #[fail(display = "failed to fetch data from Sentry")]
     Sentry,
+
+    #[fail(display = "download was canceled internally")]
+    Canceled,
 }
 
 symbolic::common::derive_failure!(
@@ -81,7 +84,7 @@ struct FetchFileMetaRequest {
     // XXX: This kind of state is not request data. We should find a different way to get this into
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
 }
 
@@ -255,12 +258,18 @@ impl CacheItemRequest for FetchFileDataRequest {
                             NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io)
                         );
 
+                        let file = tryf!(named_download_file.reopen().context(ObjectErrorKind::Io));
+
                         let future = stream
                             .fold(
-                                tryf!(named_download_file.reopen().context(ObjectErrorKind::Io)),
-                                clone!(threadpool, |mut file, chunk| threadpool.spawn_handle(
-                                    future::lazy(move || file.write_all(&chunk).map(|_| file))
-                                )),
+                                file,
+                                clone!(threadpool, |mut file, chunk| {
+                                    threadpool
+                                        .spawn_handle(future::lazy(move || {
+                                            file.write_all(&chunk).map(|_| file)
+                                        }))
+                                        .map_err(|e| e.map_canceled(|| io::ErrorKind::Other))
+                                }),
                             )
                             .map(move |_| DownloadedFile::Temp(named_download_file));
 
@@ -270,9 +279,9 @@ impl CacheItemRequest for FetchFileDataRequest {
                         log::trace!("Importing downloaded file for {}", cache_key);
 
                         let future = fs::File::open(&path)
-                            .context(ObjectErrorKind::Io)
                             .map(|file| DownloadedFile::Local(path.clone(), file))
-                            .map_err(From::from)
+                            .context(ObjectErrorKind::Io)
+                            .map_err(ObjectError::from)
                             .into_future();
 
                         future::Either::B(future)
@@ -281,7 +290,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                 let future = download_file.and_then(clone!(threadpool, |download_file| {
                     log::trace!("Finished download of {}", cache_key);
-                    threadpool.spawn_handle(future::lazy(move || {
+                    let future = future::lazy(move || {
                         let decompress_result = decompress_object_file(
                             &cache_key,
                             download_file.path(),
@@ -343,7 +352,11 @@ impl CacheItemRequest for FetchFileDataRequest {
                         }
 
                         Ok(CacheStatus::Positive)
-                    }))
+                    });
+
+                    threadpool
+                        .spawn_handle(future.sentry_hub_current())
+                        .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled))
                 }));
 
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
@@ -493,11 +506,11 @@ impl WriteSentryScope for ObjectFile {
 pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
 }
 
 impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: Arc<ThreadPool>) -> Self {
+    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: ThreadPool) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache)),
             data_cache: Arc::new(Cacher::new(data_cache)),

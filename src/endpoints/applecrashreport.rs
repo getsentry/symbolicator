@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::sync::Arc;
 
 use actix::ResponseFuture;
 use actix_web::{
@@ -9,12 +8,12 @@ use actix_web::{
 use futures::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
-use tokio_threadpool::ThreadPool;
 
 use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicationActor};
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
+use crate::utils::futures::ThreadPool;
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -25,7 +24,7 @@ struct AppleCrashReportRequest {
 }
 
 fn handle_multipart_item(
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     mut request: AppleCrashReportRequest,
     item: multipart::MultipartItem<Payload>,
 ) -> ResponseFuture<AppleCrashReportRequest, Error> {
@@ -63,7 +62,7 @@ fn handle_multipart_item(
 }
 
 fn handle_multipart_stream(
-    threadpool: Arc<ThreadPool>,
+    threadpool: ThreadPool,
     request: AppleCrashReportRequest,
     stream: multipart::Multipart<Payload>,
 ) -> ResponseFuture<AppleCrashReportRequest, Error> {
@@ -111,7 +110,7 @@ fn handle_apple_crash_report_request(
 
         let io_pool = state.io_threadpool.clone();
         let request_future = handle_multipart_stream(
-            io_pool.clone(),
+            io_pool,
             AppleCrashReportRequest::default(),
             request.multipart(),
         );

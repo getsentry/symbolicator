@@ -8,7 +8,6 @@ use actix_web::{client, server, App};
 use failure::Fail;
 use futures::future;
 use structopt::StructOpt;
-use tokio_threadpool::ThreadPool;
 
 use crate::actors::{
     cficaches::CfiCacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
@@ -20,6 +19,7 @@ use crate::endpoints;
 use crate::logging;
 use crate::metrics;
 use crate::middlewares::{ErrorHandlers, Metrics};
+use crate::utils::futures::ThreadPool;
 use crate::utils::http::SafeResolver;
 
 /// An enum representing a CLI error.
@@ -88,9 +88,9 @@ enum Command {
 #[derive(Clone, Debug)]
 pub struct ServiceState {
     /// Thread pool instance reserved for CPU-intensive tasks.
-    pub cpu_threadpool: Arc<ThreadPool>,
+    pub cpu_threadpool: ThreadPool,
     /// Thread pool instance reserved for IO-intensive tasks.
-    pub io_threadpool: Arc<ThreadPool>,
+    pub io_threadpool: ThreadPool,
     /// Actor for minidump and stacktrace processing
     pub symbolication: Arc<SymbolicationActor>,
     /// Actor for downloading and caching objects (no symcaches or cficaches)
@@ -197,8 +197,8 @@ pub(crate) fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) 
         .unwrap();
     }
 
-    let cpu_threadpool = Arc::new(ThreadPool::new());
-    let io_threadpool = Arc::new(ThreadPool::new());
+    let cpu_threadpool = ThreadPool::new();
+    let io_threadpool = ThreadPool::new();
 
     let objects = Arc::new(ObjectsActor::new(
         caches.object_meta,
