@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::http::header::HeaderName;
+use actix_web::http::header;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
 use futures::{Future, IntoFuture, Stream};
@@ -14,6 +14,9 @@ use crate::actors::objects::{
 };
 use crate::types::{FileType, HttpSourceConfig, ObjectId};
 use crate::utils::http;
+
+/// The maximum number of redirects permitted by a remote symbol server.
+const MAX_HTTP_REDIRECTS: usize = 10;
 
 pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
@@ -46,14 +49,18 @@ pub(super) fn download_from_source(
     let response = clone!(download_url, source, || {
         http::follow_redirects(
             download_url.clone(),
-            Box::new(clone!(source, |url| {
-                let mut builder = client::get(&url);
+            MAX_HTTP_REDIRECTS,
+            clone!(source, |url| {
+                let mut builder = client::get(url);
+
                 for (key, value) in source.headers.iter() {
-                    if let Ok(key) = HeaderName::from_bytes(key.as_bytes()) {
+                    if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
                         builder.header(key, value.as_str());
                     }
                 }
-                builder.header("user-agent", USER_AGENT);
+
+                builder.header(header::USER_AGENT, USER_AGENT);
+
                 // This timeout is for the entire HTTP download *including* the response stream
                 // itself, in contrast to what the Actix-Web docs say. We have tested this
                 // manually.
@@ -61,8 +68,7 @@ pub(super) fn download_from_source(
                 // The intent is to disable the timeout entirely, but there is no API for that.
                 builder.timeout(Duration::from_secs(9999));
                 builder.finish().unwrap()
-            })),
-            10,
+            }),
         )
     });
 
