@@ -17,6 +17,7 @@ branches:
   only:
     - master
     - /^release\/[\d.]+$/
+    - /^deploy\/.*$/
 
 matrix:
   include:
