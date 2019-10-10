@@ -146,19 +146,19 @@ impl Caches {
     fn new(config: &Config) -> Self {
         Caches {
             objects: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./objects/"));
+                let path = config.cache_dir("objects");
                 Cache::new("objects", path, config.caches.downloaded)
             },
             object_meta: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./object_meta/"));
+                let path = config.cache_dir("object_meta");
                 Cache::new("object_meta", path, config.caches.derived)
             },
             symcaches: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./symcaches/"));
+                let path = config.cache_dir("symcaches");
                 Cache::new("symcaches", path, config.caches.derived)
             },
             cficaches: {
-                let path = config.cache_dir.as_ref().map(|x| x.join("./cficaches/"));
+                let path = config.cache_dir("cficaches");
                 Cache::new("cficaches", path, config.caches.derived)
             },
         }

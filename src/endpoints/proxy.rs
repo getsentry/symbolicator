@@ -56,7 +56,7 @@ fn proxy_symstore_request(
             .find(FindObject {
                 filetypes,
                 identifier: object_id,
-                sources: state.config.sources.clone(),
+                sources: state.config.default_sources(),
                 scope: Scope::Global,
                 purpose: ObjectPurpose::Debug,
             })
