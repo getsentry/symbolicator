@@ -16,10 +16,13 @@
 //!    test::symbol_server();`. Alternatively, use `test::local_source()` to test without HTTP
 //!    connections.
 
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
+use futures::{future, IntoFuture};
 use log::LevelFilter;
 
 use crate::types::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
@@ -28,6 +31,28 @@ pub use actix_web::test::*;
 pub use tempfile::TempDir;
 
 const SYMBOLS_PATH: &str = "tests/fixtures/symbols";
+
+thread_local! {
+    static SYSTEM: RefCell<Inner> = RefCell::new(Inner::new());
+}
+
+struct Inner(Option<SystemRunner>);
+
+impl Inner {
+    fn new() -> Self {
+        Self(Some(System::new("symbolicator_test")))
+    }
+
+    fn get_mut(&mut self) -> &mut SystemRunner {
+        self.0.as_mut().unwrap()
+    }
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        std::mem::forget(self.0.take().unwrap())
+    }
+}
 
 /// Setup the test environment.
 ///
@@ -43,6 +68,9 @@ pub(crate) fn setup() {
         .try_init()
         .ok();
 
+    // Force initialization of the actix system
+    SYSTEM.with(|_sys| ());
+
     crate::utils::futures::enable_test_mode();
 }
 
@@ -52,6 +80,24 @@ pub(crate) fn setup() {
 /// Use it as a guard to automatically clean up after tests.
 pub(crate) fn tempdir() -> TempDir {
     TempDir::new().unwrap()
+}
+
+/// Runs the provided function, blocking the current thread until the result
+/// future completes.
+///
+/// This function can be used to synchronously block the current thread
+/// until the provided `future` has resolved either successfully or with an
+/// error. The result of the future is then returned from this function
+/// call.
+///
+/// Note that this function is intended to be used only for testing purpose.
+/// This function panics on nested call.
+pub fn block_fn<F, R>(f: F) -> Result<R::Item, R::Error>
+where
+    F: FnOnce() -> R,
+    R: IntoFuture,
+{
+    SYSTEM.with(|sys| sys.borrow_mut().get_mut().block_on(future::lazy(f)))
 }
 
 /// Get bucket configuration for the local fixtures.
