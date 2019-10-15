@@ -143,7 +143,7 @@ fn handle_minidump_request(
     })
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/minidump", |r| {
         r.method(Method::POST).with(handle_minidump_request);
     })

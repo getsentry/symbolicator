@@ -146,7 +146,7 @@ fn handle_apple_crash_report_request(
     })
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/applecrashreport", |r| {
         r.method(Method::POST)
             .with(handle_apple_crash_report_request);

@@ -6,7 +6,7 @@ fn healthcheck(_req: HttpRequest<ServiceState>) -> &'static str {
     "ok"
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/healthcheck", |r| {
         r.method(Method::GET).with(healthcheck);
     })

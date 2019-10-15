@@ -1,6 +1,18 @@
-pub mod applecrashreport;
-pub mod healthcheck;
-pub mod minidump;
-pub mod proxy;
-pub mod requests;
-pub mod symbolicate;
+use crate::app::ServiceApp;
+
+mod applecrashreport;
+mod healthcheck;
+mod minidump;
+mod proxy;
+mod requests;
+mod symbolicate;
+
+/// Adds all endpoint routes to the app.
+pub fn configure(app: ServiceApp) -> ServiceApp {
+    app.configure(applecrashreport::configure)
+        .configure(healthcheck::configure)
+        .configure(minidump::configure)
+        .configure(proxy::configure)
+        .configure(requests::configure)
+        .configure(symbolicate::configure)
+}

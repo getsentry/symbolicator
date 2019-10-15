@@ -92,7 +92,7 @@ fn symbolicate_frames(
     })
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/symbolicate", |r| {
         r.method(Method::POST).with_config(
             symbolicate_frames,
