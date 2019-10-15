@@ -1,8 +1,7 @@
 //! Exposes the command line application.
 use std::sync::Arc;
 
-use actix::{Actor, System};
-use actix_web::{client::ClientConnector, App};
+use actix_web::App;
 
 use crate::actors::{
     cficaches::CfiCacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
@@ -11,7 +10,7 @@ use crate::actors::{
 use crate::cache::Caches;
 use crate::config::Config;
 use crate::utils::futures::ThreadPool;
-use crate::utils::http::SafeResolver;
+use crate::utils::http;
 
 /// The shared state for the service.
 #[derive(Clone, Debug)]
@@ -33,11 +32,7 @@ impl ServiceState {
         let config = Arc::new(config);
 
         if !config.connect_to_reserved_ips {
-            let connector = ClientConnector::default()
-                .resolver(SafeResolver::default().start().recipient())
-                .start();
-
-            System::with_current(|sys| sys.registry().set(connector));
+            http::start_safe_connector();
         }
 
         let caches = Caches::new(&config);

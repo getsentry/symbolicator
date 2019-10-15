@@ -36,21 +36,35 @@ thread_local! {
     static SYSTEM: RefCell<Inner> = RefCell::new(Inner::new());
 }
 
-struct Inner(Option<SystemRunner>);
+struct Inner {
+    system: Option<System>,
+    runner: Option<SystemRunner>,
+}
 
 impl Inner {
     fn new() -> Self {
-        Self(Some(System::new("symbolicator_test")))
+        let runner = System::new("symbolicator_test");
+        let system = System::current();
+
+        Self {
+            system: Some(system),
+            runner: Some(runner),
+        }
     }
 
-    fn get_mut(&mut self) -> &mut SystemRunner {
-        self.0.as_mut().unwrap()
+    fn set_current(&self) {
+        System::set_current(self.system.clone().unwrap());
+    }
+
+    fn runner(&mut self) -> &mut SystemRunner {
+        self.runner.as_mut().unwrap()
     }
 }
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        std::mem::forget(self.0.take().unwrap())
+        self.system.take();
+        std::mem::forget(self.runner.take().unwrap())
     }
 }
 
@@ -97,7 +111,11 @@ where
     F: FnOnce() -> R,
     R: IntoFuture,
 {
-    SYSTEM.with(|sys| sys.borrow_mut().get_mut().block_on(future::lazy(f)))
+    SYSTEM.with(|cell| {
+        let mut inner = cell.borrow_mut();
+        inner.set_current();
+        inner.runner().block_on(future::lazy(f))
+    })
 }
 
 /// Get bucket configuration for the local fixtures.
