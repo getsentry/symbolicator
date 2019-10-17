@@ -306,6 +306,9 @@ pub enum DirectoryLayoutType {
     /// Uses Microsoft SSQP server conventions.
     #[serde(rename = "ssqp")]
     SSQP,
+    /// debuginfod conventions.
+    #[serde(rename = "debuginfod")]
+    Debuginfod,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug)]

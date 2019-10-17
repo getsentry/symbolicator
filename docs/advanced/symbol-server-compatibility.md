@@ -11,6 +11,7 @@ structures:
 - Breakpad Symbol Repositories
 - LLDB File Mapped UUID Directories
 - GDB Build ID Directories
+- debuginfod
 
 ## Prerequisites
 
@@ -204,6 +205,19 @@ The build-id hex representation is always provided in **lowercase**.
 
 - **ELF** (binary, potentially stripped)
 - **ELF** (debug info)
+
+### debuginfod
+
+Symbolicator also supports talking to
+[debuginfod]()https://sourceware.org/git/?p=elfutils.git;a=shortlog;h=refs/heads/debuginfod
+compatible servers for ELF and Macho.
+
+**Schema**:
+
+- **ELF** (binary, potentially stripped): `<code_note_byte_sequence>/executable`
+- **ELF** (debug info): `<code_note_byte_sequence>/debuginfo`
+- **MachO** (binary): `<uuid_bytes>/executable`
+- **MachO** (dSYM): `<uuid_bytes>/debuginfo`
 
 ## Other Servers
 

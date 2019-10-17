@@ -222,6 +222,28 @@ fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option
     Some(rv)
 }
 
+fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    match filetype {
+        FileType::ElfCode | FileType::MachCode => {
+            let code_id = identifier.code_id.as_ref()?.as_str();
+            Some(format!("{}/executable", code_id))
+        }
+        FileType::ElfDebug | FileType::MachDebug => {
+            let code_id = identifier.code_id.as_ref()?.as_str();
+            Some(format!("{}/debuginfo", code_id))
+        }
+
+        // PDB and PE are not supported
+        FileType::Pdb | FileType::Pe => None,
+
+        // Breakpad is not supported
+        FileType::Breakpad => None,
+
+        // not available
+        FileType::SourceBundle => None,
+    }
+}
+
 /// Determines the path for an object file in the given layout.
 pub fn get_directory_path(
     directory_layout: DirectoryLayout,
@@ -233,6 +255,7 @@ pub fn get_directory_path(
         DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier, false)?,
         DirectoryLayoutType::SymstoreIndex2 => get_symstore_index2_path(filetype, identifier)?,
         DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)?,
+        DirectoryLayoutType::Debuginfod => get_debuginfod_path(filetype, identifier)?,
     };
 
     match directory_layout.casing {
