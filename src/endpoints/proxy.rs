@@ -109,7 +109,7 @@ fn proxy_symstore_request(
     })
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/symbols/{path:.+}", |r| {
         r.route()
             .filter(pred::Any(pred::Get()).or(pred::Head()))

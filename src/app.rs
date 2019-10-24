@@ -236,20 +236,13 @@ pub(crate) fn get_system(config: Config) -> (actix::SystemRunner, ServiceState) 
     (sys, state)
 }
 
+#[inline]
 fn create_app(state: ServiceState) -> ServiceApp {
-    let mut app = App::with_state(state)
+    App::with_state(state)
         .middleware(Metrics)
         .middleware(ErrorHandlers)
-        .middleware(sentry_actix::SentryMiddleware::new());
-
-    app = endpoints::applecrashreport::register(app);
-    app = endpoints::healthcheck::register(app);
-    app = endpoints::minidump::register(app);
-    app = endpoints::requests::register(app);
-    app = endpoints::symbolicate::register(app);
-    app = endpoints::proxy::register(app);
-
-    app
+        .middleware(sentry_actix::SentryMiddleware::new())
+        .configure(endpoints::configure)
 }
 
 /// Starts all actors and HTTP server based on loaded config.

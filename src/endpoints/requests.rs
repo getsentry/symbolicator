@@ -46,7 +46,7 @@ fn poll_request(
     Box::new(future)
 }
 
-pub fn register(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/requests/{request_id}", |r| {
         r.method(Method::GET).with(poll_request);
     })
