@@ -5,11 +5,6 @@ before_install:
   - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN:-stable}
   - export PATH=~/.cargo/bin/:$PATH
 
-cache:
-  directories:
-    - $HOME/.cargo
-    - $TRAVIS_BUILD_DIR/target
-
 git:
   depth: 1
 
