@@ -86,8 +86,6 @@ impl Handler<Connect> for SafeResolver {
     type Result = ResponseFuture<TcpStream, ResolverError>;
 
     fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
-        println!("RECEIVING CONNECT: {:?}", msg);
-
         let Connect {
             name,
             port,
