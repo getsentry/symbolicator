@@ -17,10 +17,12 @@ mod metrics;
 mod actors;
 mod app;
 mod cache;
+mod cli;
 mod config;
 mod endpoints;
 mod logging;
 mod middlewares;
+mod server;
 mod types;
 mod utils;
 
@@ -28,5 +30,11 @@ mod utils;
 mod test;
 
 fn main() {
-    self::app::main();
+    match cli::execute() {
+        Ok(()) => std::process::exit(0),
+        Err(error) => {
+            logging::ensure_log_error(&error);
+            std::process::exit(1);
+        }
+    }
 }

@@ -12,7 +12,7 @@ use sentry::integrations::failure::capture_fail;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::config::CacheConfig;
+use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
 use crate::types::Scope;
 
@@ -307,6 +307,51 @@ where
             _ => Err(e),
         },
     }
+}
+
+pub struct Caches {
+    pub objects: Cache,
+    pub object_meta: Cache,
+    pub symcaches: Cache,
+    pub cficaches: Cache,
+}
+
+impl Caches {
+    pub fn new(config: &Config) -> Self {
+        Self {
+            objects: {
+                let path = config.cache_dir("objects");
+                Cache::new("objects", path, config.caches.downloaded)
+            },
+            object_meta: {
+                let path = config.cache_dir("object_meta");
+                Cache::new("object_meta", path, config.caches.derived)
+            },
+            symcaches: {
+                let path = config.cache_dir("symcaches");
+                Cache::new("symcaches", path, config.caches.derived)
+            },
+            cficaches: {
+                let path = config.cache_dir("cficaches");
+                Cache::new("cficaches", path, config.caches.derived)
+            },
+        }
+    }
+
+    pub fn cleanup(&self) -> Result<(), CleanupError> {
+        self.objects.cleanup()?;
+        self.object_meta.cleanup()?;
+        self.symcaches.cleanup()?;
+        self.cficaches.cleanup()?;
+        Ok(())
+    }
+}
+
+/// Entry function for the cleanup command.
+///
+/// This will clean up all caches based on configured cache retention.
+pub fn cleanup(config: Config) -> Result<(), CleanupError> {
+    Caches::new(&config).cleanup()
 }
 
 #[cfg(test)]

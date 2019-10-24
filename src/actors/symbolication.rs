@@ -1459,7 +1459,6 @@ mod tests {
 
     use std::fs;
 
-    use actix::SystemRunner;
     use failure::Error;
 
     use crate::app::ServiceState;
@@ -1474,7 +1473,7 @@ mod tests {
     ///
     /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
     /// symbol server to test object file downloads.
-    fn setup_service() -> (SystemRunner, ServiceState, test::TempDir) {
+    fn setup_service() -> (ServiceState, test::TempDir) {
         test::setup();
 
         let cache_dir = test::tempdir();
@@ -1482,9 +1481,9 @@ mod tests {
         let mut config = Config::default();
         config.cache_dir = Some(cache_dir.path().to_owned());
         config.connect_to_reserved_ips = true;
-        let (system, service) = crate::app::get_system(config);
+        let service = ServiceState::create(config);
 
-        (system, service, cache_dir)
+        (service, cache_dir)
     }
 
     fn get_symbolication_request(sources: Vec<SourceConfig>) -> SymbolicateStacktraces {
@@ -1512,23 +1511,19 @@ mod tests {
     }
 
     fn get_symbolication_response(
-        sys: &mut actix::SystemRunner,
-        state: &ServiceState,
+        service: &ServiceState,
         request_id: RequestId,
     ) -> Result<SymbolicationResponse, Error> {
-        let response_future =
-            state
+        let response_opt = test::block_fn(|| {
+            service
                 .symbolication
                 .get_symbolication_status(GetSymbolicationStatus {
                     request_id,
                     timeout: None,
-                });
+                })
+        })?;
 
-        let response = sys
-            .block_on(response_future)?
-            .ok_or_else(|| failure::err_msg(""))?;
-
-        Ok(response)
+        response_opt.ok_or_else(|| failure::err_msg("missing response"))
     }
 
     #[test]
@@ -1536,17 +1531,17 @@ mod tests {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
-        let (mut system, service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![source]);
         let request_id = service.symbolication.symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&mut system, &service, request_id)?;
+        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         let request = get_symbolication_request(vec![]);
         let request_id = service.symbolication.symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&mut system, &service, request_id)?;
+        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         Ok(())
@@ -1557,24 +1552,24 @@ mod tests {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
-        let (mut system, service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![]);
         let request_id = service.symbolication.symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&mut system, &service, request_id)?;
+        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         let request = get_symbolication_request(vec![source]);
         let request_id = service.symbolication.symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&mut system, &service, request_id)?;
+        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         Ok(())
     }
 
     fn stackwalk_minidump(path: &str) -> Result<(), Error> {
-        let (mut system, service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let request_id = service.symbolication.process_minidump(
@@ -1583,7 +1578,7 @@ mod tests {
             vec![source],
         )?;
 
-        let response = get_symbolication_response(&mut system, &service, request_id)?;
+        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         let global_dir = service
@@ -1619,7 +1614,7 @@ mod tests {
 
     #[test]
     fn test_apple_crash_report() -> Result<(), Error> {
-        let (mut system, service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
@@ -1629,7 +1624,7 @@ mod tests {
             vec![source],
         )?;
 
-        let response = get_symbolication_response(&mut system, &service, request_id)?;
+        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         Ok(())

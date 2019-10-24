@@ -4,8 +4,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
-use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture};
-use actix_web::client::{ClientRequest, ClientResponse, SendRequestError};
+use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture, System};
+use actix_web::client::{ClientConnector, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{http::header, HttpMessage};
 use futures::{future, future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
@@ -184,5 +184,37 @@ impl Future for TcpConnector {
             let addr = self.addrs.pop_front().unwrap();
             self.stream = Some(TcpStream::connect(&addr));
         }
+    }
+}
+
+pub fn start_safe_connector() {
+    let connector = ClientConnector::default()
+        .resolver(SafeResolver::default().start().recipient())
+        .start();
+
+    System::with_current(|sys| sys.registry().set(connector));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use actix_web::Error;
+
+    use crate::test;
+
+    #[test]
+    fn test_local_connection() -> Result<(), Error> {
+        test::setup();
+        start_safe_connector();
+
+        let server = test::TestServer::new(|app| {
+            app.resource("/", |resource| resource.f(|_| "OK"));
+        });
+
+        let response = test::block_fn(|| server.get().finish().unwrap().send());
+        assert!(response.is_err());
+
+        Ok(())
     }
 }
