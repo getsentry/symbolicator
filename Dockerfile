@@ -4,7 +4,7 @@ FROM rust:slim-stretch AS symbolicator-build
 WORKDIR /work
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git \
+    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git zip \
     && rm -rf /var/lib/apt/lists/*
 
 # Build only dependencies to speed up subsequent builds
@@ -19,11 +19,15 @@ COPY .git ./.git/
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 RUN RUSTFLAGS=-g cargo build --release --locked
-RUN cp ./target/release/symbolicator /usr/local/bin
+RUN cp ./target/release/symbolicator /usr/local/bin \
+    && objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
+    && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
+    && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
+    && zip /opt/symbolicator-debug.zip target/release/symbolicator.debug
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
 RUN sentry-cli --version \
-    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator)" \
+    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator.debug)" \
     && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
 
 #############################################
@@ -50,7 +54,7 @@ RUN mkdir /etc/symbolicator && \
 EXPOSE 3021
 
 COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
-COPY --from=symbolicator-build /opt/symbolicator.src.zip /opt/symbolicator.src.zip
+COPY --from=symbolicator-build /opt/symbolicator-debug.zip /opt/symbolicator.src.zip /opt/
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]

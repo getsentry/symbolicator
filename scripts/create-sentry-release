@@ -23,10 +23,11 @@ sentry-cli --version
 echo 'Pulling debug information from symbolicator image...'
 docker pull "${DOCKER_IMAGE}"
 
+docker run --rm --entrypoint cat "${DOCKER_IMAGE}" /opt/symbolicator-debug.zip > symbolicator-debug.zip
 docker run --rm --entrypoint cat "${DOCKER_IMAGE}" /opt/symbolicator.src.zip > symbolicator.src.zip
 
 echo 'Uploading debug information and source bundle...'
-sentry-cli upload-dif ./symbolicator.src.zip
+sentry-cli upload-dif ./symbolicator-debug.zip ./symbolicator.src.zip
 
 echo 'Creating a new deploy in Sentry...'
 sentry-cli releases new "${VERSION}"
