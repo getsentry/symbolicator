@@ -11,10 +11,7 @@ RUN apt-get update \
 COPY Cargo.toml Cargo.lock build.rs ./
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
-    && RUSTFLAGS=-g cargo build --release --locked \
-    && objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
-    && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
-    && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug
+    && RUSTFLAGS=-g cargo build --release --locked
 
 COPY src ./src/
 COPY .git ./.git/
@@ -23,6 +20,9 @@ COPY .git ./.git/
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 RUN RUSTFLAGS=-g cargo build --release --locked
 RUN cp ./target/release/symbolicator /usr/local/bin \
+    && objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
+    && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
+    && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
     && zip /opt/symbolicator-debug.zip target/release/symbolicator.debug
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
