@@ -27,7 +27,7 @@ RUN cp ./target/release/symbolicator /usr/local/bin \
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
 RUN sentry-cli --version \
-    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator)" \
+    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator.debug)" \
     && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
 
 #############################################
