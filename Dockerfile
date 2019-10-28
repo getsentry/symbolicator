@@ -4,7 +4,7 @@ FROM rust:slim-stretch AS symbolicator-build
 WORKDIR /work
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git \
+    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git zip \
     && rm -rf /var/lib/apt/lists/*
 
 # Build only dependencies to speed up subsequent builds
