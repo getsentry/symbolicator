@@ -12,9 +12,9 @@ COPY Cargo.toml Cargo.lock build.rs ./
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
     && RUSTFLAGS=-g cargo build --release --locked \
-    && objcopy --only-keep-debug target/release/symbolicator{,.debug} \
+    && objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
-    && objcopy --add-gnu-debuglink target/release/symbolicator{,.debug}
+    && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug
 
 COPY src ./src/
 COPY .git ./.git/
