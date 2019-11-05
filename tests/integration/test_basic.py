@@ -119,7 +119,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
                 "microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb": 846_848,
             }
 
-            symcache, = (
+            (symcache,) = (
                 cache_dir_param.join("symcaches").join(stored_in_scope).listdir()
             )
             assert (
