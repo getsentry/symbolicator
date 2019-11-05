@@ -2,7 +2,7 @@
 set -eu
 
 # Enable core dumps. Requires privileged mode.
-if [[ "$SYMBOLICATOR_DEBUG" == "1" ]]; then
+if [[ "${SYMBOLICATOR_DEBUG:-}" == "1" ]]; then
   mkdir -p /data/tmp
   echo '/data/tmp/core.%h.%e.%t' > /proc/sys/kernel/core_pattern
   ulimit -c unlimited
