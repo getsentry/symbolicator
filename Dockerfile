@@ -19,10 +19,10 @@ COPY .git ./.git/
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 RUN RUSTFLAGS=-g cargo build --release --locked
-RUN cp ./target/release/symbolicator /usr/local/bin \
-    && objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
+RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
     && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
+    && cp ./target/release/symbolicator /usr/local/bin \
     && zip /opt/symbolicator-debug.zip target/release/symbolicator.debug
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
