@@ -1,16 +1,20 @@
-use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 
 use console::style;
-use failure::Error;
+use failure::{err_msg, Error};
+use chrono::{DateTime, Utc};
 use structopt::StructOpt;
-use symbolic::common::{ByteView, DebugId};
-use symbolic::debuginfo::{Archive, FileFormat};
+use symbolic::common::{ByteView, Arch};
+use symbolic::debuginfo::{Archive, FileFormat, Object, ObjectKind};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use zstd::stream::copy_encode;
+use serde::Serialize;
+use serde_json;
+
+/// File metadata
 
 /// Sorts debug symbols into the right structure for symbolicator.
 #[derive(PartialEq, Eq, PartialOrd, Ord, StructOpt, Debug)]
@@ -18,6 +22,14 @@ struct Cli {
     /// Path to the output folder structure
     #[structopt(long = "output", short = "o", value_name = "PATH")]
     pub output: PathBuf,
+
+    /// The prefix to use.
+    #[structopt(long = "prefix", short = "p", value_name = "PREFIX")]
+    pub prefix: String,
+
+    /// The bundle ID to use.
+    #[structopt(long = "bundle-id", short = "b", value_name = "BUNDLE_ID")]
+    pub bundle_id: String,
 
     /// If enabled debug symbols will be zstd compressed (repeat to increase compression)
     #[structopt(
@@ -42,22 +54,48 @@ struct Cli {
     pub input: Vec<PathBuf>,
 }
 
-fn get_target_filename(debug_id: &DebugId) -> PathBuf {
-    // Format the UUID as "xxxx/xxxx/xxxx/xxxx/xxxx/xxxxxxxxxxxx"
-    let uuid = debug_id.uuid();
-    let slice = uuid.as_bytes();
-    let mut path = String::with_capacity(37);
-    for (i, byte) in slice.iter().enumerate() {
-        write!(path, "{:02X}", byte).ok();
-        if i % 2 == 1 && i <= 9 {
-            path.push('/');
-        }
-    }
-    path.into()
+#[derive(Serialize)]
+pub struct DebugIdMeta {
+    pub name: Option<String>,
+    pub arch: Option<Arch>,
+    pub file_format: Option<FileFormat>,
 }
 
-fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<usize, Error> {
-    let mut rv = 0;
+#[derive(Serialize)]
+pub struct BundleMeta {
+    pub name: String,
+    pub timestamp: DateTime<Utc>,
+    pub debug_ids: Vec<String>,
+}
+
+fn get_unified_id<'a>(obj: &Object) -> String {
+    if obj.file_format() == FileFormat::Pe || obj.code_id().is_none() {
+        obj.debug_id().breakpad().to_string().to_lowercase()
+    } else {
+        obj.code_id().as_ref().unwrap().as_str().to_string()
+    }
+}
+
+fn get_target_filename(obj: &Object) -> Option<PathBuf> {
+    let id = get_unified_id(obj);
+    // match the unified format here.
+    let suffix = match obj.kind() {
+        ObjectKind::Debug => "debuginfo",
+        ObjectKind::Sources => {
+            if obj.file_format() == FileFormat::SourceBundle {
+                "sourcebundle"
+            } else {
+                return None;
+            }
+        }
+        ObjectKind::Relocatable | ObjectKind::Library | ObjectKind::Executable => "executable",
+        _ => return None,
+    };
+    Some(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())
+}
+
+fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<Vec<String>, Error> {
+    let mut rv = vec![];
 
     macro_rules! maybe_ignore_error {
         ($expr:expr) => {
@@ -88,10 +126,28 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<us
         _ => 22,
     };
     let archive = maybe_ignore_error!(Archive::parse(&bv));
+    let root = cli.output.join(&cli.prefix);
+
     for obj in archive.objects() {
         let obj = maybe_ignore_error!(obj);
-        let new_filename = cli.output.join(get_target_filename(&obj.debug_id()));
+        let new_filename = root.join(maybe_ignore_error!(
+            get_target_filename(&obj).ok_or_else(|| err_msg("unsupported file"))
+        ));
+
         fs::create_dir_all(new_filename.parent().unwrap())?;
+
+        let refs_path = new_filename.parent().unwrap().join("refs");
+        fs::create_dir_all(&refs_path)?;
+        fs::write(&refs_path.join(&cli.bundle_id), b"")?;
+
+        let meta = DebugIdMeta {
+            name: Some(filename.clone()),
+            arch: Some(obj.arch()),
+            file_format: Some(obj.file_format()),
+        };
+
+        fs::write(&new_filename.parent().unwrap().join("meta"), &serde_json::to_vec(&meta)?)?;
+
         if !cli.quiet {
             println!(
                 "{} ({}) -> {}",
@@ -107,15 +163,20 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<us
         } else {
             io::copy(&mut obj.data(), &mut out)?;
         }
-        rv += 1;
+        rv.push(get_unified_id(&obj));
     }
+
     Ok(rv)
 }
 
 fn execute() -> Result<(), Error> {
     let cli = Cli::from_args();
+    let mut bundle_meta = BundleMeta {
+        name: cli.bundle_id.to_string(),
+        timestamp: Utc::now(),
+        debug_ids: vec![],
+    };
 
-    let mut total = 0;
     for path in cli.input.iter() {
         for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
             if !entry.metadata()?.is_file() {
@@ -133,24 +194,29 @@ fn execute() -> Result<(), Error> {
                     let name = zip_file.name().rsplit('/').next().unwrap().to_string();
                     let bv = ByteView::read(zip_file)?;
                     if Archive::peek(&bv) != FileFormat::Unknown {
-                        total += process_file(&cli, bv, name)?;
+                        bundle_meta.debug_ids.extend(process_file(&cli, bv, name)?);
                     }
                 }
 
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
-                total += process_file(
+                bundle_meta.debug_ids.extend(process_file(
                     &cli,
                     bv,
                     path.file_name().unwrap().to_string_lossy().to_string(),
-                )?;
+                )?);
             }
         }
     }
 
+    let root = cli.output.join(&cli.prefix);
+    let bundle_meta_filename = root.join("bundles").join(&cli.bundle_id);
+    fs::create_dir_all(bundle_meta_filename.parent().unwrap())?;
+    fs::write(&bundle_meta_filename, serde_json::to_vec(&bundle_meta)?)?;
+
     if !cli.quiet {
         println!();
-        println!("Done: sorted {} debug files", style(total).yellow().bold());
+        println!("Done: sorted {} debug files", style(bundle_meta.debug_ids.len()).yellow().bold());
     }
 
     Ok(())
