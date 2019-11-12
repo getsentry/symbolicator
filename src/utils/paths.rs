@@ -224,11 +224,11 @@ fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option
 
 fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
     match filetype {
-        FileType::ElfCode | FileType::MachCode => {
+        FileType::ElfCode => {
             let code_id = identifier.code_id.as_ref()?.as_str();
             Some(format!("{}/executable", code_id))
         }
-        FileType::ElfDebug | FileType::MachDebug => {
+        FileType::ElfDebug => {
             let code_id = identifier.code_id.as_ref()?.as_str();
             Some(format!("{}/debuginfo", code_id))
         }
