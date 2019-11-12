@@ -222,6 +222,50 @@ fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option
     Some(rv)
 }
 
+fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    match filetype {
+        FileType::ElfCode => {
+            let code_id = identifier.code_id.as_ref()?.as_str();
+            Some(format!("{}/executable", code_id))
+        }
+        FileType::ElfDebug => {
+            let code_id = identifier.code_id.as_ref()?.as_str();
+            Some(format!("{}/debuginfo", code_id))
+        }
+
+        // Mach is not supported
+        FileType::MachCode | FileType::MachDebug => None,
+
+        // PDB and PE are not supported
+        FileType::Pdb | FileType::Pe => None,
+
+        // Breakpad is not supported
+        FileType::Breakpad => None,
+
+        // not available
+        FileType::SourceBundle => None,
+    }
+}
+
+fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    let suffix = match filetype {
+        FileType::ElfCode | FileType::MachCode | FileType::Pe => "executable",
+        FileType::ElfDebug | FileType::MachDebug | FileType::Pdb => "debuginfo",
+        FileType::Breakpad => "breakpad",
+        FileType::SourceBundle => "sourcebundle",
+    };
+
+    // for PEs we want to use signature+age that also breakpad uses.  We also use
+    // the debug id if the query did not provide a code id.
+    let id = if filetype == FileType::Pe || identifier.code_id.is_none() {
+        Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
+    } else {
+        Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
+    };
+
+    Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
+}
+
 /// Determines the path for an object file in the given layout.
 pub fn get_directory_path(
     directory_layout: DirectoryLayout,
@@ -233,6 +277,8 @@ pub fn get_directory_path(
         DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier, false)?,
         DirectoryLayoutType::SymstoreIndex2 => get_symstore_index2_path(filetype, identifier)?,
         DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)?,
+        DirectoryLayoutType::Debuginfod => get_debuginfod_path(filetype, identifier)?,
+        DirectoryLayoutType::Unified => get_unified_path(filetype, identifier)?,
     };
 
     match directory_layout.casing {

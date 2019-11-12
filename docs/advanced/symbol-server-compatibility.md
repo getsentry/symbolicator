@@ -11,6 +11,8 @@ structures:
 - Breakpad Symbol Repositories
 - LLDB File Mapped UUID Directories
 - GDB Build ID Directories
+- debuginfod
+- Unified Symbol Server Layout
 
 ## Prerequisites
 
@@ -204,6 +206,40 @@ The build-id hex representation is always provided in **lowercase**.
 
 - **ELF** (binary, potentially stripped)
 - **ELF** (debug info)
+
+### debuginfod
+
+Symbolicator also supports talking to
+[debuginfod](https://sourceware.org/git/?p=elfutils.git;a=shortlog;h=refs/heads/debuginfod)
+compatible servers for ELF and Macho.
+
+**Schema**:
+
+- **ELF** (binary, potentially stripped): `<code_note_byte_sequence>/executable`
+- **ELF** (debug info): `<code_note_byte_sequence>/debuginfo`
+
+### unified
+
+If you have no requirements to be compatible with another system you can also
+use the "unified" directory layout structure. This has the advantage that it's
+unified across all platforms and thus easier to manage. It can store breakpad
+files, PDBs, PEs and everything else.
+
+**Schema**:
+
+The debug id is in all cases lowercase in hex format and computed as follows:
+
+- **PE**: `<Signature><Age>` (age in hex, not padded)
+- **PDB**: `<Signature><Age>` (age in hex, not padded)
+- **ELF**: `<code_note_byte_sequence>`
+- **MachO**: `<uuid_bytes>`
+
+The path format is then as follows:
+
+- binary: `<DebugIdFirstTwo>/<DebugIdRest>/executable`
+- debug info: `<DebugIdFirstTwo>/<DebugIdRest>/debuginfo`
+- breakpad: `<DebugIdFirstTwo>/<DebugIdRest>/breakpad`
+- source bundle: `<DebugIdFirstTwo>/<DebugIdRest>/sourcebundle`
 
 ## Other Servers
 
