@@ -233,6 +233,9 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
             Some(format!("{}/debuginfo", code_id))
         }
 
+        // Mach is not supported
+        FileType::MachCode | FileType::MachDebug => None,
+
         // PDB and PE are not supported
         FileType::Pdb | FileType::Pe => None,
 
