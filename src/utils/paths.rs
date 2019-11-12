@@ -252,8 +252,9 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
     };
 
-    // for PEs we want to use signature+age that also breakpad uses
-    let id = if filetype == FileType::Pe {
+    // for PEs we want to use signature+age that also breakpad uses.  We also use
+    // the debug id if the query did not provide a code id.
+    let id = if filetype == FileType::Pe || identifier.code_id.is_none() {
         Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
     } else {
         Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
