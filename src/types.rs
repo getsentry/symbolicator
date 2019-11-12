@@ -309,6 +309,9 @@ pub enum DirectoryLayoutType {
     /// debuginfod conventions.
     #[serde(rename = "debuginfod")]
     Debuginfod,
+    /// unified sentry propriertary bucket format
+    #[serde(rename = "unified")]
+    Unified,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug)]
