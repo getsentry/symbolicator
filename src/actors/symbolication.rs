@@ -1576,7 +1576,7 @@ mod tests {
 
         let request_id = service.symbolication.process_minidump(
             Scope::Global,
-            File::open(path)?,
+            Bytes::from(fs::read(path)?),
             vec![source],
         )?;
 
@@ -1619,7 +1619,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
+        let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
         let request_id = service.symbolication.process_apple_crash_report(
             Scope::Global,
             report_file,
