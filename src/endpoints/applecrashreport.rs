@@ -1,10 +1,9 @@
-use std::fs::File;
-
 use actix::ResponseFuture;
 use actix_web::{
     dev::Payload, error, http::Method, multipart, Error, HttpMessage, HttpRequest, Json, Query,
     State,
 };
+use bytes::Bytes;
 use futures::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
@@ -20,7 +19,7 @@ use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {
     sources: Option<Vec<SourceConfig>>,
-    apple_crash_report: Option<File>,
+    apple_crash_report: Option<Bytes>,
 }
 
 fn handle_multipart_item(
@@ -48,7 +47,7 @@ fn handle_multipart_item(
             Box::new(future)
         }
         Some("apple_crash_report") => {
-            let future = read_multipart_file(field, threadpool).map(move |apple_crash_report| {
+            let future = read_multipart_file(field).map(move |apple_crash_report| {
                 request.apple_crash_report = Some(apple_crash_report);
                 request
             });

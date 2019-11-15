@@ -1,10 +1,9 @@
-use std::fs::File;
-
 use actix::ResponseFuture;
 use actix_web::{
     dev::Payload, error, http::Method, multipart, Error, HttpMessage, HttpRequest, Json, Query,
     State,
 };
+use bytes::Bytes;
 use futures::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
@@ -20,7 +19,7 @@ use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 #[derive(Debug, Default)]
 struct MinidumpRequest {
     sources: Option<Vec<SourceConfig>>,
-    minidump: Option<File>,
+    minidump: Option<Bytes>,
 }
 
 fn handle_multipart_item(
@@ -48,7 +47,7 @@ fn handle_multipart_item(
             Box::new(future)
         }
         Some("upload_file_minidump") => {
-            let future = read_multipart_file(field, threadpool).map(move |minidump| {
+            let future = read_multipart_file(field).map(move |minidump| {
                 request.minidump = Some(minidump);
                 request
             });
