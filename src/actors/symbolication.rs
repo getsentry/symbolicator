@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
-use std::fs::File;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
+use bytes::{Bytes, IntoBuf};
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
@@ -938,12 +938,12 @@ impl MinidumpState {
 impl SymbolicationActor {
     fn get_referenced_modules_from_minidump(
         &self,
-        minidump: ByteView<'static>,
+        minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
         let lazy = future::lazy(move || {
             log::debug!("Processing minidump ({} bytes)", minidump.len());
             metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-            let state = ProcessState::from_minidump(&minidump, None)?;
+            let state = ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
             let os_name = state.system_info().os_name();
             let object_type = ObjectType(get_image_type_from_minidump(&os_name).to_owned());
@@ -999,7 +999,7 @@ impl SymbolicationActor {
     fn stackwalk_minidump_with_cfi(
         &self,
         scope: Scope,
-        minidump: ByteView<'static>,
+        minidump: Bytes,
         sources: Arc<Vec<SourceConfig>>,
         cfi_results: Vec<CfiCacheResult>,
     ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
@@ -1038,7 +1038,10 @@ impl SymbolicationActor {
                 frame_info_map.insert(code_module_id.clone(), cfi_cache);
             }
 
-            let process_state = ProcessState::from_minidump(&minidump, Some(&frame_info_map))?;
+            let process_state = ProcessState::from_minidump(
+                &ByteView::from_slice(&minidump),
+                Some(&frame_info_map),
+            )?;
 
             let minidump_system_info = process_state.system_info();
             let os_name = minidump_system_info.os_name();
@@ -1152,12 +1155,11 @@ impl SymbolicationActor {
     fn do_stackwalk_minidump(
         &self,
         scope: Scope,
-        minidump: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let slf = self.clone();
         let sources = Arc::new(sources);
-        let minidump = tryf!(ByteView::map_file(minidump));
 
         let future = slf
             .get_referenced_modules_from_minidump(minidump.clone())
@@ -1181,7 +1183,7 @@ impl SymbolicationActor {
     fn do_process_minidump(
         &self,
         scope: Scope,
-        minidump: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
         let slf = self.clone();
@@ -1200,7 +1202,7 @@ impl SymbolicationActor {
     pub fn process_minidump(
         &self,
         scope: Scope,
-        minidump: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
         self.create_symbolication_request(|| self.do_process_minidump(scope, minidump, sources))
@@ -1258,11 +1260,11 @@ impl SymbolicationActor {
     fn parse_apple_crash_report(
         &self,
         scope: Scope,
-        file: File,
+        minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> ResponseFuture<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = future::lazy(move || {
-            let report = AppleCrashReport::from_reader(file)?;
+            let report = AppleCrashReport::from_reader(minidump.into_buf())?;
             let mut metadata = report.metadata;
 
             let arch = report
@@ -1369,7 +1371,7 @@ impl SymbolicationActor {
     fn do_process_apple_crash_report(
         &self,
         scope: Scope,
-        report: File,
+        report: Bytes,
         sources: Vec<SourceConfig>,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
         let self2 = self.clone();
@@ -1389,7 +1391,7 @@ impl SymbolicationActor {
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
-        apple_crash_report: File,
+        apple_crash_report: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
         self.create_symbolication_request(|| {
@@ -1574,7 +1576,7 @@ mod tests {
 
         let request_id = service.symbolication.process_minidump(
             Scope::Global,
-            File::open(path)?,
+            Bytes::from(fs::read(path)?),
             vec![source],
         )?;
 
@@ -1617,7 +1619,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = File::open("./tests/fixtures/apple_crash_report.txt")?;
+        let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
         let request_id = service.symbolication.process_apple_crash_report(
             Scope::Global,
             report_file,

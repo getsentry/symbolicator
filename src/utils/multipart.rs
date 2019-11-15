@@ -1,12 +1,9 @@
-use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
-
 use actix::ResponseFuture;
 use actix_web::{dev::Payload, error, multipart, Error};
-use futures::{future, Future, IntoFuture, Stream};
+use bytes::{Bytes, BytesMut};
+use futures::{Future, Stream};
 
 use crate::types::SourceConfig;
-use crate::utils::futures::ThreadPool;
 
 const MAX_SOURCES_SIZE: usize = 1_000_000;
 
@@ -31,30 +28,14 @@ pub fn read_multipart_data(
 
 pub fn read_multipart_file(
     field: multipart::Field<Payload>,
-    threadpool: ThreadPool,
-) -> ResponseFuture<File, Error> {
-    let future = tempfile::tempfile()
-        .into_future()
+) -> impl Future<Item = Bytes, Error = Error> {
+    field
         .map_err(Error::from)
-        .and_then(clone!(threadpool, |file| {
-            field
-                .map_err(Error::from)
-                .fold(file, move |mut file, chunk| {
-                    threadpool
-                        .spawn_handle(future::lazy(move || file.write_all(&chunk).map(|_| file)))
-                        .map_err(|e| Error::from(e.map_canceled(|| std::io::ErrorKind::Other)))
-                })
-        }))
-        .and_then(clone!(threadpool, |mut file| {
-            threadpool
-                .spawn_handle(future::lazy(move || {
-                    file.sync_all()?;
-                    file.seek(SeekFrom::Start(0)).map(|_| file)
-                }))
-                .map_err(|e| Error::from(e.map_canceled(|| std::io::ErrorKind::Other)))
-        }));
-
-    Box::new(future)
+        .fold(BytesMut::new(), |mut bytes, chunk| {
+            bytes.extend_from_slice(&chunk);
+            Ok::<BytesMut, Error>(bytes)
+        })
+        .and_then(|bytes| Ok(bytes.freeze()))
 }
 
 pub fn read_multipart_sources(
