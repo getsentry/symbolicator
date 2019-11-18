@@ -345,12 +345,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "goblin"
-version = "0.0.24"
-source = "git+https://github.com/m4b/goblin?rev=cfa098a528409847c568216e04f764b792f8425a#cfa098a528409847c568216e04f764b792f8425a"
+version = "0.1.1"
+source = "git+https://github.com/jan-auer/goblin?rev=ee8b997792d37cfb35f8656c028543797425137e#ee8b997792d37cfb35f8656c028543797425137e"
 dependencies = [
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "plain 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "scroll 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "scroll 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -832,6 +832,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "scroll"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "scroll_derive 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "scroll_derive"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -839,6 +847,16 @@ dependencies = [
  "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.42 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -932,16 +950,16 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed#2d5f6a197af9694be233b76c5c0351e2c0d5f8ed"
+source = "git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47#42f601faf243e3ffe3ba4799d800ca9a379b0e47"
 dependencies = [
- "symbolic-common 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)",
- "symbolic-debuginfo 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)",
+ "symbolic-common 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)",
+ "symbolic-debuginfo 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)",
 ]
 
 [[package]]
 name = "symbolic-common"
 version = "7.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed#2d5f6a197af9694be233b76c5c0351e2c0d5f8ed"
+source = "git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47#42f601faf243e3ffe3ba4799d800ca9a379b0e47"
 dependencies = [
  "debugid 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -954,14 +972,14 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed#2d5f6a197af9694be233b76c5c0351e2c0d5f8ed"
+source = "git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47#42f601faf243e3ffe3ba4799d800ca9a379b0e47"
 dependencies = [
  "dmsort 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "fallible-iterator 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "flate2 1.0.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "gimli 0.19.0 (git+https://github.com/jan-auer/gimli?rev=bf8ea0f0079505681c360d3a55d0ac1e9b498df3)",
- "goblin 0.0.24 (git+https://github.com/m4b/goblin?rev=cfa098a528409847c568216e04f764b792f8425a)",
+ "goblin 0.1.1 (git+https://github.com/jan-auer/goblin?rev=ee8b997792d37cfb35f8656c028543797425137e)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazycell 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -972,7 +990,7 @@ dependencies = [
  "serde 1.0.102 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-common 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)",
+ "symbolic-common 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)",
  "zip 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -989,7 +1007,7 @@ dependencies = [
  "serde 1.0.102 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)",
+ "symbolic 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)",
  "walkdir 2.2.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "zip 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "zstd 0.4.28+zstd.1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1219,7 +1237,7 @@ dependencies = [
 "checksum generic-array 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)" = "c68f0274ae0e023facc3c97b2e00f076be70e254bc851d972503b328db79b2ec"
 "checksum gimli 0.19.0 (git+https://github.com/jan-auer/gimli?rev=bf8ea0f0079505681c360d3a55d0ac1e9b498df3)" = "<none>"
 "checksum glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
-"checksum goblin 0.0.24 (git+https://github.com/m4b/goblin?rev=cfa098a528409847c568216e04f764b792f8425a)" = "<none>"
+"checksum goblin 0.1.1 (git+https://github.com/jan-auer/goblin?rev=ee8b997792d37cfb35f8656c028543797425137e)" = "<none>"
 "checksum heck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "20564e78d53d2bb135c343b3f47714a56af2061f1c928fdb541dc7b9fdd94205"
 "checksum itertools 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5b8467d9c1cebe26feb08c640139247fac215782d35371ade9a2136ed6085358"
 "checksum itoa 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
@@ -1277,7 +1295,9 @@ dependencies = [
 "checksum ryu 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c92464b447c0ee8c4fb3824ecc8383b81717b9f1e74ba2e72540aef7b9f82997"
 "checksum same-file 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "585e8ddcedc187886a30fa705c47985c3fa88d06624095856b36ca0b82ff4421"
 "checksum scopeguard 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b42e15e59b18a828bbf5c58ea01debb36b9b096346de35d941dcb89009f24a0d"
+"checksum scroll 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)" = "abb2332cb595d33f7edd5700f4cbf94892e680c7f0ae56adab58a35190b66cb1"
 "checksum scroll 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)" = "2f84d114ef17fd144153d608fba7c446b0145d038985e7a8cc5d08bb0ce20383"
+"checksum scroll_derive 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f8584eea9b9ff42825b46faf46a8c24d2cff13ec152fa2a50df788b87c07ee28"
 "checksum scroll_derive 0.9.5 (registry+https://github.com/rust-lang/crates.io-index)" = "8f1aa96c45e7f5a91cb7fabe7b279f02fea7126239fc40b732316e8b6a2d0fcb"
 "checksum semver 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
 "checksum semver-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
@@ -1290,9 +1310,9 @@ dependencies = [
 "checksum strsim 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 "checksum structopt 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "3fe8d3289b63ef2f196d89e7701f986583c0895e764b78f052a55b9b5d34d84a"
 "checksum structopt-derive 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f3add731f5b4fb85931d362a3c92deb1ad7113649a8d51701fb257673705f122"
-"checksum symbolic 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)" = "<none>"
-"checksum symbolic-common 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)" = "<none>"
-"checksum symbolic-debuginfo 7.0.0 (git+https://github.com/getsentry/symbolic?rev=2d5f6a197af9694be233b76c5c0351e2c0d5f8ed)" = "<none>"
+"checksum symbolic 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)" = "<none>"
+"checksum symbolic-common 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)" = "<none>"
+"checksum symbolic-debuginfo 7.0.0 (git+https://github.com/getsentry/symbolic?rev=42f601faf243e3ffe3ba4799d800ca9a379b0e47)" = "<none>"
 "checksum syn 0.15.42 (registry+https://github.com/rust-lang/crates.io-index)" = "eadc09306ca51a40555dd6fc2b415538e9e18bc9f870e47b1a524a79fe2dcf5e"
 "checksum syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "66850e97125af79138385e9b88339cbcd037e3f28ceab8c5ad98e64f0f1f80bf"
 "checksum synstructure 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)" = "02353edf96d6e4dc81aea2d8490a7e9db177bf8acb0e951c24940bf866cb313f"
