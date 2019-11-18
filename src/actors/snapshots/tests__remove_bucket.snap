@@ -17,6 +17,11 @@ stacktraces:
         lineno: 1
 modules:
   - debug_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: false
+      has_symbols: true
+      has_sources: false
     arch: x86_64
     type: macho
     code_id: 502fc0a51ec13e479998684fa139dca7

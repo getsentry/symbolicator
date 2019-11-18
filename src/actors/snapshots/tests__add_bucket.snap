@@ -10,6 +10,11 @@ stacktraces:
         instruction_addr: 0x100000fa0
 modules:
   - debug_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_id: 502fc0a51ec13e479998684fa139dca7

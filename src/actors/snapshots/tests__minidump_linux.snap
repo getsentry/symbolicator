@@ -128,6 +128,11 @@ stacktraces:
 modules:
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: f1c3bcc0279865fe3058404b2831d9e64135386c
@@ -138,6 +143,11 @@ modules:
     image_size: 106496
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: dfb85de42daffd09640c8fe377d572de3e168920
@@ -148,6 +158,11 @@ modules:
     image_size: 1081344
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: b5381a457906d279073822a5ceb24c4bfef94ddb
@@ -158,6 +173,11 @@ modules:
     image_size: 1835008
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: 68220ae2c65d65c1b6aaa12fa6765a6ec2f5f434
@@ -168,6 +188,11 @@ modules:
     image_size: 90112
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: cb93c881929b523c01acef171b52d5261f026029
@@ -178,6 +203,11 @@ modules:
     image_size: 1515520
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: ce17e023542265fc11d9bc8f534bb4f070493d30
@@ -188,6 +218,11 @@ modules:
     image_size: 98304
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: 5d7b6259552275a3c17bd4c3fd05f5a6bf40caa5
@@ -198,6 +233,11 @@ modules:
     image_size: 155648
   - debug_status: missing
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: elf
     code_id: 6c5f1875b9048fb4b8dfd832e74ad31a9aafb38f
