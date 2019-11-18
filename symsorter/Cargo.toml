@@ -9,7 +9,7 @@ structopt = "0.3.2"
 clap = "2.33.0"
 failure = "0.1.5"
 walkdir = "2.2.9"
-symbolic = { git = "https://github.com/getsentry/symbolic", rev = "9e05cf31528ee1b2fa7d411ff4d456cbe0a56104", features = ["debuginfo-serde"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", rev = "2d5f6a197af9694be233b76c5c0351e2c0d5f8ed", features = ["debuginfo-serde"] }
 console = "0.9.0"
 zstd = "0.4.28"
 itertools = "0.8.0"
