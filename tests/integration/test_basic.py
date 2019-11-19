@@ -40,7 +40,24 @@ SUCCESS_WINDOWS = {
             ],
         }
     ],
-    "modules": [dict(debug_status="found", arch="x86", **WINDOWS_DATA["modules"][0])],
+    "modules": [
+        {
+            "type": "symbolic",
+            "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+            "code_file": "C:\\Windows\\System32\\kernel32.dll",
+            "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+            "debug_status": "found",
+            "features": {
+                "has_debug_info": True,
+                "has_sources": False,
+                "has_symbols": True,
+                "has_unwind_info": True,
+            },
+            "arch": "x86",
+            "image_addr": "0x749d0000",
+            "image_size": 851_968,
+        }
+    ],
     "status": "completed",
 }
 
@@ -61,7 +78,22 @@ def _make_unsuccessful_result(status):
             }
         ],
         "modules": [
-            dict(debug_status=status, arch="unknown", **WINDOWS_DATA["modules"][0])
+            {
+                "type": "symbolic",
+                "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+                "code_file": "C:\\Windows\\System32\\kernel32.dll",
+                "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+                "debug_status": status,
+                "features": {
+                    "has_debug_info": False,
+                    "has_sources": False,
+                    "has_symbols": False,
+                    "has_unwind_info": False,
+                },
+                "arch": "unknown",
+                "image_addr": "0x749d0000",
+                "image_size": 851_968,
+            }
         ],
         "status": "completed",
     }

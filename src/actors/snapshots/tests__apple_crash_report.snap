@@ -111,6 +111,11 @@ stacktraces:
         instruction_addr: 0x54485244
 modules:
   - debug_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_id: 2d903291397d3d14bfca52c7fb8c5e00
@@ -120,6 +125,11 @@ modules:
     image_addr: 0x10864e000
     image_size: 108797951
   - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_id: 6deccee4a0523ea4bb67957b06f53ad1
@@ -129,6 +139,11 @@ modules:
     image_addr: 0x112bb2000
     image_size: 2170879
   - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_id: 5e012a646cc536f19b4da0564049169b
@@ -138,6 +153,11 @@ modules:
     image_addr: 0x112fc0000
     image_size: 221183
   - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_id: 9c19854471943de6b67e4cc27eed2eab
@@ -147,6 +167,11 @@ modules:
     image_addr: 0x113013000
     image_size: 1474559
   - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_id: 890f0997f90435449af7cf011f09a06e
