@@ -257,8 +257,10 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
 
     // for PEs we want to use signature+age that also breakpad uses.  We also use
     // the debug id if the query did not provide a code id.
-    let id = if filetype == FileType::Pe || identifier.code_id.is_none() {
+    let id = if filetype == FileType::Pe || filetype == FileType::Pdb {
         Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
+    } else if identifier.code_id.is_none() {
+        Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
     } else {
         Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
     };
