@@ -83,6 +83,13 @@ fn process_minidump(
         .minidump
         .ok_or_else(|| error::ErrorBadRequest("missing minidump"))?;
 
+    sentry::configure_scope(|scope| {
+        let mut hasher = crc32fast::Hasher::new();
+        hasher.update(&minidump);
+        scope.set_extra("minidump_crc32", hasher.finalize().into());
+        scope.set_extra("minidump_len", minidump.len().into());
+    });
+
     let sources = request
         .sources
         .ok_or_else(|| error::ErrorBadRequest("missing sources"))?;
