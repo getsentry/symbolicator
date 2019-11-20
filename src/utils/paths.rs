@@ -283,17 +283,18 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         // For breakpad and source bundles we want to match the format that we can
         // infer from the object type hint if there is one.  Without the hint we will
         // just never look up these.
-        FileType::Breakpad | FileType::SourceBundle => match identifier.object_type_hint.0.as_str()
-        {
-            "macho" => {
+        FileType::Breakpad | FileType::SourceBundle => match identifier.object_type {
+            ObjectType::Macho => {
                 if identifier.code_id.is_none() {
                     Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
                 } else {
                     Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
                 }
             }
-            "elf" => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
-            "pe" => Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase()),
+            ObjectType::Elf => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
+            ObjectType::Pe => {
+                Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
+            }
             _ => return None,
         },
     };
@@ -345,7 +346,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
-                object_type_hint: ObjectType("elf".to_string()),
+                object_type: ObjectType::Elf,
             },
         ))
     } else if signature_lower.starts_with("elf-buildid-") {
@@ -356,7 +357,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
-                object_type_hint: ObjectType("elf".to_string()),
+                object_type: ObjectType::Elf,
             },
         ))
     } else if leading_fn_lower.ends_with(".dwarf") && signature_lower.starts_with("mach-uuid-sym-")
@@ -368,7 +369,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
-                object_type_hint: ObjectType("macho".to_string()),
+                object_type: ObjectType::Macho,
             },
         ))
     } else if signature_lower.starts_with("mach-uuid-") {
@@ -379,7 +380,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
-                object_type_hint: ObjectType("macho".to_string()),
+                object_type: ObjectType::Macho,
             },
         ))
     } else if leading_fn_lower.ends_with(".pdb") {
@@ -390,7 +391,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: None,
                 debug_id: Some(DebugId::from_breakpad(signature).ok()?),
                 debug_file: Some(leading_fn.into()),
-                object_type_hint: ObjectType("pe".to_string()),
+                object_type: ObjectType::Pe,
             },
         ))
     } else {
@@ -401,7 +402,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
-                object_type_hint: ObjectType("pe".to_string()),
+                object_type: ObjectType::Pe,
             },
         ))
     }

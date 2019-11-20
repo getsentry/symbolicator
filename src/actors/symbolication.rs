@@ -234,16 +234,16 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
-        object_type_hint: object_info.ty.clone(),
+        object_type: object_info.ty.clone(),
     }
 }
 
-fn get_image_type_from_minidump(minidump_os_name: &str) -> &'static str {
+fn get_object_type_from_minidump(minidump_os_name: &str) -> ObjectType {
     match minidump_os_name {
-        "Windows" | "Windows NT" => "pe",
-        "iOS" | "Mac OS X" => "macho",
-        "Linux" | "Solaris" | "Android" => "elf",
-        _ => "unknown",
+        "Windows" | "Windows NT" => ObjectType::Pe,
+        "iOS" | "Mac OS X" => ObjectType::Macho,
+        "Linux" | "Solaris" | "Android" => ObjectType::Elf,
+        _ => ObjectType::Unknown,
     }
 }
 
@@ -947,7 +947,7 @@ impl SymbolicationActor {
             let state = ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
             let os_name = state.system_info().os_name();
-            let object_type = ObjectType(get_image_type_from_minidump(&os_name).to_owned());
+            let object_type = get_object_type_from_minidump(&os_name).to_owned();
 
             let cfi_modules = state
                 .referenced_modules()
@@ -1061,7 +1061,7 @@ impl SymbolicationActor {
                 }
             };
 
-            let object_type = ObjectType(get_image_type_from_minidump(&os_name).to_owned());
+            let object_type = get_object_type_from_minidump(&os_name).to_owned();
 
             let modules = process_state
                 .modules()
@@ -1242,7 +1242,7 @@ fn map_apple_binary_image(image: apple_crash_report_parser::BinaryImage) -> Comp
     let debug_id = DebugId::from_uuid(image.uuid);
 
     let raw_info = RawObjectInfo {
-        ty: ObjectType("macho".to_owned()),
+        ty: ObjectType::Macho,
         code_id: Some(code_id.to_string()),
         code_file: Some(image.path.clone()),
         debug_id: Some(debug_id.to_string()),
@@ -1502,7 +1502,7 @@ mod tests {
                 ..RawStacktrace::default()
             }],
             modules: vec![CompleteObjectInfo::from(RawObjectInfo {
-                ty: ObjectType("macho".to_owned()),
+                ty: ObjectType::Macho,
                 code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
                 debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
                 image_addr: HexValue(0x1_0000_0000),
@@ -1640,7 +1640,7 @@ mod tests {
         // The Rust SDK and some other clients sometimes send zero-sized images when no end addr
         // could be determined. Symbolicator should still resolve such images.
         let info = CompleteObjectInfo::from(RawObjectInfo {
-            ty: ObjectType(Default::default()),
+            ty: ObjectType::Unknown,
             code_id: None,
             debug_id: None,
             code_file: None,
