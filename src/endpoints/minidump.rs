@@ -87,6 +87,7 @@ fn process_minidump(
         let mut hasher = crc32fast::Hasher::new();
         hasher.update(&minidump);
         scope.set_extra("minidump_crc32", hasher.finalize().into());
+        scope.set_extra("minidump_len", minidump.len().into());
     });
 
     let sources = request
