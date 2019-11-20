@@ -545,7 +545,7 @@ impl<'de> Deserialize<'de> for ObjectType {
     where
         D: Deserializer<'de>,
     {
-        let s: &'de str = Deserialize::deserialize(deserializer)?;
+        let s: Cow<'de, str> = Deserialize::deserialize(deserializer)?;
         Ok(s.parse().unwrap())
     }
 }
