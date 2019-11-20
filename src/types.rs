@@ -519,6 +519,12 @@ pub struct RawObjectInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ObjectType(pub String);
 
+impl Default for ObjectType {
+    fn default() -> ObjectType {
+        ObjectType("unknown".into())
+    }
+}
+
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -859,6 +865,9 @@ pub struct ObjectId {
 
     /// Path to the debug file.
     pub debug_file: Option<String>,
+
+    /// Hint to what we believe the file type should be.
+    pub object_type_hint: ObjectType,
 }
 
 impl ObjectId {
@@ -895,5 +904,6 @@ impl WriteSentryScope for ObjectId {
             "object_id.debug_file_basename",
             self.debug_file_basename().unwrap_or("None"),
         );
+        scope.set_tag("object_id.object_type_hint", &self.object_type_hint.0);
     }
 }
