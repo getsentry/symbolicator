@@ -248,7 +248,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 }
 
 fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
-    // determine the suffix
+    // determine the suffix and object type
     let suffix = match filetype {
         FileType::ElfCode | FileType::MachCode | FileType::Pe => "executable",
         FileType::ElfDebug | FileType::MachDebug | FileType::Pdb => "debuginfo",
@@ -256,18 +256,26 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
     };
 
+    // determine object type.  We prefer to use the file type as indicator for going
+    // back to the object type.  If that is not possible, we use the object type
+    // that is stored on the identifier which might be unreliable.
+    let object_type = match filetype {
+        FileType::Pe | FileType::Pdb => ObjectType::Pe,
+        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
+        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
+        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
+    };
+
     // determine the ID we use for the path
-    let id = match filetype {
+    let id = match object_type {
         // PEs and PDBs are indexed by the debug id in lowercase breakpad format
         // always.  This is done because code IDs by themselves are not reliable
         // enough for PEs and are only useful together with the file name which
         // we do not want to encode.
-        FileType::Pe | FileType::Pdb => {
-            Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
-        }
+        ObjectType::Pe => Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase()),
         // On mach we can always determine the code ID from the debug ID if the
         // code ID is unavailable.
-        FileType::MachCode | FileType::MachDebug => {
+        ObjectType::Macho => {
             if identifier.code_id.is_none() {
                 Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
             } else {
@@ -277,26 +285,9 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         // For ELF we always use the code ID.  If it's not available we can't actually
         // find this file at all.  See symsorter which will never use the debug ID for
         // such files.
-        FileType::ElfCode | FileType::ElfDebug => {
-            Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
-        }
-        // For breakpad and source bundles we want to match the format that we can
-        // infer from the object type hint if there is one.  Without the hint we will
-        // just never look up these.
-        FileType::Breakpad | FileType::SourceBundle => match identifier.object_type {
-            ObjectType::Macho => {
-                if identifier.code_id.is_none() {
-                    Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
-                } else {
-                    Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
-                }
-            }
-            ObjectType::Elf => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
-            ObjectType::Pe => {
-                Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
-            }
-            _ => return None,
-        },
+        ObjectType::Elf => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
+        // Guess we're out of luck.
+        ObjectType::Unknown => return None,
     };
 
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))

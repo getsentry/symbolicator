@@ -234,7 +234,7 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
         code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
-        object_type: object_info.ty.clone(),
+        object_type: object_info.ty,
     }
 }
 

@@ -518,7 +518,7 @@ pub struct RawObjectInfo {
 }
 
 /// The type of an object file.
-#[derive(Serialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Clone, Copy, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ObjectType {
     Elf,
