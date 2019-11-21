@@ -12,7 +12,6 @@ use failure::{Fail, ResultExt};
 use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 use futures::{future, Future, IntoFuture, Stream};
-use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
@@ -20,8 +19,8 @@ use tempfile::{tempfile_in, NamedTempFile};
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::types::{
-    ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectId,
-    S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
+    ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectFeatures,
+    ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
 };
 use crate::utils::futures::ThreadPool;
 use crate::utils::objects;
@@ -162,7 +161,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
                         let mut f = fs::File::create(path).context(ObjectErrorKind::Io)?;
-                        let meta = ObjectFileMetaInner {
+
+                        let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
                             has_symbols: object.has_symbols(),
@@ -181,14 +181,16 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
-        serde_json::from_slice::<ObjectFileMetaInner>(data).is_ok()
+        serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+        let features = serde_json::from_slice(&data).unwrap_or_default();
+
         ObjectFileMeta {
             request: self.clone(),
             scope,
-            meta: serde_json::from_slice(&data).unwrap_or_default(),
+            features,
             status,
         }
     }
@@ -413,13 +415,13 @@ impl AsRef<[u8]> for ObjectFileBytes {
 }
 
 /// Handle to local metadata file of an object. Having an instance of this type does not mean there
-/// is a downloaded object file behind it. We cache metadata separately (ObjectFileMetaInner) because
+/// is a downloaded object file behind it. We cache metadata separately (ObjectFeatures) because
 /// every symcache lookup requires reading this metadata.
 #[derive(Clone, Debug)]
 pub struct ObjectFileMeta {
     request: FetchFileMetaRequest,
     scope: Scope,
-    meta: ObjectFileMetaInner,
+    features: ObjectFeatures,
     status: CacheStatus,
 }
 
@@ -427,15 +429,10 @@ impl ObjectFileMeta {
     pub fn cache_key(&self) -> CacheKey {
         self.request.get_cache_key()
     }
-}
 
-#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
-struct ObjectFileMetaInner {
-    has_debug_info: bool,
-    has_unwind_info: bool,
-    has_symbols: bool,
-    #[serde(default)]
-    has_sources: bool,
+    pub fn features(&self) -> ObjectFeatures {
+        self.features
+    }
 }
 
 /// Handle to local cache file of an object.
@@ -616,10 +613,10 @@ impl ObjectsActor {
 
                     // Prefer object files with debug/unwind info over object files without
                     let score = match purpose {
-                        ObjectPurpose::Unwind if object.meta.has_unwind_info => 0,
-                        ObjectPurpose::Debug if object.meta.has_debug_info => 0,
-                        ObjectPurpose::Debug if object.meta.has_symbols => 1,
-                        ObjectPurpose::Source if object.meta.has_sources => 0,
+                        ObjectPurpose::Unwind if object.features.has_unwind_info => 0,
+                        ObjectPurpose::Debug if object.features.has_debug_info => 0,
+                        ObjectPurpose::Debug if object.features.has_symbols => 1,
+                        ObjectPurpose::Source if object.features.has_sources => 0,
                         _ => 2,
                     };
 

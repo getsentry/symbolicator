@@ -16,7 +16,7 @@ use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
+use crate::types::{FileType, ObjectFeatures, ObjectId, ObjectType, Scope, SourceConfig};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -76,6 +76,7 @@ pub struct CfiCacheFile {
     identifier: ObjectId,
     scope: Scope,
     data: ByteView<'static>,
+    features: ObjectFeatures,
     status: CacheStatus,
 }
 
@@ -88,6 +89,11 @@ impl CfiCacheFile {
                 CfiCache::from_bytes(self.data.clone()).context(CfiCacheErrorKind::Parsing)?,
             )),
         }
+    }
+
+    /// Returns the features of the object file this symcache was constructed from.
+    pub fn features(&self) -> ObjectFeatures {
+        self.features
     }
 }
 
@@ -160,6 +166,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             identifier: self.request.identifier.clone(),
             scope,
             data,
+            features: self.object_meta.features(),
             status,
         }
     }
@@ -215,6 +222,7 @@ impl CfiCacheActor {
                             identifier,
                             scope,
                             data: ByteView::from_slice(b""),
+                            features: ObjectFeatures::default(),
                             status: CacheStatus::Negative,
                         }))
                         .into_future(),

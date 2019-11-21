@@ -155,6 +155,11 @@ stacktraces:
 modules:
   - debug_status: found
     unwind_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: true
+      has_symbols: true
+      has_sources: false
     arch: x86
     type: pe
     code_id: 5ab380779000
@@ -165,6 +170,11 @@ modules:
     image_size: 36864
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: "57898e12145000"
@@ -175,6 +185,11 @@ modules:
     image_size: 1331200
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 589abc846c000
@@ -185,6 +200,11 @@ modules:
     image_size: 442368
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 57898eeb92000
@@ -195,6 +215,11 @@ modules:
     image_size: 598016
   - debug_status: unused
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 57898dab25000
@@ -205,6 +230,11 @@ modules:
     image_size: 151552
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 589abc7714000
@@ -215,6 +245,11 @@ modules:
     image_size: 81920
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 57899141a000
@@ -225,6 +260,11 @@ modules:
     image_size: 40960
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 59bf30e31f000
@@ -235,6 +275,11 @@ modules:
     image_size: 126976
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 5a49bb7677000
@@ -245,6 +290,11 @@ modules:
     image_size: 487424
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 57899155be000
@@ -255,6 +305,11 @@ modules:
     image_size: 778240
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 598942c741000
@@ -265,6 +320,11 @@ modules:
     image_size: 266240
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 590285e9e0000
@@ -275,6 +335,11 @@ modules:
     image_size: 917504
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 59b0df8f5a000
@@ -285,6 +350,11 @@ modules:
     image_size: 368640
   - debug_status: unused
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 5a49bb75c1000
@@ -295,6 +365,11 @@ modules:
     image_size: 790528
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 59bf2b5ae0000
@@ -305,6 +380,11 @@ modules:
     image_size: 917504
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 59bf2bcf1a1000
@@ -315,6 +395,11 @@ modules:
     image_size: 1708032
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: pe
     code_id: 59b0d8f3183000

@@ -49,6 +49,12 @@ MACHO_SUCCESS = {
             "image_size": 20480,
             "image_addr": "0x190605000",
             "debug_status": "found",
+            "features": {
+                "has_debug_info": False,
+                "has_sources": False,
+                "has_symbols": True,
+                "has_unwind_info": False,
+            },
         },
         {
             "type": "macho",
@@ -58,6 +64,12 @@ MACHO_SUCCESS = {
             "image_size": 3678208,
             "image_addr": "0x1915f2000",
             "debug_status": "found",
+            "features": {
+                "has_debug_info": False,
+                "has_sources": False,
+                "has_symbols": True,
+                "has_unwind_info": False,
+            },
         },
     ],
     "stacktraces": [

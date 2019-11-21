@@ -328,7 +328,13 @@ impl SourceLookup {
                             }
                         }))
                         .or_else(|_| Ok(None))
-                        .map(move |object_file_opt| (object_info, object_file_opt)),
+                        .map(move |object_file_opt| {
+                            if object_file_opt.is_some() {
+                                object_info.features.has_sources = true;
+                            }
+
+                            (object_info, object_file_opt)
+                        }),
                 )
             },
         ))
@@ -500,6 +506,10 @@ impl SymCacheLookup {
                         .map(move |(symcache, status)| {
                             object_info.arch =
                                 symcache.as_ref().map(|c| c.arch()).unwrap_or_default();
+
+                            if let Some(ref symcache) = symcache {
+                                object_info.features.merge(symcache.features());
+                            }
 
                             object_info.debug_status = status;
                             (object_info, symcache)
@@ -1007,6 +1017,7 @@ impl SymbolicationActor {
         let stackwalk_future = future::lazy(move || {
             let mut frame_info_map = FrameInfoMap::new();
             let mut unwind_statuses = BTreeMap::new();
+            let mut object_features = BTreeMap::new();
 
             for (code_module_id, result) in &cfi_results {
                 let cache_file = match result {
@@ -1020,6 +1031,11 @@ impl SymbolicationActor {
                         continue;
                     }
                 };
+
+                // NB: Always collect features, regardless of whether we fail to parse them or not.
+                // This gives users the feedback that information is there but potentially not
+                // processable by symbolicator.
+                object_features.insert(code_module_id, cache_file.features());
 
                 log::trace!("Loading cficache");
                 let cfi_cache = match cache_file.parse() {
@@ -1080,6 +1096,13 @@ impl SymbolicationActor {
                         "status" => status.name()
                     );
                     info.unwind_status = Some(status);
+
+                    let features = object_features
+                        .get(&code_module.id()?)
+                        .copied()
+                        .unwrap_or_default();
+
+                    info.features.merge(features);
 
                     Some(info)
                 })

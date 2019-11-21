@@ -58,6 +58,11 @@ stacktraces:
 modules:
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /Users/travis/build/getsentry/breakpad-tools/macos/build/./crash
@@ -67,6 +72,11 @@ modules:
     image_size: 69632
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
@@ -76,6 +86,11 @@ modules:
     image_size: 4800512
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libDiagnosticMessagesClient.dylib
@@ -85,6 +100,11 @@ modules:
     image_size: 8192
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libSystem.B.dylib
@@ -94,6 +114,11 @@ modules:
     image_size: 8192
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libc++.1.dylib
@@ -103,6 +128,11 @@ modules:
     image_size: 356352
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libc++abi.dylib
@@ -112,6 +142,11 @@ modules:
     image_size: 172032
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libicucore.A.dylib
@@ -121,6 +156,11 @@ modules:
     image_size: 2252800
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libobjc.A.dylib
@@ -130,6 +170,11 @@ modules:
     image_size: 4022272
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/libz.1.dylib
@@ -139,6 +184,11 @@ modules:
     image_size: 73728
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libcache.dylib
@@ -148,6 +198,11 @@ modules:
     image_size: 20480
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libcommonCrypto.dylib
@@ -157,6 +212,11 @@ modules:
     image_size: 45056
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libcompiler_rt.dylib
@@ -166,6 +226,11 @@ modules:
     image_size: 32768
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libcopyfile.dylib
@@ -175,6 +240,11 @@ modules:
     image_size: 36864
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libcorecrypto.dylib
@@ -184,6 +254,11 @@ modules:
     image_size: 540672
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libdispatch.dylib
@@ -193,6 +268,11 @@ modules:
     image_size: 204800
   - debug_status: missing
     unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libdyld.dylib
@@ -202,6 +282,11 @@ modules:
     image_size: 24576
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libkeymgr.dylib
@@ -211,6 +296,11 @@ modules:
     image_size: 4096
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/liblaunch.dylib
@@ -220,6 +310,11 @@ modules:
     image_size: 4096
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libmacho.dylib
@@ -229,6 +324,11 @@ modules:
     image_size: 24576
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libquarantine.dylib
@@ -238,6 +338,11 @@ modules:
     image_size: 12288
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libremovefile.dylib
@@ -247,6 +352,11 @@ modules:
     image_size: 8192
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_asl.dylib
@@ -256,6 +366,11 @@ modules:
     image_size: 102400
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_blocks.dylib
@@ -265,6 +380,11 @@ modules:
     image_size: 4096
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_c.dylib
@@ -274,6 +394,11 @@ modules:
     image_size: 581632
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_configuration.dylib
@@ -283,6 +408,11 @@ modules:
     image_size: 16384
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_coreservices.dylib
@@ -292,6 +422,11 @@ modules:
     image_size: 16384
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_coretls.dylib
@@ -301,6 +436,11 @@ modules:
     image_size: 102400
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_dnssd.dylib
@@ -310,6 +450,11 @@ modules:
     image_size: 28672
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_info.dylib
@@ -319,6 +464,11 @@ modules:
     image_size: 172032
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_kernel.dylib
@@ -328,6 +478,11 @@ modules:
     image_size: 143360
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_m.dylib
@@ -337,6 +492,11 @@ modules:
     image_size: 294912
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_malloc.dylib
@@ -346,6 +506,11 @@ modules:
     image_size: 126976
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_network.dylib
@@ -355,6 +520,11 @@ modules:
     image_size: 368640
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_networkextension.dylib
@@ -364,6 +534,11 @@ modules:
     image_size: 40960
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_notify.dylib
@@ -373,6 +548,11 @@ modules:
     image_size: 40960
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_platform.dylib
@@ -382,6 +562,11 @@ modules:
     image_size: 36864
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_pthread.dylib
@@ -391,6 +576,11 @@ modules:
     image_size: 45056
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_sandbox.dylib
@@ -400,6 +590,11 @@ modules:
     image_size: 16384
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_secinit.dylib
@@ -409,6 +604,11 @@ modules:
     image_size: 8192
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_symptoms.dylib
@@ -418,6 +618,11 @@ modules:
     image_size: 32768
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libsystem_trace.dylib
@@ -427,6 +632,11 @@ modules:
     image_size: 81920
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libunwind.dylib
@@ -436,6 +646,11 @@ modules:
     image_size: 24576
   - debug_status: unused
     unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
     arch: unknown
     type: macho
     code_file: /usr/lib/system/libxpc.dylib

@@ -17,7 +17,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::types::{FileType, ObjectId, ObjectType, Scope, SourceConfig};
+use crate::types::{FileType, ObjectFeatures, ObjectId, ObjectType, Scope, SourceConfig};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -77,6 +77,7 @@ pub struct SymCacheFile {
     identifier: ObjectId,
     scope: Scope,
     data: ByteView<'static>,
+    features: ObjectFeatures,
     status: CacheStatus,
     arch: Arch,
 }
@@ -95,6 +96,11 @@ impl SymCacheFile {
     /// Returns the architecture of this symcache.
     pub fn arch(&self) -> Arch {
         self.arch
+    }
+
+    /// Returns the features of the object file this symcache was constructed from.
+    pub fn features(&self) -> ObjectFeatures {
+        self.features
     }
 }
 
@@ -172,6 +178,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             identifier: self.request.identifier.clone(),
             scope,
             data,
+            features: self.object_meta.features(),
             status,
             arch,
         }
@@ -228,6 +235,7 @@ impl SymCacheActor {
                             identifier,
                             scope,
                             data: ByteView::from_slice(b""),
+                            features: ObjectFeatures::default(),
                             status: CacheStatus::Negative,
                             arch: Arch::Unknown,
                         }))

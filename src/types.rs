@@ -675,6 +675,31 @@ impl Default for ObjectFileStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ObjectFeatures {
+    /// The object file contains full debug info.
+    pub has_debug_info: bool,
+
+    /// The object file contains unwind info.
+    pub has_unwind_info: bool,
+
+    /// The object file contains a symbol table.
+    pub has_symbols: bool,
+
+    /// The object file had sources available.
+    #[serde(default)]
+    pub has_sources: bool,
+}
+
+impl ObjectFeatures {
+    pub fn merge(&mut self, other: ObjectFeatures) {
+        self.has_debug_info |= other.has_debug_info;
+        self.has_unwind_info |= other.has_unwind_info;
+        self.has_symbols |= other.has_symbols;
+        self.has_sources |= other.has_sources;
+    }
+}
+
 /// Normalized RawObjectInfo with status attached.
 ///
 /// RawObjectInfo is what the user sends and CompleteObjectInfo is what the user gets.
@@ -684,8 +709,11 @@ pub struct CompleteObjectInfo {
     pub debug_status: ObjectFileStatus,
 
     /// Status for fetching the file with unwind info (for minidump stackwalking).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unwind_status: Option<ObjectFileStatus>,
+
+    /// Features available during symbolication.
+    pub features: ObjectFeatures,
 
     /// Actual architecture of this debug file.
     pub arch: Arch,
@@ -710,9 +738,10 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             .map(|id| id.to_string());
 
         CompleteObjectInfo {
-            debug_status: Default::default(),
-            unwind_status: Default::default(),
-            arch: Default::default(),
+            debug_status: ObjectFileStatus::Unused,
+            unwind_status: None,
+            features: ObjectFeatures::default(),
+            arch: Arch::Unknown,
             raw,
         }
     }
