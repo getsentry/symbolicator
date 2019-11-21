@@ -31,7 +31,7 @@ prefix.
 Example:
 
 ```
-./target/release/symsorter -zz -o ./output --prefix ios --bundle 10.3_ABCD path/to/input/folder
+./target/release/symsorter -zz -o ./output --prefix ios --bundle-id 10.3_ABCD path/to/input/folder
 ```
 
 ## Serving
