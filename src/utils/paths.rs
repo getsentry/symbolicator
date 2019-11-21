@@ -287,7 +287,7 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         // such files.
         ObjectType::Elf => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
         // Guess we're out of luck.
-        ObjectType::Unknown => return None,
+        ObjectType::Symbolic | ObjectType::Unknown => return None,
     };
 
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
