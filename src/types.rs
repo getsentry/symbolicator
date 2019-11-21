@@ -524,7 +524,6 @@ pub enum ObjectType {
     Elf,
     Macho,
     Pe,
-    Symbolic,
     Unknown,
 }
 
@@ -536,7 +535,6 @@ impl FromStr for ObjectType {
             "elf" => ObjectType::Elf,
             "macho" => ObjectType::Macho,
             "pe" => ObjectType::Pe,
-            "symbolic" => ObjectType::Symbolic,
             _ => ObjectType::Unknown,
         })
     }
@@ -558,7 +556,6 @@ impl fmt::Display for ObjectType {
             ObjectType::Elf => write!(f, "elf"),
             ObjectType::Macho => write!(f, "macho"),
             ObjectType::Pe => write!(f, "pe"),
-            ObjectType::Symbolic => write!(f, "symbolic"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
     }
