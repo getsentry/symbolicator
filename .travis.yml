@@ -23,7 +23,10 @@ matrix:
       script: make -e lint
 
     - name: "test"
-      script: make -e test
+      script: make -e test-rust
+
+    - name: "e2e"
+      script: make -e test-integration
 
     - name: "docs"
       before_script: npm install -g @zeus-ci/cli
