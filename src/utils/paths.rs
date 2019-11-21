@@ -4,7 +4,7 @@ use std::fmt::Write;
 use symbolic::common::{CodeId, DebugId, Uuid};
 
 use crate::types::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId,
+    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId, ObjectType,
 };
 
 const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
@@ -248,6 +248,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 }
 
 fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+    // determine the suffix and object type
     let suffix = match filetype {
         FileType::ElfCode | FileType::MachCode | FileType::Pe => "executable",
         FileType::ElfDebug | FileType::MachDebug | FileType::Pdb => "debuginfo",
@@ -255,12 +256,38 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
     };
 
-    // for PEs we want to use signature+age that also breakpad uses.  We also use
-    // the debug id if the query did not provide a code id.
-    let id = if filetype == FileType::Pe || identifier.code_id.is_none() {
-        Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase())
-    } else {
-        Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
+    // determine object type.  We prefer to use the file type as indicator for going
+    // back to the object type.  If that is not possible, we use the object type
+    // that is stored on the identifier which might be unreliable.
+    let object_type = match filetype {
+        FileType::Pe | FileType::Pdb => ObjectType::Pe,
+        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
+        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
+        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
+    };
+
+    // determine the ID we use for the path
+    let id = match object_type {
+        // PEs and PDBs are indexed by the debug id in lowercase breakpad format
+        // always.  This is done because code IDs by themselves are not reliable
+        // enough for PEs and are only useful together with the file name which
+        // we do not want to encode.
+        ObjectType::Pe => Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase()),
+        // On mach we can always determine the code ID from the debug ID if the
+        // code ID is unavailable.
+        ObjectType::Macho => {
+            if identifier.code_id.is_none() {
+                Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
+            } else {
+                Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
+            }
+        }
+        // For ELF we always use the code ID.  If it's not available we can't actually
+        // find this file at all.  See symsorter which will never use the debug ID for
+        // such files.
+        ObjectType::Elf => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
+        // Guess we're out of luck.
+        ObjectType::Unknown => return None,
     };
 
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
@@ -310,6 +337,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                object_type: ObjectType::Elf,
             },
         ))
     } else if signature_lower.starts_with("elf-buildid-") {
@@ -320,6 +348,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                object_type: ObjectType::Elf,
             },
         ))
     } else if leading_fn_lower.ends_with(".dwarf") && signature_lower.starts_with("mach-uuid-sym-")
@@ -331,6 +360,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                object_type: ObjectType::Macho,
             },
         ))
     } else if signature_lower.starts_with("mach-uuid-") {
@@ -341,6 +371,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                object_type: ObjectType::Macho,
             },
         ))
     } else if leading_fn_lower.ends_with(".pdb") {
@@ -351,6 +382,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: None,
                 debug_id: Some(DebugId::from_breakpad(signature).ok()?),
                 debug_file: Some(leading_fn.into()),
+                object_type: ObjectType::Pe,
             },
         ))
     } else {
@@ -361,6 +393,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                object_type: ObjectType::Pe,
             },
         ))
     }

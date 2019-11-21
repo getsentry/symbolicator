@@ -162,7 +162,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
         CfiCacheFile {
-            object_type: self.request.object_type.clone(),
+            object_type: self.request.object_type,
             identifier: self.request.identifier.clone(),
             scope,
             data,
@@ -189,7 +189,7 @@ impl CfiCacheActor {
         let object = self
             .objects
             .find(FindObject {
-                filetypes: FileType::from_object_type(&request.object_type),
+                filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
                 sources: request.sources.clone(),
                 scope: request.scope.clone(),
@@ -201,7 +201,7 @@ impl CfiCacheActor {
         let threadpool = self.threadpool.clone();
         let objects = self.objects.clone();
 
-        let object_type = request.object_type.clone();
+        let object_type = request.object_type;
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 

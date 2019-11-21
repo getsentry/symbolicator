@@ -1,8 +1,10 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use failure::{Backtrace, Fail};
@@ -516,8 +518,54 @@ pub struct RawObjectInfo {
 }
 
 /// The type of an object file.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct ObjectType(pub String);
+#[derive(Serialize, Clone, Copy, Debug, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectType {
+    Elf,
+    Macho,
+    Pe,
+    Unknown,
+}
+
+impl FromStr for ObjectType {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<ObjectType, Infallible> {
+        Ok(match s {
+            "elf" => ObjectType::Elf,
+            "macho" => ObjectType::Macho,
+            "pe" => ObjectType::Pe,
+            _ => ObjectType::Unknown,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ObjectType {
+    fn deserialize<D>(deserializer: D) -> Result<ObjectType, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: Cow<'de, str> = Deserialize::deserialize(deserializer)?;
+        Ok(s.parse().unwrap())
+    }
+}
+
+impl fmt::Display for ObjectType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ObjectType::Elf => write!(f, "elf"),
+            ObjectType::Macho => write!(f, "macho"),
+            ObjectType::Pe => write!(f, "pe"),
+            ObjectType::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+impl Default for ObjectType {
+    fn default() -> ObjectType {
+        ObjectType::Unknown
+    }
+}
 
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
@@ -848,12 +896,11 @@ impl FileType {
 
     /// Given an object type, returns filetypes in the order they should be tried.
     #[inline]
-    pub fn from_object_type(ty: &ObjectType) -> &'static [Self] {
-        use FileType::*;
-        match &ty.0[..] {
-            "macho" => &[MachDebug, MachCode, Breakpad],
-            "pe" => &[Pdb, Pe, Breakpad],
-            "elf" => &[ElfDebug, ElfCode, Breakpad],
+    pub fn from_object_type(ty: ObjectType) -> &'static [Self] {
+        match ty {
+            ObjectType::Macho => &[FileType::MachDebug, FileType::MachCode, FileType::Breakpad],
+            ObjectType::Pe => &[FileType::Pdb, FileType::Pe, FileType::Breakpad],
+            ObjectType::Elf => &[FileType::ElfDebug, FileType::ElfCode, FileType::Breakpad],
             _ => Self::all(),
         }
     }
@@ -888,6 +935,9 @@ pub struct ObjectId {
 
     /// Path to the debug file.
     pub debug_file: Option<String>,
+
+    /// Hint to what we believe the file type should be.
+    pub object_type: ObjectType,
 }
 
 impl ObjectId {
@@ -924,5 +974,6 @@ impl WriteSentryScope for ObjectId {
             "object_id.debug_file_basename",
             self.debug_file_basename().unwrap_or("None"),
         );
+        scope.set_tag("object_id.object_type", self.object_type.to_string());
     }
 }

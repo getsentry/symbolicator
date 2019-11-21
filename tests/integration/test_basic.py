@@ -12,7 +12,7 @@ WINDOWS_DATA = {
     ],
     "modules": [
         {
-            "type": "symbolic",
+            "type": "pe",
             "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
             "code_file": "C:\\Windows\\System32\\kernel32.dll",
             "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
@@ -42,7 +42,7 @@ SUCCESS_WINDOWS = {
     ],
     "modules": [
         {
-            "type": "symbolic",
+            "type": "pe",
             "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
             "code_file": "C:\\Windows\\System32\\kernel32.dll",
             "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
@@ -79,7 +79,7 @@ def _make_unsuccessful_result(status):
         ],
         "modules": [
             {
-                "type": "symbolic",
+                "type": "pe",
                 "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
                 "code_file": "C:\\Windows\\System32\\kernel32.dll",
                 "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
