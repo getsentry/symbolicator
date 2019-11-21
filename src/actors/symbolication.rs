@@ -487,7 +487,7 @@ impl SymCacheLookup {
                 Either::A(
                     symcache_actor
                         .fetch(FetchSymCache {
-                            object_type: object_info.raw.ty.clone(),
+                            object_type: object_info.raw.ty,
                             identifier: object_id_from_object_info(&object_info.raw),
                             sources: sources.clone(),
                             scope: scope.clone(),
@@ -955,7 +955,7 @@ impl SymbolicationActor {
                 .filter_map(|code_module| {
                     Some((
                         code_module.id()?,
-                        object_info_from_minidump_module(object_type.clone(), code_module),
+                        object_info_from_minidump_module(object_type, code_module),
                     ))
                 })
                 .collect();
@@ -984,7 +984,7 @@ impl SymbolicationActor {
             .map(move |(code_module_id, object_info)| {
                 cficaches
                     .fetch(FetchCfiCache {
-                        object_type: object_info.ty.clone(),
+                        object_type: object_info.ty,
                         identifier: object_id_from_object_info(&object_info),
                         sources: sources.clone(),
                         scope: scope.clone(),
@@ -1068,7 +1068,7 @@ impl SymbolicationActor {
                 .into_iter()
                 .filter_map(|code_module| {
                     let mut info: CompleteObjectInfo =
-                        object_info_from_minidump_module(object_type.clone(), code_module).into();
+                        object_info_from_minidump_module(object_type, code_module).into();
 
                     let status = unwind_statuses
                         .get(&code_module.id()?)

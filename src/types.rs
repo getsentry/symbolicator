@@ -867,8 +867,8 @@ impl FileType {
 
     /// Given an object type, returns filetypes in the order they should be tried.
     #[inline]
-    pub fn from_object_type(ty: &ObjectType) -> &'static [Self] {
-        match *ty {
+    pub fn from_object_type(ty: ObjectType) -> &'static [Self] {
+        match ty {
             ObjectType::Macho => &[FileType::MachDebug, FileType::MachCode, FileType::Breakpad],
             ObjectType::Pe => &[FileType::Pdb, FileType::Pe, FileType::Breakpad],
             ObjectType::Elf => &[FileType::ElfDebug, FileType::ElfCode, FileType::Breakpad],
