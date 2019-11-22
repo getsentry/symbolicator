@@ -47,11 +47,23 @@ steps:
     id: "smoke test 2"
 
   # Only tag "latest" when on master
-  - name: "gcr.io/cloud-builders/docker"
-    entrypoint: "bash"
+  - name: 'gcr.io/cloud-builders/docker'
+    secretEnv: ['DOCKER_PASSWORD']
+    entrypoint: 'bash'
     args:
-      - "-c"
-      - '[[ "$BRANCH_NAME" == "master" ]] && docker push us.gcr.io/$PROJECT_ID/symbolicator:latest || true'
+    - '-e'
+    - '-c'
+    - |
+      # Only push to Docker Hub from master
+      [ "$BRANCH_NAME" != "master" ] && exit 0
+      docker push us.gcr.io/$PROJECT_ID/symbolicator:latest
+      echo "$$DOCKER_PASSWORD" | docker login --username=sentrybuilder --password-stdin
+      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$SHORT_SHA
+      docker push getsentry/symbolicator:$SHORT_SHA
+      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$COMMIT_SHA
+      docker push getsentry/sentsymbolicatorry:$COMMIT_SHA
+      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:latest
+      docker push getsentry/symbolicator:latest
 
 images:
   [
@@ -62,3 +74,12 @@ timeout: 3600s
 options:
   # Run on bigger machines
   machineType: "N1_HIGHCPU_8"
+secrets:
+- kmsKeyName: projects/sentryio/locations/global/keyRings/service-credentials/cryptoKeys/cloudbuild
+  secretEnv:
+    # This is a personal access token for the sentrybuilder account, encrypted using the
+    # short guide at http://bit.ly/2Pg6uw9
+    DOCKER_PASSWORD: |
+      CiQAE8gN7y3OMxn+a1kofmK4Bi8jQZtdRFj2lYYwaZHVeIIBUzMSTQA9tvn8XCv2vqj6u8CHoeSP
+      TVW9pLvSCorKoeNtOp0eb+6V1yNJW/+JC07DNO1KLbTbodbuza6jKJHU5xeAJ4kGQI78UY5Vu1Gp
+      QcMK
