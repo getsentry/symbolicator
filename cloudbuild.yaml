@@ -61,7 +61,7 @@ steps:
       docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$SHORT_SHA
       docker push getsentry/symbolicator:$SHORT_SHA
       docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$COMMIT_SHA
-      docker push getsentry/sentsymbolicatorry:$COMMIT_SHA
+      docker push getsentry/symbolicator:$COMMIT_SHA
       docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:latest
       docker push getsentry/symbolicator:latest
 
