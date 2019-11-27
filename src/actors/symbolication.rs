@@ -775,104 +775,11 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        self.do_symbolicate_impl(request).boxed_local().compat()
-    }
-
-    fn do_symbolicate_impl(
-        &self,
-        request: SymbolicateStacktraces,
-    ) -> impl std::future::Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
-    {
-        let objects = self.objects.clone();
-        let threadpool = self.threadpool.clone();
-
-        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
-        let stacktraces = request.stacktraces.clone();
-        let sources = request.sources.clone();
-        let scope = request.scope.clone();
-        let signal = request.signal;
-
-        let result = symcache_lookup
-            .fetch_symcaches(self.symcaches.clone(), request)
-            .and_then(clone!(threadpool, |symcache_lookup| {
-                let future = future::lazy(move || {
-                    let stacktraces: Vec<_> = stacktraces
-                        .into_iter()
-                        .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
-                        .collect();
-
-                    let modules: Vec<_> = symcache_lookup
-                        .inner
-                        .into_iter()
-                        .map(|(object_info, _)| {
-                            metric!(
-                                counter("symbolication.debug_status") += 1,
-                                "status" => object_info.debug_status.name()
-                            );
-
-                            object_info
-                        })
-                        .collect();
-
-                    metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
-                    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
-                    metric!(
-                        time_raw("symbolication.num_frames") =
-                            stacktraces.iter().map(|s| s.frames.len() as u64).sum()
-                    );
-
-                    Ok(CompletedSymbolicationResponse {
-                        signal,
-                        modules,
-                        stacktraces,
-                        ..Default::default()
-                    })
-                });
-
-                threadpool
-                    .spawn_handle(future.sentry_hub_current())
-                    .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
-            }))
-            .and_then(move |response| {
-                source_lookup
-                    .fetch_sources(objects, scope, sources, &response)
-                    .map(move |source_lookup| (source_lookup, response))
-            })
-            .and_then(move |(source_lookup, mut response)| {
-                let future = future::lazy(move || {
-                    let debug_sessions = source_lookup.prepare_debug_sessions();
-
-                    for trace in &mut response.stacktraces {
-                        for frame in &mut trace.frames {
-                            let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                                (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
-                                _ => continue,
-                            };
-
-                            let result = source_lookup.get_context_lines(
-                                &debug_sessions,
-                                frame.raw.instruction_addr.0,
-                                abs_path,
-                                lineno,
-                                5,
-                            );
-
-                            if let Some((pre_context, context_line, post_context)) = result {
-                                frame.raw.pre_context = pre_context;
-                                frame.raw.context_line = Some(context_line);
-                                frame.raw.post_context = post_context;
-                            }
-                        }
-                    }
-                    Ok(response)
-                });
-
-                threadpool
-                    .spawn_handle(future.sentry_hub_current())
-                    .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
-            });
-
+        let result = self
+            .clone()
+            .do_symbolicate_impl(request)
+            .boxed_local()
+            .compat();
         future_metrics!(
             "symbolicate",
             Some((
@@ -881,7 +788,106 @@ impl SymbolicationActor {
             )),
             result
         )
-        .compat()
+    }
+
+    async fn do_symbolicate_impl(
+        self,
+        request: SymbolicateStacktraces,
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
+        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
+        let stacktraces = request.stacktraces.clone();
+        let sources = request.sources.clone();
+        let scope = request.scope.clone();
+        let signal = request.signal;
+
+        let symcache_lookup = symcache_lookup
+            .fetch_symcaches(self.symcaches, request)
+            .compat()
+            .await?;
+
+        let future = future::lazy(move || -> Result<_, SymbolicationError> {
+            let stacktraces: Vec<_> = stacktraces
+                .into_iter()
+                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
+                .collect();
+
+            let modules: Vec<_> = symcache_lookup
+                .inner
+                .into_iter()
+                .map(|(object_info, _)| {
+                    metric!(
+                        counter("symbolication.debug_status") += 1,
+                        "status" => object_info.debug_status.name()
+                    );
+
+                    object_info
+                })
+                .collect();
+
+            metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+            metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+            metric!(
+                time_raw("symbolication.num_frames") =
+                    stacktraces.iter().map(|s| s.frames.len() as u64).sum()
+            );
+
+            Ok(CompletedSymbolicationResponse {
+                signal,
+                modules,
+                stacktraces,
+                ..Default::default()
+            })
+        });
+
+        let mut response = self
+            .threadpool
+            .spawn_handle(future.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
+            .compat()
+            .await?;
+
+        let source_lookup = source_lookup
+            .fetch_sources(self.objects, scope, sources, &response)
+            .compat()
+            .await?;
+
+        let future = future::lazy(move || -> Result<_, SymbolicationError> {
+            let debug_sessions = source_lookup.prepare_debug_sessions();
+
+            for trace in &mut response.stacktraces {
+                for frame in &mut trace.frames {
+                    let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                        _ => continue,
+                    };
+
+                    let result = source_lookup.get_context_lines(
+                        &debug_sessions,
+                        frame.raw.instruction_addr.0,
+                        abs_path,
+                        lineno,
+                        5,
+                    );
+
+                    if let Some((pre_context, context_line, post_context)) = result {
+                        frame.raw.pre_context = pre_context;
+                        frame.raw.context_line = Some(context_line);
+                        frame.raw.post_context = post_context;
+                    }
+                }
+            }
+            Ok(response)
+        });
+
+        let result = self
+            .threadpool
+            .spawn_handle(future.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
+            .compat()
+            .await?;
+
+        Ok(result)
     }
 
     pub fn symbolicate_stacktraces(
