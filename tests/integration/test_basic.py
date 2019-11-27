@@ -314,15 +314,17 @@ def test_timeouts(symbolicator, hitcounter):
     }
 
 
+@pytest.mark.parametrize("bucket_type", ["http", "sentry"])
 @pytest.mark.parametrize("statuscode", [400, 500, 404])
-def test_unreachable_bucket(symbolicator, hitcounter, statuscode):
+def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     input = dict(
         sources=[
             {
-                "type": "http",
+                "type": bucket_type,
                 "id": "broken",
-                "layout": {"type": "symstore"},
+                "layout": {"type": "symstore"},  # only relevant for http type
                 "url": f"{hitcounter.url}/respond_statuscode/{statuscode}/",
+                "token": "123abc",  # only relevant for sentry type
             }
         ],
         **WINDOWS_DATA,
