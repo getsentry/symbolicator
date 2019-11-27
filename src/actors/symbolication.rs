@@ -10,6 +10,8 @@ use bytes::{Bytes, IntoBuf};
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
+use futures03::compat::Future01CompatExt;
+use futures03::future::{FutureExt as FuckYou, TryFutureExt};
 use parking_lot::RwLock;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
@@ -772,7 +774,8 @@ impl SymbolicationActor {
     fn do_symbolicate(
         &self,
         request: SymbolicateStacktraces,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
+    ) -> impl std::future::Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
+    {
         let objects = self.objects.clone();
         let threadpool = self.threadpool.clone();
 
@@ -871,13 +874,14 @@ impl SymbolicationActor {
             )),
             result
         )
+        .compat()
     }
 
     pub fn symbolicate_stacktraces(
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(|| self.do_symbolicate(request))
+        self.create_symbolication_request(|| self.do_symbolicate(request).boxed_local().compat())
     }
 }
 
@@ -1215,6 +1219,8 @@ impl SymbolicationActor {
         slf.do_stackwalk_minidump(scope, minidump, sources)
             .and_then(move |(request, state)| {
                 slf.do_symbolicate(request)
+                    .boxed_local()
+                    .compat()
                     .map(move |response| (response, state))
             })
             .map(|(mut response, state)| {
@@ -1404,6 +1410,8 @@ impl SymbolicationActor {
             .and_then(move |(request, state)| {
                 self2
                     .do_symbolicate(request)
+                    .boxed_local()
+                    .compat()
                     .map(move |response| (response, state))
             })
             .map(|(mut response, state)| {
