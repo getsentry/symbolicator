@@ -774,6 +774,13 @@ impl SymbolicationActor {
     fn do_symbolicate(
         &self,
         request: SymbolicateStacktraces,
+    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
+        self.do_symbolicate_impl(request).boxed_local().compat()
+    }
+
+    fn do_symbolicate_impl(
+        &self,
+        request: SymbolicateStacktraces,
     ) -> impl std::future::Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
     {
         let objects = self.objects.clone();
@@ -881,7 +888,7 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(|| self.do_symbolicate(request).boxed_local().compat())
+        self.create_symbolication_request(|| self.do_symbolicate(request))
     }
 }
 
@@ -1219,8 +1226,6 @@ impl SymbolicationActor {
         slf.do_stackwalk_minidump(scope, minidump, sources)
             .and_then(move |(request, state)| {
                 slf.do_symbolicate(request)
-                    .boxed_local()
-                    .compat()
                     .map(move |response| (response, state))
             })
             .map(|(mut response, state)| {
@@ -1410,8 +1415,6 @@ impl SymbolicationActor {
             .and_then(move |(request, state)| {
                 self2
                     .do_symbolicate(request)
-                    .boxed_local()
-                    .compat()
                     .map(move |response| (response, state))
             })
             .map(|(mut response, state)| {
