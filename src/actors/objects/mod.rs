@@ -623,7 +623,7 @@ impl ObjectsActor {
                     let object = match response {
                         Ok(object) => object,
                         Err(e) => {
-                            log::trace!("Failed to download: {}", LogError(e));
+                            log::debug!("Failed to download: {}", LogError(e));
                             return (3, *i);
                         }
                     };
