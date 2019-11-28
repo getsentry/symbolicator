@@ -1236,7 +1236,8 @@ impl SymbolicationActor {
         minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let (request, state) = self.do_stackwalk_minidump(scope, minidump, sources)
+        let (request, state) = self
+            .do_stackwalk_minidump(scope, minidump, sources)
             .compat()
             .await?;
 
@@ -1252,7 +1253,12 @@ impl SymbolicationActor {
         minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(|| self.clone().do_process_minidump(scope, minidump, sources).boxed_local().compat())
+        self.create_symbolication_request(|| {
+            self.clone()
+                .do_process_minidump(scope, minidump, sources)
+                .boxed_local()
+                .compat()
+        })
     }
 }
 
