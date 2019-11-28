@@ -467,15 +467,13 @@ impl SymCacheLookup {
         });
     }
 
-    fn fetch_symcaches(
+    async fn fetch_symcaches(
         self,
         symcache_actor: Arc<SymCacheActor>,
         request: SymbolicateStacktraces,
-    ) -> impl Future<Item = Self, Error = SymbolicationError> {
+    ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
-        let sources = request.sources;
         let stacktraces = request.stacktraces;
-        let scope = request.scope.clone();
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
@@ -485,42 +483,54 @@ impl SymCacheLookup {
             }
         }
 
-        future::join_all(self.inner.into_iter().enumerate().map(
-            move |(i, (mut object_info, _))| {
-                if !referenced_objects.contains(&i) {
-                    object_info.debug_status = ObjectFileStatus::Unused;
-                    return Either::B(Ok((object_info, None)).into_future());
+        let mut results = Vec::new();
+        let mut futures = Vec::new();
+
+        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
+            if !referenced_objects.contains(&i) {
+                object_info.debug_status = ObjectFileStatus::Unused;
+                results.push((object_info, None));
+                continue;
+            }
+
+            let sources = request.sources.clone();
+            let scope = request.scope.clone();
+            let symcache_actor = symcache_actor.clone();
+
+            futures.push(async move {
+                let symcache_result = symcache_actor
+                    .fetch(FetchSymCache {
+                        object_type: object_info.raw.ty,
+                        identifier: object_id_from_object_info(&object_info.raw),
+                        sources,
+                        scope,
+                    }).compat().await;
+
+                let (symcache, status) = match symcache_result {
+                    Ok(symcache) => match symcache.parse() {
+                        Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
+                        Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
+                        Err(e) => (None, (&e).into()),
+                    },
+                    Err(e) => (None, (&*e).into()),
+                };
+
+                object_info.arch = Default::default();
+
+                if let Some(ref symcache) = symcache {
+                    object_info.arch = symcache.arch();
+                    object_info.features.merge(symcache.features());
                 }
 
-                Either::A(
-                    symcache_actor
-                        .fetch(FetchSymCache {
-                            object_type: object_info.raw.ty,
-                            identifier: object_id_from_object_info(&object_info.raw),
-                            sources: sources.clone(),
-                            scope: scope.clone(),
-                        })
-                        .and_then(|symcache| match symcache.parse()? {
-                            Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
-                            None => Ok((Some(symcache), ObjectFileStatus::Missing)),
-                        })
-                        .or_else(|e| Ok((None, (&*e).into())))
-                        .map(move |(symcache, status)| {
-                            object_info.arch =
-                                symcache.as_ref().map(|c| c.arch()).unwrap_or_default();
+                object_info.debug_status = status;
+                (object_info, symcache)
+            });
+        }
 
-                            if let Some(ref symcache) = symcache {
-                                object_info.features.merge(symcache.features());
-                            }
+        results.extend(futures03::future::join_all(futures).await);
 
-                            object_info.debug_status = status;
-                            (object_info, symcache)
-                        }),
-                )
-            },
-        ))
-        .map(|results| SymCacheLookup {
-            inner: results.into_iter().collect(),
+        Ok(SymCacheLookup {
+            inner: results,
         })
     }
 
@@ -803,7 +813,6 @@ impl SymbolicationActor {
 
         let symcache_lookup = symcache_lookup
             .fetch_symcaches(self.symcaches, request)
-            .compat()
             .await?;
 
         let future = future::lazy(move || -> Result<_, SymbolicationError> {
