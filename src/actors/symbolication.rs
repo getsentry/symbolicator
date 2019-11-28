@@ -1207,31 +1207,40 @@ impl SymbolicationActor {
     }
 
     fn do_stackwalk_minidump(
-        &self,
+        self,
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
-        let slf = self.clone();
-        let sources = Arc::new(sources);
-
-        let future = slf
-            .get_referenced_modules_from_minidump(minidump.clone())
-            .and_then(clone!(slf, scope, sources, |referenced_modules| {
-                slf.load_cfi_caches(scope, referenced_modules, sources)
-            }))
-            .and_then(move |cfi_caches| {
-                slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
-            });
-
-        Box::new(future_metrics!(
+    ) -> impl futures03::future::Future<
+        Output = Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError>,
+    > {
+        future_metrics!(
             "minidump_stackwalk",
             Some((
                 Duration::from_secs(1200),
                 SymbolicationErrorKind::Timeout.into()
             )),
-            future,
-        ))
+            async move {
+                let sources = Arc::new(sources);
+
+                let referenced_modules = self
+                    .get_referenced_modules_from_minidump(minidump.clone())
+                    .compat()
+                    .await?;
+
+                let cfi_caches = self
+                    .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
+                    .compat()
+                    .await?;
+
+                self.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
+                    .compat()
+                    .await
+            }
+                .boxed_local()
+                .compat()
+        )
+        .compat()
     }
 
     async fn do_process_minidump(
@@ -1241,8 +1250,8 @@ impl SymbolicationActor {
         sources: Vec<SourceConfig>,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
+            .clone()
             .do_stackwalk_minidump(scope, minidump, sources)
-            .compat()
             .await?;
 
         let mut response = self.do_symbolicate(request).compat().await?;
