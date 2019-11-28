@@ -279,13 +279,13 @@ struct SourceLookup {
 }
 
 impl SourceLookup {
-    pub fn fetch_sources(
+    pub async fn fetch_sources(
         self,
         objects: Arc<ObjectsActor>,
         scope: Scope,
         sources: Arc<Vec<SourceConfig>>,
         response: &CompletedSymbolicationResponse,
-    ) -> impl Future<Item = Self, Error = SymbolicationError> {
+    ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
         let stacktraces = &response.stacktraces;
 
@@ -297,51 +297,57 @@ impl SourceLookup {
             }
         }
 
-        future::join_all(self.inner.into_iter().enumerate().map(
-            move |(i, (mut object_info, _))| {
-                if !referenced_objects.contains(&i) {
-                    object_info.debug_status = ObjectFileStatus::Unused;
-                    return Either::B(Ok((object_info, None)).into_future());
+        let mut results = Vec::new();
+        let mut futures = Vec::new();
+
+        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
+            if !referenced_objects.contains(&i) {
+                object_info.debug_status = ObjectFileStatus::Unused;
+                results.push((object_info, None));
+                continue;
+            }
+
+            let objects = objects.clone();
+            let scope = scope.clone();
+            let sources = sources.clone();
+
+            futures.push(async move {
+                let opt_object_file_meta = objects
+                    .find(FindObject {
+                        filetypes: FileType::sources(),
+                        purpose: ObjectPurpose::Source,
+                        scope: scope.clone(),
+                        identifier: object_id_from_object_info(&object_info.raw),
+                        sources,
+                    }).compat().await.unwrap_or(None);
+
+                let object_file_opt = match opt_object_file_meta {
+                    None => None,
+                    Some(object_file_meta) => {
+                        objects.fetch(object_file_meta).and_then(
+                            |x| -> Result<_, ObjectError> {
+                                SelfCell::try_new(x.data(), |b| {
+                                    Object::parse(unsafe { &*b })
+                                })
+                                .map(|x| Some(Arc::new(SourceObject(x))))
+                                .or_else(|_| Ok(None))
+                            },
+                        ).compat().await.unwrap_or(None)
+                    }
+                };
+
+                if object_file_opt.is_some() {
+                    object_info.features.has_sources = true;
                 }
 
-                Either::A(
-                    objects
-                        .find(FindObject {
-                            filetypes: FileType::sources(),
-                            purpose: ObjectPurpose::Source,
-                            scope: scope.clone(),
-                            identifier: object_id_from_object_info(&object_info.raw),
-                            sources: sources.clone(),
-                        })
-                        .and_then(clone!(objects, |opt_object_file_meta| {
-                            match opt_object_file_meta {
-                                None => Either::A(Ok(None).into_future()),
-                                Some(object_file_meta) => {
-                                    Either::B(objects.fetch(object_file_meta).and_then(
-                                        |x| -> Result<_, ObjectError> {
-                                            SelfCell::try_new(x.data(), |b| {
-                                                Object::parse(unsafe { &*b })
-                                            })
-                                            .map(|x| Some(Arc::new(SourceObject(x))))
-                                            .or_else(|_| Ok(None))
-                                        },
-                                    ))
-                                }
-                            }
-                        }))
-                        .or_else(|_| Ok(None))
-                        .map(move |object_file_opt| {
-                            if object_file_opt.is_some() {
-                                object_info.features.has_sources = true;
-                            }
+                (object_info, object_file_opt)
+            });
+        }
 
-                            (object_info, object_file_opt)
-                        }),
-                )
-            },
-        ))
-        .map(|results| SourceLookup {
-            inner: results.into_iter().collect(),
+        results.extend(futures03::future::join_all(futures).await);
+
+        Ok(SourceLookup {
+            inner: results
         })
     }
 
@@ -858,7 +864,6 @@ impl SymbolicationActor {
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
-            .compat()
             .await?;
 
         let future = future::lazy(move || -> Result<_, SymbolicationError> {
