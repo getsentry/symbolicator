@@ -27,7 +27,7 @@ use uuid;
 use crate::actors::cficaches::{
     CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
 };
-use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FindObject, ObjectPurpose, ObjectsActor};
 use crate::actors::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
@@ -319,21 +319,23 @@ impl SourceLookup {
                         scope: scope.clone(),
                         identifier: object_id_from_object_info(&object_info.raw),
                         sources,
-                    }).compat().await.unwrap_or(None);
+                    })
+                    .compat()
+                    .await
+                    .unwrap_or(None);
 
                 let object_file_opt = match opt_object_file_meta {
                     None => None,
-                    Some(object_file_meta) => {
-                        objects.fetch(object_file_meta).and_then(
-                            |x| -> Result<_, ObjectError> {
-                                SelfCell::try_new(x.data(), |b| {
-                                    Object::parse(unsafe { &*b })
-                                })
-                                .map(|x| Some(Arc::new(SourceObject(x))))
-                                .or_else(|_| Ok(None))
-                            },
-                        ).compat().await.unwrap_or(None)
-                    }
+                    Some(object_file_meta) => objects
+                        .fetch(object_file_meta)
+                        .compat()
+                        .await
+                        .ok()
+                        .and_then(|x| {
+                            SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
+                                .map(|x| Arc::new(SourceObject(x)))
+                                .ok()
+                        }),
                 };
 
                 if object_file_opt.is_some() {
@@ -345,10 +347,7 @@ impl SourceLookup {
         }
 
         results.extend(futures03::future::join_all(futures).await);
-
-        Ok(SourceLookup {
-            inner: results
-        })
+        Ok(SourceLookup { inner: results })
     }
 
     pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
