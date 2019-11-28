@@ -1230,23 +1230,20 @@ impl SymbolicationActor {
         ))
     }
 
-    fn do_process_minidump(
-        &self,
+    async fn do_process_minidump(
+        self,
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let slf = self.clone();
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self.do_stackwalk_minidump(scope, minidump, sources)
+            .compat()
+            .await?;
 
-        slf.do_stackwalk_minidump(scope, minidump, sources)
-            .and_then(move |(request, state)| {
-                slf.do_symbolicate(request)
-                    .map(move |response| (response, state))
-            })
-            .map(|(mut response, state)| {
-                state.merge_into(&mut response);
-                response
-            })
+        let mut response = self.do_symbolicate(request).compat().await?;
+        state.merge_into(&mut response);
+
+        Ok(response)
     }
 
     pub fn process_minidump(
@@ -1255,7 +1252,7 @@ impl SymbolicationActor {
         minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(|| self.do_process_minidump(scope, minidump, sources))
+        self.create_symbolication_request(|| self.clone().do_process_minidump(scope, minidump, sources).boxed_local().compat())
     }
 }
 
