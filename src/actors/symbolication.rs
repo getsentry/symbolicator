@@ -1421,24 +1421,20 @@ impl SymbolicationActor {
         ))
     }
 
-    fn do_process_apple_crash_report(
-        &self,
+    async fn do_process_apple_crash_report(
+        self,
         scope: Scope,
         report: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let self2 = self.clone();
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self
+            .parse_apple_crash_report(scope, report, sources)
+            .compat()
+            .await?;
+        let mut response = self.do_symbolicate(request).compat().await?;
 
-        self.parse_apple_crash_report(scope, report, sources)
-            .and_then(move |(request, state)| {
-                self2
-                    .do_symbolicate(request)
-                    .map(move |response| (response, state))
-            })
-            .map(|(mut response, state)| {
-                state.merge_into(&mut response);
-                response
-            })
+        state.merge_into(&mut response);
+        Ok(response)
     }
 
     pub fn process_apple_crash_report(
@@ -1448,7 +1444,10 @@ impl SymbolicationActor {
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
         self.create_symbolication_request(|| {
-            self.do_process_apple_crash_report(scope, apple_crash_report, sources)
+            self.clone()
+                .do_process_apple_crash_report(scope, apple_crash_report, sources)
+                .boxed_local()
+                .compat()
         })
     }
 }
