@@ -504,7 +504,9 @@ impl SymCacheLookup {
                         identifier: object_id_from_object_info(&object_info.raw),
                         sources,
                         scope,
-                    }).compat().await;
+                    })
+                    .compat()
+                    .await;
 
                 let (symcache, status) = match symcache_result {
                     Ok(symcache) => match symcache.parse() {
@@ -529,9 +531,7 @@ impl SymCacheLookup {
 
         results.extend(futures03::future::join_all(futures).await);
 
-        Ok(SymCacheLookup {
-            inner: results,
-        })
+        Ok(SymCacheLookup { inner: results })
     }
 
     fn lookup_symcache(
