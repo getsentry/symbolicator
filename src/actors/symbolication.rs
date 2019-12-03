@@ -297,21 +297,20 @@ impl SourceLookup {
             }
         }
 
-        let mut results = Vec::new();
         let mut futures = Vec::new();
 
         for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
-            if !referenced_objects.contains(&i) {
-                object_info.debug_status = ObjectFileStatus::Unused;
-                results.push((object_info, None));
-                continue;
-            }
-
+            let is_used = referenced_objects.contains(&i);
             let objects = objects.clone();
             let scope = scope.clone();
             let sources = sources.clone();
 
             futures.push(async move {
+                if !is_used {
+                    object_info.debug_status = ObjectFileStatus::Unused;
+                    return (object_info, None);
+                }
+
                 let opt_object_file_meta = objects
                     .find(FindObject {
                         filetypes: FileType::sources(),
@@ -346,8 +345,9 @@ impl SourceLookup {
             });
         }
 
-        results.extend(futures03::future::join_all(futures).await);
-        Ok(SourceLookup { inner: results })
+        Ok(SourceLookup {
+            inner: futures03::future::join_all(futures).await,
+        })
     }
 
     pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
@@ -488,21 +488,19 @@ impl SymCacheLookup {
             }
         }
 
-        let mut results = Vec::new();
         let mut futures = Vec::new();
 
         for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
-            if !referenced_objects.contains(&i) {
-                object_info.debug_status = ObjectFileStatus::Unused;
-                results.push((object_info, None));
-                continue;
-            }
-
+            let is_used = referenced_objects.contains(&i);
             let sources = request.sources.clone();
             let scope = request.scope.clone();
             let symcache_actor = symcache_actor.clone();
 
             futures.push(async move {
+                if !is_used {
+                    object_info.debug_status = ObjectFileStatus::Unused;
+                    return (object_info, None);
+                }
                 let symcache_result = symcache_actor
                     .fetch(FetchSymCache {
                         object_type: object_info.raw.ty,
@@ -534,9 +532,9 @@ impl SymCacheLookup {
             });
         }
 
-        results.extend(futures03::future::join_all(futures).await);
-
-        Ok(SymCacheLookup { inner: results })
+        Ok(SymCacheLookup {
+            inner: futures03::future::join_all(futures).await,
+        })
     }
 
     fn lookup_symcache(
