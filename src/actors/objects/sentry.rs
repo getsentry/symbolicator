@@ -71,6 +71,7 @@ fn perform_search(
     let index_request = move || {
         client::get(&index_url)
             .with_connector((*CLIENT_CONNECTOR).clone())
+            .no_default_headers()
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", token.clone()))
             .finish()
