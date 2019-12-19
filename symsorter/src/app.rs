@@ -2,17 +2,17 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use console::style;
 use failure::{err_msg, Error};
-use chrono::{DateTime, Utc};
+use serde::Serialize;
+use serde_json;
 use structopt::StructOpt;
-use symbolic::common::{ByteView, Arch};
+use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::{Archive, FileFormat, Object, ObjectKind};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use zstd::stream::copy_encode;
-use serde::Serialize;
-use serde_json;
 
 /// File metadata
 
@@ -146,7 +146,10 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<Ve
             file_format: Some(obj.file_format()),
         };
 
-        fs::write(&new_filename.parent().unwrap().join("meta"), &serde_json::to_vec(&meta)?)?;
+        fs::write(
+            &new_filename.parent().unwrap().join("meta"),
+            &serde_json::to_vec(&meta)?,
+        )?;
 
         if !cli.quiet {
             println!(
@@ -179,12 +182,15 @@ fn execute() -> Result<(), Error> {
 
     for path in cli.input.iter() {
         for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
-            if !entry.metadata()?.is_file() {
+            if !entry.metadata().ok().map_or(false, |x| x.is_file()) {
                 continue;
             }
 
             let path = entry.path();
-            let bv = ByteView::open(path)?;
+            let bv = match ByteView::open(path) {
+                Ok(bv) => bv,
+                Err(_) => continue,
+            };
 
             // zip archive
             if bv.get(..2) == Some(b"PK") {
@@ -216,7 +222,10 @@ fn execute() -> Result<(), Error> {
 
     if !cli.quiet {
         println!();
-        println!("Done: sorted {} debug files", style(bundle_meta.debug_ids.len()).yellow().bold());
+        println!(
+            "Done: sorted {} debug files",
+            style(bundle_meta.debug_ids.len()).yellow().bold()
+        );
     }
 
     Ok(())

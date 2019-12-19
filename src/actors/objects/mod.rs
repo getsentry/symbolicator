@@ -9,8 +9,11 @@ use std::time::Duration;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 
+#[rustfmt::skip]
 use ::sentry::configure_scope;
+#[rustfmt::skip]
 use ::sentry::integrations::failure::capture_fail;
+
 use futures::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -18,6 +21,7 @@ use tempfile::{tempfile_in, NamedTempFile};
 
 use crate::actors::common::cache::{CacheItemRequest, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::logging::LogError;
 use crate::types::{
     ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectFeatures,
     ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
@@ -555,60 +559,73 @@ impl ObjectsActor {
             purpose,
         } = request;
 
-        let meta_cache = &self.meta_cache;
-        let threadpool = &self.threadpool;
-        let data_cache = &self.data_cache;
+        let file_ids = future::join_all(
+            sources
+                .iter()
+                .map(|source| {
+                    let type_name = source.type_name();
 
-        let prepare_futures: Vec<_> = sources
-            .iter()
-            .map(move |source| {
-                prepare_downloads(source, filetypes, &identifier)
-                    .and_then(clone!(
-                        meta_cache,
-                        data_cache,
-                        threadpool,
-                        identifier,
-                        scope,
-                        |ids| {
-                            future::join_all(ids.into_iter().map(move |file_id| {
-                                let request = FetchFileMetaRequest {
-                                    scope: if file_id.source().is_public() {
-                                        Scope::Global
-                                    } else {
-                                        scope.clone()
-                                    },
-                                    file_id,
-                                    object_id: identifier.clone(),
-                                    threadpool: threadpool.clone(),
-                                    data_cache: data_cache.clone(),
-                                };
+                    prepare_downloads(&source, filetypes, &identifier)
+                        .or_else(move |e| {
+                            // This basically only happens for the Sentry source type, when doing the
+                            // search by debug/code id. We do not surface those errors to the user
+                            // (instead we default to an empty search result) and only report them
+                            // internally.
+                            log::error!("Failed to download from {}: {}", type_name, LogError(&e));
+                            Ok(Vec::new())
+                        })
+                        // create a new hub for each prepare_downloads call
+                        .sentry_hub_new_from_current()
+                })
+                // collect into intermediate vector because of borrowing problems
+                .collect::<Vec<_>>(),
+        )
+        .map(|file_ids: Vec<Vec<FileId>>| -> Vec<FileId> {
+            file_ids.into_iter().flatten().collect()
+        });
 
-                                meta_cache
-                                    .compute_memoized(request.clone())
-                                    .sentry_hub_new_from_current() // new hub because of join_all
-                                    .map_err(|e| {
-                                        ObjectError::from(
-                                            ArcFail(e).context(ObjectErrorKind::Caching),
-                                        )
-                                    })
-                                    .then(Ok)
-                            }))
-                        }
-                    ))
-                    .sentry_hub_new_from_current() // new hub because of join_all
-            })
-            .collect();
+        let meta_cache = self.meta_cache.clone();
+        let threadpool = self.threadpool.clone();
+        let data_cache = self.data_cache.clone();
 
-        future::join_all(prepare_futures).and_then(move |responses| {
+        let file_metas = file_ids.and_then(move |file_ids| {
+            future::join_all(file_ids.into_iter().map(move |file_id| {
+                let request = FetchFileMetaRequest {
+                    scope: if file_id.source().is_public() {
+                        Scope::Global
+                    } else {
+                        scope.clone()
+                    },
+                    file_id,
+                    object_id: identifier.clone(),
+                    threadpool: threadpool.clone(),
+                    data_cache: data_cache.clone(),
+                };
+
+                meta_cache
+                    .compute_memoized(request.clone())
+                    .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
+                    // Errors from a file download should not make the entire join_all fail. We
+                    // collect a Vec<Result> and surface the original error to the user only when
+                    // we have no successful downloads.
+                    .then(Ok)
+                    // create a new hub for each file download
+                    .sentry_hub_new_from_current()
+            }))
+        });
+
+        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| {
             responses
                 .into_iter()
-                .flatten()
                 .enumerate()
                 .min_by_key(|(i, response)| {
                     // Prefer files that contain an object over unparseable files
                     let object = match response {
                         Ok(object) => object,
-                        _ => return (3, *i),
+                        Err(e) => {
+                            log::debug!("Failed to download: {}", LogError(e));
+                            return (3, *i);
+                        }
                     };
 
                     // Prefer object files with debug/unwind info over object files without
