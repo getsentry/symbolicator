@@ -8,6 +8,12 @@ before_install:
 git:
   depth: 1
 
+branches:
+  only:
+    - master
+    - /^release\/[\d.]+$/
+    - /^deploy\/.*$/
+
 matrix:
   include:
     - name: "style check"
