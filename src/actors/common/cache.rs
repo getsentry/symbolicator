@@ -237,7 +237,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         self.current_computations
             .write()
-            .insert(key.clone(), channel.clone());
+            .insert(key, channel.clone());
 
         let item_future = channel
             .map_err(|_| {

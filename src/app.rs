@@ -70,7 +70,7 @@ impl ServiceState {
             io_threadpool,
             symbolication,
             objects,
-            config: config.clone(),
+            config,
         }
     }
 }

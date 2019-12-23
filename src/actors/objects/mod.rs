@@ -603,7 +603,7 @@ impl ObjectsActor {
                 };
 
                 meta_cache
-                    .compute_memoized(request.clone())
+                    .compute_memoized(request)
                     .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
                     // Errors from a file download should not make the entire join_all fail. We
                     // collect a Vec<Result> and surface the original error to the user only when

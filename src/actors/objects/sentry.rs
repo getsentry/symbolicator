@@ -138,7 +138,7 @@ pub(super) fn prepare_downloads(
         token: source.token.clone(),
     };
 
-    let entries = perform_search(query.clone()).map(clone!(source, |entries| {
+    let entries = perform_search(query).map(clone!(source, |entries| {
         entries
             .into_iter()
             .map(move |api_response| FileId::Sentry(source.clone(), SentryFileId(api_response.id)))
