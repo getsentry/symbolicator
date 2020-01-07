@@ -11,14 +11,14 @@ RUN apt-get update \
 COPY Cargo.toml Cargo.lock build.rs ./
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
-    && RUSTFLAGS=-g cargo build --release --locked
+    && cargo build --release --locked
 
 COPY src ./src/
 COPY .git ./.git/
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
-RUN RUSTFLAGS=-g cargo build --release --locked
+RUN cargo build --release --locked
 RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
     && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \

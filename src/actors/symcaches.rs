@@ -117,7 +117,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Error = SymCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key().clone()
+        self.object_meta.cache_key()
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
