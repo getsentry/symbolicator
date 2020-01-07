@@ -10,6 +10,8 @@ use bytes::{Bytes, IntoBuf};
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
+use futures03::compat::Future01CompatExt;
+use futures03::future::{FutureExt as _, TryFutureExt};
 use parking_lot::RwLock;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
@@ -25,7 +27,7 @@ use uuid;
 use crate::actors::cficaches::{
     CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
 };
-use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{FindObject, ObjectPurpose, ObjectsActor};
 use crate::actors::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
@@ -277,13 +279,13 @@ struct SourceLookup {
 }
 
 impl SourceLookup {
-    pub fn fetch_sources(
+    pub async fn fetch_sources(
         self,
         objects: Arc<ObjectsActor>,
         scope: Scope,
         sources: Arc<Vec<SourceConfig>>,
         response: &CompletedSymbolicationResponse,
-    ) -> impl Future<Item = Self, Error = SymbolicationError> {
+    ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
         let stacktraces = &response.stacktraces;
 
@@ -295,51 +297,56 @@ impl SourceLookup {
             }
         }
 
-        future::join_all(self.inner.into_iter().enumerate().map(
-            move |(i, (mut object_info, _))| {
-                if !referenced_objects.contains(&i) {
+        let mut futures = Vec::new();
+
+        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
+            let is_used = referenced_objects.contains(&i);
+            let objects = objects.clone();
+            let scope = scope.clone();
+            let sources = sources.clone();
+
+            futures.push(async move {
+                if !is_used {
                     object_info.debug_status = ObjectFileStatus::Unused;
-                    return Either::B(Ok((object_info, None)).into_future());
+                    return (object_info, None);
                 }
 
-                Either::A(
-                    objects
-                        .find(FindObject {
-                            filetypes: FileType::sources(),
-                            purpose: ObjectPurpose::Source,
-                            scope: scope.clone(),
-                            identifier: object_id_from_object_info(&object_info.raw),
-                            sources: sources.clone(),
-                        })
-                        .and_then(clone!(objects, |opt_object_file_meta| {
-                            match opt_object_file_meta {
-                                None => Either::A(Ok(None).into_future()),
-                                Some(object_file_meta) => {
-                                    Either::B(objects.fetch(object_file_meta).and_then(
-                                        |x| -> Result<_, ObjectError> {
-                                            SelfCell::try_new(x.data(), |b| {
-                                                Object::parse(unsafe { &*b })
-                                            })
-                                            .map(|x| Some(Arc::new(SourceObject(x))))
-                                            .or_else(|_| Ok(None))
-                                        },
-                                    ))
-                                }
-                            }
-                        }))
-                        .or_else(|_| Ok(None))
-                        .map(move |object_file_opt| {
-                            if object_file_opt.is_some() {
-                                object_info.features.has_sources = true;
-                            }
+                let opt_object_file_meta = objects
+                    .find(FindObject {
+                        filetypes: FileType::sources(),
+                        purpose: ObjectPurpose::Source,
+                        scope: scope.clone(),
+                        identifier: object_id_from_object_info(&object_info.raw),
+                        sources,
+                    })
+                    .compat()
+                    .await
+                    .unwrap_or(None);
 
-                            (object_info, object_file_opt)
+                let object_file_opt = match opt_object_file_meta {
+                    None => None,
+                    Some(object_file_meta) => objects
+                        .fetch(object_file_meta)
+                        .compat()
+                        .await
+                        .ok()
+                        .and_then(|x| {
+                            SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
+                                .map(|x| Arc::new(SourceObject(x)))
+                                .ok()
                         }),
-                )
-            },
-        ))
-        .map(|results| SourceLookup {
-            inner: results.into_iter().collect(),
+                };
+
+                if object_file_opt.is_some() {
+                    object_info.features.has_sources = true;
+                }
+
+                (object_info, object_file_opt)
+            });
+        }
+
+        Ok(SourceLookup {
+            inner: futures03::future::join_all(futures).await,
         })
     }
 
@@ -465,15 +472,13 @@ impl SymCacheLookup {
         });
     }
 
-    fn fetch_symcaches(
+    async fn fetch_symcaches(
         self,
         symcache_actor: Arc<SymCacheActor>,
         request: SymbolicateStacktraces,
-    ) -> impl Future<Item = Self, Error = SymbolicationError> {
+    ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
-        let sources = request.sources;
         let stacktraces = request.stacktraces;
-        let scope = request.scope.clone();
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
@@ -483,42 +488,52 @@ impl SymCacheLookup {
             }
         }
 
-        future::join_all(self.inner.into_iter().enumerate().map(
-            move |(i, (mut object_info, _))| {
-                if !referenced_objects.contains(&i) {
+        let mut futures = Vec::new();
+
+        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
+            let is_used = referenced_objects.contains(&i);
+            let sources = request.sources.clone();
+            let scope = request.scope.clone();
+            let symcache_actor = symcache_actor.clone();
+
+            futures.push(async move {
+                if !is_used {
                     object_info.debug_status = ObjectFileStatus::Unused;
-                    return Either::B(Ok((object_info, None)).into_future());
+                    return (object_info, None);
+                }
+                let symcache_result = symcache_actor
+                    .fetch(FetchSymCache {
+                        object_type: object_info.raw.ty,
+                        identifier: object_id_from_object_info(&object_info.raw),
+                        sources,
+                        scope,
+                    })
+                    .compat()
+                    .await;
+
+                let (symcache, status) = match symcache_result {
+                    Ok(symcache) => match symcache.parse() {
+                        Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
+                        Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
+                        Err(e) => (None, (&e).into()),
+                    },
+                    Err(e) => (None, (&*e).into()),
+                };
+
+                object_info.arch = Default::default();
+
+                if let Some(ref symcache) = symcache {
+                    object_info.arch = symcache.arch();
+                    object_info.features.merge(symcache.features());
                 }
 
-                Either::A(
-                    symcache_actor
-                        .fetch(FetchSymCache {
-                            object_type: object_info.raw.ty,
-                            identifier: object_id_from_object_info(&object_info.raw),
-                            sources: sources.clone(),
-                            scope: scope.clone(),
-                        })
-                        .and_then(|symcache| match symcache.parse()? {
-                            Some(_) => Ok((Some(symcache), ObjectFileStatus::Found)),
-                            None => Ok((Some(symcache), ObjectFileStatus::Missing)),
-                        })
-                        .or_else(|e| Ok((None, (&*e).into())))
-                        .map(move |(symcache, status)| {
-                            object_info.arch =
-                                symcache.as_ref().map(|c| c.arch()).unwrap_or_default();
+                object_info.debug_status = status;
+                (object_info, symcache)
+            });
+        }
 
-                            if let Some(ref symcache) = symcache {
-                                object_info.features.merge(symcache.features());
-                            }
-
-                            object_info.debug_status = status;
-                            (object_info, symcache)
-                        }),
-                )
-            },
-        ))
-        .map(|results| SymCacheLookup {
-            inner: results.into_iter().collect(),
+        Ok(SymCacheLookup {
+            inner: futures03::future::join_all(futures).await,
         })
     }
 
@@ -773,96 +788,11 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let objects = self.objects.clone();
-        let threadpool = self.threadpool.clone();
-
-        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
-        let stacktraces = request.stacktraces.clone();
-        let sources = request.sources.clone();
-        let scope = request.scope.clone();
-        let signal = request.signal;
-
-        let result = symcache_lookup
-            .fetch_symcaches(self.symcaches.clone(), request)
-            .and_then(clone!(threadpool, |symcache_lookup| {
-                let future = future::lazy(move || {
-                    let stacktraces: Vec<_> = stacktraces
-                        .into_iter()
-                        .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
-                        .collect();
-
-                    let modules: Vec<_> = symcache_lookup
-                        .inner
-                        .into_iter()
-                        .map(|(object_info, _)| {
-                            metric!(
-                                counter("symbolication.debug_status") += 1,
-                                "status" => object_info.debug_status.name()
-                            );
-
-                            object_info
-                        })
-                        .collect();
-
-                    metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
-                    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
-                    metric!(
-                        time_raw("symbolication.num_frames") =
-                            stacktraces.iter().map(|s| s.frames.len() as u64).sum()
-                    );
-
-                    Ok(CompletedSymbolicationResponse {
-                        signal,
-                        modules,
-                        stacktraces,
-                        ..Default::default()
-                    })
-                });
-
-                threadpool
-                    .spawn_handle(future.sentry_hub_current())
-                    .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
-            }))
-            .and_then(move |response| {
-                source_lookup
-                    .fetch_sources(objects, scope, sources, &response)
-                    .map(move |source_lookup| (source_lookup, response))
-            })
-            .and_then(move |(source_lookup, mut response)| {
-                let future = future::lazy(move || {
-                    let debug_sessions = source_lookup.prepare_debug_sessions();
-
-                    for trace in &mut response.stacktraces {
-                        for frame in &mut trace.frames {
-                            let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                                (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
-                                _ => continue,
-                            };
-
-                            let result = source_lookup.get_context_lines(
-                                &debug_sessions,
-                                frame.raw.instruction_addr.0,
-                                abs_path,
-                                lineno,
-                                5,
-                            );
-
-                            if let Some((pre_context, context_line, post_context)) = result {
-                                frame.raw.pre_context = pre_context;
-                                frame.raw.context_line = Some(context_line);
-                                frame.raw.post_context = post_context;
-                            }
-                        }
-                    }
-                    Ok(response)
-                });
-
-                threadpool
-                    .spawn_handle(future.sentry_hub_current())
-                    .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
-            });
-
+        let result = self
+            .clone()
+            .do_symbolicate_impl(request)
+            .boxed_local()
+            .compat();
         future_metrics!(
             "symbolicate",
             Some((
@@ -871,6 +801,104 @@ impl SymbolicationActor {
             )),
             result
         )
+    }
+
+    async fn do_symbolicate_impl(
+        self,
+        request: SymbolicateStacktraces,
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
+        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
+        let stacktraces = request.stacktraces.clone();
+        let sources = request.sources.clone();
+        let scope = request.scope.clone();
+        let signal = request.signal;
+
+        let symcache_lookup = symcache_lookup
+            .fetch_symcaches(self.symcaches, request)
+            .await?;
+
+        let future = future::lazy(move || -> Result<_, SymbolicationError> {
+            let stacktraces: Vec<_> = stacktraces
+                .into_iter()
+                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
+                .collect();
+
+            let modules: Vec<_> = symcache_lookup
+                .inner
+                .into_iter()
+                .map(|(object_info, _)| {
+                    metric!(
+                        counter("symbolication.debug_status") += 1,
+                        "status" => object_info.debug_status.name()
+                    );
+
+                    object_info
+                })
+                .collect();
+
+            metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+            metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+            metric!(
+                time_raw("symbolication.num_frames") =
+                    stacktraces.iter().map(|s| s.frames.len() as u64).sum()
+            );
+
+            Ok(CompletedSymbolicationResponse {
+                signal,
+                modules,
+                stacktraces,
+                ..Default::default()
+            })
+        });
+
+        let mut response = self
+            .threadpool
+            .spawn_handle(future.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
+            .compat()
+            .await?;
+
+        let source_lookup = source_lookup
+            .fetch_sources(self.objects, scope, sources, &response)
+            .await?;
+
+        let future = future::lazy(move || -> Result<_, SymbolicationError> {
+            let debug_sessions = source_lookup.prepare_debug_sessions();
+
+            for trace in &mut response.stacktraces {
+                for frame in &mut trace.frames {
+                    let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                        _ => continue,
+                    };
+
+                    let result = source_lookup.get_context_lines(
+                        &debug_sessions,
+                        frame.raw.instruction_addr.0,
+                        abs_path,
+                        lineno,
+                        5,
+                    );
+
+                    if let Some((pre_context, context_line, post_context)) = result {
+                        frame.raw.pre_context = pre_context;
+                        frame.raw.context_line = Some(context_line);
+                        frame.raw.post_context = post_context;
+                    }
+                }
+            }
+            Ok(response)
+        });
+
+        let result = self
+            .threadpool
+            .spawn_handle(future.sentry_hub_current())
+            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
+            .compat()
+            .await?;
+
+        Ok(result)
     }
 
     pub fn symbolicate_stacktraces(
@@ -1177,50 +1205,57 @@ impl SymbolicationActor {
     }
 
     fn do_stackwalk_minidump(
-        &self,
+        self,
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
-        let slf = self.clone();
-        let sources = Arc::new(sources);
-
-        let future = slf
-            .get_referenced_modules_from_minidump(minidump.clone())
-            .and_then(clone!(slf, scope, sources, |referenced_modules| {
-                slf.load_cfi_caches(scope, referenced_modules, sources)
-            }))
-            .and_then(move |cfi_caches| {
-                slf.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
-            });
-
-        Box::new(future_metrics!(
+    ) -> impl futures03::future::Future<
+        Output = Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError>,
+    > {
+        future_metrics!(
             "minidump_stackwalk",
             Some((
                 Duration::from_secs(1200),
                 SymbolicationErrorKind::Timeout.into()
             )),
-            future,
-        ))
+            async move {
+                let sources = Arc::new(sources);
+
+                let referenced_modules = self
+                    .get_referenced_modules_from_minidump(minidump.clone())
+                    .compat()
+                    .await?;
+
+                let cfi_caches = self
+                    .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
+                    .compat()
+                    .await?;
+
+                self.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
+                    .compat()
+                    .await
+            }
+            .boxed_local()
+            .compat()
+        )
+        .compat()
     }
 
-    fn do_process_minidump(
-        &self,
+    async fn do_process_minidump(
+        self,
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let slf = self.clone();
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self
+            .clone()
+            .do_stackwalk_minidump(scope, minidump, sources)
+            .await?;
 
-        slf.do_stackwalk_minidump(scope, minidump, sources)
-            .and_then(move |(request, state)| {
-                slf.do_symbolicate(request)
-                    .map(move |response| (response, state))
-            })
-            .map(|(mut response, state)| {
-                state.merge_into(&mut response);
-                response
-            })
+        let mut response = self.do_symbolicate(request).compat().await?;
+        state.merge_into(&mut response);
+
+        Ok(response)
     }
 
     pub fn process_minidump(
@@ -1229,7 +1264,12 @@ impl SymbolicationActor {
         minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(|| self.do_process_minidump(scope, minidump, sources))
+        self.create_symbolication_request(|| {
+            self.clone()
+                .do_process_minidump(scope, minidump, sources)
+                .boxed_local()
+                .compat()
+        })
     }
 }
 
@@ -1392,24 +1432,20 @@ impl SymbolicationActor {
         ))
     }
 
-    fn do_process_apple_crash_report(
-        &self,
+    async fn do_process_apple_crash_report(
+        self,
         scope: Scope,
         report: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
-        let self2 = self.clone();
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self
+            .parse_apple_crash_report(scope, report, sources)
+            .compat()
+            .await?;
+        let mut response = self.do_symbolicate(request).compat().await?;
 
-        self.parse_apple_crash_report(scope, report, sources)
-            .and_then(move |(request, state)| {
-                self2
-                    .do_symbolicate(request)
-                    .map(move |response| (response, state))
-            })
-            .map(|(mut response, state)| {
-                state.merge_into(&mut response);
-                response
-            })
+        state.merge_into(&mut response);
+        Ok(response)
     }
 
     pub fn process_apple_crash_report(
@@ -1419,7 +1455,10 @@ impl SymbolicationActor {
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
         self.create_symbolication_request(|| {
-            self.do_process_apple_crash_report(scope, apple_crash_report, sources)
+            self.clone()
+                .do_process_apple_crash_report(scope, apple_crash_report, sources)
+                .boxed_local()
+                .compat()
         })
     }
 }
