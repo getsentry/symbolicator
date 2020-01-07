@@ -107,19 +107,21 @@ fn handle_minidump_request(
     let hub = Hub::from_request(&request);
 
     Hub::run(hub, || {
-        let default_sources = state.config.default_sources();
+        let default_sources = state.config().default_sources();
 
         let params = params.into_inner();
         configure_scope(|scope| {
             params.write_sentry_scope(scope);
         });
 
-        let io_pool = state.io_threadpool.clone();
-        let request_future =
-            handle_multipart_stream(io_pool, MinidumpRequest::default(), request.multipart());
+        let request_future = handle_multipart_stream(
+            state.io_pool(),
+            MinidumpRequest::default(),
+            request.multipart(),
+        );
 
         let SymbolicationRequestQueryParams { scope, timeout } = params;
-        let symbolication = state.symbolication.clone();
+        let symbolication = state.symbolication();
 
         let response_future = request_future
             .and_then(clone!(symbolication, |mut request| {

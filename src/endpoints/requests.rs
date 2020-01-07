@@ -35,7 +35,7 @@ fn poll_request(
     };
 
     let future = state
-        .symbolication
+        .symbolication()
         .get_symbolication_status(message)
         .map(|response_opt| match response_opt {
             Some(response) => HttpResponse::Ok().json(response),

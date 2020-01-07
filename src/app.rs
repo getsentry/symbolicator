@@ -16,15 +16,15 @@ use crate::utils::http;
 #[derive(Clone, Debug)]
 pub struct ServiceState {
     /// Thread pool instance reserved for CPU-intensive tasks.
-    pub cpu_threadpool: ThreadPool,
+    cpu_threadpool: ThreadPool,
     /// Thread pool instance reserved for IO-intensive tasks.
-    pub io_threadpool: ThreadPool,
+    io_threadpool: ThreadPool,
     /// Actor for minidump and stacktrace processing
-    pub symbolication: Arc<SymbolicationActor>,
+    symbolication: Arc<SymbolicationActor>,
     /// Actor for downloading and caching objects (no symcaches or cficaches)
-    pub objects: Arc<ObjectsActor>,
+    objects: Arc<ObjectsActor>,
     /// The config object.
-    pub config: Arc<Config>,
+    config: Arc<Config>,
 }
 
 impl ServiceState {
@@ -72,6 +72,22 @@ impl ServiceState {
             objects,
             config,
         }
+    }
+
+    pub fn io_pool(&self) -> ThreadPool {
+        self.io_threadpool.clone()
+    }
+
+    pub fn symbolication(&self) -> Arc<SymbolicationActor> {
+        self.symbolication.clone()
+    }
+
+    pub fn objects(&self) -> Arc<ObjectsActor> {
+        self.objects.clone()
+    }
+
+    pub fn config(&self) -> Arc<Config> {
+        self.config.clone()
     }
 }
 
