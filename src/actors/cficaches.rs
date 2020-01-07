@@ -5,10 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
-use futures::{
-    future::{Either, IntoFuture},
-    Future,
-};
+use futures::future::{Either, Future, IntoFuture};
+use futures03::{compat::Future01CompatExt, FutureExt, TryFutureExt};
 use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
@@ -140,8 +138,11 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             });
 
             threadpool
-                .spawn_handle(future.sentry_hub_current())
-                .map_err(|e| e.map_canceled(|| CfiCacheErrorKind::Canceled))
+                .spawn_handle(future.sentry_hub_current().compat())
+                .boxed_local()
+                .compat()
+                .map_err(|_| CfiCacheError::from(CfiCacheErrorKind::Canceled))
+                .flatten()
         });
 
         let num_sources = self.request.sources.len();

@@ -10,8 +10,7 @@ use bytes::{Bytes, IntoBuf};
 use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
-use futures03::compat::Future01CompatExt;
-use futures03::future::{FutureExt as _, TryFutureExt};
+use futures03::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
 use parking_lot::RwLock;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
@@ -854,10 +853,9 @@ impl SymbolicationActor {
 
         let mut response = self
             .threadpool
-            .spawn_handle(future.sentry_hub_current())
-            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
-            .compat()
-            .await?;
+            .spawn_handle(future.sentry_hub_current().compat())
+            .await
+            .map_err(|_| SymbolicationErrorKind::Canceled)??;
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
@@ -893,10 +891,9 @@ impl SymbolicationActor {
 
         let result = self
             .threadpool
-            .spawn_handle(future.sentry_hub_current())
-            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled))
-            .compat()
-            .await?;
+            .spawn_handle(future.sentry_hub_current().compat())
+            .await
+            .map_err(|_| SymbolicationErrorKind::Canceled)??;
 
         Ok(result)
     }
@@ -1003,8 +1000,11 @@ impl SymbolicationActor {
 
         let future = self
             .threadpool
-            .spawn_handle(lazy.sentry_hub_current())
-            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled));
+            .spawn_handle(lazy.sentry_hub_current().compat())
+            .boxed_local()
+            .compat()
+            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .flatten();
 
         Box::new(future)
     }
@@ -1198,8 +1198,11 @@ impl SymbolicationActor {
 
         let future = self
             .threadpool
-            .spawn_handle(stackwalk_future.sentry_hub_current())
-            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled));
+            .spawn_handle(stackwalk_future.sentry_hub_current().compat())
+            .boxed_local()
+            .compat()
+            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .flatten();
 
         Box::new(future)
     }
@@ -1419,8 +1422,11 @@ impl SymbolicationActor {
 
         let request_future = self
             .threadpool
-            .spawn_handle(parse_future.sentry_hub_current())
-            .map_err(|e| e.map_canceled(|| SymbolicationErrorKind::Canceled));
+            .spawn_handle(parse_future.sentry_hub_current().compat())
+            .boxed_local()
+            .compat()
+            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .flatten();
 
         Box::new(future_metrics!(
             "minidump_stackwalk",
