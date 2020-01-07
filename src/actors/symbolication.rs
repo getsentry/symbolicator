@@ -11,7 +11,7 @@ use failure::Fail;
 use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures::sync::oneshot;
 use futures03::compat::Future01CompatExt;
-use futures03::future::{FutureExt as FuckYou, TryFutureExt};
+use futures03::future::{FutureExt as _, TryFutureExt};
 use parking_lot::RwLock;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
