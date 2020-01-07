@@ -1235,8 +1235,8 @@ impl SymbolicationActor {
                     .compat()
                     .await
             }
-                .boxed_local()
-                .compat()
+            .boxed_local()
+            .compat()
         )
         .compat()
     }
