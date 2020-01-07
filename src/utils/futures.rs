@@ -18,7 +18,16 @@ pub fn enable_test_mode() {
     IS_TEST.store(true, Ordering::Relaxed);
 }
 
+/// Error returned from a `SpawnHandle` when the thread pool restarts.
 pub use oneshot::Canceled;
+
+/// Handle returned from `ThreadPool::spawn_handle`.
+///
+/// This handle is a future representing the completion of a different future spawned on to the
+/// thread pool. Created through the `ThreadPool::spawn_handle` function this handle will resolve
+/// when the future provided resolves on the thread pool. If the remote thread restarts due to
+/// panics, `SpawnError::Canceled` is returned.
+pub use oneshot::Receiver as SpawnHandle;
 
 /// Work-stealing based thread pool for executing futures.
 #[derive(Clone, Debug)]
@@ -38,7 +47,11 @@ impl ThreadPool {
         ThreadPool { inner }
     }
 
-    pub fn spawn_handle<F>(&self, future: F) -> impl Future<Output = Result<F::Output, Canceled>>
+    /// Spawn a future on to the thread pool, return a future representing the produced value.
+    ///
+    /// The `SpawnHandle` returned is a future that is a proxy for future itself. When future
+    /// completes on this thread pool then the SpawnHandle will itself be resolved.
+    pub fn spawn_handle<F>(&self, future: F) -> SpawnHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
