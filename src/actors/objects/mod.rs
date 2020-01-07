@@ -6,15 +6,15 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bytes::Bytes;
-use failure::{Fail, ResultExt};
-
 #[rustfmt::skip]
 use ::sentry::configure_scope;
 #[rustfmt::skip]
 use ::sentry::integrations::failure::capture_fail;
 
+use bytes::Bytes;
+use failure::{Fail, ResultExt};
 use futures::{future, Future, IntoFuture, Stream};
+use futures03::{compat::Future01CompatExt, FutureExt, TryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
@@ -271,10 +271,13 @@ impl CacheItemRequest for FetchFileDataRequest {
                                 file,
                                 clone!(threadpool, |mut file, chunk| {
                                     threadpool
-                                        .spawn_handle(future::lazy(move || {
+                                        .spawn_handle(async move {
                                             file.write_all(&chunk).map(|_| file)
-                                        }))
-                                        .map_err(|e| e.map_canceled(|| io::ErrorKind::Other))
+                                        })
+                                        .boxed_local()
+                                        .compat()
+                                        .map_err(|_| io::Error::from(io::ErrorKind::Other))
+                                        .flatten()
                                 }),
                             )
                             .map(move |_| DownloadedFile::Temp(named_download_file));
@@ -361,8 +364,11 @@ impl CacheItemRequest for FetchFileDataRequest {
                     });
 
                     threadpool
-                        .spawn_handle(future.sentry_hub_current())
-                        .map_err(|e| e.map_canceled(|| ObjectErrorKind::Canceled))
+                        .spawn_handle(future.sentry_hub_current().compat())
+                        .boxed_local()
+                        .compat()
+                        .map_err(|_| ObjectError::from(ObjectErrorKind::Canceled))
+                        .flatten()
                 }));
 
                 Box::new(future) as Box<dyn Future<Item = _, Error = _>>
