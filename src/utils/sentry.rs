@@ -1,3 +1,4 @@
+use std::future::Future as StdFuture;
 use std::sync::Arc;
 
 use futures01::future::Future;
@@ -43,4 +44,20 @@ impl<F> SentryFutureExt for F {}
 /// for this.
 pub trait WriteSentryScope {
     fn write_sentry_scope(&self, scope: &mut Scope);
+}
+
+pub async fn with_hub<F, H>(hub: H, future: F) -> F::Output
+where
+    F: StdFuture,
+    H: Into<Arc<Hub>>,
+{
+    let hub = hub.into();
+    futures::pin_mut!(future);
+
+    let poll = futures::future::poll_fn(|ctx| {
+        let future = &mut future;
+        Hub::run(hub.clone(), || future.as_mut().poll(ctx))
+    });
+
+    poll.await
 }

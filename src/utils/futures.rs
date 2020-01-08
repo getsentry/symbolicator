@@ -1,10 +1,12 @@
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
-use futures::{FutureExt, TryFutureExt};
+use futures::{compat::Future01CompatExt, select, FutureExt, TryFutureExt};
 use tokio::runtime::Runtime as TokioRuntime;
+use tokio::timer::Delay as TokioDelay;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
 
@@ -71,5 +73,31 @@ impl ThreadPool {
         }
 
         receiver
+    }
+}
+
+pub struct Elapsed;
+
+pub async fn timeout<F>(duration: Duration, future: F) -> Result<F::Output, Elapsed>
+where
+    F: Future,
+{
+    let delay = TokioDelay::new(Instant::now() + duration);
+
+    select! {
+        output = future.fuse() => Ok(output),
+        _ = delay.compat().fuse() => Err(Elapsed),
+    }
+}
+
+pub async fn timeout_with<F, T, E, R, O>(duration: Duration, future: F, or_else: O) -> Result<T, E>
+where
+    F: Future<Output = Result<T, E>>,
+    O: FnOnce() -> R,
+    R: Into<E>,
+{
+    match timeout(duration, future).await {
+        Ok(result) => result,
+        Err(_) => Err(or_else().into()),
     }
 }
