@@ -16,7 +16,7 @@ serde = { version = "1.0.101", features = ["derive", "rc"] }
 futures = { version = "0.3", features = ["compat"] }
 futures01 = { version = "0.1.29", package = "futures" }
 bytes = "0.4.12"
-url = "1.7.2"
+url = "2.1.0"
 derive_more = "0.15.0"
 url_serde = "0.2.0"
 log = { version = "0.4.8", features = ["serde"] }
