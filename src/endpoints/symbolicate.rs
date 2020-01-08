@@ -61,7 +61,7 @@ fn symbolicate_frames(
         let body = body.into_inner();
         let sources = match body.sources {
             Some(sources) => Arc::new(sources),
-            None => state.config.default_sources(),
+            None => state.config().default_sources(),
         };
 
         configure_scope(|scope| {
@@ -76,11 +76,11 @@ fn symbolicate_frames(
             scope: params.scope,
         };
 
-        let request_id = tryf!(state.symbolication.symbolicate_stacktraces(message));
+        let request_id = tryf!(state.symbolication().symbolicate_stacktraces(message));
 
         let timeout = params.timeout;
         let response = state
-            .symbolication
+            .symbolication()
             .get_symbolication_status(GetSymbolicationStatus {
                 request_id,
                 timeout,

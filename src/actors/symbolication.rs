@@ -119,18 +119,18 @@ type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
 
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
-    objects: Arc<ObjectsActor>,
-    symcaches: Arc<SymCacheActor>,
-    cficaches: Arc<CfiCacheActor>,
+    objects: ObjectsActor,
+    symcaches: SymCacheActor,
+    cficaches: CfiCacheActor,
     threadpool: ThreadPool,
     requests: ComputationMap,
 }
 
 impl SymbolicationActor {
     pub fn new(
-        objects: Arc<ObjectsActor>,
-        symcaches: Arc<SymCacheActor>,
-        cficaches: Arc<CfiCacheActor>,
+        objects: ObjectsActor,
+        symcaches: SymCacheActor,
+        cficaches: CfiCacheActor,
         threadpool: ThreadPool,
     ) -> Self {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
@@ -280,7 +280,7 @@ struct SourceLookup {
 impl SourceLookup {
     pub async fn fetch_sources(
         self,
-        objects: Arc<ObjectsActor>,
+        objects: ObjectsActor,
         scope: Scope,
         sources: Arc<Vec<SourceConfig>>,
         response: &CompletedSymbolicationResponse,
@@ -473,7 +473,7 @@ impl SymCacheLookup {
 
     async fn fetch_symcaches(
         self,
-        symcache_actor: Arc<SymCacheActor>,
+        symcache_actor: SymCacheActor,
         request: SymbolicateStacktraces,
     ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
@@ -1587,7 +1587,7 @@ mod tests {
     ) -> Result<SymbolicationResponse, Error> {
         let response_opt = test::block_fn(|| {
             service
-                .symbolication
+                .symbolication()
                 .get_symbolication_status(GetSymbolicationStatus {
                     request_id,
                     timeout: None,
@@ -1606,12 +1606,12 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![source]);
-        let request_id = service.symbolication.symbolicate_stacktraces(request)?;
+        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
         let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         let request = get_symbolication_request(vec![]);
-        let request_id = service.symbolication.symbolicate_stacktraces(request)?;
+        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
         let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
@@ -1627,12 +1627,12 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![]);
-        let request_id = service.symbolication.symbolicate_stacktraces(request)?;
+        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
         let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         let request = get_symbolication_request(vec![source]);
-        let request_id = service.symbolication.symbolicate_stacktraces(request)?;
+        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
         let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
@@ -1643,7 +1643,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request_id = service.symbolication.process_minidump(
+        let request_id = service.symbolication().process_minidump(
             Scope::Global,
             Bytes::from(fs::read(path)?),
             vec![source],
@@ -1652,12 +1652,7 @@ mod tests {
         let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
-        let global_dir = service
-            .config
-            .cache_dir
-            .as_ref()
-            .unwrap()
-            .join("object_meta/global/");
+        let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
             .map(|x| x.unwrap().file_name().into_string().unwrap())
             .collect();
@@ -1689,7 +1684,7 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
-        let request_id = service.symbolication.process_apple_crash_report(
+        let request_id = service.symbolication().process_apple_crash_report(
             Scope::Global,
             report_file,
             vec![source],

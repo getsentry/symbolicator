@@ -16,15 +16,15 @@ use crate::utils::http;
 #[derive(Clone, Debug)]
 pub struct ServiceState {
     /// Thread pool instance reserved for CPU-intensive tasks.
-    pub cpu_threadpool: ThreadPool,
+    cpu_threadpool: ThreadPool,
     /// Thread pool instance reserved for IO-intensive tasks.
-    pub io_threadpool: ThreadPool,
+    io_threadpool: ThreadPool,
     /// Actor for minidump and stacktrace processing
-    pub symbolication: Arc<SymbolicationActor>,
+    symbolication: SymbolicationActor,
     /// Actor for downloading and caching objects (no symcaches or cficaches)
-    pub objects: Arc<ObjectsActor>,
+    objects: ObjectsActor,
     /// The config object.
-    pub config: Arc<Config>,
+    config: Arc<Config>,
 }
 
 impl ServiceState {
@@ -35,35 +35,22 @@ impl ServiceState {
             http::start_safe_connector();
         }
 
-        let caches = Caches::new(&config);
-
         let cpu_threadpool = ThreadPool::new();
         let io_threadpool = ThreadPool::new();
 
-        let objects = Arc::new(ObjectsActor::new(
-            caches.object_meta,
-            caches.objects,
-            io_threadpool.clone(),
-        ));
+        let caches = Caches::new(&config);
+        let objects = ObjectsActor::new(caches.object_meta, caches.objects, io_threadpool.clone());
+        let symcaches =
+            SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
+        let cficaches =
+            CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
 
-        let symcaches = Arc::new(SymCacheActor::new(
-            caches.symcaches,
-            objects.clone(),
-            cpu_threadpool.clone(),
-        ));
-
-        let cficaches = Arc::new(CfiCacheActor::new(
-            caches.cficaches,
-            objects.clone(),
-            cpu_threadpool.clone(),
-        ));
-
-        let symbolication = Arc::new(SymbolicationActor::new(
+        let symbolication = SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
             cpu_threadpool.clone(),
-        ));
+        );
 
         Self {
             cpu_threadpool,
@@ -72,6 +59,22 @@ impl ServiceState {
             objects,
             config,
         }
+    }
+
+    pub fn io_pool(&self) -> ThreadPool {
+        self.io_threadpool.clone()
+    }
+
+    pub fn symbolication(&self) -> SymbolicationActor {
+        self.symbolication.clone()
+    }
+
+    pub fn objects(&self) -> ObjectsActor {
+        self.objects.clone()
+    }
+
+    pub fn config(&self) -> Arc<Config> {
+        self.config.clone()
     }
 }
 

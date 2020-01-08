@@ -38,8 +38,9 @@ fn proxy_symstore_request(
     let hub = Hub::from_request(&request);
 
     let is_head = request.method() == Method::HEAD;
+    let config = state.config();
 
-    if !state.config.symstore_proxy {
+    if !config.symstore_proxy {
         return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
     }
 
@@ -50,13 +51,13 @@ fn proxy_symstore_request(
 
     Hub::run(hub, || {
         log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
-        let objects = state.objects.clone();
 
-        let object_meta_opt = objects
+        let object_meta_opt = state
+            .objects()
             .find(FindObject {
                 filetypes,
                 identifier: object_id,
-                sources: state.config.default_sources(),
+                sources: config.default_sources(),
                 scope: Scope::Global,
                 purpose: ObjectPurpose::Debug,
             })
@@ -65,7 +66,8 @@ fn proxy_symstore_request(
         let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
             if let Some(object_meta) = object_meta_opt {
                 Either::A(
-                    objects
+                    state
+                        .objects()
                         .fetch(object_meta)
                         .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
                         .map(Some),

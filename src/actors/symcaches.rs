@@ -52,15 +52,15 @@ impl From<io::Error> for SymCacheError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
-    objects: Arc<ObjectsActor>,
+    objects: ObjectsActor,
     threadpool: ThreadPool,
 }
 
 impl SymCacheActor {
-    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
+    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -105,7 +105,7 @@ impl SymCacheFile {
 #[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
     request: FetchSymCache,
-    objects_actor: Arc<ObjectsActor>,
+    objects_actor: ObjectsActor,
     object_meta: Arc<ObjectFileMeta>,
     threadpool: ThreadPool,
 }
