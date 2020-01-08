@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 use std::sync::Arc;
 
-use futures::{Future, IntoFuture};
+use futures01::{Future, IntoFuture};
 
 use crate::actors::objects::common::prepare_download_paths;
 use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::{Fail, ResultExt};
-use futures::{Future, IntoFuture, Stream};
+use futures01::{Future, IntoFuture, Stream};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};

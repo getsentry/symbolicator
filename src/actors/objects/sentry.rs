@@ -7,8 +7,8 @@ use actix_web::{client, HttpMessage};
 use actix::{Actor, Addr};
 
 use failure::Fail;
-use futures::future::Either;
-use futures::{Future, IntoFuture, Stream};
+use futures01::future::Either;
+use futures01::{Future, IntoFuture, Stream};
 use parking_lot::Mutex;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;

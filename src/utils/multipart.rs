@@ -1,7 +1,7 @@
 use actix::ResponseFuture;
 use actix_web::{dev::Payload, error, multipart, Error};
 use bytes::{Bytes, BytesMut};
-use futures::{Future, Stream};
+use futures01::{Future, Stream};
 
 use crate::types::SourceConfig;
 

@@ -4,7 +4,7 @@ use actix_web::{
     State,
 };
 use bytes::Bytes;
-use futures::{future, Future, Stream};
+use futures01::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
 

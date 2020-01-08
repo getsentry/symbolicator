@@ -7,7 +7,7 @@ use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
 use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture, System};
 use actix_web::client::{ClientConnector, ClientRequest, ClientResponse, SendRequestError};
 use actix_web::{http::header, HttpMessage};
-use futures::{future, future::Either, Async, Future, IntoFuture, Poll};
+use futures01::{future, future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
 use tokio::net::{tcp::ConnectFuture, TcpStream};
 use tokio::timer::Delay;

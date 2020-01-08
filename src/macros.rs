@@ -7,7 +7,7 @@ macro_rules! tryf {
         match $e {
             Ok(value) => value,
             Err(e) => {
-                return Box::new(::futures::future::err(::std::convert::From::from(e)))
+                return Box::new(::futures01::future::err(::std::convert::From::from(e)))
                     as Box<dyn Future<Item = _, Error = _>>;
             }
         }
