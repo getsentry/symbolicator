@@ -51,15 +51,15 @@ impl From<io::Error> for CfiCacheError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
-    objects: Arc<ObjectsActor>,
+    objects: ObjectsActor,
     threadpool: ThreadPool,
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: Arc<ObjectsActor>, threadpool: ThreadPool) -> Self {
+    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -98,7 +98,7 @@ impl CfiCacheFile {
 #[derive(Clone, Debug)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
-    objects_actor: Arc<ObjectsActor>,
+    objects_actor: ObjectsActor,
     object_meta: Arc<ObjectFileMeta>,
     threadpool: ThreadPool,
 }

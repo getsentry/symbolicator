@@ -119,18 +119,18 @@ type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
 
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
-    objects: Arc<ObjectsActor>,
-    symcaches: Arc<SymCacheActor>,
-    cficaches: Arc<CfiCacheActor>,
+    objects: ObjectsActor,
+    symcaches: SymCacheActor,
+    cficaches: CfiCacheActor,
     threadpool: ThreadPool,
     requests: ComputationMap,
 }
 
 impl SymbolicationActor {
     pub fn new(
-        objects: Arc<ObjectsActor>,
-        symcaches: Arc<SymCacheActor>,
-        cficaches: Arc<CfiCacheActor>,
+        objects: ObjectsActor,
+        symcaches: SymCacheActor,
+        cficaches: CfiCacheActor,
         threadpool: ThreadPool,
     ) -> Self {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
@@ -280,7 +280,7 @@ struct SourceLookup {
 impl SourceLookup {
     pub async fn fetch_sources(
         self,
-        objects: Arc<ObjectsActor>,
+        objects: ObjectsActor,
         scope: Scope,
         sources: Arc<Vec<SourceConfig>>,
         response: &CompletedSymbolicationResponse,
@@ -473,7 +473,7 @@ impl SymCacheLookup {
 
     async fn fetch_symcaches(
         self,
-        symcache_actor: Arc<SymCacheActor>,
+        symcache_actor: SymCacheActor,
         request: SymbolicateStacktraces,
     ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
