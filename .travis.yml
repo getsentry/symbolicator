@@ -32,6 +32,10 @@ matrix:
       before_script: npm install -g @zeus-ci/cli
       script: make -e travis-upload-docs
 
+    - name: "audit"
+      before_script: cargo install --force cargo-audit
+      script: cargo audit
+
 notifications:
   webhooks:
     urls:
