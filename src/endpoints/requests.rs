@@ -1,10 +1,7 @@
-use actix::ResponseFuture;
-use actix_web::{http::Method, HttpResponse, Path, Query, State};
+use actix_web::{HttpResponse, Path, Query, State};
 use failure::Error;
-use futures01::Future;
 use serde::Deserialize;
 
-use crate::actors::symbolication::GetSymbolicationStatus;
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::RequestId;
 
@@ -21,33 +18,28 @@ struct PollSymbolicationRequestQueryParams {
     pub timeout: Option<u64>,
 }
 
-fn poll_request(
+async fn poll_request(
     state: State<ServiceState>,
     path: Path<PollSymbolicationRequestPath>,
     query: Query<PollSymbolicationRequestQueryParams>,
-) -> ResponseFuture<HttpResponse, Error> {
+) -> Result<HttpResponse, Error> {
     let path = path.into_inner();
     let query = query.into_inner();
 
-    let message = GetSymbolicationStatus {
-        request_id: path.request_id,
-        timeout: query.timeout,
-    };
-
-    let future = state
+    let response_opt = state
         .symbolication()
-        .get_symbolication_status(message)
-        .map(|response_opt| match response_opt {
-            Some(response) => HttpResponse::Ok().json(response),
-            None => HttpResponse::NotFound().finish(),
-        })
-        .map_err(Error::from);
+        .get_response(path.request_id, query.timeout)
+        .await?;
 
-    Box::new(future)
+    Ok(match response_opt {
+        Some(response) => HttpResponse::Ok().json(response),
+        None => HttpResponse::NotFound().finish(),
+    })
 }
 
 pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/requests/{request_id}", |r| {
-        r.method(Method::GET).with(poll_request);
+        let handler = compat_handler!(poll_request, s, p, q);
+        r.get().with_async(handler);
     })
 }

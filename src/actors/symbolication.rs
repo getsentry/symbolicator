@@ -786,7 +786,7 @@ impl SymbolicationActor {
 
         match measured.await {
             Ok(result) => result,
-            Err(_timedout) => Err(SymbolicationErrorKind::Timeout.into()),
+            Err(_) => Err(SymbolicationErrorKind::Timeout.into()),
         }
     }
 
@@ -891,34 +891,25 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(self.do_symbolicate(request))
+        self.create_symbolication_request(self.clone().do_symbolicate(request))
     }
 }
 
-/// Status poll request.
-#[derive(Clone, Debug)]
-pub struct GetSymbolicationStatus {
-    /// The identifier of the symbolication task.
-    pub request_id: RequestId,
-    /// An optional timeout, after which the request will yield a result.
+impl SymbolicationActor {
+    /// Returns the response of a symbolication task.
     ///
-    /// If this timeout is not set, symbolication will continue until a result is ready (which is
+    /// If the timeout is not set, symbolication will continue until a result is ready (which is
     /// either an error or success). If this timeout is set and no result is ready, a `pending`
     /// status is returned.
-    pub timeout: Option<u64>,
-}
-
-impl SymbolicationActor {
-    pub async fn get_symbolication_status(
+    pub async fn get_response(
         self,
-        request: GetSymbolicationStatus,
+        request_id: RequestId,
+        timeout: Option<u64>,
     ) -> Result<Option<SymbolicationResponse>, SymbolicationError> {
-        let request_id = request.request_id;
-
         let channel_opt = self.requests.read().get(&request_id).cloned();
         if let Some(channel) = channel_opt {
             let response = self
-                .wrap_response_channel(request_id, request.timeout, channel)
+                .wrap_response_channel(request_id, timeout, channel)
                 .await?;
             Ok(Some(response))
         } else {
@@ -999,26 +990,22 @@ impl SymbolicationActor {
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
         sources: Arc<Vec<SourceConfig>>,
     ) -> Vec<CfiCacheResult> {
-        let cficaches = self.cficaches.clone();
         let hub = Hub::current();
 
+        // Fetch all caches in parallel
         let mut futures = Vec::new();
         for (code_module_id, object_info) in requests {
-            let future = async move {
-                let result = cficaches
-                    .fetch(FetchCfiCache {
-                        object_type: object_info.ty,
-                        identifier: object_id_from_object_info(&object_info),
-                        sources: sources.clone(),
-                        scope: scope.clone(),
-                    })
-                    .compat()
-                    .await;
-
-                (code_module_id, result)
+            let message = FetchCfiCache {
+                object_type: object_info.ty,
+                identifier: object_id_from_object_info(&object_info),
+                sources: sources.clone(),
+                scope: scope.clone(),
             };
 
-            futures.push(with_hub(Hub::new_from_top(hub), future));
+            let cficaches = self.cficaches.clone();
+            futures.push(with_hub(Hub::new_from_top(hub.clone()), async move {
+                (code_module_id, cficaches.fetch(message).compat().await)
+            }));
         }
 
         future::join_all(futures).await
@@ -1219,7 +1206,7 @@ impl SymbolicationActor {
 
         match measured.await {
             Ok(result) => result,
-            Err(_elapsed) => Err(SymbolicationErrorKind::Timeout.into()),
+            Err(_) => Err(SymbolicationErrorKind::Timeout.into()),
         }
     }
 
@@ -1246,7 +1233,9 @@ impl SymbolicationActor {
         minidump: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(self.do_process_minidump(scope, minidump, sources))
+        self.create_symbolication_request(
+            self.clone().do_process_minidump(scope, minidump, sources),
+        )
     }
 }
 
@@ -1406,8 +1395,8 @@ impl SymbolicationActor {
 
         match measured.await {
             Ok(Ok(result)) => result,
-            Err(_canceled) => Err(SymbolicationErrorKind::Canceled.into()),
-            Err(_elapsed) => Err(SymbolicationErrorKind::Timeout.into()),
+            Ok(Err(_)) => Err(SymbolicationErrorKind::Canceled.into()),
+            Err(_) => Err(SymbolicationErrorKind::Timeout.into()),
         }
     }
 
@@ -1430,14 +1419,13 @@ impl SymbolicationActor {
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
-        apple_crash_report: Bytes,
+        report: Bytes,
         sources: Vec<SourceConfig>,
     ) -> Result<RequestId, SymbolicationError> {
-        self.create_symbolication_request(self.do_process_apple_crash_report(
-            scope,
-            apple_crash_report,
-            sources,
-        ))
+        self.create_symbolication_request(
+            self.clone()
+                .do_process_apple_crash_report(scope, report, sources),
+        )
     }
 }
 
@@ -1497,6 +1485,7 @@ impl From<&SymCacheError> for ObjectFileStatus {
 }
 
 #[cfg(test)]
+#[cfg(feature = "TODO(jauer): reenable")]
 mod tests {
     use super::*;
 

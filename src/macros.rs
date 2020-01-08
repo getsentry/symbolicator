@@ -39,3 +39,10 @@ macro_rules! clone {
         }
     );
 }
+
+macro_rules! compat_handler {
+    ($func:ident , $($param:ident),*) => {{
+        use ::futures::{FutureExt, TryFutureExt};
+        |$($param),*| $func ( $($param),* ).boxed_local().compat()
+    }};
+}

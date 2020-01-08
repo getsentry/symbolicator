@@ -89,15 +89,3 @@ where
         _ = delay.compat().fuse() => Err(Elapsed),
     }
 }
-
-pub async fn timeout_with<F, T, E, R, O>(duration: Duration, future: F, or_else: O) -> Result<T, E>
-where
-    F: Future<Output = Result<T, E>>,
-    O: FnOnce() -> R,
-    R: Into<E>,
-{
-    match timeout(duration, future).await {
-        Ok(result) => result,
-        Err(_) => Err(or_else().into()),
-    }
-}

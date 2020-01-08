@@ -15,10 +15,6 @@ use crate::utils::http;
 /// The shared state for the service.
 #[derive(Clone, Debug)]
 pub struct ServiceState {
-    /// Thread pool instance reserved for CPU-intensive tasks.
-    cpu_threadpool: ThreadPool,
-    /// Thread pool instance reserved for IO-intensive tasks.
-    io_threadpool: ThreadPool,
     /// Actor for minidump and stacktrace processing
     symbolication: SymbolicationActor,
     /// Actor for downloading and caching objects (no symcaches or cficaches)
@@ -35,34 +31,22 @@ impl ServiceState {
             http::start_safe_connector();
         }
 
-        let cpu_threadpool = ThreadPool::new();
-        let io_threadpool = ThreadPool::new();
+        let cpu_pool = ThreadPool::new();
+        let io_pool = ThreadPool::new();
 
         let caches = Caches::new(&config);
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, io_threadpool.clone());
-        let symcaches =
-            SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
-        let cficaches =
-            CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
+        let objects = ObjectsActor::new(caches.object_meta, caches.objects, io_pool);
+        let symcaches = SymCacheActor::new(caches.symcaches, objects.clone(), cpu_pool.clone());
+        let cficaches = CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_pool.clone());
 
-        let symbolication = SymbolicationActor::new(
-            objects.clone(),
-            symcaches,
-            cficaches,
-            cpu_threadpool.clone(),
-        );
+        let symbolication =
+            SymbolicationActor::new(objects.clone(), symcaches, cficaches, cpu_pool);
 
         Self {
-            cpu_threadpool,
-            io_threadpool,
             symbolication,
             objects,
             config,
         }
-    }
-
-    pub fn io_pool(&self) -> ThreadPool {
-        self.io_threadpool.clone()
     }
 
     pub fn symbolication(&self) -> SymbolicationActor {

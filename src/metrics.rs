@@ -173,30 +173,6 @@ macro_rules! future_metrics {
     }};
 }
 
-macro_rules! measure2 {
-    ($task:literal, $future:expr, |$result:pat| $status:expr $(, $k:ident = $v:expr)* $(,)?) => {{
-        use std::time::Instant;
-        let start_time = Instant::now();
-
-        async move {
-            let result = $future.await;
-            let elapsed = start_time.elapsed();
-            let status = match result {
-                $result => $status,
-            };
-
-            metric!(
-                timer("futures.done") = elapsed,
-                "task_name" => $task,
-                "status" => status,
-                $(stringify!($k) => $v,)*
-            );
-
-            result
-        }
-    }};
-}
-
 macro_rules! measure {
     ($task:literal, $future:expr, $status:expr $(, $k:ident = $v:expr)* $(,)?) => {{
         use std::time::Instant;
@@ -217,18 +193,4 @@ macro_rules! measure {
             result
         }
     }};
-}
-
-fn test_measure() {
-    let future = async {
-        // if true {
-        //     Ok(1)
-        // } else {
-        //     Err(1)
-        // }
-        1
-    };
-
-    // let stuff = measure!("test", future, |_| "foo");
-    let stuff = measure!("test", future, |_| "foo",);
 }
