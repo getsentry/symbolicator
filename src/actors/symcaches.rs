@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use failure::{Fail, ResultExt};
-use futures::future::{Either, Future, IntoFuture};
-use futures03::{compat::Future01CompatExt, FutureExt, TryFutureExt};
+use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
+use futures01::future::{Either, Future, IntoFuture};
 use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::common::{Arch, ByteView};
@@ -127,7 +127,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
-            let future = futures::lazy(move || {
+            let future = futures01::lazy(move || {
                 if object.status() != CacheStatus::Positive {
                     return Ok(object.status());
                 }

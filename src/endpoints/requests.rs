@@ -1,7 +1,7 @@
 use actix::ResponseFuture;
 use actix_web::{http::Method, HttpResponse, Path, Query, State};
 use failure::Error;
-use futures::Future;
+use futures01::Future;
 use serde::Deserialize;
 
 use crate::actors::symbolication::GetSymbolicationStatus;

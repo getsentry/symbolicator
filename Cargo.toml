@@ -13,8 +13,8 @@ actix = "0.7.9"
 apple-crash-report-parser = "0.3.1"
 failure = "0.1.5"
 serde = { version = "1.0.101", features = ["derive", "rc"] }
-futures03 = { version = "0.3", package = "futures", features = ["compat"] }
-futures = "0.1.29"
+futures = { version = "0.3", features = ["compat"] }
+futures01 = { version = "0.1.29", package = "futures" }
 bytes = "0.4.12"
 url = "1.7.2"
 derive_more = "0.15.0"

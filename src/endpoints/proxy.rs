@@ -4,7 +4,7 @@ use actix::ResponseFuture;
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
-use futures::{future::Either, Future, IntoFuture, Stream};
+use futures01::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
 use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};

@@ -5,8 +5,8 @@ use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
-use futures::future::{lazy, Future, IntoFuture, Shared};
-use futures::sync::oneshot;
+use futures01::future::{lazy, Future, IntoFuture, Shared};
+use futures01::sync::oneshot;
 use parking_lot::RwLock;
 use sentry::configure_scope;
 use symbolic::common::ByteView;

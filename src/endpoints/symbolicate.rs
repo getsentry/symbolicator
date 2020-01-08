@@ -3,7 +3,7 @@ use std::sync::Arc;
 use actix::ResponseFuture;
 use actix_web::{http::Method, HttpRequest, Json, Query, State};
 use failure::Error;
-use futures::Future;
+use futures01::Future;
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
 use serde::Deserialize;

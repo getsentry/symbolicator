@@ -13,8 +13,8 @@ use ::sentry::integrations::failure::capture_fail;
 
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
-use futures::{future, Future, IntoFuture, Stream};
-use futures03::{compat::Future01CompatExt, FutureExt, TryFutureExt};
+use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
+use futures01::{future, Future, IntoFuture, Stream};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};

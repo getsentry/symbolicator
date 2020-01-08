@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use futures::future::Future;
-use futures::Poll;
+use futures01::future::Future;
+use futures01::Poll;
 
 use sentry::{Hub, Scope};
 

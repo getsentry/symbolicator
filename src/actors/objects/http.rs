@@ -4,7 +4,7 @@ use std::time::Duration;
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
-use futures::{Future, IntoFuture, Stream};
+use futures01::{Future, IntoFuture, Stream};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 

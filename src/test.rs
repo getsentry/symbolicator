@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
-use futures::{future, IntoFuture};
+use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
 use crate::types::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};

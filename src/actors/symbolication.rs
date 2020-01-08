@@ -8,9 +8,9 @@ use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use failure::Fail;
-use futures::future::{self, join_all, Either, Future, IntoFuture, Shared};
-use futures::sync::oneshot;
-use futures03::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
+use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
+use futures01::future::{self, join_all, Either, Future, IntoFuture, Shared};
+use futures01::sync::oneshot;
 use parking_lot::RwLock;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
@@ -345,7 +345,7 @@ impl SourceLookup {
         }
 
         Ok(SourceLookup {
-            inner: futures03::future::join_all(futures).await,
+            inner: futures::future::join_all(futures).await,
         })
     }
 
@@ -532,7 +532,7 @@ impl SymCacheLookup {
         }
 
         Ok(SymCacheLookup {
-            inner: futures03::future::join_all(futures).await,
+            inner: futures::future::join_all(futures).await,
         })
     }
 
@@ -1212,9 +1212,8 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> impl futures03::future::Future<
-        Output = Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError>,
-    > {
+    ) -> impl futures::Future<Output = Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError>>
+    {
         future_metrics!(
             "minidump_stackwalk",
             Some((
