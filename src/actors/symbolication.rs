@@ -1485,7 +1485,6 @@ impl From<&SymCacheError> for ObjectFileStatus {
 }
 
 #[cfg(test)]
-#[cfg(feature = "TODO(jauer): reenable")]
 mod tests {
     use super::*;
 
@@ -1542,86 +1541,88 @@ mod tests {
         }
     }
 
-    fn get_symbolication_response(
+    async fn get_symbolication_response(
         service: &ServiceState,
         request_id: RequestId,
     ) -> Result<SymbolicationResponse, Error> {
-        let response_opt = test::block_fn(|| {
-            service
-                .symbolication()
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                })
-        })?;
+        let response_opt = service
+            .symbolication()
+            .get_response(request_id, None)
+            .await?;
 
         response_opt.ok_or_else(|| failure::err_msg("missing response"))
     }
 
     #[test]
     fn test_remove_bucket() -> Result<(), Error> {
-        // Test with sources first, and then without. This test should verify that we do not leak
-        // cached debug files to requests that no longer specify a source.
+        // Test with sources first, and then without. This test should verify that we do not
+        // leak cached debug files to requests that no longer specify a source.
 
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request = get_symbolication_request(vec![source]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
-        insta::assert_yaml_snapshot!(response);
+        test::block_on(async {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request)?;
+            let response = get_symbolication_response(&service, request_id).await?;
+            insta::assert_yaml_snapshot!(response);
 
-        let request = get_symbolication_request(vec![]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
-        insta::assert_yaml_snapshot!(response);
+            let request = get_symbolication_request(vec![]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request)?;
+            let response = get_symbolication_response(&service, request_id).await?;
+            insta::assert_yaml_snapshot!(response);
 
-        Ok(())
+            Ok(())
+        })
     }
 
     #[test]
     fn test_add_bucket() -> Result<(), Error> {
-        // Test without sources first, then with. This test should verify that we apply a new source
-        // to requests immediately.
+        // Test without sources first, then with. This test should verify that we apply a new
+        // source to requests immediately.
 
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request = get_symbolication_request(vec![]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
-        insta::assert_yaml_snapshot!(response);
+        test::block_on(async {
+            let request = get_symbolication_request(vec![]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request)?;
+            let response = get_symbolication_response(&service, request_id).await?;
+            insta::assert_yaml_snapshot!(response);
 
-        let request = get_symbolication_request(vec![source]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
-        insta::assert_yaml_snapshot!(response);
+            let request = get_symbolication_request(vec![source]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request)?;
+            let response = get_symbolication_response(&service, request_id).await?;
+            insta::assert_yaml_snapshot!(response);
 
-        Ok(())
+            Ok(())
+        })
     }
 
     fn stackwalk_minidump(path: &str) -> Result<(), Error> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request_id = service.symbolication().process_minidump(
-            Scope::Global,
-            Bytes::from(fs::read(path)?),
-            vec![source],
-        )?;
+        test::block_on(async {
+            let request_id = service.symbolication().process_minidump(
+                Scope::Global,
+                Bytes::from(fs::read(path)?),
+                vec![source],
+            )?;
 
-        let response = get_symbolication_response(&service, request_id)?;
-        insta::assert_yaml_snapshot!(response);
+            let response = get_symbolication_response(&service, request_id).await?;
+            insta::assert_yaml_snapshot!(response);
 
-        let global_dir = service.config().cache_dir("object_meta/global").unwrap();
-        let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
-            .map(|x| x.unwrap().file_name().into_string().unwrap())
-            .collect();
+            let global_dir = service.config().cache_dir("object_meta/global").unwrap();
+            let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
+                .map(|x| x.unwrap().file_name().into_string().unwrap())
+                .collect();
 
-        cache_entries.sort();
-        insta::assert_yaml_snapshot!(cache_entries);
+            cache_entries.sort();
+            insta::assert_yaml_snapshot!(cache_entries);
 
-        Ok(())
+            Ok(())
+        })
     }
 
     #[test]
@@ -1644,17 +1645,19 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
-        let request_id = service.symbolication().process_apple_crash_report(
-            Scope::Global,
-            report_file,
-            vec![source],
-        )?;
+        test::block_on(async {
+            let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
+            let request_id = service.symbolication().process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                vec![source],
+            )?;
 
-        let response = get_symbolication_response(&service, request_id)?;
-        insta::assert_yaml_snapshot!(response);
+            let response = get_symbolication_response(&service, request_id).await?;
+            insta::assert_yaml_snapshot!(response);
 
-        Ok(())
+            Ok(())
+        })
     }
 
     #[test]

@@ -17,12 +17,13 @@
 //!    connections.
 
 use std::cell::RefCell;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
-use futures01::{future, IntoFuture};
+use futures::{FutureExt, TryFutureExt};
 use log::LevelFilter;
 
 use crate::types::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
@@ -96,8 +97,7 @@ pub(crate) fn tempdir() -> TempDir {
     TempDir::new().unwrap()
 }
 
-/// Runs the provided function, blocking the current thread until the result
-/// future completes.
+/// Runs the provided future, blocking the current thread until it completes.
 ///
 /// This function can be used to synchronously block the current thread
 /// until the provided `future` has resolved either successfully or with an
@@ -106,16 +106,22 @@ pub(crate) fn tempdir() -> TempDir {
 ///
 /// Note that this function is intended to be used only for testing purpose.
 /// This function panics on nested call.
-pub fn block_fn<F, R>(f: F) -> Result<R::Item, R::Error>
+pub fn block_on<F>(future: F) -> F::Output
 where
-    F: FnOnce() -> R,
-    R: IntoFuture,
+    F: Future,
 {
-    SYSTEM.with(|cell| {
+    futures::pin_mut!(future);
+
+    let result = SYSTEM.with(|cell| {
         let mut inner = cell.borrow_mut();
         inner.set_current();
-        inner.runner().block_on(future::lazy(f))
-    })
+        inner.runner().block_on(future.never_error().compat())
+    });
+
+    match result {
+        Ok(output) => output,
+        Err(never) => match never {},
+    }
 }
 
 /// Get bucket configuration for the local fixtures.

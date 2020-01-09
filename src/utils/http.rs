@@ -199,12 +199,12 @@ pub fn start_safe_connector() {
 mod tests {
     use super::*;
 
-    use actix_web::Error;
+    use futures::compat::Future01CompatExt;
 
     use crate::test;
 
     #[test]
-    fn test_local_connection() -> Result<(), Error> {
+    fn test_local_connection() {
         test::setup();
         start_safe_connector();
 
@@ -212,9 +212,9 @@ mod tests {
             app.resource("/", |resource| resource.f(|_| "OK"));
         });
 
-        let response = test::block_fn(|| server.get().finish().unwrap().send());
-        assert!(response.is_err());
-
-        Ok(())
+        test::block_on(async {
+            let response = server.get().finish().unwrap().send().compat().await;
+            assert!(response.is_err());
+        })
     }
 }
