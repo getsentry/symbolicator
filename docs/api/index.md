@@ -13,7 +13,7 @@ stack traces. There are the following endpoints:
 - `POST /minidump`: Symbolicate a minidump and extract information
 - `POST /applecrashreport`: Symbolicate an Apple Crash Report
 - `GET /requests/:id`: Status update on running symbolication jobs
-- `GET /health`: System status and health monitoring
+- `GET /healthcheck`: System status and health monitoring
 
 ## Sources
 
