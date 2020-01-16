@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -69,7 +70,10 @@ pub struct Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Metrics {
-            statsd: None,
+            statsd: match env::var("METRICS_STATSD") {
+                Ok(metrics_statsd) => Some(metrics_statsd),
+                Err(_) => None,
+            },
             prefix: "symbolicator".into(),
         }
     }
