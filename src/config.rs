@@ -70,7 +70,7 @@ pub struct Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Metrics {
-            statsd: match env::var("METRICS_STATSD") {
+            statsd: match env::var("STATSD_SERVER") {
                 Ok(metrics_statsd) => Some(metrics_statsd),
                 Err(_) => None,
             },
