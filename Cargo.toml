@@ -28,7 +28,7 @@ cadence = "0.18.0"
 lazy_static = "1.4.0"
 parking_lot = "0.10.0"
 tokio = "0.1.22"
-uuid = "0.7.4"
+uuid = "0.8.1"
 symbolic = { git = "https://github.com/getsentry/symbolic", rev = "42f601faf243e3ffe3ba4799d800ca9a379b0e47", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 sentry = { version = "0.17.0", features = ["with_debug_meta"] }
 sentry-actix = "0.17.0"
