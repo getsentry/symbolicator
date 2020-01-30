@@ -33,7 +33,7 @@ symbolic = { git = "https://github.com/getsentry/symbolic", rev = "42f601faf243e
 sentry = { version = "0.17.0", features = ["with_debug_meta"] }
 sentry-actix = "0.17.0"
 rusoto_s3 = "0.40.0"
-rusoto_core = "0.40.0"
+rusoto_core = "0.42.0"
 rusoto_credential = "0.40.0"
 lru = "0.2.0"
 pretty_env_logger = "0.3.1"
