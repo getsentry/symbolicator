@@ -22,7 +22,7 @@ url_serde = "0.2.0"
 log = { version = "0.4.8", features = ["serde"] }
 tempfile = "3.1.0"
 env_logger = "0.6.2"
-structopt = "0.3.2"
+structopt = "0.3.8"
 serde_yaml = "0.8.11"
 cadence = "0.18.0"
 lazy_static = "1.4.0"
