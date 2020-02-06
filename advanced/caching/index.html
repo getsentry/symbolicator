@@ -34,7 +34,7 @@
         <meta name="lang:search.tokenizer" content="[\s\-]+">
       
       <link rel="shortcut icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.4.0">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.6.0">
     
     
       
@@ -42,17 +42,17 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/application.0284f74d.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/application.1b62728e.css">
       
       
     
     
-      <script src="../../assets/javascripts/modernizr.74668098.js"></script>
+      <script src="../../assets/javascripts/modernizr.268332fc.js"></script>
     
     
       
         <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700|Roboto+Mono&display=fallback">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&display=fallback">
         <style>body,input{font-family:"Roboto","Helvetica Neue",Helvetica,Arial,sans-serif}code,kbd,pre{font-family:"Roboto Mono","Courier New",Courier,monospace}</style>
       
     
@@ -173,7 +173,7 @@
         
       
       
-      <main class="md-main">
+      <main class="md-main" role="main">
         <div class="md-main__inner md-grid" data-md-component="container">
           
             
@@ -302,35 +302,35 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#cache-files" title="Cache Files" class="md-nav__link">
+  <a href="#cache-files" class="md-nav__link">
     Cache Files
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-rules" title="Cache Rules" class="md-nav__link">
+  <a href="#cache-rules" class="md-nav__link">
     Cache Rules
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-enforcement" title="Cache Enforcement" class="md-nav__link">
+  <a href="#cache-enforcement" class="md-nav__link">
     Cache Enforcement
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#scopes" title="Scopes" class="md-nav__link">
+  <a href="#scopes" class="md-nav__link">
     Scopes
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#pruning-caches" title="Pruning Caches" class="md-nav__link">
+  <a href="#pruning-caches" class="md-nav__link">
     Pruning Caches
   </a>
   
@@ -493,35 +493,35 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#cache-files" title="Cache Files" class="md-nav__link">
+  <a href="#cache-files" class="md-nav__link">
     Cache Files
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-rules" title="Cache Rules" class="md-nav__link">
+  <a href="#cache-rules" class="md-nav__link">
     Cache Rules
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-enforcement" title="Cache Enforcement" class="md-nav__link">
+  <a href="#cache-enforcement" class="md-nav__link">
     Cache Enforcement
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#scopes" title="Scopes" class="md-nav__link">
+  <a href="#scopes" class="md-nav__link">
     Scopes
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#pruning-caches" title="Pruning Caches" class="md-nav__link">
+  <a href="#pruning-caches" class="md-nav__link">
     Pruning Caches
   </a>
   
@@ -599,17 +599,17 @@ those files. The cache adheres to the following rules:</p>
 created from. Because they are smaller than the originals, this contributes to a
 better use of the available disk space. All timeouts mentioned above are
 configurable:</p>
-<div class="codehilite"><pre><span></span><span class="nv">caches</span>:
-  <span class="nv">downloaded</span>:
-    <span class="nv">max_unused_for</span>:
-      <span class="nv">days</span>: <span class="mi">7</span> # <span class="nv">unused</span> <span class="nv">DIFs</span>, <span class="nv">rule</span> <span class="mi">1</span>
-    <span class="nv">retry_misses_after</span>:
-      <span class="nv">hours</span>: <span class="mi">1</span> # <span class="nv">absence</span> <span class="nv">of</span> <span class="nv">a</span> <span class="nv">DIF</span>, <span class="nv">rule</span> <span class="mi">4</span>
-  <span class="nv">derived</span>:
-    <span class="nv">max_unused_for</span>:
-      <span class="nv">days</span>: <span class="mi">7</span> # <span class="nv">unused</span> <span class="nv">caches</span>, <span class="nv">rule</span> <span class="mi">2</span>
-    <span class="nv">retry_misses_after</span>:
-      <span class="nv">hours</span>: <span class="mi">1</span> # <span class="nv">also</span> <span class="nv">necessary</span> <span class="k">for</span> <span class="nv">rule</span> <span class="mi">4</span>
+<div class="codehilite"><pre><span></span><span class="n">caches</span><span class="o">:</span>
+  <span class="n">downloaded</span><span class="o">:</span>
+    <span class="n">max_unused_for</span><span class="o">:</span>
+      <span class="n">days</span><span class="o">:</span> <span class="mi">7</span> <span class="err">#</span> <span class="n">unused</span> <span class="n">DIFs</span><span class="o">,</span> <span class="n">rule</span> <span class="mi">1</span>
+    <span class="n">retry_misses_after</span><span class="o">:</span>
+      <span class="n">hours</span><span class="o">:</span> <span class="mi">1</span> <span class="err">#</span> <span class="n">absence</span> <span class="n">of</span> <span class="n">a</span> <span class="n">DIF</span><span class="o">,</span> <span class="n">rule</span> <span class="mi">4</span>
+  <span class="n">derived</span><span class="o">:</span>
+    <span class="n">max_unused_for</span><span class="o">:</span>
+      <span class="n">days</span><span class="o">:</span> <span class="mi">7</span> <span class="err">#</span> <span class="n">unused</span> <span class="n">caches</span><span class="o">,</span> <span class="n">rule</span> <span class="mi">2</span>
+    <span class="n">retry_misses_after</span><span class="o">:</span>
+      <span class="n">hours</span><span class="o">:</span> <span class="mi">1</span> <span class="err">#</span> <span class="n">also</span> <span class="n">necessary</span> <span class="k">for</span> <span class="n">rule</span> <span class="mi">4</span>
 </pre></div>
 
 
@@ -666,6 +666,7 @@ requests without interruptions while files are being deleted. <strong>Using a ne
 share for the cache folder will not work.</strong></p>
                 
                   
+                
                 
               
               
@@ -733,7 +734,7 @@ share for the cache folder will not work.</strong></p>
       
     </div>
     
-      <script src="../../assets/javascripts/application.245445c6.js"></script>
+      <script src="../../assets/javascripts/application.808e90bb.js"></script>
       
       <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
       

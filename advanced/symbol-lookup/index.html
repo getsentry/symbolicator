@@ -34,7 +34,7 @@
         <meta name="lang:search.tokenizer" content="[\s\-]+">
       
       <link rel="shortcut icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.4.0">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.6.0">
     
     
       
@@ -42,17 +42,17 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/application.0284f74d.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/application.1b62728e.css">
       
       
     
     
-      <script src="../../assets/javascripts/modernizr.74668098.js"></script>
+      <script src="../../assets/javascripts/modernizr.268332fc.js"></script>
     
     
       
         <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700|Roboto+Mono&display=fallback">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&display=fallback">
         <style>body,input{font-family:"Roboto","Helvetica Neue",Helvetica,Arial,sans-serif}code,kbd,pre{font-family:"Roboto Mono","Courier New",Courier,monospace}</style>
       
     
@@ -173,7 +173,7 @@
         
       
       
-      <main class="md-main">
+      <main class="md-main" role="main">
         <div class="md-main__inner md-grid" data-md-component="container">
           
             
@@ -314,14 +314,14 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#identifiers" title="Identifiers" class="md-nav__link">
+  <a href="#identifiers" class="md-nav__link">
     Identifiers
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#symbol-precedence" title="Symbol Precedence" class="md-nav__link">
+  <a href="#symbol-precedence" class="md-nav__link">
     Symbol Precedence
   </a>
   
@@ -329,28 +329,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#symbol-table" title="Symbol Table" class="md-nav__link">
+  <a href="#symbol-table" class="md-nav__link">
     Symbol Table
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#debug-information" title="Debug Information" class="md-nav__link">
+  <a href="#debug-information" class="md-nav__link">
     Debug Information
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#unwind-information" title="Unwind Information" class="md-nav__link">
+  <a href="#unwind-information" class="md-nav__link">
     Unwind Information
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#implementation-notes" title="Implementation Notes" class="md-nav__link">
+  <a href="#implementation-notes" class="md-nav__link">
     Implementation Notes
   </a>
   
@@ -362,7 +362,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#conversion-algorithms" title="Conversion Algorithms" class="md-nav__link">
+  <a href="#conversion-algorithms" class="md-nav__link">
     Conversion Algorithms
   </a>
   
@@ -513,14 +513,14 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#identifiers" title="Identifiers" class="md-nav__link">
+  <a href="#identifiers" class="md-nav__link">
     Identifiers
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#symbol-precedence" title="Symbol Precedence" class="md-nav__link">
+  <a href="#symbol-precedence" class="md-nav__link">
     Symbol Precedence
   </a>
   
@@ -528,28 +528,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#symbol-table" title="Symbol Table" class="md-nav__link">
+  <a href="#symbol-table" class="md-nav__link">
     Symbol Table
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#debug-information" title="Debug Information" class="md-nav__link">
+  <a href="#debug-information" class="md-nav__link">
     Debug Information
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#unwind-information" title="Unwind Information" class="md-nav__link">
+  <a href="#unwind-information" class="md-nav__link">
     Unwind Information
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#implementation-notes" title="Implementation Notes" class="md-nav__link">
+  <a href="#implementation-notes" class="md-nav__link">
     Implementation Notes
   </a>
   
@@ -561,7 +561,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#conversion-algorithms" title="Conversion Algorithms" class="md-nav__link">
+  <a href="#conversion-algorithms" class="md-nav__link">
     Conversion Algorithms
   </a>
   
@@ -752,13 +752,13 @@ non-lossy conversions in pseudocode:</p>
 </li>
 <li>
 <p><strong>ELF</strong>: <code>code_id</code> → <code>debug_id</code>. This is not yet implemented.</p>
-<div class="codehilite"><pre><span></span><span class="nv">debug_id</span> <span class="o">=</span> <span class="nv">code_id</span>[<span class="mi">0</span>..<span class="mi">16</span>]
+<div class="codehilite"><pre><span></span><span class="n">debug_id</span> <span class="o">=</span> <span class="n">code_id</span><span class="p">[</span><span class="mi">0</span><span class="p">..</span><span class="mi">16</span><span class="p">]</span>
 
-<span class="k">if</span> <span class="nv">object</span>.<span class="nv">little_endian</span> {
-  <span class="nv">debug_id</span>[<span class="mi">0</span>..<span class="mi">4</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 1</span>
-  <span class="nv">debug_id</span>[<span class="mi">4</span>..<span class="mi">6</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 2</span>
-  <span class="nv">debug_id</span>[<span class="mi">6</span>..<span class="mi">8</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 3</span>
-}
+<span class="k">if</span> <span class="k">object</span><span class="p">.</span><span class="n">little_endian</span> <span class="err">{</span>
+  <span class="n">debug_id</span><span class="p">[</span><span class="mi">0</span><span class="p">..</span><span class="mi">4</span><span class="p">].</span><span class="n">reverse</span><span class="p">();</span> <span class="o">//</span> <span class="n">uuid</span> <span class="n">field</span> <span class="mi">1</span>
+  <span class="n">debug_id</span><span class="p">[</span><span class="mi">4</span><span class="p">..</span><span class="mi">6</span><span class="p">].</span><span class="n">reverse</span><span class="p">();</span> <span class="o">//</span> <span class="n">uuid</span> <span class="n">field</span> <span class="mi">2</span>
+  <span class="n">debug_id</span><span class="p">[</span><span class="mi">6</span><span class="p">..</span><span class="mi">8</span><span class="p">].</span><span class="n">reverse</span><span class="p">();</span> <span class="o">//</span> <span class="n">uuid</span> <span class="n">field</span> <span class="mi">3</span>
+<span class="err">}</span>
 </pre></div>
 
 
@@ -766,6 +766,7 @@ non-lossy conversions in pseudocode:</p>
 </ul>
                 
                   
+                
                 
               
               
@@ -833,7 +834,7 @@ non-lossy conversions in pseudocode:</p>
       
     </div>
     
-      <script src="../../assets/javascripts/application.245445c6.js"></script>
+      <script src="../../assets/javascripts/application.808e90bb.js"></script>
       
       <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
       
