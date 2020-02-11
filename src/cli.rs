@@ -87,6 +87,8 @@ pub fn execute() -> Result<(), CliError> {
     logging::init_logging(&config);
     sentry::integrations::panic::register_panic_handler();
 
+    procspawn::init();
+
     match cli.command {
         Command::Run => server::run(config)?,
         Command::Cleanup => cache::cleanup(config)?,
