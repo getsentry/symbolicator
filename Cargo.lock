@@ -2148,7 +2148,9 @@ dependencies = [
 
 [[package]]
 name = "procspawn"
-version = "0.2.0"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dd280066d2806fb468142092c761dc09e66a5fb981363f11a849adec4a48517"
 dependencies = [
  "backtrace",
  "ipc-channel",
