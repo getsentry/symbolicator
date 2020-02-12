@@ -1086,7 +1086,7 @@ impl SymbolicationActor {
                 frame_info_map.insert(code_module_id.clone(), Bytes::from(cfi_cache.as_slice()));
             }
 
-            let (modules, stacktraces, minidump_state) = procspawn::spawn(
+            let procspawn::Json((modules, stacktraces, minidump_state)) = procspawn::spawn(
                 (frame_info_map, object_features, unwind_statuses, minidump),
                 |(frame_info_map, object_features, unwind_statuses, minidump)| -> Result<_, ProcessMinidumpError> {
                     let frame_info_map: BTreeMap<_, _> = frame_info_map
@@ -1151,7 +1151,7 @@ impl SymbolicationActor {
 
                             Some(info)
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
                     let minidump_state = MinidumpState {
                         timestamp: process_state.timestamp(),
@@ -1202,8 +1202,7 @@ impl SymbolicationActor {
                         });
                     }
 
-                    println!("about to return");
-                    Ok((modules, stacktraces, minidump_state))
+                    Ok(procspawn::Json((modules, stacktraces, minidump_state)))
                 },
             )
             .join()
