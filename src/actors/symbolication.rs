@@ -1115,6 +1115,7 @@ impl SymbolicationActor {
                         Err(_) => {
                             if !cpu_family.is_empty() {
                                 let msg = format!("Unknown minidump arch: {}", cpu_family);
+                                // TODO: move out of subprocess
                                 sentry::capture_message(&msg, sentry::Level::Error);
                             }
 
@@ -1136,6 +1137,7 @@ impl SymbolicationActor {
                                 .cloned()
                                 .unwrap_or(ObjectFileStatus::Unused);
 
+                            // TODO: validate this works in the subprocess
                             metric!(
                                 counter("symbolication.unwind_status") += 1,
                                 "status" => status.name()
