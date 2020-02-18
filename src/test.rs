@@ -159,3 +159,6 @@ pub(crate) fn symbol_server() -> (TestServer, SourceConfig) {
 
     (server, source)
 }
+
+// make sure procspawn works.
+procspawn::enable_test_support!();

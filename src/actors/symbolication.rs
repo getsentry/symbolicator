@@ -1044,51 +1044,51 @@ impl SymbolicationActor {
         sources: Arc<Vec<SourceConfig>>,
         cfi_results: Vec<CfiCacheResult>,
     ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
-        let stackwalk_future = future::lazy(move || {
-            let mut unwind_statuses = BTreeMap::new();
-            let mut object_features = BTreeMap::new();
+        let mut unwind_statuses = BTreeMap::new();
+        let mut object_features = BTreeMap::new();
 
-            let mut frame_info_map: BTreeMap<CodeModuleId, Bytes> = BTreeMap::new();
+        let mut frame_info_map: BTreeMap<CodeModuleId, Bytes> = BTreeMap::new();
 
-            for (code_module_id, result) in &cfi_results {
-                let cache_file = match result {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::info!(
-                            "Error while fetching cficache: {}",
-                            LogError(&ArcFail(e.clone()))
-                        );
-                        unwind_statuses.insert(code_module_id.clone(), (&**e).into());
-                        continue;
-                    }
-                };
+        for (code_module_id, result) in &cfi_results {
+            let cache_file = match result {
+                Ok(x) => x,
+                Err(e) => {
+                    log::info!(
+                        "Error while fetching cficache: {}",
+                        LogError(&ArcFail(e.clone()))
+                    );
+                    unwind_statuses.insert(code_module_id.clone(), (&**e).into());
+                    continue;
+                }
+            };
 
-                // NB: Always collect features, regardless of whether we fail to parse them or not.
-                // This gives users the feedback that information is there but potentially not
-                // processable by symbolicator.
-                object_features.insert(code_module_id.clone(), cache_file.features());
+            // NB: Always collect features, regardless of whether we fail to parse them or not.
+            // This gives users the feedback that information is there but potentially not
+            // processable by symbolicator.
+            object_features.insert(code_module_id.clone(), cache_file.features());
 
-                log::trace!("Loading cficache");
-                let cfi_cache = match cache_file.parse() {
-                    Ok(Some(x)) => x,
-                    Ok(None) => {
-                        unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Missing);
-                        continue;
-                    }
-                    Err(e) => {
-                        log::warn!("Error while parsing cficache: {}", LogError(&e));
-                        unwind_statuses.insert(code_module_id.clone(), (&e).into());
-                        continue;
-                    }
-                };
+            log::trace!("Loading cficache");
+            let cfi_cache = match cache_file.parse() {
+                Ok(Some(x)) => x,
+                Ok(None) => {
+                    unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Missing);
+                    continue;
+                }
+                Err(e) => {
+                    log::warn!("Error while parsing cficache: {}", LogError(&e));
+                    unwind_statuses.insert(code_module_id.clone(), (&e).into());
+                    continue;
+                }
+            };
 
-                unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Found);
-                frame_info_map.insert(code_module_id.clone(), Bytes::from(cfi_cache.as_slice()));
-            }
+            unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Found);
+            frame_info_map.insert(code_module_id.clone(), Bytes::from(cfi_cache.as_slice()));
+        }
 
-            let procspawn::Json((modules, stacktraces, minidump_state)) = procspawn::spawn(
-                (frame_info_map, object_features, unwind_statuses, minidump),
-                |(frame_info_map, object_features, unwind_statuses, minidump)| -> Result<_, ProcessMinidumpError> {
+        let stackwalk_future = async {
+            let procspawn::Json((modules, stacktraces, minidump_state)) = procspawn::spawn_async!(
+                (frame_info_map, object_features, unwind_statuses, minidump)
+                || -> Result<_, ProcessMinidumpError> {
                     let frame_info_map: BTreeMap<_, _> = frame_info_map
                         .iter()
                         .map(|(&k, v)| {
@@ -1115,7 +1115,6 @@ impl SymbolicationActor {
                         Err(_) => {
                             if !cpu_family.is_empty() {
                                 let msg = format!("Unknown minidump arch: {}", cpu_family);
-                                // TODO: move out of subprocess
                                 sentry::capture_message(&msg, sentry::Level::Error);
                             }
 
@@ -1207,8 +1206,10 @@ impl SymbolicationActor {
                     Ok(procspawn::Json((modules, stacktraces, minidump_state)))
                 },
             )
-            .join()
-            .unwrap()?;
+            .join_async()
+            .boxed_local()
+            .await
+            .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
 
             let request = SymbolicateStacktraces {
                 modules,
@@ -1219,15 +1220,19 @@ impl SymbolicationActor {
             };
 
             Ok((request, minidump_state))
-        });
+        };
 
-        let future = self
-            .threadpool
-            .spawn_handle(stackwalk_future.sentry_hub_current().compat())
+        let future = stackwalk_future
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
-            .flatten();
+            .timeout(Duration::from_secs(60))
+            .map_err(|err: tokio::timer::timeout::Error<SymbolicationError>| {
+                if let Some(inner) = err.into_inner() {
+                    inner
+                } else {
+                    SymbolicationError::from(SymbolicationErrorKind::Timeout)
+                }
+            });
 
         Box::new(future)
     }
