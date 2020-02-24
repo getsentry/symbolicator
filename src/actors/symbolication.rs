@@ -978,35 +978,50 @@ impl SymbolicationActor {
         &self,
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
-        let lazy = future::lazy(move || {
-            log::debug!("Processing minidump ({} bytes)", minidump.len());
-            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-            let state = ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
+        log::debug!("Processing minidump ({} bytes)", minidump.len());
+        metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
-            let os_name = state.system_info().os_name();
-            let object_type = get_object_type_from_minidump(&os_name).to_owned();
+        let get_modules_future = async {
+            let procspawn::Json(cfi_modules) = procspawn::spawn_async!(
+                (minidump) || -> Result<_, ProcessMinidumpError> {
+                    let state =
+                        ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
-            let cfi_modules = state
-                .referenced_modules()
-                .into_iter()
-                .filter_map(|code_module| {
-                    Some((
-                        code_module.id()?,
-                        object_info_from_minidump_module(object_type, code_module),
-                    ))
-                })
-                .collect();
+                    let os_name = state.system_info().os_name();
+                    let object_type = get_object_type_from_minidump(&os_name).to_owned();
 
+                    let cfi_modules = state
+                        .referenced_modules()
+                        .into_iter()
+                        .filter_map(|code_module| {
+                            Some((
+                                code_module.id()?,
+                                object_info_from_minidump_module(object_type, code_module),
+                            ))
+                        })
+                        .collect();
+
+                    Ok(procspawn::Json(cfi_modules))
+                }
+            )
+            .join_async()
+            .boxed_local()
+            .await
+            .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
             Ok(cfi_modules)
-        });
+        };
 
-        let future = self
-            .threadpool
-            .spawn_handle(lazy.sentry_hub_current().compat())
+        let future = get_modules_future
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
-            .flatten();
+            .timeout(Duration::from_secs(20))
+            .map_err(|err: tokio::timer::timeout::Error<SymbolicationError>| {
+                if let Some(inner) = err.into_inner() {
+                    inner
+                } else {
+                    SymbolicationError::from(SymbolicationErrorKind::Timeout)
+                }
+            });
 
         Box::new(future)
     }
