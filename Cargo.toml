@@ -30,7 +30,7 @@ lazy_static = "1.4.0"
 parking_lot = "0.10.0"
 tokio = "0.1.22"
 uuid = "0.7.4"
-symbolic = { git = "https://github.com/getsentry/symbolic", rev = "78f8c46c1ccddbd3344184f440f44481ad327029", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", rev = "da17930d5be888c94646873fa812915f65ce69f8", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 sentry = { version = "0.17.0", features = ["with_debug_meta"] }
 sentry-actix = "0.17.0"
 rusoto_s3 = "0.40.0"

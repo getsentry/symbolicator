@@ -43,15 +43,15 @@ use crate::utils::futures::ThreadPool;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 
-const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
-    with_arguments: true,
-    format: DemangleFormat::Short,
-};
-
 lazy_static::lazy_static! {
     /// Format sent by Unreal Engine on macOS
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
+
+const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
+    with_arguments: true,
+    format: DemangleFormat::Short,
+};
 
 /// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
@@ -674,10 +674,12 @@ fn symbolicate_frame(
                     frame.abs_path.clone()
                 },
                 function: Some(
-                    line_info
-                        .function_name()
-                        .try_demangle(DEMANGLE_OPTIONS)
-                        .into_owned(),
+                    procspawn::spawn!((line_info.function_name() => func) || {
+                        func.try_demangle(DEMANGLE_OPTIONS).into_owned()
+                    })
+                    .join()
+                    .ok()
+                    .unwrap_or_else(|| line_info.function_name().as_str().to_owned()),
                 ),
                 filename: if !filename.is_empty() {
                     Some(filename)
