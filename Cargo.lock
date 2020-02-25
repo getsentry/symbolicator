@@ -2955,7 +2955,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.1.0"
-source = "git+https://github.com/getsentry/symbolic?rev=da17930d5be888c94646873fa812915f65ce69f8#da17930d5be888c94646873fa812915f65ce69f8"
+source = "git+https://github.com/getsentry/symbolic?rev=f9f71d39fa3ac382fa33aa0870596222af2e019a#f9f71d39fa3ac382fa33aa0870596222af2e019a"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2967,7 +2967,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.1.0"
-source = "git+https://github.com/getsentry/symbolic?rev=da17930d5be888c94646873fa812915f65ce69f8#da17930d5be888c94646873fa812915f65ce69f8"
+source = "git+https://github.com/getsentry/symbolic?rev=f9f71d39fa3ac382fa33aa0870596222af2e019a#f9f71d39fa3ac382fa33aa0870596222af2e019a"
 dependencies = [
  "debugid 0.5.3",
  "failure",
@@ -2980,7 +2980,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.1.0"
-source = "git+https://github.com/getsentry/symbolic?rev=da17930d5be888c94646873fa812915f65ce69f8#da17930d5be888c94646873fa812915f65ce69f8"
+source = "git+https://github.com/getsentry/symbolic?rev=f9f71d39fa3ac382fa33aa0870596222af2e019a#f9f71d39fa3ac382fa33aa0870596222af2e019a"
 dependencies = [
  "dmsort",
  "failure",
@@ -3005,7 +3005,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.1.0"
-source = "git+https://github.com/getsentry/symbolic?rev=da17930d5be888c94646873fa812915f65ce69f8#da17930d5be888c94646873fa812915f65ce69f8"
+source = "git+https://github.com/getsentry/symbolic?rev=f9f71d39fa3ac382fa33aa0870596222af2e019a#f9f71d39fa3ac382fa33aa0870596222af2e019a"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3017,7 +3017,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.1.0"
-source = "git+https://github.com/getsentry/symbolic?rev=da17930d5be888c94646873fa812915f65ce69f8#da17930d5be888c94646873fa812915f65ce69f8"
+source = "git+https://github.com/getsentry/symbolic?rev=f9f71d39fa3ac382fa33aa0870596222af2e019a#f9f71d39fa3ac382fa33aa0870596222af2e019a"
 dependencies = [
  "cc",
  "failure",
@@ -3031,7 +3031,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.1.0"
-source = "git+https://github.com/getsentry/symbolic?rev=da17930d5be888c94646873fa812915f65ce69f8#da17930d5be888c94646873fa812915f65ce69f8"
+source = "git+https://github.com/getsentry/symbolic?rev=f9f71d39fa3ac382fa33aa0870596222af2e019a#f9f71d39fa3ac382fa33aa0870596222af2e019a"
 dependencies = [
  "failure",
  "fnv",
