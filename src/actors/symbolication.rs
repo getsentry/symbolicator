@@ -674,12 +674,10 @@ fn symbolicate_frame(
                     frame.abs_path.clone()
                 },
                 function: Some(
-                    procspawn::spawn!((line_info.function_name() => func) || {
-                        func.try_demangle(DEMANGLE_OPTIONS).into_owned()
-                    })
-                    .join()
-                    .ok()
-                    .unwrap_or_else(|| line_info.function_name().as_str().to_owned()),
+                    line_info
+                        .function_name()
+                        .try_demangle(DEMANGLE_OPTIONS)
+                        .into_owned(),
                 ),
                 filename: if !filename.is_empty() {
                     Some(filename)
