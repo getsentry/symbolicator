@@ -75,6 +75,8 @@ impl Cli {
 
 /// Runs the main application.
 pub fn execute() -> Result<(), CliError> {
+    eprintln!("symbolicator process initializing");
+
     let cli = Cli::from_args();
     let config = Config::get(cli.config())?;
 
@@ -87,7 +89,9 @@ pub fn execute() -> Result<(), CliError> {
     logging::init_logging(&config);
     sentry::integrations::panic::register_panic_handler();
 
-    procspawn::init();
+    procspawn::ProcConfig::new()
+        .config_callback(|| log::trace!("[procspawn] initializing in sub process"))
+        .init();
 
     match cli.command {
         Command::Run => server::run(config)?,
