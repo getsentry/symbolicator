@@ -16,7 +16,7 @@ serde = { version = "1.0.101", features = ["derive", "rc"] }
 futures = { version = "0.3", features = ["compat"] }
 futures01 = { version = "0.1.29", package = "futures" }
 bytes = { version = "0.4.12", features = ["serde"] }
-procspawn = { git = "https://github.com/mitsuhiko/procspawn", rev = "27c8c36388133350f2ddd2e399bc5c160c48a1bb", features = ["backtrace", "json", "async", "test-support"] }
+procspawn = { version = "0.8.2", features = ["backtrace", "json", "async", "test-support"] }
 url = "1.7.2"
 derive_more = "0.15.0"
 url_serde = "0.2.0"
