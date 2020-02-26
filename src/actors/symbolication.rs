@@ -982,8 +982,11 @@ impl SymbolicationActor {
         metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
         let get_modules_future = async {
-            let procspawn::Json(cfi_modules) = procspawn::spawn_async!(
-                (minidump) || -> Result<_, ProcessMinidumpError> {
+            let spawn_id = uuid::Uuid::new_v4();
+            log::trace!("{}: spawning get_referenced_modules", spawn_id);
+            let spawn_result = procspawn::spawn_async!(
+                (minidump, spawn_id) || -> Result<_, ProcessMinidumpError> {
+                    log::trace!("{}: running get_referenced_modules", spawn_id);
                     let state =
                         ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
@@ -1001,13 +1004,18 @@ impl SymbolicationActor {
                         })
                         .collect();
 
+                    log::trace!("{}: finished get_referenced_modules", spawn_id);
                     Ok(procspawn::Json(cfi_modules))
                 }
             )
             .join_async()
             .boxed_local()
-            .await
-            .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
+            .await;
+
+            log::trace!("{}: joined get_referenced_modules", spawn_id);
+
+            let procspawn::Json(cfi_modules) = spawn_result
+                .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
             Ok(cfi_modules)
         };
 
@@ -1101,9 +1109,12 @@ impl SymbolicationActor {
         }
 
         let stackwalk_future = async {
-            let procspawn::Json((modules, stacktraces, minidump_state)) = procspawn::spawn_async!(
-                (frame_info_map, object_features, unwind_statuses, minidump)
+            let spawn_id = uuid::Uuid::new_v4();
+            log::trace!("{}: spawning stackwalk_minidump_with_cfi", spawn_id);
+            let spawn_result = procspawn::spawn_async!(
+                (frame_info_map, object_features, unwind_statuses, minidump, spawn_id)
                 || -> Result<_, ProcessMinidumpError> {
+                    log::trace!("{}: running stackwalk_minidump_with_cfi", spawn_id);
                     let frame_info_map: BTreeMap<_, _> = frame_info_map
                         .iter()
                         .map(|(&k, v)| {
@@ -1218,13 +1229,17 @@ impl SymbolicationActor {
                         });
                     }
 
+                    log::trace!("{}: finished stackwalk_minidump_with_cfi", spawn_id);
                     Ok(procspawn::Json((modules, stacktraces, minidump_state)))
                 },
             )
             .join_async()
             .boxed_local()
-            .await
-            .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
+            .await;
+
+            log::trace!("{}: joined stackwalk_minidump_with_cfi", spawn_id);
+            let procspawn::Json((modules, stacktraces, minidump_state)) = spawn_result
+                .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
 
             let request = SymbolicateStacktraces {
                 modules,
