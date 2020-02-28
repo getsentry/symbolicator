@@ -19,7 +19,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 
-use crate::actors::common::cache::{CacheItemRequest, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::types::{
@@ -188,7 +188,13 @@ impl CacheItemRequest for FetchFileMetaRequest {
         serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        _: CachePath,
+    ) -> Self::Item {
         let features = serde_json::from_slice(&data).unwrap_or_default();
 
         ObjectFileMeta {
@@ -396,7 +402,13 @@ impl CacheItemRequest for FetchFileDataRequest {
         ))
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        _: CachePath,
+    ) -> Self::Item {
         let object = ObjectFile {
             object_id: self.0.object_id.clone(),
             scope,

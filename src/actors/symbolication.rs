@@ -1,13 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::iter::FromIterator;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
-use failure::Fail;
+use failure::{Fail, ResultExt};
 use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
 use futures01::future::{self, join_all, Either, Future, IntoFuture, Shared};
 use futures01::sync::oneshot;
@@ -32,6 +33,7 @@ use crate::actors::objects::{FindObject, ObjectPurpose, ObjectsActor};
 use crate::actors::symcaches::{
     FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
 };
+use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::types::{
     ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
@@ -982,11 +984,8 @@ impl SymbolicationActor {
         metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
         let lazy = future::lazy(move || {
-            let spawn_id = uuid::Uuid::new_v4();
-            log::trace!("{}: spawning get_referenced_modules", spawn_id);
             let spawn_result = procspawn::spawn!(
-                (minidump, spawn_id) || -> Result<_, ProcessMinidumpError> {
-                    log::trace!("{}: running get_referenced_modules", spawn_id);
+                (minidump) || -> Result<_, ProcessMinidumpError> {
                     let state =
                         ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
@@ -1004,7 +1003,6 @@ impl SymbolicationActor {
                         })
                         .collect();
 
-                    log::trace!("{}: finished get_referenced_modules", spawn_id);
                     Ok(procspawn::Json(cfi_modules))
                 }
             );
@@ -1067,7 +1065,7 @@ impl SymbolicationActor {
         let mut unwind_statuses = BTreeMap::new();
         let mut object_features = BTreeMap::new();
 
-        let mut frame_info_map: BTreeMap<CodeModuleId, Bytes> = BTreeMap::new();
+        let mut frame_info_map: BTreeMap<CodeModuleId, PathBuf> = BTreeMap::new();
 
         for (code_module_id, result) in &cfi_results {
             let cache_file = match result {
@@ -1087,46 +1085,48 @@ impl SymbolicationActor {
             // processable by symbolicator.
             object_features.insert(code_module_id.clone(), cache_file.features());
 
-            log::trace!("Loading cficache");
-            let cfi_cache = match cache_file.parse() {
-                Ok(Some(x)) => x,
-                Ok(None) => {
+            match cache_file.status() {
+                CacheStatus::Negative => {
                     unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Missing);
-                    continue;
                 }
-                Err(e) => {
+                CacheStatus::Malformed => {
+                    let e = CfiCacheError::from(CfiCacheErrorKind::ObjectParsing);
                     log::warn!("Error while parsing cficache: {}", LogError(&e));
                     unwind_statuses.insert(code_module_id.clone(), (&e).into());
-                    continue;
                 }
-            };
-
-            unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Found);
-            frame_info_map.insert(code_module_id.clone(), Bytes::from(cfi_cache.as_slice()));
+                CacheStatus::Positive => {
+                    frame_info_map.insert(code_module_id.clone(), cache_file.path().to_owned());
+                }
+            }
         }
 
         let lazy = future::lazy(move || {
-            let spawn_id = uuid::Uuid::new_v4();
-            log::trace!("{}: spawning stackwalk_minidump_with_cfi", spawn_id);
             let spawn_result = procspawn::spawn!(
-                (frame_info_map, object_features, unwind_statuses, minidump, spawn_id)
+                (frame_info_map, object_features, unwind_statuses, minidump)
                 || -> Result<_, ProcessMinidumpError> {
-                    log::trace!("{}: running stackwalk_minidump_with_cfi", spawn_id);
-                    let frame_info_map: BTreeMap<_, _> = frame_info_map
-                        .iter()
-                        .map(|(&k, v)| {
-                            (
-                                k,
-                                // this cannot fail because we already establish that it parses
-                                // outside this process.
-                                CfiCache::from_bytes(ByteView::from_vec(v.to_vec())).unwrap(),
-                            )
-                        })
-                        .collect();
-                    let process_state = ProcessState::from_minidump(
-                        &ByteView::from_slice(&minidump),
-                        Some(&frame_info_map),
-                    )?;
+                    let mut unwind_statuses = unwind_statuses; // cannot add mut to spawn!
+
+                    let mut cfi = BTreeMap::new();
+                    for (code_module_id, cfi_path) in frame_info_map {
+                        let result = ByteView::open(cfi_path)
+                            .context(CfiCacheErrorKind::Parsing.into())
+                            .and_then(|bytes| CfiCache::from_bytes(bytes).context(CfiCacheErrorKind::Parsing))
+                            .map_err(CfiCacheError::from);
+
+                        match result {
+                            Ok(cache) => {
+                                unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Found);
+                                cfi.insert(code_module_id, cache);
+                            }
+                            Err(e) => {
+                                log::warn!("Error while parsing cficache: {}", LogError(&e));
+                                unwind_statuses.insert(code_module_id, (&e).into());
+                            }
+                        }
+                    }
+
+                    let minidump = ByteView::from_slice(&minidump);
+                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
 
                     let minidump_system_info = process_state.system_info();
                     let os_name = minidump_system_info.os_name();
@@ -1226,7 +1226,6 @@ impl SymbolicationActor {
                         });
                     }
 
-                    log::trace!("{}: finished stackwalk_minidump_with_cfi", spawn_id);
                     Ok(procspawn::Json((modules, stacktraces, minidump_state)))
                 },
             );
@@ -1236,11 +1235,12 @@ impl SymbolicationActor {
                     Ok(Ok(json)) => json,
                     Ok(Err(err)) => return Err(err.into()),
                     Err(perr) => {
+                        eprintln!("procspawn error: {}", perr);
                         return Err(SymbolicationError::from(if perr.is_timeout() {
                             SymbolicationErrorKind::Timeout
                         } else {
                             SymbolicationErrorKind::Canceled
-                        }))
+                        }));
                     }
                 };
 
@@ -1261,7 +1261,13 @@ impl SymbolicationActor {
             .boxed_local()
             .compat()
             .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
-            .flatten();
+            .flatten()
+            .then(move |x| {
+                // keep the results until symbolication has finished to ensure we don't drop
+                // temporary files prematurely.
+                drop(cfi_results);
+                x
+            });
 
         Box::new(future)
     }

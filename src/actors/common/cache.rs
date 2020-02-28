@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures01::future::{lazy, Future, IntoFuture, Shared};
@@ -66,6 +66,27 @@ impl fmt::Display for CacheKey {
     }
 }
 
+#[derive(Debug)]
+pub enum CachePath {
+    Temp(tempfile::TempPath),
+    Cached(PathBuf),
+}
+
+impl CachePath {
+    pub fn new() -> Self {
+        Self::Cached(PathBuf::new())
+    }
+}
+
+impl AsRef<Path> for CachePath {
+    fn as_ref(&self) -> &Path {
+        match *self {
+            Self::Temp(ref temp) => &temp,
+            Self::Cached(ref buf) => &buf,
+        }
+    }
+}
+
 pub trait CacheItemRequest: 'static + Send {
     type Item: 'static + Send;
 
@@ -86,7 +107,13 @@ pub trait CacheItemRequest: 'static + Send {
     }
 
     /// Loads an existing element from the cache.
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item;
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        path: CachePath,
+    ) -> Self::Item;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -131,7 +158,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         log::trace!("Loading {} at path {:?}", name, path);
 
-        let item = request.load(key.scope, status, byteview);
+        let item = request.load(key.scope, status, byteview, CachePath::Cached(path));
         Ok(Some(item))
     }
 
@@ -207,12 +234,15 @@ impl<T: CacheItemRequest> Cacher<T> {
                     "hit" => "false"
                 );
 
-                let item = request.load(key.scope.clone(), status, byteview);
+                let path = match cache_path {
+                    Some(ref cache_path) => {
+                        tryf!(status.persist_item(cache_path, temp_file));
+                        CachePath::Cached(cache_path.into())
+                    }
+                    None => CachePath::Temp(temp_file.into_temp_path()),
+                };
 
-                if let Some(ref cache_path) = cache_path {
-                    tryf!(status.persist_item(cache_path, temp_file));
-                }
-
+                let item = request.load(key.scope.clone(), status, byteview, path);
                 Box::new(Ok(item).into_future())
             });
 
