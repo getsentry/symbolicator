@@ -1235,7 +1235,6 @@ impl SymbolicationActor {
                     Ok(Ok(json)) => json,
                     Ok(Err(err)) => return Err(err.into()),
                     Err(perr) => {
-                        eprintln!("procspawn error: {}", perr);
                         return Err(SymbolicationError::from(if perr.is_timeout() {
                             SymbolicationErrorKind::Timeout
                         } else {

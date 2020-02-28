@@ -75,8 +75,6 @@ impl Cli {
 
 /// Runs the main application.
 pub fn execute() -> Result<(), CliError> {
-    eprintln!("symbolicator process initializing");
-
     let cli = Cli::from_args();
     let config = Config::get(cli.config())?;
 
