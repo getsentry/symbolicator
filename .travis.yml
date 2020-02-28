@@ -13,6 +13,7 @@ branches:
     - master
     - /^release\/[\d.]+$/
     - /^deploy\/.*$/
+    - feature/subprocesses # Temporary
 
 matrix:
   include:
