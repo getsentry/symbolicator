@@ -981,10 +981,10 @@ impl SymbolicationActor {
         log::debug!("Processing minidump ({} bytes)", minidump.len());
         metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
-        let get_modules_future = async {
+        let lazy = future::lazy(move || {
             let spawn_id = uuid::Uuid::new_v4();
             log::trace!("{}: spawning get_referenced_modules", spawn_id);
-            let spawn_result = procspawn::spawn_async!(
+            let spawn_result = procspawn::spawn!(
                 (minidump, spawn_id) || -> Result<_, ProcessMinidumpError> {
                     log::trace!("{}: running get_referenced_modules", spawn_id);
                     let state =
@@ -1007,29 +1007,26 @@ impl SymbolicationActor {
                     log::trace!("{}: finished get_referenced_modules", spawn_id);
                     Ok(procspawn::Json(cfi_modules))
                 }
-            )
-            .join_async()
-            .boxed_local()
-            .await;
+            );
 
-            log::trace!("{}: joined get_referenced_modules", spawn_id);
+            match spawn_result.join_timeout(Duration::from_secs(20)) {
+                Ok(Ok(procspawn::Json(cfi_modules))) => Ok(cfi_modules),
+                Ok(Err(err)) => Err(err.into()),
+                Err(perr) => Err(SymbolicationError::from(if perr.is_timeout() {
+                    SymbolicationErrorKind::Timeout
+                } else {
+                    SymbolicationErrorKind::Canceled
+                })),
+            }
+        });
 
-            let procspawn::Json(cfi_modules) = spawn_result
-                .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
-            Ok(cfi_modules)
-        };
-
-        let future = get_modules_future
+        let future = self
+            .threadpool
+            .spawn_handle(lazy.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .timeout(Duration::from_secs(20))
-            .map_err(|err: tokio::timer::timeout::Error<SymbolicationError>| {
-                if let Some(inner) = err.into_inner() {
-                    inner
-                } else {
-                    SymbolicationError::from(SymbolicationErrorKind::Timeout)
-                }
-            });
+            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .flatten();
 
         Box::new(future)
     }
@@ -1108,10 +1105,10 @@ impl SymbolicationActor {
             frame_info_map.insert(code_module_id.clone(), Bytes::from(cfi_cache.as_slice()));
         }
 
-        let stackwalk_future = async {
+        let lazy = future::lazy(move || {
             let spawn_id = uuid::Uuid::new_v4();
             log::trace!("{}: spawning stackwalk_minidump_with_cfi", spawn_id);
-            let spawn_result = procspawn::spawn_async!(
+            let spawn_result = procspawn::spawn!(
                 (frame_info_map, object_features, unwind_statuses, minidump, spawn_id)
                 || -> Result<_, ProcessMinidumpError> {
                     log::trace!("{}: running stackwalk_minidump_with_cfi", spawn_id);
@@ -1232,14 +1229,20 @@ impl SymbolicationActor {
                     log::trace!("{}: finished stackwalk_minidump_with_cfi", spawn_id);
                     Ok(procspawn::Json((modules, stacktraces, minidump_state)))
                 },
-            )
-            .join_async()
-            .boxed_local()
-            .await;
+            );
 
-            log::trace!("{}: joined stackwalk_minidump_with_cfi", spawn_id);
-            let procspawn::Json((modules, stacktraces, minidump_state)) = spawn_result
-                .map_err(|_err| SymbolicationError::from(SymbolicationErrorKind::Canceled))??;
+            let procspawn::Json((modules, stacktraces, minidump_state)) =
+                match spawn_result.join_timeout(Duration::from_secs(60)) {
+                    Ok(Ok(json)) => json,
+                    Ok(Err(err)) => return Err(err.into()),
+                    Err(perr) => {
+                        return Err(SymbolicationError::from(if perr.is_timeout() {
+                            SymbolicationErrorKind::Timeout
+                        } else {
+                            SymbolicationErrorKind::Canceled
+                        }))
+                    }
+                };
 
             let request = SymbolicateStacktraces {
                 modules,
@@ -1250,19 +1253,15 @@ impl SymbolicationActor {
             };
 
             Ok((request, minidump_state))
-        };
+        });
 
-        let future = stackwalk_future
+        let future = self
+            .threadpool
+            .spawn_handle(lazy.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .timeout(Duration::from_secs(60))
-            .map_err(|err: tokio::timer::timeout::Error<SymbolicationError>| {
-                if let Some(inner) = err.into_inner() {
-                    inner
-                } else {
-                    SymbolicationError::from(SymbolicationErrorKind::Timeout)
-                }
-            });
+            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .flatten();
 
         Box::new(future)
     }

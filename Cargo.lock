@@ -1399,9 +1399,9 @@ dependencies = [
 
 [[package]]
 name = "ipc-channel"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8c1e5a5836f27b9b183407a89abcca071d30c867d21e2aaf285b4b71c31f926"
+checksum = "55162cbe44dacbc0b4a66d1067c885a9d5975f068a432801bba0493e1ece7a51"
 dependencies = [
  "bincode",
  "crossbeam-channel 0.4.0",
@@ -2158,14 +2158,13 @@ dependencies = [
 
 [[package]]
 name = "procspawn"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4726410e2c0fbfefb6ae4dfc3a008126cd4b3f77b205079ce0a13be9be382613"
+checksum = "7ec305719b44af2199c709b3ca2f627df80460c79d590c4bb01bb0f7aedd8854"
 dependencies = [
  "backtrace",
  "ctor",
  "findshlibs",
- "futures 0.3.4",
  "ipc-channel",
  "libc",
  "serde",
