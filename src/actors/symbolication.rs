@@ -1109,7 +1109,7 @@ impl SymbolicationActor {
                     let mut cfi = BTreeMap::new();
                     for (code_module_id, cfi_path) in frame_info_map {
                         let result = ByteView::open(cfi_path)
-                            .context(CfiCacheErrorKind::Parsing.into())
+                            .context(CfiCacheErrorKind::Parsing)
                             .and_then(|bytes| CfiCache::from_bytes(bytes).context(CfiCacheErrorKind::Parsing))
                             .map_err(CfiCacheError::from);
 
