@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::iter::FromIterator;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -45,15 +44,15 @@ use crate::utils::futures::ThreadPool;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 
-lazy_static::lazy_static! {
-    /// Format sent by Unreal Engine on macOS
-    static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
-}
-
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,
     format: DemangleFormat::Short,
 };
+
+lazy_static::lazy_static! {
+    /// Format sent by Unreal Engine on macOS
+    static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
+}
 
 /// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
@@ -980,12 +979,11 @@ impl SymbolicationActor {
         &self,
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
-        log::debug!("Processing minidump ({} bytes)", minidump.len());
-        metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-
         let lazy = future::lazy(move || {
             let spawn_result = procspawn::spawn!(
                 (minidump) || -> Result<_, ProcessMinidumpError> {
+                    log::debug!("Processing minidump ({} bytes)", minidump.len());
+                    metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
                     let state =
                         ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
@@ -1007,6 +1005,7 @@ impl SymbolicationActor {
                 }
             );
 
+            // TODO(ja): This
             match spawn_result.join_timeout(Duration::from_secs(20)) {
                 Ok(Ok(procspawn::Json(cfi_modules))) => Ok(cfi_modules),
                 Ok(Err(err)) => Err(err.into()),
@@ -1064,8 +1063,7 @@ impl SymbolicationActor {
     ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let mut unwind_statuses = BTreeMap::new();
         let mut object_features = BTreeMap::new();
-
-        let mut frame_info_map: BTreeMap<CodeModuleId, PathBuf> = BTreeMap::new();
+        let mut frame_info_map = BTreeMap::new();
 
         for (code_module_id, result) in &cfi_results {
             let cache_file = match result {
@@ -1102,10 +1100,8 @@ impl SymbolicationActor {
 
         let lazy = future::lazy(move || {
             let spawn_result = procspawn::spawn!(
-                (frame_info_map, object_features, unwind_statuses, minidump)
+                (frame_info_map, object_features, mut unwind_statuses, minidump)
                 || -> Result<_, ProcessMinidumpError> {
-                    let mut unwind_statuses = unwind_statuses; // cannot add mut to spawn!
-
                     let mut cfi = BTreeMap::new();
                     for (code_module_id, cfi_path) in frame_info_map {
                         let result = ByteView::open(cfi_path)
@@ -1159,7 +1155,6 @@ impl SymbolicationActor {
                                 .cloned()
                                 .unwrap_or(ObjectFileStatus::Unused);
 
-                            // TODO: validate this works in the subprocess
                             metric!(
                                 counter("symbolication.unwind_status") += 1,
                                 "status" => status.name()
