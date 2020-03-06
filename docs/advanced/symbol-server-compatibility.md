@@ -14,6 +14,27 @@ structures:
 - debuginfod
 - Unified Symbol Server Layout
 
+## Lookup Types
+
+Symbolicator uses different lookup types to support different servers which do
+not map 1:1 to a symbol server. The two most common lookup types are `native`
+and `unified`.
+
+### `native`
+
+This lookup type emulates the most "native" symbol server format depending
+on the file type. This for instance means for PDB and PE files this turns
+into Microsoft Symbol Server. It also adds support for breakpad and will
+use LLDB/GDB formats for MachO and ELF respectively. This symbol server type
+also has support for source bundles for all file types.
+
+### `unified`
+
+This is the symbolicator proprietary but preferred source (Unified Symbol
+Server Layout) which adds a consistent lookup format for all architectures.
+It's used at Sentry for the internal symbol lookups (like Apple or Android
+symbols). Like The `native` format this supports source bundles.
+
 ## Prerequisites
 
 ### Identifiers
@@ -271,7 +292,7 @@ The following layout types support this lookup:
 
 - `debuginfod`
 
-### unified
+### Unified Symbol Server Layout
 
 If you have no requirements to be compatible with another system you can also
 use the "unified" directory layout structure. This has the advantage that it's
