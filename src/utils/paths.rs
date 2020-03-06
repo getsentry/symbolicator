@@ -154,7 +154,9 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
                 ObjectType::Elf => get_gdb_path(identifier)?,
                 ObjectType::Unknown => return None,
             };
-            base_path.truncate(base_path.len() - base_path.rsplitn(2, '.').next()?.len() - 1);
+            base_path.truncate(
+                (base_path.len() - base_path.rsplitn(2, '.').next()?.len()).checked_sub(1)?,
+            );
             base_path.push_str(".src.zip");
             Some(base_path)
         }
@@ -221,7 +223,9 @@ fn get_symstore_path(
                 _ => return None,
             };
             let mut base_path = get_symstore_path(original_file_type, identifier, ssqp_casing)?;
-            base_path.truncate(base_path.len() - base_path.rsplitn(2, '.').next()?.len() - 1);
+            base_path.truncate(
+                (base_path.len() - base_path.rsplitn(2, '.').next()?.len()).checked_sub(1)?,
+            );
             base_path.push_str(".src.zip");
             Some(base_path)
         }
