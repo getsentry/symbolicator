@@ -147,8 +147,17 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
             ))
         }
 
-        // not available
-        FileType::SourceBundle => None,
+        FileType::SourceBundle => {
+            let mut base_path = match identifier.object_type {
+                ObjectType::Pe => get_pdb_symstore_path(identifier, false)?,
+                ObjectType::Macho => get_lldb_path(identifier)?,
+                ObjectType::Elf => get_gdb_path(identifier)?,
+                ObjectType::Unknown => return None,
+            };
+            base_path.truncate(base_path.len() - base_path.rsplitn(2, '.').next()?.len() - 1);
+            base_path.push_str(".src.zip");
+            Some(base_path)
+        }
     }
 }
 
@@ -205,8 +214,17 @@ fn get_symstore_path(
         // Microsoft SymbolServer does not specify Breakpad.
         FileType::Breakpad => None,
 
-        // not available
-        FileType::SourceBundle => None,
+        // source bundles are available through an extension for PE/PDB only.
+        FileType::SourceBundle => {
+            let original_file_type = match identifier.object_type {
+                ObjectType::Pe => FileType::Pdb,
+                _ => return None,
+            };
+            let mut base_path = get_symstore_path(original_file_type, identifier, ssqp_casing)?;
+            base_path.truncate(base_path.len() - base_path.rsplitn(2, '.').next()?.len() - 1);
+            base_path.push_str(".src.zip");
+            Some(base_path)
+        }
     }
 }
 
@@ -247,6 +265,20 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
     }
 }
 
+/// determine object type for search.
+///
+/// We prefer to use the file type as indicator for going back to the object
+/// type. If that is not possible, we use the object type that is stored on the
+/// identifier which might be unreliable.
+fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> ObjectType {
+    match filetype {
+        FileType::Pe | FileType::Pdb => ObjectType::Pe,
+        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
+        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
+        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
+    }
+}
+
 fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
     // determine the suffix and object type
     let suffix = match filetype {
@@ -256,18 +288,8 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
     };
 
-    // determine object type.  We prefer to use the file type as indicator for going
-    // back to the object type.  If that is not possible, we use the object type
-    // that is stored on the identifier which might be unreliable.
-    let object_type = match filetype {
-        FileType::Pe | FileType::Pdb => ObjectType::Pe,
-        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
-        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
-        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
-    };
-
     // determine the ID we use for the path
-    let id = match object_type {
+    let id = match get_search_target_object_type(filetype, identifier) {
         // PEs and PDBs are indexed by the debug id in lowercase breakpad format
         // always.  This is done because code IDs by themselves are not reliable
         // enough for PEs and are only useful together with the file name which
