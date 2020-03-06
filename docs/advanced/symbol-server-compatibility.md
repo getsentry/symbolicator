@@ -176,7 +176,7 @@ the first two characters are prepended to the path as an additional folder. So
 `fo/foo.exe/542D5742000f2000/foo.exe`. Note that symbolicator does not probe
 for the `index2.txt` file. You need to be explicit in configuring it.
 
-Symbol bundles are only supported for PE/PDB files with the following format:
+Source bundles are only supported for PE/PDB files with the following format:
 
 - **Source bundle**: `<debug_name>/<Signature><Age>/<debug_name>.src.zip`
 
