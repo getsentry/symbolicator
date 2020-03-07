@@ -149,14 +149,17 @@ fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> 
 
         FileType::SourceBundle => {
             let mut base_path = match identifier.object_type {
-                ObjectType::Pe => get_pdb_symstore_path(identifier, false)?,
+                ObjectType::Pe => {
+                    let mut base_path = get_pdb_symstore_path(identifier, false)?;
+                    if let Some(cutoff) = base_path.rfind('.') {
+                        base_path.truncate(cutoff);
+                    }
+                    base_path
+                }
                 ObjectType::Macho => get_lldb_path(identifier)?,
                 ObjectType::Elf => get_gdb_path(identifier)?,
                 ObjectType::Unknown => return None,
             };
-            base_path.truncate(
-                (base_path.len() - base_path.rsplitn(2, '.').next()?.len()).checked_sub(1)?,
-            );
             base_path.push_str(".src.zip");
             Some(base_path)
         }
@@ -223,9 +226,9 @@ fn get_symstore_path(
                 _ => return None,
             };
             let mut base_path = get_symstore_path(original_file_type, identifier, ssqp_casing)?;
-            base_path.truncate(
-                (base_path.len() - base_path.rsplitn(2, '.').next()?.len()).checked_sub(1)?,
-            );
+            if let Some(cutoff) = base_path.rfind('.') {
+                base_path.truncate(cutoff);
+            }
             base_path.push_str(".src.zip");
             Some(base_path)
         }
