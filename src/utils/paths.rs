@@ -527,6 +527,52 @@ mod tests {
     }
 
     #[test]
+    fn test_get_debuginfod_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_debuginfod_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"dfb85de42daffd09640c8fe377d572de3e168920/executable");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"dfb85de42daffd09640c8fe377d572de3e168920/debuginfo");
+    }
+
+    #[test]
+    fn test_get_symstore_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_symstore_path($filetype, &$obj, false).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"crash/mach-uuid-67e9247c814e392ba027dbde6748fcbf/crash");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"_.dwarf/mach-uuid-sym-67e9247c814e392ba027dbde6748fcbf/_.dwarf");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"libm-2.23.so/elf-buildid-dfb85de42daffd09640c8fe377d572de3e168920/libm-2.23.so");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"_.debug/elf-buildid-sym-dfb85de42daffd09640c8fe377d572de3e168920/_.debug");
+    }
+
+    #[test]
+    fn test_get_symstore_index2_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_symstore_index2_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"cr/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"cr/crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"cr/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"cr/crash/mach-uuid-67e9247c814e392ba027dbde6748fcbf/crash");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"_/_.dwarf/mach-uuid-sym-67e9247c814e392ba027dbde6748fcbf/_.dwarf");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"li/libm-2.23.so/elf-buildid-dfb85de42daffd09640c8fe377d572de3e168920/libm-2.23.so");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"_/_.debug/elf-buildid-sym-dfb85de42daffd09640c8fe377d572de3e168920/_.debug");
+    }
+
+    #[test]
     fn test_matches_path_patterns_empty() {
         assert!(matches_path_patterns(
             &ObjectId {
