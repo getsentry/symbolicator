@@ -492,12 +492,15 @@ mod tests {
 
         path_test!(FileType::Pdb, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
         path_test!(FileType::Pe, PE_OBJECT_ID, @"crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::Breakpad, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym");
         path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
         path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF.app");
         path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF");
+        path_test!(FileType::Breakpad, MACHO_OBJECT_ID, @"crash/67E9247C814E392BA027DBDE6748FCBF0/crash.sym");
         path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF.src.zip");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.debug");
+        path_test!(FileType::Breakpad, ELF_OBJECT_ID, @"libm-2.23.so/E45DB8DFAF2D09FD640C8FE377D572DE0/libm-2.23.so.sym");
         path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.src.zip");
     }
 
@@ -511,12 +514,15 @@ mod tests {
 
         path_test!(FileType::Pdb, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/debuginfo");
         path_test!(FileType::Pe, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/executable");
+        path_test!(FileType::Breakpad, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/breakpad");
         path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/sourcebundle");
         path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
         path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
+        path_test!(FileType::Breakpad, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/breakpad");
         path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/sourcebundle");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/executable");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/debuginfo");
+        path_test!(FileType::Breakpad, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/breakpad");
         path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/sourcebundle");
     }
 
