@@ -454,8 +454,70 @@ pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
 mod tests {
     use super::*;
 
+    lazy_static::lazy_static! {
+        static ref PE_OBJECT_ID: ObjectId = ObjectId {
+            code_id: Some("5ab380779000".parse().unwrap()),
+            code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
+            debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
+            debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+            object_type: ObjectType::Pe,
+        };
+        static ref MACHO_OBJECT_ID: ObjectId = ObjectId {
+            code_id: None,
+            code_file: Some("/Users/travis/build/getsentry/breakpad-tools/macos/build/./crash".into()),
+            debug_id: Some("67e9247c-814e-392b-a027-dbde6748fcbf".parse().unwrap()),
+            debug_file: Some("crash".into()),
+            object_type: ObjectType::Macho,
+        };
+        static ref ELF_OBJECT_ID: ObjectId = ObjectId {
+            code_id: Some("dfb85de42daffd09640c8fe377d572de3e168920".parse().unwrap()),
+            code_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
+            debug_id: Some("e45db8df-af2d-09fd-640c-8fe377d572de".parse().unwrap()),
+            debug_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
+            object_type: ObjectType::Elf,
+        };
+    }
+
     fn pattern(x: &str) -> Glob {
         Glob(x.parse().unwrap())
+    }
+
+    #[test]
+    fn test_get_native_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_native_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF.app");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF");
+        path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF.src.zip");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.debug");
+        path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.src.zip");
+    }
+
+    #[test]
+    fn test_get_unified_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_unified_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/debuginfo");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/executable");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/sourcebundle");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
+        path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/sourcebundle");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/executable");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/debuginfo");
+        path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/sourcebundle");
     }
 
     #[test]
