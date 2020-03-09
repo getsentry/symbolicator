@@ -34,7 +34,7 @@
         <meta name="lang:search.tokenizer" content="[\s\-]+">
       
       <link rel="shortcut icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.6.0">
+      <meta name="generator" content="mkdocs-1.1, mkdocs-material-4.6.3">
     
     
       
@@ -42,12 +42,12 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/application.1b62728e.css">
+      <link rel="stylesheet" href="../assets/stylesheets/application.adb8469c.css">
       
       
     
     
-      <script src="../assets/javascripts/modernizr.268332fc.js"></script>
+      <script src="../assets/javascripts/modernizr.86422ebf.js"></script>
     
     
       
@@ -81,7 +81,7 @@
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
     
-      <a href="#api" tabindex="1" class="md-skip">
+      <a href="#api" tabindex="0" class="md-skip">
         Skip to content
       </a>
     
@@ -90,9 +90,9 @@
   <nav class="md-header-nav md-grid">
     <div class="md-flex">
       <div class="md-flex__cell md-flex__cell--shrink">
-        <a href=".." title="Sentry Symbolicator" class="md-header-nav__button md-logo">
+        <a href=".." title="Sentry Symbolicator" aria-label="Sentry Symbolicator" class="md-header-nav__button md-logo">
           
-            <img src="../static/icon.png" width="24" height="24">
+            <img alt="logo" src="../static/icon.png" width="24" height="24">
           
         </a>
       </div>
@@ -121,7 +121,7 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="query" data-md-state="active">
+      <input type="text" class="md-search__input" aria-label="search" name="query" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="query" data-md-state="active">
       <label class="md-icon md-search__icon" for="__search"></label>
       <button type="reset" class="md-icon md-search__icon" data-md-component="reset" tabindex="-1">
         &#xE5CD;
@@ -184,7 +184,7 @@
   <label class="md-nav__title md-nav__title--site" for="__drawer">
     <a href=".." title="Sentry Symbolicator" class="md-nav__button md-logo">
       
-        <img src="../static/icon.png" width="48" height="48">
+        <img alt="logo" src="../static/icon.png" width="48" height="48">
       
     </a>
     Sentry Symbolicator
@@ -299,6 +299,18 @@
   <li class="md-nav__item">
     <a href="../advanced/symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-nav__link">
       Symbol Server Compatibility
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../advanced/source-bundles/" title="Source Bundles" class="md-nav__link">
+      Source Bundles
     </a>
   </li>
 
@@ -568,7 +580,7 @@ request to the symbolication API.</p>
 <p>If you want to use Symbolicator as a symstore compatible proxy you need to
 preconfigure the sources.</p>
 <p>Example configuration:</p>
-<div class="codehilite"><pre><span></span><span class="p">[</span>
+<div class="codehilite"><pre><span></span><code><span class="p">[</span>
   <span class="p">{</span>
     <span class="nt">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;my-bucket-linux&quot;</span><span class="p">,</span>
     <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;s3&quot;</span><span class="p">,</span>
@@ -610,7 +622,7 @@ preconfigure the sources.</p>
     <span class="nt">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://msdl.microsoft.com/download/symbols/&quot;</span>
   <span class="p">}</span>
 <span class="p">]</span>
-</pre></div>
+</code></pre></div>
 
 
 <p>Sources are ordered by priority. Each source needs at least two keys:</p>
@@ -621,8 +633,10 @@ preconfigure the sources.</p>
 </ul>
 <p>These are common parameters that work on most symbol sources (except <code>sentry</code>):</p>
 <ul>
-<li><code>filters</code>: a set of filters to reduce the number of unnecessary hits on a
-  symbol server. This configuration key is an object with two keys:<ul>
+<li>
+<p><code>filters</code>: a set of filters to reduce the number of unnecessary hits on a
+  symbol server. This configuration key is an object with two keys:</p>
+<ul>
 <li><code>filetypes</code>: a list of file types to restrict the server to. Possible
   values: <code>pe</code>, <code>pdb</code>, <code>mach_debug</code>, <code>mach_code</code>, <code>elf_debug</code>, <code>elf_code</code>,
   <code>breakpad</code>)</li>
@@ -630,16 +644,20 @@ preconfigure the sources.</p>
   name. If the debug image has no name it will never match here.</li>
 </ul>
 </li>
-<li><code>layout</code>: configures the file system layout of the sources. This configuration
-  key is an object with two keys:<ul>
+<li>
+<p><code>layout</code>: configures the file system layout of the sources. This configuration
+  key is an object with two keys:</p>
+<ul>
 <li><code>type</code>: defines the general layout of the directory. Possible values are
-  <code>native</code>, <code>symstore</code>, <code>symstore_index2</code> and <code>ssqp</code>. <code>native</code> uses the file
-  type's native format. <code>symstore</code> and <code>ssqp</code> both use the Microsoft Symbol
-  Server format but control the case conventions. <code>symstore</code> uses the
-  conventional casing rules for signatures and filenames, <code>ssqp</code> uses the
-  Microsoft SSQP casing rules instead. Additionally <code>symstore_index2</code> works
-  like <code>symstore</code> but uses the "Two tier" (index2.txt) layout where the first
-  two characters of the filename are used as a toplevel extra folder.</li>
+  <code>native</code>, <code>symstore</code>, <code>symstore_index2</code>, <code>ssqp</code>, and <code>unified</code>.
+  <code>native</code> uses the file type's native format. <code>symstore</code> and <code>ssqp</code> both
+  use the Microsoft Symbol Server format but control the case
+  conventions. <code>symstore</code> uses the conventional casing rules for
+  signatures and filenames, <code>ssqp</code> uses the Microsoft SSQP casing rules
+  instead. Additionally <code>symstore_index2</code> works like <code>symstore</code> but uses
+  the "Two tier" (index2.txt) layout where the first two characters of
+  the filename are used as a toplevel extra folder. <code>unified</code> is the
+  unified lookup format that symbolicator recommends.</li>
 <li><code>casing</code>: enforces a casing style. The default is not to touch the casing
   and forward it unchanged. If the backend does not support a case insensitive
   backend (eg: S3) then it's recommended to set this to <code>lowercase</code> to enforce
@@ -707,7 +725,7 @@ symbols from there. Sentry applies proper configuration automatically.</p>
     <div class="md-footer-nav">
       <nav class="md-footer-nav__inner md-grid">
         
-          <a href="../advanced/symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+          <a href="../advanced/source-bundles/" title="Source Bundles" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
             <div class="md-flex__cell md-flex__cell--shrink">
               <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
             </div>
@@ -716,7 +734,7 @@ symbols from there. Sentry applies proper configuration automatically.</p>
                 <span class="md-footer-nav__direction">
                   Previous
                 </span>
-                Symbol Server Compatibility
+                Source Bundles
               </span>
             </div>
           </a>
@@ -744,9 +762,9 @@ symbols from there. Sentry applies proper configuration automatically.</p>
       <div class="md-footer-copyright">
         
         powered by
-        <a href="https://www.mkdocs.org">MkDocs</a>
+        <a href="https://www.mkdocs.org" target="_blank" rel="noopener">MkDocs</a>
         and
-        <a href="https://squidfunk.github.io/mkdocs-material/">
+        <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
           Material for MkDocs</a>
       </div>
       
@@ -756,9 +774,9 @@ symbols from there. Sentry applies proper configuration automatically.</p>
       
     </div>
     
-      <script src="../assets/javascripts/application.808e90bb.js"></script>
+      <script src="../assets/javascripts/application.c33a9706.js"></script>
       
-      <script>app.initialize({version:"1.0.4",url:{base:".."}})</script>
+      <script>app.initialize({version:"1.1",url:{base:".."}})</script>
       
     
   </body>

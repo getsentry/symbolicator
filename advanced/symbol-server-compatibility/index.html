@@ -34,7 +34,7 @@
         <meta name="lang:search.tokenizer" content="[\s\-]+">
       
       <link rel="shortcut icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.6.0">
+      <meta name="generator" content="mkdocs-1.1, mkdocs-material-4.6.3">
     
     
       
@@ -42,12 +42,12 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/application.1b62728e.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/application.adb8469c.css">
       
       
     
     
-      <script src="../../assets/javascripts/modernizr.268332fc.js"></script>
+      <script src="../../assets/javascripts/modernizr.86422ebf.js"></script>
     
     
       
@@ -81,7 +81,7 @@
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
     
-      <a href="#symbol-server-compatibility" tabindex="1" class="md-skip">
+      <a href="#symbol-server-compatibility" tabindex="0" class="md-skip">
         Skip to content
       </a>
     
@@ -90,9 +90,9 @@
   <nav class="md-header-nav md-grid">
     <div class="md-flex">
       <div class="md-flex__cell md-flex__cell--shrink">
-        <a href="../.." title="Sentry Symbolicator" class="md-header-nav__button md-logo">
+        <a href="../.." title="Sentry Symbolicator" aria-label="Sentry Symbolicator" class="md-header-nav__button md-logo">
           
-            <img src="../../static/icon.png" width="24" height="24">
+            <img alt="logo" src="../../static/icon.png" width="24" height="24">
           
         </a>
       </div>
@@ -121,7 +121,7 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="query" data-md-state="active">
+      <input type="text" class="md-search__input" aria-label="search" name="query" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="query" data-md-state="active">
       <label class="md-icon md-search__icon" for="__search"></label>
       <button type="reset" class="md-icon md-search__icon" data-md-component="reset" tabindex="-1">
         &#xE5CD;
@@ -184,7 +184,7 @@
   <label class="md-nav__title md-nav__title--site" for="__drawer">
     <a href="../.." title="Sentry Symbolicator" class="md-nav__button md-logo">
       
-        <img src="../../static/icon.png" width="48" height="48">
+        <img alt="logo" src="../../static/icon.png" width="48" height="48">
       
     </a>
     Sentry Symbolicator
@@ -326,6 +326,33 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#lookup-types" class="md-nav__link">
+    Lookup Types
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#native" class="md-nav__link">
+    native
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unified" class="md-nav__link">
+    unified
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#prerequisites" class="md-nav__link">
     Prerequisites
   </a>
@@ -410,8 +437,8 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#unified" class="md-nav__link">
-    unified
+  <a href="#unified-symbol-server-layout" class="md-nav__link">
+    Unified Symbol Server Layout
   </a>
   
 </li>
@@ -456,6 +483,18 @@
   
 </nav>
     
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../source-bundles/" title="Source Bundles" class="md-nav__link">
+      Source Bundles
+    </a>
   </li>
 
         
@@ -581,6 +620,33 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#lookup-types" class="md-nav__link">
+    Lookup Types
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#native" class="md-nav__link">
+    native
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unified" class="md-nav__link">
+    unified
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#prerequisites" class="md-nav__link">
     Prerequisites
   </a>
@@ -665,8 +731,8 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#unified" class="md-nav__link">
-    unified
+  <a href="#unified-symbol-server-layout" class="md-nav__link">
+    Unified Symbol Server Layout
   </a>
   
 </li>
@@ -736,6 +802,21 @@ structures:</p>
 <li>debuginfod</li>
 <li>Unified Symbol Server Layout</li>
 </ul>
+<h2 id="lookup-types">Lookup Types</h2>
+<p>Symbolicator uses different lookup types to support different servers which do
+not map 1:1 to a symbol server. The two most common lookup types are <code>native</code>
+and <code>unified</code>.</p>
+<h3 id="native"><code>native</code></h3>
+<p>This lookup type emulates the most "native" symbol server format depending
+on the file type. This for instance means for PDB and PE files this turns
+into Microsoft Symbol Server. It also adds support for breakpad and will
+use LLDB/GDB formats for MachO and ELF respectively. This symbol server type
+also has support for source bundles for all file types.</p>
+<h3 id="unified"><code>unified</code></h3>
+<p>This is the symbolicator proprietary but preferred source (Unified Symbol
+Server Layout) which adds a consistent lookup format for all architectures.
+It's used at Sentry for the internal symbol lookups (like Apple or Android
+symbols). Like The <code>native</code> format this supports source bundles.</p>
 <h2 id="prerequisites">Prerequisites</h2>
 <h3 id="identifiers">Identifiers</h3>
 <p>There are two fundamentally different identifiers. Their semantics fundamentally
@@ -791,6 +872,10 @@ changed the semantics of those identifiers for all other platforms to:</p>
 <li><strong>Debug ID</strong>: Value of the identifier field in the <code>MODULE</code> record, always
   in the first line of the file.</li>
 </ul>
+<p><strong>Source Bundles</strong>:</p>
+<p>Symbolicator supports the concept of source bundles which are source archives
+which can be used to extract source code for crashes. These source bundles
+are an extension which are not available to all lookup types.</p>
 <h3 id="case-sensitivity">Case Sensitivity</h3>
 <p>Most symbol servers explicitly define <strong>case insensitive</strong> lookup semantics.
 This goes in particular for the Microsoft Public Symbol Server. However, the
@@ -820,6 +905,13 @@ including potential extensions.</p>
 <li>The age part of the id (remaining characters) are <strong>lowercase</strong></li>
 </ul>
 <p><strong>Schema</strong>: <code>&lt;debug_name&gt;/&lt;breakpad-id&gt;/&lt;sym_name&gt;</code></p>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>native</code></li>
+<li><code>symstore</code></li>
+<li><code>symstore_index2</code></li>
+<li><code>ssqp</code></li>
+</ul>
 <h3 id="microsoft-symbol-server">Microsoft Symbol Server</h3>
 <p>The public symbol server provided by Microsoft used to only host PDBs for the
 Windows platform. These use a <em>signature-age</em> debug identifier in addition to
@@ -847,7 +939,17 @@ This means all non windows platforms are following SSQP rules except for casing.
 <p>The presence of a <code>index2.txt</code> in the root indicates two tier structure where
 the first two characters are prepended to the path as an additional folder. So
 <code>foo.exe/542D5742000f2000/foo.exe</code> is stored as
-<code>fo/foo.exe/542D5742000f2000/foo.exe</code>.</p>
+<code>fo/foo.exe/542D5742000f2000/foo.exe</code>. Note that symbolicator does not probe
+for the <code>index2.txt</code> file. You need to be explicit in configuring it.</p>
+<p>Source bundles are only supported for PE/PDB files with the following format:</p>
+<ul>
+<li><strong>Source bundle</strong>: <code>&lt;debug_name&gt;/&lt;Signature&gt;&lt;Age&gt;/&lt;debug_name&gt;.src.zip</code></li>
+</ul>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>symstore</code> for a regular symbol server</li>
+<li><code>symstore_index2</code> for a symbol server with an <code>index2.txt</code> root.</li>
+</ul>
 <h3 id="microsoft-ssqp-symbol-server">Microsoft SSQP Symbol Server</h3>
 <p>Casing rules for SSQP are mixed:</p>
 <ul>
@@ -867,7 +969,15 @@ the first two characters are prepended to the path as an additional folder. So
 <li><strong>MachO</strong> (dSYM): <code>_.dwarf/mach-uuid-sym-&lt;uuid_bytes&gt;/_.dwarf</code></li>
 </ul>
 <p>Additionally, SSQP supports a lookup by SHA1 checksum over the file contents,
-commonly used for source file lookups. This will not be supported.</p>
+commonly used for source file lookups. This is not supported.</p>
+<p>Symbol bundles are only supported for PE/PDB files with the following format:</p>
+<ul>
+<li><strong>Source bundle</strong>: <code>&lt;debug_name&gt;/&lt;Signature&gt;&lt;Age&gt;/&lt;debug_name&gt;.src.zip</code></li>
+</ul>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>ssqp</code></li>
+</ul>
 <h3 id="lldb-debugger-macos">LLDB Debugger (macOS)</h3>
 <p>The LLDB debugger on macOS can read debug symbols from <a href="http://lldb.llvm.org/use/symbols.html#file-mapped-uuid-directories">File Mapped UUID
 Directories</a> (scroll down to the second last section). The UUID is broken up by
@@ -884,6 +994,14 @@ former are distinguished with a <code>.app</code> suffix.</p>
 <ul>
 <li><strong>MachO</strong> (binary): <code>XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX.app</code></li>
 <li><strong>MachO</strong> (dSYM): <code>XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX</code></li>
+</ul>
+<p>Symbol bundles are supported by adding a <code>.src.zip</code> prefix to the dsym:</p>
+<ul>
+<li><strong>Source bundle</strong>: <code>XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX.src.zip</code></li>
+</ul>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>native</code></li>
 </ul>
 <h3 id="gdb">GDB</h3>
 <p><a href="https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html">GDB</a> supports multiple lookup methods, depending on the way the debug info file
@@ -909,6 +1027,14 @@ executables, the <code>.debug</code> suffix is omitted.</p>
 <li><strong>ELF</strong> (binary, potentially stripped)</li>
 <li><strong>ELF</strong> (debug info)</li>
 </ul>
+<p>Symbol bundles are supported by adding a <code>.src.zip</code> prefix to the ELF:</p>
+<ul>
+<li><strong>Source bundle</strong>: <code>nn/nnnnnnnn.src.zip</code></li>
+</ul>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>native</code></li>
+</ul>
 <h3 id="debuginfod">debuginfod</h3>
 <p>Symbolicator also supports talking to
 <a href="https://sourceware.org/git/?p=elfutils.git;a=shortlog;h=refs/heads/debuginfod">debuginfod</a>
@@ -918,7 +1044,12 @@ compatible servers for ELF and Macho.</p>
 <li><strong>ELF</strong> (binary, potentially stripped): <code>&lt;code_note_byte_sequence&gt;/executable</code></li>
 <li><strong>ELF</strong> (debug info): <code>&lt;code_note_byte_sequence&gt;/debuginfo</code></li>
 </ul>
-<h3 id="unified">unified</h3>
+<p>Source bundles are not supported.</p>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>debuginfod</code></li>
+</ul>
+<h3 id="unified-symbol-server-layout">Unified Symbol Server Layout</h3>
 <p>If you have no requirements to be compatible with another system you can also
 use the "unified" directory layout structure. This has the advantage that it's
 unified across all platforms and thus easier to manage. It can store breakpad
@@ -937,6 +1068,10 @@ files, PDBs, PEs and everything else.</p>
 <li>debug info: <code>&lt;DebugIdFirstTwo&gt;/&lt;DebugIdRest&gt;/debuginfo</code></li>
 <li>breakpad: <code>&lt;DebugIdFirstTwo&gt;/&lt;DebugIdRest&gt;/breakpad</code></li>
 <li>source bundle: <code>&lt;DebugIdFirstTwo&gt;/&lt;DebugIdRest&gt;/sourcebundle</code></li>
+</ul>
+<p>The following layout types support this lookup:</p>
+<ul>
+<li><code>unified</code></li>
 </ul>
 <h2 id="other-servers">Other Servers</h2>
 <p>The following additional sources were considered but are not implemented right
@@ -993,13 +1128,13 @@ Symbol Server no longer supports this.</p>
           </a>
         
         
-          <a href="../../api/" title="Overview" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+          <a href="../source-bundles/" title="Source Bundles" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
             <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
               <span class="md-flex__ellipsis">
                 <span class="md-footer-nav__direction">
                   Next
                 </span>
-                Overview
+                Source Bundles
               </span>
             </div>
             <div class="md-flex__cell md-flex__cell--shrink">
@@ -1015,9 +1150,9 @@ Symbol Server no longer supports this.</p>
       <div class="md-footer-copyright">
         
         powered by
-        <a href="https://www.mkdocs.org">MkDocs</a>
+        <a href="https://www.mkdocs.org" target="_blank" rel="noopener">MkDocs</a>
         and
-        <a href="https://squidfunk.github.io/mkdocs-material/">
+        <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
           Material for MkDocs</a>
       </div>
       
@@ -1027,9 +1162,9 @@ Symbol Server no longer supports this.</p>
       
     </div>
     
-      <script src="../../assets/javascripts/application.808e90bb.js"></script>
+      <script src="../../assets/javascripts/application.c33a9706.js"></script>
       
-      <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
+      <script>app.initialize({version:"1.1",url:{base:"../.."}})</script>
       
     
   </body>
