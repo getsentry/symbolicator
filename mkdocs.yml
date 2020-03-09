@@ -17,6 +17,7 @@ nav:
     - advanced/caching.md
     - advanced/symbol-lookup.md
     - advanced/symbol-server-compatibility.md
+    - advanced/source-bundles.md
   - API:
     - api/index.md
     - api/minidump.md

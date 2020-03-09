@@ -14,6 +14,27 @@ structures:
 - debuginfod
 - Unified Symbol Server Layout
 
+## Lookup Types
+
+Symbolicator uses different lookup types to support different servers which do
+not map 1:1 to a symbol server. The two most common lookup types are `native`
+and `unified`.
+
+### `native`
+
+This lookup type emulates the most "native" symbol server format depending
+on the file type. This for instance means for PDB and PE files this turns
+into Microsoft Symbol Server. It also adds support for breakpad and will
+use LLDB/GDB formats for MachO and ELF respectively. This symbol server type
+also has support for source bundles for all file types.
+
+### `unified`
+
+This is the symbolicator proprietary but preferred source (Unified Symbol
+Server Layout) which adds a consistent lookup format for all architectures.
+It's used at Sentry for the internal symbol lookups (like Apple or Android
+symbols). Like The `native` format this supports source bundles.
+
 ## Prerequisites
 
 ### Identifiers
@@ -72,6 +93,12 @@ Specifically, the code and debug identifiers are defined as follows:
 - **Debug ID**: Value of the identifier field in the `MODULE` record, always
   in the first line of the file.
 
+**Source Bundles**:
+
+Symbolicator supports the concept of source bundles which are source archives
+which can be used to extract source code for crashes. These source bundles
+are an extension which are not available to all lookup types.
+
 ### Case Sensitivity
 
 Most symbol servers explicitly define **case insensitive** lookup semantics.
@@ -110,6 +137,13 @@ Casing rules are mixed:
 
 **Schema**: `<debug_name>/<breakpad-id>/<sym_name>`
 
+The following layout types support this lookup:
+
+- `native`
+- `symstore`
+- `symstore_index2`
+- `ssqp`
+
 ### Microsoft Symbol Server
 
 The public symbol server provided by Microsoft used to only host PDBs for the
@@ -139,7 +173,17 @@ Casing rules for Symbol Server are mixed:
 The presence of a `index2.txt` in the root indicates two tier structure where
 the first two characters are prepended to the path as an additional folder. So
 `foo.exe/542D5742000f2000/foo.exe` is stored as
-`fo/foo.exe/542D5742000f2000/foo.exe`.
+`fo/foo.exe/542D5742000f2000/foo.exe`. Note that symbolicator does not probe
+for the `index2.txt` file. You need to be explicit in configuring it.
+
+Source bundles are only supported for PE/PDB files with the following format:
+
+- **Source bundle**: `<debug_name>/<Signature><Age>/<debug_name>.src.zip`
+
+The following layout types support this lookup:
+
+- `symstore` for a regular symbol server
+- `symstore_index2` for a symbol server with an `index2.txt` root.
 
 ### Microsoft SSQP Symbol Server
 
@@ -158,7 +202,15 @@ Casing rules for SSQP are mixed:
 - **MachO** (dSYM): `_.dwarf/mach-uuid-sym-<uuid_bytes>/_.dwarf`
 
 Additionally, SSQP supports a lookup by SHA1 checksum over the file contents,
-commonly used for source file lookups. This will not be supported.
+commonly used for source file lookups. This is not supported.
+
+Symbol bundles are only supported for PE/PDB files with the following format:
+
+- **Source bundle**: `<debug_name>/<Signature><Age>/<debug_name>.src.zip`
+
+The following layout types support this lookup:
+
+- `ssqp`
 
 ### LLDB Debugger (macOS)
 
@@ -180,6 +232,14 @@ The hex digits are **uppercase**, the app suffix is **lowercase**.
 
 - **MachO** (binary): `XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX.app`
 - **MachO** (dSYM): `XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX`
+
+Symbol bundles are supported by adding a `.src.zip` prefix to the dsym:
+
+- **Source bundle**: `XXXX/XXXX/XXXX/XXXX/XXXX/XXXXXXXXXXXX.src.zip`
+
+The following layout types support this lookup:
+
+- `native`
 
 ### GDB
 
@@ -207,6 +267,14 @@ The build-id hex representation is always provided in **lowercase**.
 - **ELF** (binary, potentially stripped)
 - **ELF** (debug info)
 
+Symbol bundles are supported by adding a `.src.zip` prefix to the ELF:
+
+- **Source bundle**: `nn/nnnnnnnn.src.zip`
+
+The following layout types support this lookup:
+
+- `native`
+
 ### debuginfod
 
 Symbolicator also supports talking to
@@ -218,7 +286,13 @@ compatible servers for ELF and Macho.
 - **ELF** (binary, potentially stripped): `<code_note_byte_sequence>/executable`
 - **ELF** (debug info): `<code_note_byte_sequence>/debuginfo`
 
-### unified
+Source bundles are not supported.
+
+The following layout types support this lookup:
+
+- `debuginfod`
+
+### Unified Symbol Server Layout
 
 If you have no requirements to be compatible with another system you can also
 use the "unified" directory layout structure. This has the advantage that it's
@@ -240,6 +314,10 @@ The path format is then as follows:
 - debug info: `<DebugIdFirstTwo>/<DebugIdRest>/debuginfo`
 - breakpad: `<DebugIdFirstTwo>/<DebugIdRest>/breakpad`
 - source bundle: `<DebugIdFirstTwo>/<DebugIdRest>/sourcebundle`
+
+The following layout types support this lookup:
+
+- `unified`
 
 ## Other Servers
 
