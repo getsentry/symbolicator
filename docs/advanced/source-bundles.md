@@ -2,8 +2,8 @@
 
 Symbolicator supports the concept of source bundles.  These are zip archives
 containing source code that goes along debug information files.  These archives
-can be created with the `sentry-cli` tool and are also supported by the
-underlying `symbolic` library.
+can be created with the `sentry-cli` tool as well as `symsorter` and are also
+supported by the underlying `symbolic` library.
 
 Source bundles are ZIP archives with a well-defined internal structure. Most
 importantly, they contain source files in a nested directory structure.
