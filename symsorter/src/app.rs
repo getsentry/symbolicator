@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::fs;
-use std::io;
-use std::path::PathBuf;
+use std::io::{self, Cursor};
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use console::style;
@@ -9,6 +10,7 @@ use serde::Serialize;
 use serde_json;
 use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView};
+use symbolic::debuginfo::sourcebundle::SourceBundleWriter;
 use symbolic::debuginfo::{Archive, FileFormat, Object, ObjectKind};
 use walkdir::WalkDir;
 use zip::ZipArchive;
@@ -25,11 +27,15 @@ struct Cli {
 
     /// The prefix to use.
     #[structopt(long = "prefix", short = "p", value_name = "PREFIX")]
-    pub prefix: String,
+    pub prefix: Option<String>,
 
     /// The bundle ID to use.
     #[structopt(long = "bundle-id", short = "b", value_name = "BUNDLE_ID")]
     pub bundle_id: String,
+
+    /// If enable the system will attempt to create source bundles
+    #[structopt(long = "with-sources")]
+    pub with_sources: bool,
 
     /// If enabled debug symbols will be zstd compressed (repeat to increase compression)
     #[structopt(
@@ -68,7 +74,7 @@ pub struct BundleMeta {
     pub debug_ids: Vec<String>,
 }
 
-fn get_unified_id<'a>(obj: &Object) -> String {
+fn get_unified_id(obj: &Object) -> String {
     if obj.file_format() == FileFormat::Pe || obj.code_id().is_none() {
         obj.debug_id().breakpad().to_string().to_lowercase()
     } else {
@@ -94,7 +100,11 @@ fn get_target_filename(obj: &Object) -> Option<PathBuf> {
     Some(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())
 }
 
-fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<Vec<String>, Error> {
+fn process_file(
+    cli: &Cli,
+    bv: ByteView<'static>,
+    filename: String,
+) -> Result<Vec<(String, ObjectKind)>, Error> {
     let mut rv = vec![];
 
     macro_rules! maybe_ignore_error {
@@ -126,7 +136,11 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<Ve
         _ => 22,
     };
     let archive = maybe_ignore_error!(Archive::parse(&bv));
-    let root = cli.output.join(&cli.prefix);
+    let root = if let Some(ref prefix) = cli.prefix {
+        cli.output.join(prefix)
+    } else {
+        cli.output.clone()
+    };
 
     for obj in archive.objects() {
         let obj = maybe_ignore_error!(obj);
@@ -153,10 +167,11 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<Ve
 
         if !cli.quiet {
             println!(
-                "{} ({}) -> {}",
+                "{} ({}, {}) -> {}",
                 style(&filename).dim(),
-                style(obj.arch().to_string()).yellow(),
-                style(new_filename.display()).cyan()
+                style(obj.kind()).yellow(),
+                style(obj.arch()).yellow(),
+                style(new_filename.display()).cyan(),
             );
         }
         let mut out = fs::File::create(&new_filename)?;
@@ -166,10 +181,29 @@ fn process_file(cli: &Cli, bv: ByteView<'static>, filename: String) -> Result<Ve
         } else {
             io::copy(&mut obj.data(), &mut out)?;
         }
-        rv.push(get_unified_id(&obj));
+        rv.push((get_unified_id(&obj), obj.kind()));
     }
 
     Ok(rv)
+}
+
+fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<ByteView<'static>>, Error> {
+    let bv = ByteView::open(path)?;
+    let archive = Archive::parse(&bv)?;
+    for obj in archive.objects() {
+        let obj = obj?;
+        if get_unified_id(&obj) == unified_id {
+            let mut out = Vec::<u8>::new();
+            let writer = SourceBundleWriter::start(Cursor::new(&mut out))?;
+            if writer.write_object(
+                &obj,
+                &path.file_name().unwrap().to_string_lossy().to_string(),
+            )? {
+                return Ok(Some(ByteView::from_vec(out)));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn execute() -> Result<(), Error> {
@@ -179,6 +213,12 @@ fn execute() -> Result<(), Error> {
         timestamp: Utc::now(),
         debug_ids: vec![],
     };
+    let mut source_candidates: HashMap<String, Option<PathBuf>> = HashMap::new();
+    let mut source_bundles_created = 0;
+
+    if !cli.quiet {
+        println!("{}", style("Sorting debug information files").bold());
+    }
 
     for path in cli.input.iter() {
         for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
@@ -200,32 +240,79 @@ fn execute() -> Result<(), Error> {
                     let name = zip_file.name().rsplit('/').next().unwrap().to_string();
                     let bv = ByteView::read(zip_file)?;
                     if Archive::peek(&bv) != FileFormat::Unknown {
-                        bundle_meta.debug_ids.extend(process_file(&cli, bv, name)?);
+                        bundle_meta
+                            .debug_ids
+                            .extend(process_file(&cli, bv, name)?.into_iter().map(|x| x.0));
                     }
                 }
 
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
-                bundle_meta.debug_ids.extend(process_file(
+                for (unified_id, object_kind) in process_file(
                     &cli,
                     bv,
                     path.file_name().unwrap().to_string_lossy().to_string(),
-                )?);
+                )? {
+                    if cli.with_sources {
+                        if object_kind == ObjectKind::Sources {
+                            source_candidates.insert(unified_id.clone(), None);
+                        } else if object_kind == ObjectKind::Debug
+                            && !source_candidates.contains_key(&unified_id)
+                        {
+                            source_candidates.insert(unified_id.clone(), Some(path.to_path_buf()));
+                        }
+                    }
+                    bundle_meta.debug_ids.push(unified_id);
+                }
             }
         }
     }
 
-    let root = cli.output.join(&cli.prefix);
+    // we have some sources we want to build
+    if cli.with_sources {
+        if !cli.quiet {
+            println!("{}", style("Creating source bundles").bold());
+        }
+        for (unified_id, path) in source_candidates.into_iter() {
+            if let Some(path) = path {
+                if let Some(source_bundle) = create_source_bundle(&path, &unified_id)? {
+                    bundle_meta.debug_ids.extend(
+                        process_file(
+                            &cli,
+                            source_bundle,
+                            path.file_name().unwrap().to_string_lossy().to_string(),
+                        )?
+                        .into_iter()
+                        .map(|x| x.0),
+                    );
+                    source_bundles_created += 1;
+                }
+            }
+        }
+    }
+
+    let root = if let Some(ref prefix) = cli.prefix {
+        cli.output.join(prefix)
+    } else {
+        cli.output.clone()
+    };
     let bundle_meta_filename = root.join("bundles").join(&cli.bundle_id);
     fs::create_dir_all(bundle_meta_filename.parent().unwrap())?;
     fs::write(&bundle_meta_filename, serde_json::to_vec(&bundle_meta)?)?;
 
     if !cli.quiet {
         println!();
+        println!("{}", style("Done.").bold());
         println!(
-            "Done: sorted {} debug files",
+            "Sorted {} debug files",
             style(bundle_meta.debug_ids.len()).yellow().bold()
         );
+        if cli.with_sources {
+            println!(
+                "Created {} source bundles",
+                style(source_bundles_created).yellow().bold()
+            );
+        }
     }
 
     Ok(())

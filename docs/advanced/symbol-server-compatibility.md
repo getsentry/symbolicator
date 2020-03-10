@@ -297,7 +297,9 @@ The following layout types support this lookup:
 If you have no requirements to be compatible with another system you can also
 use the "unified" directory layout structure. This has the advantage that it's
 unified across all platforms and thus easier to manage. It can store breakpad
-files, PDBs, PEs and everything else.
+files, PDBs, PEs and everything else.  The `symsorter` tool in the symbolicator
+repository can automatically sort debug symbols into this format and also
+automatically create source bundles.
 
 **Schema**:
 
