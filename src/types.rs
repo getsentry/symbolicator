@@ -868,6 +868,7 @@ pub enum FileType {
     /// been two enums)
     Breakpad,
     /// Source bundle
+    #[serde(rename = "sourcebundle")]
     SourceBundle,
 }
 
