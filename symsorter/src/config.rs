@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
-use std::path::PathBuf;
 use lazy_static::lazy_static;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 lazy_static! {
     static ref CONFIG: Mutex<Arc<RunConfig>> = Mutex::new(Arc::new(Default::default()));

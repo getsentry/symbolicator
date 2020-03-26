@@ -16,7 +16,9 @@ use zip::ZipArchive;
 use zstd::stream::copy_encode;
 
 use crate::config::{RunConfig, SortConfig};
-use crate::utils::{create_source_bundle, get_target_filename, get_unified_id, is_bundle_id, make_bundle_id};
+use crate::utils::{
+    create_source_bundle, get_target_filename, get_unified_id, is_bundle_id, make_bundle_id,
+};
 
 /// Sorts debug symbols into the right structure for symbolicator.
 #[derive(PartialEq, Eq, PartialOrd, Ord, StructOpt, Debug)]
@@ -30,7 +32,12 @@ struct Cli {
     pub prefix: Option<String>,
 
     /// The bundle ID to use.
-    #[structopt(long = "bundle-id", short = "b", value_name = "BUNDLE_ID", required_unless = "multiple-bundles")]
+    #[structopt(
+        long = "bundle-id",
+        short = "b",
+        value_name = "BUNDLE_ID",
+        required_unless = "multiple-bundles"
+    )]
     pub bundle_id: Option<String>,
 
     /// Derive the bundle ID from the first folder.
@@ -298,10 +305,7 @@ fn execute() -> Result<(), Error> {
 
     log!();
     log!("{}", style("Done.").bold());
-    log!(
-        "Sorted {} debug files",
-        style(debug_files).yellow().bold()
-    );
+    log!("Sorted {} debug files", style(debug_files).yellow().bold());
     if cli.with_sources {
         log!(
             "Created {} source bundles",
