@@ -15,7 +15,7 @@ lazy_static! {
 /// Makes a safe bundle ID from arbitrary input.
 pub fn make_bundle_id(input: &str) -> String {
     BAD_CHARS_RE
-        .replace(input, "_")
+        .replace_all(input, "_")
         .trim_matches(&['_'][..])
         .to_string()
 }

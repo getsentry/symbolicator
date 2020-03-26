@@ -276,8 +276,9 @@ fn execute() -> Result<(), Error> {
     };
 
     if cli.multiple_bundles {
-        for path in cli.input {
+        for path in cli.input.iter() {
             sort_config.bundle_id = make_bundle_id(&path.file_name().unwrap().to_string_lossy());
+            log!("[bundle: {}]", style(&sort_config.bundle_id).dim());
             let (debug_files_sorted, source_bundles_created) =
                 sort_files(&sort_config, Some(path.as_path()).into_iter())?;
             debug_files += debug_files_sorted;
