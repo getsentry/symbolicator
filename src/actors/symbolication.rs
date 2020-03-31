@@ -231,8 +231,14 @@ impl SymbolicationActor {
 
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
-        debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
-        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
+        debug_id: match object_info.debug_id.as_deref() {
+            None | Some("") => None,
+            Some(string) => string.parse().ok(),
+        },
+        code_id: match object_info.code_id.as_deref() {
+            None | Some("") => None,
+            Some(string) => string.parse().ok(),
+        },
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
         object_type: object_info.ty,
@@ -257,9 +263,17 @@ fn normalize_minidump_os_name(minidump_os_name: &str) -> &str {
 }
 
 fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawObjectInfo {
+    let mut code_id = module.code_identifier();
+
+    // The processor reports an empty string as code id for MachO files
+    if ty == ObjectType::Macho && code_id.is_empty() {
+        code_id = module.debug_identifier();
+        code_id.truncate(code_id.len().max(1) - 1);
+    }
+
     RawObjectInfo {
         ty,
-        code_id: Some(module.code_identifier()),
+        code_id: Some(code_id),
         code_file: Some(module.code_file()),
         debug_id: Some(module.debug_identifier()),
         debug_file: Some(module.debug_file()),
