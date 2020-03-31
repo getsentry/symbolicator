@@ -257,9 +257,17 @@ fn normalize_minidump_os_name(minidump_os_name: &str) -> &str {
 }
 
 fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawObjectInfo {
+    let mut code_id = module.code_identifier();
+
+    // The processor reports an empty string as code id for MachO files
+    if ty == ObjectType::Macho && code_id.is_empty() {
+        code_id = module.debug_identifier();
+        code_id.truncate(code_id.len().max(1) - 1);
+    }
+
     RawObjectInfo {
         ty,
-        code_id: Some(module.code_identifier()),
+        code_id: Some(code_id),
         code_file: Some(module.code_file()),
         debug_id: Some(module.debug_identifier()),
         debug_file: Some(module.debug_file()),

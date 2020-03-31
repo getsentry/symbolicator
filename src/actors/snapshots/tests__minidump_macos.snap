@@ -65,6 +65,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 67e9247c814e392ba027dbde6748fcbf
     code_file: /Users/travis/build/getsentry/breakpad-tools/macos/build/./crash
     debug_id: 67e9247c-814e-392b-a027-dbde6748fcbf
     debug_file: crash
@@ -79,6 +80,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 36385a3a60d332dbbf55c6d8931a7aa6
     code_file: /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
     debug_id: 36385a3a-60d3-32db-bf55-c6d8931a7aa6
     debug_file: CoreFoundation
@@ -93,6 +95,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 84a04d240e603810a8c090a65e2df61a
     code_file: /usr/lib/libDiagnosticMessagesClient.dylib
     debug_id: 84a04d24-0e60-3810-a8c0-90a65e2df61a
     debug_file: libDiagnosticMessagesClient.dylib
@@ -107,6 +110,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: f18ac1e7c6f134b18069be571b3231d4
     code_file: /usr/lib/libSystem.B.dylib
     debug_id: f18ac1e7-c6f1-34b1-8069-be571b3231d4
     debug_file: libSystem.B.dylib
@@ -121,6 +125,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 0b43bb5de6eb34648de9b41ac8ed9d1c
     code_file: /usr/lib/libc++.1.dylib
     debug_id: 0b43bb5d-e6eb-3464-8de9-b41ac8ed9d1c
     debug_file: libc++.1.dylib
@@ -135,6 +140,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: bc271ad3831b362a9da7e8c51f285fe4
     code_file: /usr/lib/libc++abi.dylib
     debug_id: bc271ad3-831b-362a-9da7-e8c51f285fe4
     debug_file: libc++abi.dylib
@@ -149,6 +155,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: ccd2ed243071383b925d8d763bb12a6f
     code_file: /usr/lib/libicucore.A.dylib
     debug_id: ccd2ed24-3071-383b-925d-8d763bb12a6f
     debug_file: libicucore.A.dylib
@@ -163,6 +170,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 4df3c25c52c23f01a3ef0d9d53a73c1c
     code_file: /usr/lib/libobjc.A.dylib
     debug_id: 4df3c25c-52c2-3f01-a3ef-0d9d53a73c1c
     debug_file: libobjc.A.dylib
@@ -177,6 +185,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 46e3ffa24328327a8d34a03e20bffb8e
     code_file: /usr/lib/libz.1.dylib
     debug_id: 46e3ffa2-4328-327a-8d34-a03e20bffb8e
     debug_file: libz.1.dylib
@@ -191,6 +200,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 093a4dab83853d47a350e20cb7ccf7bf
     code_file: /usr/lib/system/libcache.dylib
     debug_id: 093a4dab-8385-3d47-a350-e20cb7ccf7bf
     debug_file: libcache.dylib
@@ -205,6 +215,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 8a64d1b0c70e385c92f0e669079fda90
     code_file: /usr/lib/system/libcommonCrypto.dylib
     debug_id: 8a64d1b0-c70e-385c-92f0-e669079fda90
     debug_file: libcommonCrypto.dylib
@@ -219,6 +230,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 55d47421772a32abb5291a46c2f43b4d
     code_file: /usr/lib/system/libcompiler_rt.dylib
     debug_id: 55d47421-772a-32ab-b529-1a46c2f43b4d
     debug_file: libcompiler_rt.dylib
@@ -233,6 +245,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 819bea3cdf113e3da1a15a51c5bf1961
     code_file: /usr/lib/system/libcopyfile.dylib
     debug_id: 819bea3c-df11-3e3d-a1a1-5a51c5bf1961
     debug_file: libcopyfile.dylib
@@ -247,6 +260,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 65d7165e2e71335da2d633f78e2df0c1
     code_file: /usr/lib/system/libcorecrypto.dylib
     debug_id: 65d7165e-2e71-335d-a2d6-33f78e2df0c1
     debug_file: libcorecrypto.dylib
@@ -261,6 +275,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 6582bad6ed273b30b62090b1c5a4ae3c
     code_file: /usr/lib/system/libdispatch.dylib
     debug_id: 6582bad6-ed27-3b30-b620-90b1c5a4ae3c
     debug_file: libdispatch.dylib
@@ -275,6 +290,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 9b2ac56d107c3541a1279094a751f2c9
     code_file: /usr/lib/system/libdyld.dylib
     debug_id: 9b2ac56d-107c-3541-a127-9094a751f2c9
     debug_file: libdyld.dylib
@@ -289,6 +305,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 7aa011a9dc213488bf733b5b14d1fdd6
     code_file: /usr/lib/system/libkeymgr.dylib
     debug_id: 7aa011a9-dc21-3488-bf73-3b5b14d1fdd6
     debug_file: libkeymgr.dylib
@@ -303,6 +320,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: b856abd2896e3de0b2c8146a6af8e2a7
     code_file: /usr/lib/system/liblaunch.dylib
     debug_id: b856abd2-896e-3de0-b2c8-146a6af8e2a7
     debug_file: liblaunch.dylib
@@ -317,6 +335,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 17d5d855f6c33b04b680e9bf02ef8aed
     code_file: /usr/lib/system/libmacho.dylib
     debug_id: 17d5d855-f6c3-3b04-b680-e9bf02ef8aed
     debug_file: libmacho.dylib
@@ -331,6 +350,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 12448cc2378e35f3be339dc395a5b970
     code_file: /usr/lib/system/libquarantine.dylib
     debug_id: 12448cc2-378e-35f3-be33-9dc395a5b970
     debug_file: libquarantine.dylib
@@ -345,6 +365,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 38d4cb9c10cd30d38b7ba515ec75fe85
     code_file: /usr/lib/system/libremovefile.dylib
     debug_id: 38d4cb9c-10cd-30d3-8b7b-a515ec75fe85
     debug_file: libremovefile.dylib
@@ -359,6 +380,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 096e42283b7c30a68b13ec909a64499a
     code_file: /usr/lib/system/libsystem_asl.dylib
     debug_id: 096e4228-3b7c-30a6-8b13-ec909a64499a
     debug_file: libsystem_asl.dylib
@@ -373,6 +395,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 10dc540473ab35b3a277a8afecb476eb
     code_file: /usr/lib/system/libsystem_blocks.dylib
     debug_id: 10dc5404-73ab-35b3-a277-a8afecb476eb
     debug_file: libsystem_blocks.dylib
@@ -387,6 +410,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: e5ae52447d0c36ac8bb6c7ae7ea52a4b
     code_file: /usr/lib/system/libsystem_c.dylib
     debug_id: e5ae5244-7d0c-36ac-8bb6-c7ae7ea52a4b
     debug_file: libsystem_c.dylib
@@ -401,6 +425,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: becc01a2ca8d31e6bcdfd452965fa976
     code_file: /usr/lib/system/libsystem_configuration.dylib
     debug_id: becc01a2-ca8d-31e6-bcdf-d452965fa976
     debug_file: libsystem_configuration.dylib
@@ -415,6 +440,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 7d26de79b424345085e1f7fab32714ab
     code_file: /usr/lib/system/libsystem_coreservices.dylib
     debug_id: 7d26de79-b424-3450-85e1-f7fab32714ab
     debug_file: libsystem_coreservices.dylib
@@ -429,6 +455,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: ec6fcf07dcfb3a039cc96dd3709974c6
     code_file: /usr/lib/system/libsystem_coretls.dylib
     debug_id: ec6fcf07-dcfb-3a03-9cc9-6dd3709974c6
     debug_file: libsystem_coretls.dylib
@@ -443,6 +470,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: cc9602150b1b3822a13a3dde96fa796f
     code_file: /usr/lib/system/libsystem_dnssd.dylib
     debug_id: cc960215-0b1b-3822-a13a-3dde96fa796f
     debug_file: libsystem_dnssd.dylib
@@ -457,6 +485,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 611db84cbf703f928702b9f28a900920
     code_file: /usr/lib/system/libsystem_info.dylib
     debug_id: 611db84c-bf70-3f92-8702-b9f28a900920
     debug_file: libsystem_info.dylib
@@ -471,6 +500,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 34b1f16cbc9c3c5f90450cae91cb5914
     code_file: /usr/lib/system/libsystem_kernel.dylib
     debug_id: 34b1f16c-bc9c-3c5f-9045-0cae91cb5914
     debug_file: libsystem_kernel.dylib
@@ -485,6 +515,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 86d499b5bbdc3d3b8a4e97ae8e6672a4
     code_file: /usr/lib/system/libsystem_m.dylib
     debug_id: 86d499b5-bbdc-3d3b-8a4e-97ae8e6672a4
     debug_file: libsystem_m.dylib
@@ -499,6 +530,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: a3d15f1799a633678c7e4280e8619c95
     code_file: /usr/lib/system/libsystem_malloc.dylib
     debug_id: a3d15f17-99a6-3367-8c7e-4280e8619c95
     debug_file: libsystem_malloc.dylib
@@ -513,6 +545,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 369d022156ca3c3e9ede94b41cae77b7
     code_file: /usr/lib/system/libsystem_network.dylib
     debug_id: 369d0221-56ca-3c3e-9ede-94b41cae77b7
     debug_file: libsystem_network.dylib
@@ -527,6 +560,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: b021f2b38a753633abb0fc012b8e9b0c
     code_file: /usr/lib/system/libsystem_networkextension.dylib
     debug_id: b021f2b3-8a75-3633-abb0-fc012b8e9b0c
     debug_file: libsystem_networkextension.dylib
@@ -541,6 +575,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: b8160190a0693b3abdf62aa408221fae
     code_file: /usr/lib/system/libsystem_notify.dylib
     debug_id: b8160190-a069-3b3a-bdf6-2aa408221fae
     debug_file: libsystem_notify.dylib
@@ -555,6 +590,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 897462fdb318321ba554e61982630f7e
     code_file: /usr/lib/system/libsystem_platform.dylib
     debug_id: 897462fd-b318-321b-a554-e61982630f7e
     debug_file: libsystem_platform.dylib
@@ -569,6 +605,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: b8fb5e20329539e2b5ebb464d1d4b104
     code_file: /usr/lib/system/libsystem_pthread.dylib
     debug_id: b8fb5e20-3295-39e2-b5eb-b464d1d4b104
     debug_file: libsystem_pthread.dylib
@@ -583,6 +620,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 4b92ec49acd036aeb07aa2b8152eaf9d
     code_file: /usr/lib/system/libsystem_sandbox.dylib
     debug_id: 4b92ec49-acd0-36ae-b07a-a2b8152eaf9d
     debug_file: libsystem_sandbox.dylib
@@ -597,6 +635,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: f78b847b35653e4b98a6f7ad40392e2d
     code_file: /usr/lib/system/libsystem_secinit.dylib
     debug_id: f78b847b-3565-3e4b-98a6-f7ad40392e2d
     debug_file: libsystem_secinit.dylib
@@ -611,6 +650,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 3390e07cc1ce348fadbd2c5440b45eaa
     code_file: /usr/lib/system/libsystem_symptoms.dylib
     debug_id: 3390e07c-c1ce-348f-adbd-2c5440b45eaa
     debug_file: libsystem_symptoms.dylib
@@ -625,6 +665,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: ac63a7fe50d93a3096e6f6b7ff16e465
     code_file: /usr/lib/system/libsystem_trace.dylib
     debug_id: ac63a7fe-50d9-3a30-96e6-f6b7ff16e465
     debug_file: libsystem_trace.dylib
@@ -639,6 +680,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: 3d50d8a8c460334da5192da841102c6b
     code_file: /usr/lib/system/libunwind.dylib
     debug_id: 3d50d8a8-c460-334d-a519-2da841102c6b
     debug_file: libunwind.dylib
@@ -653,6 +695,7 @@ modules:
       has_sources: false
     arch: unknown
     type: macho
+    code_id: bf896df0d8e931a8a4b301120bfeee52
     code_file: /usr/lib/system/libxpc.dylib
     debug_id: bf896df0-d8e9-31a8-a4b3-01120bfeee52
     debug_file: libxpc.dylib
