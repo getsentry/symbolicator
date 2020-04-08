@@ -1,9 +1,10 @@
-language: python
-python: "3.6"
+os: linux
+dist: xenial
+language: rust
 
 before_install:
-  - curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${RUST_TOOLCHAIN:-stable}
-  - export PATH=~/.cargo/bin/:$PATH
+  - pyenv install 3.6.3
+  - pyenv global 3.6.3
 
 git:
   depth: 1
@@ -14,7 +15,7 @@ branches:
     - /^release\/[\d.]+$/
     - /^deploy\/.*$/
 
-matrix:
+jobs:
   include:
     - name: "style check"
       script: make -e style
