@@ -123,7 +123,7 @@ fn get_token(
     source_key: &Arc<GcsSourceKey>,
 ) -> Box<dyn Future<Item = Arc<GcsToken>, Error = ObjectError>> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
-        if token.expires_at < Utc::now() {
+        if token.expires_at >= Utc::now() {
             return Box::new(Ok(token.clone()).into_future());
         }
     }
