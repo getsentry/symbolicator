@@ -15,6 +15,9 @@ branches:
     - /^release\/[\d.]+$/
     - /^deploy\/.*$/
 
+env:
+  - CXX=clang
+
 jobs:
   include:
     - name: "style check"
