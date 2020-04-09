@@ -124,12 +124,14 @@ fn get_token(
 ) -> Box<dyn Future<Item = Arc<GcsToken>, Error = ObjectError>> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at >= Utc::now() {
+            metric!(counter("source.gcs.token.cached") += 1);
             return Box::new(Ok(token.clone()).into_future());
         }
     }
 
     let source_key = source_key.clone();
     Box::new(request_new_token(&source_key).map(move |token| {
+        metric!(counter("source.gcs.token.requests") += 1);
         let token = Arc::new(token);
         GCS_TOKENS.lock().put(source_key, token.clone());
         token
