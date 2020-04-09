@@ -2884,7 +2884,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#0a6b22db2ebede2760bcb77b3454bf3f7011bce5"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2896,7 +2896,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#0a6b22db2ebede2760bcb77b3454bf3f7011bce5"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
 dependencies = [
  "debugid",
  "failure",
@@ -2909,7 +2909,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#0a6b22db2ebede2760bcb77b3454bf3f7011bce5"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
 dependencies = [
  "dmsort",
  "failure",
@@ -2934,7 +2934,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#0a6b22db2ebede2760bcb77b3454bf3f7011bce5"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -2946,7 +2946,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#0a6b22db2ebede2760bcb77b3454bf3f7011bce5"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
 dependencies = [
  "cc",
  "failure",
@@ -2960,7 +2960,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#0a6b22db2ebede2760bcb77b3454bf3f7011bce5"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
 dependencies = [
  "dmsort",
  "failure",
