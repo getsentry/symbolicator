@@ -34,6 +34,8 @@ Example:
 ./target/release/symsorter -zz -o ./output --prefix ios --bundle-id 10.3_ABCD path/to/input/folder
 ```
 
+If you pass `--with-sources` it will attempt to also include source code.
+
 ## Serving
 
 The resulting output folder should be uploaded into an S3 or GCS bucket and can then

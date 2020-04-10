@@ -69,7 +69,7 @@ struct Cli {
 impl Cli {
     /// Returns the path to the configuration file.
     fn config(&self) -> Option<&Path> {
-        self.config.as_ref().map(PathBuf::as_path)
+        self.config.as_deref()
     }
 }
 

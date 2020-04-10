@@ -9,7 +9,7 @@ structopt = "0.3.2"
 clap = "2.33.0"
 failure = "0.1.5"
 walkdir = "2.2.9"
-symbolic = { git = "https://github.com/getsentry/symbolic", rev = "46d0c5f794ed89b0c3adcd5d362259f876054938", features = ["debuginfo-serde"] }
+symbolic = { version="7.1.1", features = ["debuginfo-serde"] }
 console = "0.9.0"
 zstd = "0.4.28"
 itertools = "0.8.0"
@@ -18,3 +18,5 @@ parking_lot = "0.9.0"
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = "1.0.41"
 chrono = { version = "0.4.9", features = ["serde"] }
+regex = "1.3.6"
+lazy_static = "1.4.0"
