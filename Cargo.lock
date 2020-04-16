@@ -530,7 +530,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 [[package]]
 name = "cpp_demangle"
 version = "0.2.14"
-source = "git+https://github.com/jan-auer/cpp_demangle?rev=9bf586ac23571031264ce3837a0a8f90b1a814f9#9bf586ac23571031264ce3837a0a8f90b1a814f9"
+source = "git+https://github.com/jan-auer/cpp_demangle?rev=9059eacd02019936d98f0aeb999776d6839fc746#9059eacd02019936d98f0aeb999776d6839fc746"
 dependencies = [
  "cfg-if",
  "glob",
@@ -2884,7 +2884,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#7105ff4519317c7dc02d653279d2a3ba3c6c54eb"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2896,7 +2896,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#7105ff4519317c7dc02d653279d2a3ba3c6c54eb"
 dependencies = [
  "debugid",
  "failure",
@@ -2909,7 +2909,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#7105ff4519317c7dc02d653279d2a3ba3c6c54eb"
 dependencies = [
  "dmsort",
  "failure",
@@ -2934,7 +2934,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#7105ff4519317c7dc02d653279d2a3ba3c6c54eb"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -2946,7 +2946,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#7105ff4519317c7dc02d653279d2a3ba3c6c54eb"
 dependencies = [
  "cc",
  "failure",
@@ -2960,7 +2960,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.2.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#d28769093a523010b824265828425568a6878a4f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-cpp-demangle#7105ff4519317c7dc02d653279d2a3ba3c6c54eb"
 dependencies = [
  "dmsort",
  "failure",
