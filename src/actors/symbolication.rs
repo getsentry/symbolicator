@@ -994,8 +994,12 @@ impl SymbolicationActor {
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
         let lazy = future::lazy(move || {
+            let spawn_time = std::time::SystemTime::now();
             let spawn_result = procspawn::spawn!(
-                (minidump) || -> Result<_, ProcessMinidumpError> {
+                (minidump, spawn_time) || -> Result<_, ProcessMinidumpError> {
+                    if let Ok(duration) = spawn_time.elapsed() {
+                        metric!(timer("minidump.modules.spawn.duration") = duration);
+                    }
                     log::debug!("Processing minidump ({} bytes)", minidump.len());
                     metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
                     let state =
@@ -1113,9 +1117,13 @@ impl SymbolicationActor {
         }
 
         let lazy = future::lazy(move || {
+            let spawn_time = std::time::SystemTime::now();
             let spawn_result = procspawn::spawn!(
-                (frame_info_map, object_features, mut unwind_statuses, minidump)
+                (frame_info_map, object_features, mut unwind_statuses, minidump, spawn_time)
                 || -> Result<_, ProcessMinidumpError> {
+                    if let Ok(duration) = spawn_time.elapsed() {
+                        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
+                    }
                     let mut cfi = BTreeMap::new();
                     for (code_module_id, cfi_path) in frame_info_map {
                         let result = ByteView::open(cfi_path)
