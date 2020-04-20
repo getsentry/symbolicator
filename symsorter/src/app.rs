@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use console::style;
-use failure::{err_msg, Error};
+use failure::{err_msg, Error, Fail};
 use serde::Serialize;
 use serde_json;
 use structopt::StructOpt;
@@ -106,7 +106,10 @@ fn process_file(
                         );
                         return Ok(rv);
                     } else {
-                        return Err(err.into());
+                        let error = err
+                            .context(failure::format_err!("failed to process file {}", filename))
+                            .into();
+                        return Err(error);
                     }
                 }
             }
@@ -320,7 +323,13 @@ pub fn main() -> ! {
     match execute() {
         Ok(()) => std::process::exit(0),
         Err(error) => {
-            eprintln!("error: {}", error);
+            eprintln!("{}: {}", style("error").red().bold(), error);
+            for cause in error.iter_causes() {
+                eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+            }
+
+            eprintln!();
+            eprintln!("To skip this error, use --ignore-errors.");
             std::process::exit(1);
         }
     }
