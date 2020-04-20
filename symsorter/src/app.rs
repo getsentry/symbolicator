@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use console::style;
@@ -274,6 +275,16 @@ fn execute() -> Result<(), Error> {
             cli.output.clone()
         };
     });
+
+    if cli.compression_level == 0 {
+        log!(
+            "{}: {}",
+            style("WARNING").bold().red(),
+            "No compression used. Consider to pass -zz."
+        );
+        std::thread::sleep(Duration::from_secs(2));
+        log!();
+    }
 
     log!("{}", style("Sorting debug information files").bold());
 
