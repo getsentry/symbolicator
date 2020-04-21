@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use console::style;
-use failure::{err_msg, Error};
+use failure::{err_msg, Error, Fail};
 use serde::Serialize;
 use serde_json;
 use structopt::StructOpt;
@@ -106,7 +107,10 @@ fn process_file(
                         );
                         return Ok(rv);
                     } else {
-                        return Err(err.into());
+                        let error = err
+                            .context(failure::format_err!("failed to process file {}", filename))
+                            .into();
+                        return Err(error);
                     }
                 }
             }
@@ -272,6 +276,16 @@ fn execute() -> Result<(), Error> {
         };
     });
 
+    if cli.compression_level == 0 {
+        log!(
+            "{}: {}",
+            style("WARNING").bold().red(),
+            "No compression used. Consider to pass -zz."
+        );
+        std::thread::sleep(Duration::from_secs(2));
+        log!();
+    }
+
     log!("{}", style("Sorting debug information files").bold());
 
     let mut debug_files = 0;
@@ -320,7 +334,13 @@ pub fn main() -> ! {
     match execute() {
         Ok(()) => std::process::exit(0),
         Err(error) => {
-            eprintln!("error: {}", error);
+            eprintln!("{}: {}", style("error").red().bold(), error);
+            for cause in error.iter_causes() {
+                eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+            }
+
+            eprintln!();
+            eprintln!("To skip this error, use --ignore-errors.");
             std::process::exit(1);
         }
     }
