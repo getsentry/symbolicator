@@ -36,12 +36,20 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
-    /// Create a new `ThreadPool` with default values.
+    /// Create a new `ThreadPool`.
+    ///
+    /// Since we create a CPU-heavy and an IO-heavy pool we reduce the
+    /// number of threads used per pool so that the pools are less
+    /// likely to starve each other.
     pub fn new() -> Self {
         let inner = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
             None
         } else {
-            Some(Arc::new(TokioRuntime::new().unwrap()))
+            let runtime = tokio::runtime::Builder::new()
+                .core_threads(num_cpus::get() / 2)
+                .build()
+                .unwrap();
+            Some(Arc::new(runtime))
         };
 
         ThreadPool { inner }

@@ -3061,6 +3061,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
+ "num_cpus",
  "parking_lot 0.10.0",
  "pretty_env_logger",
  "procspawn",
