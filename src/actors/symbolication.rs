@@ -14,7 +14,9 @@ use futures01::sync::oneshot;
 use parking_lot::RwLock;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
-use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
+use symbolic::common::{
+    Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name, SelfCell,
+};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
 use symbolic::minidump::processor::{
@@ -736,6 +738,17 @@ fn symbolicate_stacktrace(
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
+                // Since symbolication failed, the function name was not demangled. In case there is
+                // either one of `function` or `symbol`, treat that as mangled name and try to
+                // demangle it. If that succeeds, write the demangled name back.
+                let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
+                let demangled = mangled.and_then(|m| Name::new(m).demangle(DEMANGLE_OPTIONS));
+                if let Some(demangled) = demangled {
+                    if let Some(old_mangled) = frame.function.replace(demangled) {
+                        frame.symbol = Some(old_mangled);
+                    }
+                }
+
                 // Temporary workaround: Skip false-positive frames from stack scanning after the
                 // fact.
                 //
