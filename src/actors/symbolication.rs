@@ -23,7 +23,6 @@ use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use tokio::prelude::FutureExt;
-use uuid;
 
 use crate::actors::cficaches::{
     CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
