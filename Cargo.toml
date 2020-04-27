@@ -30,7 +30,7 @@ lazy_static = "1.4.0"
 parking_lot = "0.10.0"
 tokio = "0.1.22"
 uuid = { version = "0.8.1", features = ["v4", "serde"] }
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "build/bump-cpp-demangle", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
+symbolic = { version ="7.3.0", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 sentry = { version = "0.18.0", features = ["with_debug_meta"] }
 sentry-actix = "0.18.0"
 rusoto_s3 = "0.40.0"
