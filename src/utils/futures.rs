@@ -45,10 +45,7 @@ impl ThreadPool {
         let inner = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
             None
         } else {
-            let runtime = tokio::runtime::Builder::new()
-                .core_threads(num_cpus::get() / 2)
-                .build()
-                .unwrap();
+            let runtime = tokio::runtime::Builder::new().build().unwrap();
             Some(Arc::new(runtime))
         };
 

@@ -1,7 +1,6 @@
 use actix::System;
 use actix_web::{server::HttpServer, App};
 use failure::{Fail, ResultExt};
-use num_cpus;
 
 use crate::app::{ServiceApp, ServiceState};
 use crate::config::Config;
@@ -52,7 +51,6 @@ pub fn run(config: Config) -> Result<(), ServerError> {
 
     log::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))
-        .workers(num_cpus::get() / 2)
         .bind(&bind)
         .context(ServerErrorKind::Bind)?
         .start();
