@@ -128,6 +128,7 @@ pub struct SymbolicationActor {
     cficaches: CfiCacheActor,
     threadpool: ThreadPool,
     requests: ComputationMap,
+    spawnpool: Arc<procspawn::Pool>,
 }
 
 impl SymbolicationActor {
@@ -145,6 +146,7 @@ impl SymbolicationActor {
             cficaches,
             threadpool,
             requests,
+            spawnpool: Arc::new(procspawn::Pool::new(num_cpus::get()).expect("fixme")),
         }
     }
 
@@ -1005,10 +1007,12 @@ impl SymbolicationActor {
         &self,
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
+        let pool = self.spawnpool.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
-            let spawn_result = procspawn::spawn!(
-                (minidump, spawn_time) || -> Result<_, ProcessMinidumpError> {
+            let spawn_result = pool.spawn(
+                (minidump, spawn_time),
+                |(minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
                     if let Ok(duration) = spawn_time.elapsed() {
                         metric!(timer("minidump.modules.spawn.duration") = duration);
                     }
@@ -1032,7 +1036,7 @@ impl SymbolicationActor {
                         .collect();
 
                     Ok(procspawn::Json(cfi_modules))
-                }
+                },
             );
 
             // TODO(ja): This
@@ -1040,8 +1044,10 @@ impl SymbolicationActor {
                 Ok(Ok(procspawn::Json(cfi_modules))) => Ok(cfi_modules),
                 Ok(Err(err)) => Err(err.into()),
                 Err(perr) => Err(SymbolicationError::from(if perr.is_timeout() {
+                    metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "timeout");
                     SymbolicationErrorKind::Timeout
                 } else {
+                    metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "canceled");
                     SymbolicationErrorKind::Canceled
                 })),
             }
@@ -1128,149 +1134,171 @@ impl SymbolicationActor {
             }
         }
 
+        let pool = self.spawnpool.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
-            let spawn_result = procspawn::spawn!(
-                (frame_info_map, object_features, mut unwind_statuses, minidump, spawn_time)
-                || -> Result<_, ProcessMinidumpError> {
-                    if let Ok(duration) = spawn_time.elapsed() {
-                        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
-                    }
-                    let mut cfi = BTreeMap::new();
-                    for (code_module_id, cfi_path) in frame_info_map {
-                        let result = ByteView::open(cfi_path)
-                            .context(CfiCacheErrorKind::Parsing)
-                            .and_then(|bytes| CfiCache::from_bytes(bytes).context(CfiCacheErrorKind::Parsing))
-                            .map_err(CfiCacheError::from);
+            let spawn_result =
+                pool.spawn(
+                    (
+                        frame_info_map,
+                        object_features,
+                        unwind_statuses,
+                        minidump,
+                        spawn_time,
+                    ),
+                    |(
+                        frame_info_map,
+                        object_features,
+                        mut unwind_statuses,
+                        minidump,
+                        spawn_time,
+                    )|
+                     -> Result<_, ProcessMinidumpError> {
+                        if let Ok(duration) = spawn_time.elapsed() {
+                            metric!(timer("minidump.stackwalk.spawn.duration") = duration);
+                        }
+                        let mut cfi = BTreeMap::new();
+                        for (code_module_id, cfi_path) in frame_info_map {
+                            let result = ByteView::open(cfi_path)
+                                .context(CfiCacheErrorKind::Parsing)
+                                .and_then(|bytes| {
+                                    CfiCache::from_bytes(bytes).context(CfiCacheErrorKind::Parsing)
+                                })
+                                .map_err(CfiCacheError::from);
 
-                        match result {
-                            Ok(cache) => {
-                                unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Found);
-                                cfi.insert(code_module_id, cache);
-                            }
-                            Err(e) => {
-                                log::warn!("Error while parsing cficache: {}", LogError(&e));
-                                unwind_statuses.insert(code_module_id, (&e).into());
+                            match result {
+                                Ok(cache) => {
+                                    unwind_statuses
+                                        .insert(code_module_id.clone(), ObjectFileStatus::Found);
+                                    cfi.insert(code_module_id, cache);
+                                }
+                                Err(e) => {
+                                    log::warn!("Error while parsing cficache: {}", LogError(&e));
+                                    unwind_statuses.insert(code_module_id, (&e).into());
+                                }
                             }
                         }
-                    }
 
-                    let minidump = ByteView::from_slice(&minidump);
-                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+                        let minidump = ByteView::from_slice(&minidump);
+                        let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
 
-                    let minidump_system_info = process_state.system_info();
-                    let os_name = minidump_system_info.os_name();
-                    let os_version = minidump_system_info.os_version();
-                    let os_build = minidump_system_info.os_build();
-                    let cpu_family = minidump_system_info.cpu_family();
-                    let cpu_arch = match cpu_family.parse() {
-                        Ok(arch) => arch,
-                        Err(_) => {
-                            if !cpu_family.is_empty() {
-                                let msg = format!("Unknown minidump arch: {}", cpu_family);
-                                sentry::capture_message(&msg, sentry::Level::Error);
+                        let minidump_system_info = process_state.system_info();
+                        let os_name = minidump_system_info.os_name();
+                        let os_version = minidump_system_info.os_version();
+                        let os_build = minidump_system_info.os_build();
+                        let cpu_family = minidump_system_info.cpu_family();
+                        let cpu_arch = match cpu_family.parse() {
+                            Ok(arch) => arch,
+                            Err(_) => {
+                                if !cpu_family.is_empty() {
+                                    let msg = format!("Unknown minidump arch: {}", cpu_family);
+                                    sentry::capture_message(&msg, sentry::Level::Error);
+                                }
+
+                                Default::default()
                             }
-
-                            Default::default()
-                        }
-                    };
-
-                    let object_type = get_object_type_from_minidump(&os_name).to_owned();
-
-                    let modules = process_state
-                        .modules()
-                        .into_iter()
-                        .filter_map(|code_module| {
-                            let mut info: CompleteObjectInfo =
-                                object_info_from_minidump_module(object_type, code_module).into();
-
-                            let status = unwind_statuses
-                                .get(&code_module.id()?)
-                                .cloned()
-                                .unwrap_or(ObjectFileStatus::Unused);
-
-                            metric!(
-                                counter("symbolication.unwind_status") += 1,
-                                "status" => status.name()
-                            );
-                            info.unwind_status = Some(status);
-
-                            let features = object_features
-                                .get(&code_module.id()?)
-                                .copied()
-                                .unwrap_or_default();
-
-                            info.features.merge(features);
-
-                            Some(info)
-                        })
-                        .collect::<Vec<_>>();
-
-                    let minidump_state = MinidumpState {
-                        timestamp: process_state.timestamp(),
-                        system_info: SystemInfo {
-                            os_name: normalize_minidump_os_name(&os_name).to_owned(),
-                            os_version,
-                            os_build,
-                            cpu_arch,
-                            device_model: String::default(),
-                        },
-                        crashed: process_state.crashed(),
-                        crash_reason: process_state.crash_reason(),
-                        assertion: process_state.assertion(),
-                    };
-
-                    let requesting_thread_index: Option<usize> =
-                        process_state.requesting_thread().try_into().ok();
-
-                    let threads = process_state.threads();
-                    let mut stacktraces = Vec::with_capacity(threads.len());
-                    for (index, thread) in threads.iter().enumerate() {
-                        let registers = match thread.frames().get(0) {
-                            Some(frame) => map_symbolic_registers(frame.registers(cpu_arch)),
-                            None => Registers::new(),
                         };
 
-                        let frames = thread
-                            .frames()
-                            .iter()
-                            .map(|frame| RawFrame {
-                                instruction_addr: HexValue(frame.return_address(cpu_arch)),
-                                package: frame.module().map(CodeModule::code_file),
-                                trust: frame.trust(),
-                                ..RawFrame::default()
+                        let object_type = get_object_type_from_minidump(&os_name).to_owned();
+
+                        let modules = process_state
+                            .modules()
+                            .into_iter()
+                            .filter_map(|code_module| {
+                                let mut info: CompleteObjectInfo =
+                                    object_info_from_minidump_module(object_type, code_module)
+                                        .into();
+
+                                let status = unwind_statuses
+                                    .get(&code_module.id()?)
+                                    .cloned()
+                                    .unwrap_or(ObjectFileStatus::Unused);
+
+                                metric!(
+                                    counter("symbolication.unwind_status") += 1,
+                                    "status" => status.name()
+                                );
+                                info.unwind_status = Some(status);
+
+                                let features = object_features
+                                    .get(&code_module.id()?)
+                                    .copied()
+                                    .unwrap_or_default();
+
+                                info.features.merge(features);
+
+                                Some(info)
                             })
-                            // Trim infinite recursions explicitly because those do not
-                            // correlate to minidump size. Every other kind of bloated
-                            // input data we know is already trimmed/rejected by raw
-                            // byte size alone.
-                            .take(20000)
-                            .collect();
+                            .collect::<Vec<_>>();
 
-                        stacktraces.push(RawStacktrace {
-                            is_requesting: requesting_thread_index.map(|r| r == index),
-                            thread_id: Some(thread.thread_id().into()),
-                            registers,
-                            frames,
-                        });
-                    }
+                        let minidump_state = MinidumpState {
+                            timestamp: process_state.timestamp(),
+                            system_info: SystemInfo {
+                                os_name: normalize_minidump_os_name(&os_name).to_owned(),
+                                os_version,
+                                os_build,
+                                cpu_arch,
+                                device_model: String::default(),
+                            },
+                            crashed: process_state.crashed(),
+                            crash_reason: process_state.crash_reason(),
+                            assertion: process_state.assertion(),
+                        };
 
-                    Ok(procspawn::Json((modules, stacktraces, minidump_state)))
-                },
-            );
+                        let requesting_thread_index: Option<usize> =
+                            process_state.requesting_thread().try_into().ok();
 
-            let procspawn::Json((modules, stacktraces, minidump_state)) =
-                match spawn_result.join_timeout(Duration::from_secs(60)) {
-                    Ok(Ok(json)) => json,
-                    Ok(Err(err)) => return Err(err.into()),
-                    Err(perr) => {
-                        return Err(SymbolicationError::from(if perr.is_timeout() {
-                            SymbolicationErrorKind::Timeout
-                        } else {
-                            SymbolicationErrorKind::Canceled
-                        }));
-                    }
-                };
+                        let threads = process_state.threads();
+                        let mut stacktraces = Vec::with_capacity(threads.len());
+                        for (index, thread) in threads.iter().enumerate() {
+                            let registers = match thread.frames().get(0) {
+                                Some(frame) => map_symbolic_registers(frame.registers(cpu_arch)),
+                                None => Registers::new(),
+                            };
+
+                            let frames = thread
+                                .frames()
+                                .iter()
+                                .map(|frame| RawFrame {
+                                    instruction_addr: HexValue(frame.return_address(cpu_arch)),
+                                    package: frame.module().map(CodeModule::code_file),
+                                    trust: frame.trust(),
+                                    ..RawFrame::default()
+                                })
+                                // Trim infinite recursions explicitly because those do not
+                                // correlate to minidump size. Every other kind of bloated
+                                // input data we know is already trimmed/rejected by raw
+                                // byte size alone.
+                                .take(20000)
+                                .collect();
+
+                            stacktraces.push(RawStacktrace {
+                                is_requesting: requesting_thread_index.map(|r| r == index),
+                                thread_id: Some(thread.thread_id().into()),
+                                registers,
+                                frames,
+                            });
+                        }
+
+                        Ok(procspawn::Json((modules, stacktraces, minidump_state)))
+                    },
+                );
+
+            let procspawn::Json((modules, stacktraces, minidump_state)) = match spawn_result
+                .join_timeout(Duration::from_secs(60))
+            {
+                Ok(Ok(json)) => json,
+                Ok(Err(err)) => return Err(err.into()),
+                Err(perr) => {
+                    return Err(SymbolicationError::from(if perr.is_timeout() {
+                        metric!(counter("minidump.stackwalk.spawn.error") += 1, "reason" => "timeout");
+                        SymbolicationErrorKind::Timeout
+                    } else {
+                        metric!(counter("minidump.stackwalk.spawn.error") += 1, "reason" => "canceled");
+                        SymbolicationErrorKind::Canceled
+                    }));
+                }
+            };
 
             let request = SymbolicateStacktraces {
                 modules,
