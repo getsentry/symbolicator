@@ -1035,12 +1035,12 @@ impl SymbolicationActor {
                         })
                         .collect();
 
-                    Ok(procspawn::Json(cfi_modules))
+                    Ok(procspawn::serde::Json(cfi_modules))
                 },
             );
 
             match spawn_result.join_timeout(Duration::from_secs(20)) {
-                Ok(Ok(procspawn::Json(cfi_modules))) => Ok(cfi_modules),
+                Ok(Ok(procspawn::serde::Json(cfi_modules))) => Ok(cfi_modules),
                 Ok(Err(err)) => Err(err.into()),
                 Err(perr) => Err(SymbolicationError::from(if perr.is_timeout() {
                     metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "timeout");
@@ -1279,11 +1279,15 @@ impl SymbolicationActor {
                             });
                         }
 
-                        Ok(procspawn::Json((modules, stacktraces, minidump_state)))
+                        Ok(procspawn::serde::Json((
+                            modules,
+                            stacktraces,
+                            minidump_state,
+                        )))
                     },
                 );
 
-            let procspawn::Json((modules, stacktraces, minidump_state)) = match spawn_result
+            let procspawn::serde::Json((modules, stacktraces, minidump_state)) = match spawn_result
                 .join_timeout(Duration::from_secs(60))
             {
                 Ok(Ok(json)) => json,
