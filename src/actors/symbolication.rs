@@ -1039,7 +1039,6 @@ impl SymbolicationActor {
                 },
             );
 
-            // TODO(ja): This
             match spawn_result.join_timeout(Duration::from_secs(20)) {
                 Ok(Ok(procspawn::Json(cfi_modules))) => Ok(cfi_modules),
                 Ok(Err(err)) => Err(err.into()),
