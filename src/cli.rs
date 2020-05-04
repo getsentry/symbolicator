@@ -7,6 +7,7 @@ use structopt::StructOpt;
 use crate::cache::{self, CleanupError};
 use crate::config::{Config, ConfigError};
 use crate::logging;
+use crate::metrics;
 use crate::server::{self, ServerError};
 
 /// An enum representing a CLI error.
@@ -86,9 +87,15 @@ pub fn execute() -> Result<(), CliError> {
 
     logging::init_logging(&config);
     sentry::integrations::panic::register_panic_handler();
+    if let Some(ref statsd) = config.metrics.statsd {
+        metrics::configure_statsd(&config.metrics.prefix, statsd);
+    }
 
     procspawn::ProcConfig::new()
-        .config_callback(|| log::trace!("[procspawn] initializing in sub process"))
+        .config_callback(|| {
+            log::trace!("[procspawn] initializing in sub process");
+            metric!(counter("procspawn.init") += 1);
+        })
         .init();
 
     match cli.command {

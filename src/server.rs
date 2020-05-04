@@ -5,7 +5,6 @@ use failure::{Fail, ResultExt};
 use crate::app::{ServiceApp, ServiceState};
 use crate::config::Config;
 use crate::endpoints;
-use crate::metrics;
 use crate::middlewares;
 
 /// Variants of `ServerError`.
@@ -37,10 +36,6 @@ fn create_app(state: ServiceState) -> ServiceApp {
 /// Starts all actors and HTTP server based on loaded config.
 pub fn run(config: Config) -> Result<(), ServerError> {
     let sys = System::new("symbolicator");
-
-    if let Some(ref statsd) = config.metrics.statsd {
-        metrics::configure_statsd(&config.metrics.prefix, statsd);
-    }
 
     // Log this metric before actually starting the server. This allows to see restarts even if
     // service creation fails. The HTTP server is bound before the actix system runs.
