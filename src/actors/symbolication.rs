@@ -55,6 +55,19 @@ lazy_static::lazy_static! {
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
 
+/// Variants of [SybolicationCreationError].
+#[derive(Debug, Fail)]
+pub enum SymbolicationCreationErrorKind {
+    #[fail(display = "Failed to create process pool")]
+    Spawn,
+}
+
+symbolic::common::derive_failure!(
+    SymbolicationCreationError,
+    SymbolicationCreationErrorKind,
+    doc = "Errors creating the sybolication service."
+);
+
 /// Variants of `SymbolicationError`.
 #[derive(Debug, Fail)]
 pub enum SymbolicationErrorKind {
@@ -137,7 +150,7 @@ impl SymbolicationActor {
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         threadpool: ThreadPool,
-    ) -> Result<Self, procspawn::SpawnError> {
+    ) -> Result<Self, SymbolicationCreationError> {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
 
         Ok(SymbolicationActor {
@@ -146,7 +159,10 @@ impl SymbolicationActor {
             cficaches,
             threadpool,
             requests,
-            spawnpool: Arc::new(procspawn::Pool::new(num_cpus::get())?),
+            spawnpool: Arc::new(
+                procspawn::Pool::new(num_cpus::get())
+                    .context(SymbolicationCreationErrorKind::Spawn)?,
+            ),
         })
     }
 

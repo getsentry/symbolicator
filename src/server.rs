@@ -13,8 +13,8 @@ pub enum ServerErrorKind {
     /// Failed to bind to a port.
     #[fail(display = "failed to bind to the port")]
     Bind,
-    #[fail(display = "failed to create process pool")]
-    Spawn,
+    #[fail(display = "failed to create service state")]
+    ServiceCreation,
 }
 
 symbolic::common::derive_failure!(
@@ -44,7 +44,7 @@ pub fn run(config: Config) -> Result<(), ServerError> {
     metric!(counter("server.starting") += 1);
 
     let bind = config.bind.clone();
-    let service = ServiceState::create(config).context(ServerErrorKind::Spawn)?;
+    let service = ServiceState::create(config).context(ServerErrorKind::ServiceCreation)?;
 
     log::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))
