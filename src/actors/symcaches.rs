@@ -12,7 +12,7 @@ use sentry::integrations::failure::capture_fail;
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 
-use crate::actors::common::cache::{CacheItemRequest, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::types::{FileType, ObjectFeatures, ObjectId, ObjectType, Scope, SourceConfig};
@@ -168,7 +168,13 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        _: CachePath,
+    ) -> Self::Item {
         // TODO: Figure out if this double-parsing could be avoided
         let arch = SymCache::parse(&data)
             .map(|cache| cache.arch())

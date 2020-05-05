@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures01::future::{lazy, Future, IntoFuture, Shared};
@@ -66,6 +66,51 @@ impl fmt::Display for CacheKey {
     }
 }
 
+/// Path to a temporary or cached file.
+///
+/// This path can either point to a named temporary file, or a permanently cached file. If the file
+/// is a named temporary, it will be removed once this path instance is dropped. If the file is
+/// permanently cached, dropping this path does not remove it.
+///
+/// This path implements `Deref<Path>`, which means all non-mutating methods can be called on path
+/// directly.
+#[derive(Debug)]
+pub enum CachePath {
+    /// A named temporary file that will be deleted.
+    Temp(tempfile::TempPath),
+    /// A permanently cached file.
+    Cached(PathBuf),
+}
+
+impl CachePath {
+    /// Creates an empty cache path.
+    pub fn new() -> Self {
+        Self::Cached(PathBuf::new())
+    }
+}
+
+impl std::ops::Deref for CachePath {
+    type Target = Path;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        match *self {
+            Self::Temp(ref temp) => &temp,
+            Self::Cached(ref buf) => &buf,
+        }
+    }
+}
+
+impl AsRef<Path> for CachePath {
+    #[inline]
+    fn as_ref(&self) -> &Path {
+        match *self {
+            Self::Temp(ref temp) => &temp,
+            Self::Cached(ref buf) => &buf,
+        }
+    }
+}
+
 pub trait CacheItemRequest: 'static + Send {
     type Item: 'static + Send;
 
@@ -86,7 +131,13 @@ pub trait CacheItemRequest: 'static + Send {
     }
 
     /// Loads an existing element from the cache.
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item;
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        path: CachePath,
+    ) -> Self::Item;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -131,7 +182,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         log::trace!("Loading {} at path {:?}", name, path);
 
-        let item = request.load(key.scope, status, byteview);
+        let item = request.load(key.scope, status, byteview, CachePath::Cached(path));
         Ok(Some(item))
     }
 
@@ -207,12 +258,15 @@ impl<T: CacheItemRequest> Cacher<T> {
                     "hit" => "false"
                 );
 
-                let item = request.load(key.scope.clone(), status, byteview);
+                let path = match cache_path {
+                    Some(ref cache_path) => {
+                        tryf!(status.persist_item(cache_path, temp_file));
+                        CachePath::Cached(cache_path.into())
+                    }
+                    None => CachePath::Temp(temp_file.into_temp_path()),
+                };
 
-                if let Some(ref cache_path) = cache_path {
-                    tryf!(status.persist_item(cache_path, temp_file));
-                }
-
+                let item = request.load(key.scope.clone(), status, byteview, path);
                 Box::new(Ok(item).into_future())
             });
 

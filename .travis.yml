@@ -14,6 +14,7 @@ branches:
     - master
     - /^release\/[\d.]+$/
     - /^deploy\/.*$/
+    - feature/subprocesses # Temporary
 
 env:
   - CXX=clang

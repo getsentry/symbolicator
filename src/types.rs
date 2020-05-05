@@ -472,7 +472,7 @@ pub struct RawFrame {
     pub trust: FrameTrust,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct RawStacktrace {
     #[serde(default)]
     pub thread_id: Option<u64>,
@@ -635,7 +635,7 @@ pub struct CompleteStacktrace {
 }
 
 /// Information on a debug information file.
-#[derive(Debug, Clone, Copy, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ObjectFileStatus {
     /// The file was found and successfully processed.
@@ -703,7 +703,7 @@ impl ObjectFeatures {
 /// Normalized RawObjectInfo with status attached.
 ///
 /// RawObjectInfo is what the user sends and CompleteObjectInfo is what the user gets.
-#[derive(Debug, Clone, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Eq, PartialEq, Deserialize)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
     pub debug_status: ObjectFileStatus,
@@ -809,7 +809,7 @@ pub struct CompletedSymbolicationResponse {
 }
 
 /// Information about the operating system.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SystemInfo {
     /// Name of operating system
     pub os_name: String,

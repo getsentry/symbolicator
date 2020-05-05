@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use actix_web::App;
+use failure::{Fail, ResultExt};
 
 use crate::actors::{
     cficaches::CfiCacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
@@ -11,6 +12,19 @@ use crate::cache::Caches;
 use crate::config::Config;
 use crate::utils::futures::ThreadPool;
 use crate::utils::http;
+
+/// Variants of [ServiceStateError].
+#[derive(Clone, Copy, Debug, Fail)]
+pub enum ServiceStateErrorKind {
+    #[fail(display = "failed to create process pool")]
+    Spawn,
+}
+
+symbolic::common::derive_failure!(
+    ServiceStateError,
+    ServiceStateErrorKind,
+    doc = "Error constructing the service state."
+);
 
 /// The shared state for the service.
 #[derive(Clone, Debug)]
@@ -28,7 +42,7 @@ pub struct ServiceState {
 }
 
 impl ServiceState {
-    pub fn create(config: Config) -> Self {
+    pub fn create(config: Config) -> Result<Self, ServiceStateError> {
         let config = Arc::new(config);
 
         if !config.connect_to_reserved_ips {
@@ -44,21 +58,24 @@ impl ServiceState {
             SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
         let cficaches =
             CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
+        let spawnpool =
+            procspawn::Pool::new(num_cpus::get()).context(ServiceStateErrorKind::Spawn)?;
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
             cpu_threadpool.clone(),
+            spawnpool,
         );
 
-        Self {
+        Ok(Self {
             cpu_threadpool,
             io_threadpool,
             symbolication,
             objects,
             config,
-        }
+        })
     }
 
     pub fn io_pool(&self) -> ThreadPool {

@@ -5,7 +5,6 @@ use failure::{Fail, ResultExt};
 use crate::app::{ServiceApp, ServiceState};
 use crate::config::Config;
 use crate::endpoints;
-use crate::metrics;
 use crate::middlewares;
 
 /// Variants of `ServerError`.
@@ -14,6 +13,8 @@ pub enum ServerErrorKind {
     /// Failed to bind to a port.
     #[fail(display = "failed to bind to the port")]
     Bind,
+    #[fail(display = "failed to create service state")]
+    ServiceCreation,
 }
 
 symbolic::common::derive_failure!(
@@ -38,16 +39,12 @@ fn create_app(state: ServiceState) -> ServiceApp {
 pub fn run(config: Config) -> Result<(), ServerError> {
     let sys = System::new("symbolicator");
 
-    if let Some(ref statsd) = config.metrics.statsd {
-        metrics::configure_statsd(&config.metrics.prefix, statsd);
-    }
-
     // Log this metric before actually starting the server. This allows to see restarts even if
     // service creation fails. The HTTP server is bound before the actix system runs.
     metric!(counter("server.starting") += 1);
 
     let bind = config.bind.clone();
-    let service = ServiceState::create(config);
+    let service = ServiceState::create(config).context(ServerErrorKind::ServiceCreation)?;
 
     log::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))

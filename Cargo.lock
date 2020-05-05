@@ -9,7 +9,7 @@ dependencies = [
  "actix_derive",
  "bitflags",
  "bytes 0.4.12",
- "crossbeam-channel",
+ "crossbeam-channel 0.3.9",
  "failure",
  "fnv",
  "futures 0.1.29",
@@ -216,6 +216,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "rustc-demangle",
+ "serde",
 ]
 
 [[package]]
@@ -252,6 +253,16 @@ name = "base64"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
+
+[[package]]
+name = "bincode"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5753e2a71534719bf3f4e57006c3a4f0d2c672a4b676eec84161f763eca87dbf"
+dependencies = [
+ "byteorder",
+ "serde",
+]
 
 [[package]]
 name = "bitflags"
@@ -343,6 +354,7 @@ dependencies = [
  "byteorder",
  "either",
  "iovec",
+ "serde",
 ]
 
 [[package]]
@@ -377,7 +389,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c882aa326a43102fd13b20b2f1249e76122b1606e3017944943da8d088ade43"
 dependencies = [
- "crossbeam-channel",
+ "crossbeam-channel 0.3.9",
 ]
 
 [[package]]
@@ -556,6 +568,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cced8691919c02aac3cb0a1bc2e9b73d89e832bf9a06fc579d4e71b68a2da061"
+dependencies = [
+ "crossbeam-utils 0.7.2",
+ "maybe-uninit",
+]
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -629,6 +651,16 @@ checksum = "0999b4ff4d3446d4ddb19a63e9e00c1876e75cd7000d20e57a693b4b3f08d958"
 dependencies = [
  "constant_time_eq",
  "generic-array 0.9.0",
+]
+
+[[package]]
+name = "ctor"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47c5e5ac752e18207b12e16b10631ae5f7f68f8805f335f9b817ead83d9ffce1"
+dependencies = [
+ "quote 1.0.3",
+ "syn 1.0.17",
 ]
 
 [[package]]
@@ -1388,6 +1420,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipc-channel"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3698b8affd5656032a074a7d40b3c2a29b71971f3e1ff6042b9d40724e20d97c"
+dependencies = [
+ "bincode",
+ "crossbeam-channel 0.4.2",
+ "fnv",
+ "lazy_static",
+ "libc",
+ "mio",
+ "rand 0.7.3",
+ "serde",
+ "tempfile",
+ "uuid 0.8.1",
+]
+
+[[package]]
 name = "ipconfig"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2120,6 +2170,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df246d292ff63439fea9bc8c0a270bed0e390d5ebd4db4ba15aba81111b5abe3"
 dependencies = [
  "unicode-xid 0.2.0",
+]
+
+[[package]]
+name = "procspawn"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22d4628f0f2a777c58aa7b64654ffc577c4057a50e611c4d69cbe9fe207bf9b6"
+dependencies = [
+ "backtrace",
+ "ctor",
+ "findshlibs",
+ "ipc-channel",
+ "libc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3001,8 +3066,10 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
+ "num_cpus",
  "parking_lot 0.10.0",
  "pretty_env_logger",
+ "procspawn",
  "regex",
  "rusoto_core",
  "rusoto_credential",

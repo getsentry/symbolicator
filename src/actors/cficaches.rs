@@ -11,7 +11,7 @@ use sentry::configure_scope;
 use sentry::integrations::failure::capture_fail;
 use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 
-use crate::actors::common::cache::{CacheItemRequest, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::types::{FileType, ObjectFeatures, ObjectId, ObjectType, Scope, SourceConfig};
@@ -68,7 +68,7 @@ impl CfiCacheActor {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct CfiCacheFile {
     object_type: ObjectType,
     identifier: ObjectId,
@@ -76,22 +76,23 @@ pub struct CfiCacheFile {
     data: ByteView<'static>,
     features: ObjectFeatures,
     status: CacheStatus,
+    path: CachePath,
 }
 
 impl CfiCacheFile {
-    pub fn parse(&self) -> Result<Option<CfiCache<'_>>, CfiCacheError> {
-        match self.status {
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(CfiCacheErrorKind::ObjectParsing.into()),
-            CacheStatus::Positive => Ok(Some(
-                CfiCache::from_bytes(self.data.clone()).context(CfiCacheErrorKind::Parsing)?,
-            )),
-        }
+    /// Returns the status of this cache file.
+    pub fn status(&self) -> CacheStatus {
+        self.status
     }
 
     /// Returns the features of the object file this symcache was constructed from.
     pub fn features(&self) -> ObjectFeatures {
         self.features
+    }
+
+    /// Returns the path at which this cache file is stored.
+    pub fn path(&self) -> &Path {
+        self.path.as_ref()
     }
 }
 
@@ -161,7 +162,13 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        path: CachePath,
+    ) -> Self::Item {
         CfiCacheFile {
             object_type: self.request.object_type,
             identifier: self.request.identifier.clone(),
@@ -169,6 +176,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             data,
             features: self.object_meta.features(),
             status,
+            path,
         }
     }
 }
@@ -225,6 +233,7 @@ impl CfiCacheActor {
                             data: ByteView::from_slice(b""),
                             features: ObjectFeatures::default(),
                             status: CacheStatus::Negative,
+                            path: CachePath::new(),
                         }))
                         .into_future(),
                     )
