@@ -16,8 +16,8 @@ use crate::utils::http;
 /// Variants of [ServiceStateError].
 #[derive(Clone, Copy, Debug, Fail)]
 pub enum ServiceStateErrorKind {
-    #[fail(display = "failed to create the symbolication service")]
-    SymbolicationService,
+    #[fail(display = "failed to create process pool")]
+    Spawn,
 }
 
 symbolic::common::derive_failure!(
@@ -58,14 +58,16 @@ impl ServiceState {
             SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
         let cficaches =
             CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
+        let spawnpool =
+            procspawn::Pool::new(num_cpus::get()).context(ServiceStateErrorKind::Spawn)?;
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
             cpu_threadpool.clone(),
-        )
-        .context(ServiceStateErrorKind::SymbolicationService)?;
+            spawnpool,
+        );
 
         Ok(Self {
             cpu_threadpool,
