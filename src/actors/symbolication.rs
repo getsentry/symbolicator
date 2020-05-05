@@ -137,6 +137,7 @@ impl SymbolicationActor {
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         threadpool: ThreadPool,
+        spawnpool: procspawn::Pool,
     ) -> Self {
         let requests = Arc::new(RwLock::new(BTreeMap::new()));
 
@@ -146,7 +147,7 @@ impl SymbolicationActor {
             cficaches,
             threadpool,
             requests,
-            spawnpool: Arc::new(procspawn::Pool::new(num_cpus::get()).expect("fixme")),
+            spawnpool: Arc::new(spawnpool),
         }
     }
 
@@ -1675,7 +1676,7 @@ mod tests {
         let mut config = Config::default();
         config.cache_dir = Some(cache_dir.path().to_owned());
         config.connect_to_reserved_ips = true;
-        let service = ServiceState::create(config);
+        let service = ServiceState::create(config).unwrap();
 
         (service, cache_dir)
     }
