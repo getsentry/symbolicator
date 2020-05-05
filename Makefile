@@ -18,12 +18,12 @@ test: test-rust test-integration
 .PHONY: test
 
 test-rust:
-	cargo test --all --all-features
+	cargo test --all --all-features --locked
 .PHONY: test-rust
 
 test-integration: .venv/bin/python
 	.venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist pytest-icdiff boto3
-	cargo build
+	cargo build --locked
 	@.venv/bin/pytest tests --reruns 5 -n12 -vv
 .PHONY: test-integration
 
