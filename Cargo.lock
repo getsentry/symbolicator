@@ -542,8 +542,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 [[package]]
 name = "cpp_demangle"
 version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e69147adfe3ce87fc3c0c9b867b4dd8a73cef415abd8f1095ed9629adac3f97"
+source = "git+https://github.com/jan-auer/cpp_demangle?branch=block-invoke#21acf3a49bff6aa2008e8879deb81986aeec5df4"
 dependencies = [
  "cfg-if",
  "glob",
@@ -1086,8 +1085,7 @@ dependencies = [
 [[package]]
 name = "gimli"
 version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81dd6190aad0f05ddbbf3245c54ed14ca4aa6dd32f22312b70d8f168c3e3e633"
+source = "git+https://github.com/jan-auer/gimli?branch=fix/eh-frame-cie-3#c0edff12eeb6e52368f51b260c3d79d043bd8c32"
 dependencies = [
  "arrayvec",
  "byteorder",
@@ -2947,7 +2945,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#7f31bd5bf2047ed2a04d7cd4ad9fd75c24e7c569"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2959,7 +2957,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#7f31bd5bf2047ed2a04d7cd4ad9fd75c24e7c569"
 dependencies = [
  "debugid",
  "failure",
@@ -2972,7 +2970,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#7f31bd5bf2047ed2a04d7cd4ad9fd75c24e7c569"
 dependencies = [
  "dmsort",
  "failure",
@@ -2997,7 +2995,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#7f31bd5bf2047ed2a04d7cd4ad9fd75c24e7c569"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3009,7 +3007,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#7f31bd5bf2047ed2a04d7cd4ad9fd75c24e7c569"
 dependencies = [
  "cc",
  "failure",
@@ -3023,7 +3021,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#7f31bd5bf2047ed2a04d7cd4ad9fd75c24e7c569"
 dependencies = [
  "dmsort",
  "failure",
