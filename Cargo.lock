@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "apple-crash-report-parser"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38eaabd228fcca951af5e1230b3b6feaefd871daa693a8924a2e21a09638152d"
+checksum = "6c1614301c75a08d6715446fe38b0b7ee44873e74c07c76fc27d5025e285576a"
 dependencies = [
  "chrono",
  "lazy_static",
@@ -1105,8 +1105,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "goblin"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd5e3132801a1ac34ac53b97acde50c4685414dd2f291b9ea52afa6f07468c8"
+source = "git+https://github.com/jan-auer/goblin?branch=fix/exception-invalid-address#867298ae73a4bbdbf5d44cce994aeb3c36d00dbe"
 dependencies = [
  "log",
  "plain",
@@ -2948,8 +2947,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a78505fad35ced8c66242244634437a434e6d22bf188f29d423bb5d68da208eb"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2961,8 +2959,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "009da45620abd4e1366dd2e08a31af1fb15a43aa9dd13318f1f478ae670e30b4"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
 dependencies = [
  "debugid",
  "failure",
@@ -2975,8 +2972,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c42b3d71d80a1319a8f620e6f6a169ac092d22f86e520ea6150b9b8d55344580"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
 dependencies = [
  "dmsort",
  "failure",
@@ -3001,8 +2997,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ca48a4bc52647384d8fa9a11a670bb57ee96e765537cdaa66ed44ff1d7f3160"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3014,8 +3009,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2960d794fdabca0b9648f97467f977b26836add39ec0e481811fe4a59e897ec7"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
 dependencies = [
  "cc",
  "failure",
@@ -3029,8 +3023,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "072fb7eee394efac8dfc69f14c89275e199e0074008f6592637e4e51b73012af"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#eb1350637f327ba24d7b654cdffaef8ed414bd9f"
 dependencies = [
  "dmsort",
  "failure",
