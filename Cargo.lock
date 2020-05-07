@@ -2945,7 +2945,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#657bb87f7f6430d53a464957cbc98df70555c74c"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#ed6be2beeb9ae879d5a2797092273ef845d99329"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2957,7 +2957,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#657bb87f7f6430d53a464957cbc98df70555c74c"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#ed6be2beeb9ae879d5a2797092273ef845d99329"
 dependencies = [
  "debugid",
  "failure",
@@ -2970,7 +2970,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#657bb87f7f6430d53a464957cbc98df70555c74c"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#ed6be2beeb9ae879d5a2797092273ef845d99329"
 dependencies = [
  "dmsort",
  "failure",
@@ -2995,7 +2995,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#657bb87f7f6430d53a464957cbc98df70555c74c"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#ed6be2beeb9ae879d5a2797092273ef845d99329"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3007,7 +3007,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#657bb87f7f6430d53a464957cbc98df70555c74c"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#ed6be2beeb9ae879d5a2797092273ef845d99329"
 dependencies = [
  "cc",
  "failure",
@@ -3021,7 +3021,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#657bb87f7f6430d53a464957cbc98df70555c74c"
+source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#ed6be2beeb9ae879d5a2797092273ef845d99329"
 dependencies = [
  "dmsort",
  "failure",
