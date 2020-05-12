@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
 use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture, System};
-use actix_web::client::{ClientConnector, ClientRequest, ClientResponse, SendRequestError};
+use actix_web::client::{
+    ClientConnector, ClientConnectorError, ClientRequest, ClientResponse, SendRequestError,
+};
 use actix_web::{http::header, HttpMessage};
 use futures01::{future, future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
@@ -28,11 +30,15 @@ pub fn follow_redirects<F>(
     make_request: F,
 ) -> ResponseFuture<ClientResponse, SendRequestError>
 where
-    F: Fn(&str) -> ClientRequest + Send + 'static,
+    F: Fn(&str) -> Result<ClientRequest, actix_web::error::Error> + Send + 'static,
 {
     let state = (initial_url, max_redirects, true);
     Box::new(future::loop_fn(state, move |(url, redirects, trusted)| {
-        let mut request = make_request(url.as_str());
+        let mut request = tryf!(make_request(url.as_str()).map_err(|err| {
+            let fail = failure::format_err!("Failed creating request: {} (URI: {})", err, url);
+            sentry::integrations::failure::capture_error(&fail);
+            SendRequestError::Connector(ClientConnectorError::InvalidUrl)
+        }));
 
         if !trusted {
             let headers = request.headers_mut();
@@ -40,7 +46,7 @@ where
             headers.remove(header::COOKIE);
         }
 
-        request.send().and_then(move |response| {
+        let resp_fut = request.send().and_then(move |response| {
             if response.status().is_redirection() && redirects > 0 {
                 let location = response
                     .headers()
@@ -65,7 +71,9 @@ where
             }
 
             Ok(future::Loop::Break(response))
-        })
+        });
+
+        Box::new(resp_fut)
     }))
 }
 

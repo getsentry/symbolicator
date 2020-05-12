@@ -67,7 +67,7 @@ pub(super) fn download_from_source(
                 //
                 // The intent is to disable the timeout entirely, but there is no API for that.
                 builder.timeout(Duration::from_secs(9999));
-                builder.finish().unwrap()
+                builder.finish()
             }),
         )
     });
