@@ -35,8 +35,7 @@ where
     let state = (initial_url, max_redirects, true);
     Box::new(future::loop_fn(state, move |(url, redirects, trusted)| {
         let mut request = tryf!(make_request(url.as_str()).map_err(|err| {
-            let fail =
-                failure::format_err!("Bad URI when creating request: {} (URI: {})", err, url);
+            let fail = failure::format_err!("Failed creating request: {} (URI: {})", err, url);
             sentry::integrations::failure::capture_error(&fail);
             SendRequestError::Connector(ClientConnectorError::InvalidUrl)
         }));
