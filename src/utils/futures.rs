@@ -98,7 +98,6 @@ impl CallOnDrop {
 
 impl Drop for CallOnDrop {
     fn drop(&mut self) {
-        debug_assert!(self.f.is_some(), "CallOnDrop cannot be empty");
         if let Some(f) = self.f.take() {
             f();
         }

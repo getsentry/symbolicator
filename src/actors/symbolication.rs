@@ -198,13 +198,10 @@ impl SymbolicationActor {
     {
         let (sender, receiver) = oneshot::channel();
 
+        // Assume that there are no UUID4 collisions in practice.
         let requests = self.requests.clone();
         let request_id = RequestId::new(uuid::Uuid::new_v4());
-
-        // Assume that there are no UUID4 collisions in practice.
-        let evicted = requests.lock().insert(request_id, receiver.shared());
-        debug_assert!(evicted.is_none());
-
+        requests.lock().insert(request_id, receiver.shared());
         let token = CallOnDrop::new(move || {
             requests.lock().remove(&request_id);
         });
