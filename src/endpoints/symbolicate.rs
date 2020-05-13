@@ -8,7 +8,7 @@ use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
 use serde::Deserialize;
 
-use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicateStacktraces};
+use crate::actors::symbolication::SymbolicateStacktraces;
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::{
     RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
@@ -76,15 +76,12 @@ fn symbolicate_frames(
             scope: params.scope,
         };
 
-        let request_id = tryf!(state.symbolication().symbolicate_stacktraces(message));
+        let request_id = state.symbolication().symbolicate_stacktraces(message);
 
         let timeout = params.timeout;
         let response = state
             .symbolication()
-            .get_symbolication_status(GetSymbolicationStatus {
-                request_id,
-                timeout,
-            })
+            .get_response(request_id, timeout)
             .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
             .map_err(Error::from);
 

@@ -8,7 +8,7 @@ use futures01::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
 
-use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicationActor};
+use crate::actors::symbolication::SymbolicationActor;
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
@@ -87,9 +87,7 @@ fn parse_apple_crash_report(
         .sources
         .ok_or_else(|| error::ErrorBadRequest("missing sources"))?;
 
-    symbolication
-        .process_apple_crash_report(scope, report, sources)
-        .map_err(error::ErrorInternalServerError)
+    Ok(symbolication.process_apple_crash_report(scope, report, sources))
 }
 
 fn handle_apple_crash_report_request(
@@ -126,10 +124,7 @@ fn handle_apple_crash_report_request(
             }))
             .and_then(move |request_id| {
                 symbolication
-                    .get_symbolication_status(GetSymbolicationStatus {
-                        request_id,
-                        timeout,
-                    })
+                    .get_response(request_id, timeout)
                     .then(|result| match result {
                         Ok(Some(response)) => Ok(Json(response)),
                         Ok(None) => Err(error::ErrorInternalServerError(
