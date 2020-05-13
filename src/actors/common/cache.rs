@@ -260,6 +260,8 @@ impl<T: CacheItemRequest> Cacher<T> {
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = future::lazy(move || slf.compute(request, key))
             .then(move |result| {
+                // Drop the token first to evict from the map. This ensures that callers either
+                // get a channel that will receive data, or they create a new channel.
                 drop(remove_computation_token);
                 sender.send(result.map(Arc::new).map_err(Arc::new)).ok();
                 Ok(())
