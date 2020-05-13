@@ -78,3 +78,28 @@ impl ThreadPool {
         receiver
     }
 }
+
+/// Execute a callback on dropping of the container type.
+///
+/// The callback must not panic under any circumstance. Since it is called while dropping an item,
+/// this might result in aborting program execution.
+pub struct CallOnDrop {
+    f: Option<Box<dyn FnOnce() + Send + 'static>>,
+}
+
+impl CallOnDrop {
+    /// Creates a new `CallOnDrop`.
+    pub fn new<F: FnOnce() + Send + 'static>(f: F) -> CallOnDrop {
+        CallOnDrop {
+            f: Some(Box::new(f)),
+        }
+    }
+}
+
+impl Drop for CallOnDrop {
+    fn drop(&mut self) {
+        if let Some(f) = self.f.take() {
+            f();
+        }
+    }
+}

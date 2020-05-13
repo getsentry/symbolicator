@@ -8,7 +8,7 @@ use futures01::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 use sentry_actix::ActixWebHubExt;
 
-use crate::actors::symbolication::{GetSymbolicationStatus, SymbolicationActor};
+use crate::actors::symbolication::SymbolicationActor;
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::types::{RequestId, Scope, SourceConfig, SymbolicationResponse};
@@ -94,9 +94,7 @@ fn process_minidump(
         .sources
         .ok_or_else(|| error::ErrorBadRequest("missing sources"))?;
 
-    symbolication
-        .process_minidump(scope, minidump, sources)
-        .map_err(error::ErrorInternalServerError)
+    Ok(symbolication.process_minidump(scope, minidump, sources))
 }
 
 fn handle_minidump_request(
@@ -133,10 +131,7 @@ fn handle_minidump_request(
             }))
             .and_then(move |request_id| {
                 symbolication
-                    .get_symbolication_status(GetSymbolicationStatus {
-                        request_id,
-                        timeout,
-                    })
+                    .get_response(request_id, timeout)
                     .then(|result| match result {
                         Ok(Some(response)) => Ok(Json(response)),
                         Ok(None) => Err(error::ErrorInternalServerError(

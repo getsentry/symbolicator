@@ -4,7 +4,6 @@ use failure::Error;
 use futures01::Future;
 use serde::Deserialize;
 
-use crate::actors::symbolication::GetSymbolicationStatus;
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::RequestId;
 
@@ -29,14 +28,9 @@ fn poll_request(
     let path = path.into_inner();
     let query = query.into_inner();
 
-    let message = GetSymbolicationStatus {
-        request_id: path.request_id,
-        timeout: query.timeout,
-    };
-
     let future = state
         .symbolication()
-        .get_symbolication_status(message)
+        .get_response(path.request_id, query.timeout)
         .map(|response_opt| match response_opt {
             Some(response) => HttpResponse::Ok().json(response),
             None => HttpResponse::NotFound().finish(),
