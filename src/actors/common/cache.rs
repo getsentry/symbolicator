@@ -5,22 +5,23 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use futures01::future::{lazy, Future, IntoFuture, Shared};
+use actix::ResponseFuture;
+use futures01::future::{self, Future, Shared};
 use futures01::sync::oneshot;
-use parking_lot::RwLock;
-use sentry::configure_scope;
+use parking_lot::Mutex;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
+use crate::utils::futures::CallOnDrop;
 use crate::utils::sentry::SentryFutureExt;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
 
-type ComputationMap<T, E> = Arc<RwLock<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
+type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
 
 /// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
 /// it:
@@ -55,7 +56,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache) -> Self {
         Cacher {
             config,
-            current_computations: Arc::new(RwLock::new(BTreeMap::new())),
+            current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 }
@@ -112,11 +113,11 @@ impl AsRef<Path> for CachePath {
 }
 
 pub trait CacheItemRequest: 'static + Send {
-    type Item: 'static + Send;
+    type Item: 'static + Send + Sync;
 
     // XXX: Probably should have our own concrete error type for cacheactor instead of forcing our
     // ioerrors into other errors
-    type Error: 'static + From<io::Error> + Send;
+    type Error: 'static + From<io::Error> + Send + Sync;
 
     /// Returns the key by which this item is cached.
     fn get_cache_key(&self) -> CacheKey;
@@ -141,18 +142,22 @@ pub trait CacheItemRequest: 'static + Send {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    fn lookup_cache(&self, request: &T) -> Result<Option<T::Item>, T::Error> {
+    /// Look up an item in the file system cache and load it if available.
+    fn lookup_cache(
+        &self,
+        request: &T,
+        key: &CacheKey,
+        path: &Path,
+    ) -> Result<Option<T::Item>, T::Error> {
         let name = self.config.name();
-        let key = request.get_cache_key();
+        sentry::configure_scope(|scope| {
+            scope.set_extra(
+                &format!("cache.{}.cache_path", name),
+                format!("{:?}", path).into(),
+            );
+        });
 
-        let path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
-
-        let path = match path {
-            Some(x) => x,
-            None => return Ok(None),
-        };
-
-        let byteview = match self.config.open_cachefile(&path)? {
+        let byteview = match self.config.open_cachefile(path)? {
             Some(x) => x,
             None => return Ok(None),
         };
@@ -167,138 +172,138 @@ impl<T: CacheItemRequest> Cacher<T> {
         // This is also reported for "negative cache hits": When we cached the 404 response from a
         // server as empty file.
         metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-
         metric!(
             time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
             "hit" => "true"
         );
 
-        configure_scope(|scope| {
-            scope.set_extra(
-                &format!("cache.{}.cache_path", name),
-                format!("{:?}", path).into(),
-            );
-        });
-
+        let path = path.to_path_buf();
         log::trace!("Loading {} at path {:?}", name, path);
-
-        let item = request.load(key.scope, status, byteview, CachePath::Cached(path));
+        let item = request.load(key.scope.clone(), status, byteview, CachePath::Cached(path));
         Ok(Some(item))
     }
 
-    pub fn compute_memoized(
-        &self,
-        request: T,
-    ) -> Box<dyn Future<Item = Arc<T::Item>, Error = Arc<T::Error>>> {
-        let key = request.get_cache_key();
-        let name = self.config.name();
-        let current_computations = &self.current_computations;
-
-        if let Some(channel) = current_computations.read().get(&key) {
-            // A concurrent cache lookup was deduplicated.
-            metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
-
-            let future = channel
-                .clone()
-                .map_err(|_| {
-                    panic!("Oneshot channel cancelled! Race condition or system shutting down")
-                })
-                .and_then(|result| (*result).clone());
-
-            return Box::new(future);
+    /// Compute an item.
+    ///
+    /// If the item is in the file system cache, it is returned immediately. Otherwise, it is
+    /// computed using `T::compute`, and then persisted to the cache.
+    fn compute(&self, request: T, key: CacheKey) -> ResponseFuture<T::Item, T::Error> {
+        let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
+        if let Some(ref path) = cache_path {
+            if let Some(item) = tryf!(self.lookup_cache(&request, &key, &path)) {
+                return Box::new(future::ok(item));
+            }
         }
 
-        // A concurrent cache lookup is considered new. This does not imply a full cache miss.
-        metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+        let name = self.config.name();
+        let key = request.get_cache_key();
 
-        let (tx, rx) = oneshot::channel();
+        // A file was not found. If this spikes, it's possible that the filesystem cache
+        // just got pruned.
+        metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        let slf = (*self).clone();
+        let temp_file = if let Some(ref path) = cache_path {
+            let dir = path.parent().unwrap();
+            tryf!(fs::create_dir_all(dir));
+            tryf!(NamedTempFile::new_in(dir))
+        } else {
+            tryf!(NamedTempFile::new())
+        };
 
-        let compute_future = lazy(clone!(key, || {
-            if let Some(item) = tryf!(slf.lookup_cache(&request)) {
-                return Box::new(Ok(item).into_future());
+        let future = request.compute(temp_file.path()).and_then(move |status| {
+            if let Some(ref cache_path) = cache_path {
+                sentry::configure_scope(|scope| {
+                    scope.set_extra(
+                        &format!("cache.{}.cache_path", name),
+                        cache_path.to_string_lossy().into(),
+                    );
+                });
+
+                log::trace!("Creating {} at path {:?}", name, cache_path);
             }
 
-            // A file was not found. If this spikes, it's possible that the filesystem cache
-            // just got pruned.
-            metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+            let byteview = ByteView::open(temp_file.path())?;
 
-            let cache_path = get_scope_path(slf.config.cache_dir(), &key.scope, &key.cache_key);
+            metric!(
+                counter(&format!("caches.{}.file.write", name)) += 1,
+                "status" => status.as_ref(),
+            );
+            metric!(
+                time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                "hit" => "false"
+            );
 
-            let temp_file = if let Some(ref path) = cache_path {
-                let dir = path.parent().unwrap();
-                tryf!(fs::create_dir_all(dir));
-                tryf!(NamedTempFile::new_in(dir))
-            } else {
-                tryf!(NamedTempFile::new())
+            let path = match cache_path {
+                Some(ref cache_path) => {
+                    status.persist_item(cache_path, temp_file)?;
+                    CachePath::Cached(cache_path.to_path_buf())
+                }
+                None => CachePath::Temp(temp_file.into_temp_path()),
             };
 
-            let future = request.compute(temp_file.path()).and_then(move |status| {
-                if let Some(ref cache_path) = cache_path {
-                    configure_scope(|scope| {
-                        scope.set_extra(
-                            &format!("cache.{}.cache_path", name),
-                            format!("{:?}", cache_path).into(),
-                        );
-                    });
+            Ok(request.load(key.scope.clone(), status, byteview, path))
+        });
 
-                    log::trace!("Creating {} at path {:?}", name, cache_path);
-                }
+        Box::new(future)
+    }
 
-                let byteview = tryf!(ByteView::open(temp_file.path()));
+    /// Creates a shareable channel that computes an item.
+    fn create_channel(&self, request: T, key: CacheKey) -> ComputationChannel<T::Item, T::Error> {
+        let (sender, receiver) = oneshot::channel();
 
-                metric!(
-                    counter(&format!("caches.{}.file.write", name)) += 1,
-                    "status" => status.as_ref(),
-                );
-
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                    "hit" => "false"
-                );
-
-                let path = match cache_path {
-                    Some(ref cache_path) => {
-                        tryf!(status.persist_item(cache_path, temp_file));
-                        CachePath::Cached(cache_path.into())
-                    }
-                    None => CachePath::Temp(temp_file.into_temp_path()),
-                };
-
-                let item = request.load(key.scope.clone(), status, byteview, path);
-                Box::new(Ok(item).into_future())
-            });
-
-            Box::new(future) as Box<dyn Future<Item = T::Item, Error = T::Error>>
+        let slf = self.clone();
+        let current_computations = self.current_computations.clone();
+        let remove_computation_token = CallOnDrop::new(clone!(key, || {
+            current_computations.lock().remove(&key);
         }));
 
-        let compute_future = compute_future
-            .then(clone!(key, current_computations, |result| {
-                current_computations.write().remove(&key);
-                tx.send(match result {
-                    Ok(x) => Ok(Arc::new(x)),
-                    Err(e) => Err(Arc::new(e)),
-                })
-                .map_err(|_| ())
-                .into_future()
-            }))
-            .sentry_hub_current();
-
-        actix::spawn(compute_future);
-
-        let channel = rx.shared();
-
-        self.current_computations
-            .write()
-            .insert(key, channel.clone());
-
-        let item_future = channel
-            .map_err(|_| {
-                panic!("Oneshot channel cancelled! Race condition or system shutting down")
+        // Run the computation and wrap the result in Arcs to make them clonable.
+        let channel = future::lazy(move || slf.compute(request, key))
+            .then(move |result| {
+                drop(remove_computation_token);
+                sender.send(result.map(Arc::new).map_err(Arc::new)).ok();
+                Ok(())
             })
-            .and_then(|result| (*result).clone());
+            .sentry_hub_new_from_current();
 
-        Box::new(item_future)
+        // TODO: This spawns into the arbiter of the caller. Consider more explicit resource
+        // allocation here to separate CPU intensive work from I/O work.
+        actix::spawn(channel);
+
+        receiver.shared()
+    }
+
+    /// Computes an item by loading from or populating the cache.
+    ///
+    /// The actual computation is deduplicated between concurrent requests. Finally, the result is
+    /// inserted into the cache and all subsequent calls fetch from the cache.
+    pub fn compute_memoized(&self, request: T) -> ResponseFuture<Arc<T::Item>, Arc<T::Error>> {
+        let key = request.get_cache_key();
+        let name = self.config.name();
+
+        let channel = {
+            let mut current_computations = self.current_computations.lock();
+            if let Some(channel) = current_computations.get(&key) {
+                // A concurrent cache lookup was deduplicated.
+                metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
+                channel.clone()
+            } else {
+                // A concurrent cache lookup is considered new. This does not imply a cache miss.
+                metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+                let channel = self.create_channel(request, key.clone());
+                let evicted = current_computations.insert(key.clone(), channel.clone());
+                debug_assert!(evicted.is_none());
+                channel
+            }
+        };
+
+        let future = channel
+            .map_err(move |_cancelled_error| {
+                let message = format!("{} computation channel dropped", name);
+                Arc::new(io::Error::new(io::ErrorKind::Interrupted, message).into())
+            })
+            .and_then(|shared| (*shared).clone());
+
+        Box::new(future)
     }
 }
