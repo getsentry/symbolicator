@@ -121,6 +121,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "addr2line"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "456d75cbb82da1ad150c8a9d97285ffcd21c9931dcb11e995903e7d75141b38b"
+dependencies = [
+ "gimli",
+]
+
+[[package]]
 name = "adler32"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,25 +217,16 @@ checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
 name = "backtrace"
-version = "0.3.46"
+version = "0.3.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1e692897359247cc6bb902933361652380af0f1b7651ae5c5013407f30e109e"
+checksum = "0df2f85c8a2abbe3b7d7e748052fdd9b76a0458fdeb16ad4223f5eca78c7c130"
 dependencies = [
- "backtrace-sys",
+ "addr2line",
  "cfg-if",
  "libc",
+ "object",
  "rustc-demangle",
  "serde",
-]
-
-[[package]]
-name = "backtrace-sys"
-version = "0.1.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7de8aba10a69c8e8d7622c5710229485ec32e9d55fdad160ea559c086fdcd118"
-dependencies = [
- "cc",
- "libc",
 ]
 
 [[package]]
@@ -541,8 +541,9 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.2.15"
-source = "git+https://github.com/gimli-rs/cpp_demangle?rev=1ad5008455d971ad8f74c1fa4a72f9b5b3a3b0dc#1ad5008455d971ad8f74c1fa4a72f9b5b3a3b0dc"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c924384107361ca729c7d46b9134151b9a955ce99a773784f2777498e8552d"
 dependencies = [
  "cfg-if",
  "glob",
@@ -1860,6 +1861,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "object"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cbca9424c482ee628fa549d9c812e2cd22f1180b9222c9200fdfa6eb31aecb2"
+
+[[package]]
 name = "opaque-debug"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2943,8 +2950,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#4970eb9f67265d4651aae4f07bcca53387c944d1"
+version = "7.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "514cc39e331991a0ac87e5b6366748ea42d2ab604f524fa17c7868c357a242dc"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2955,8 +2963,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#4970eb9f67265d4651aae4f07bcca53387c944d1"
+version = "7.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5612b8a656fecf6db6a48fabcbb4d761e0c25cb86800f0585c5179ad6e197b95"
 dependencies = [
  "debugid",
  "failure",
@@ -2968,8 +2977,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#4970eb9f67265d4651aae4f07bcca53387c944d1"
+version = "7.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f49eb1c82fba996da47922c5b1487e98be46b4194a785c004e63d55c79c1a6a8"
 dependencies = [
  "dmsort",
  "failure",
@@ -2993,8 +3003,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#4970eb9f67265d4651aae4f07bcca53387c944d1"
+version = "7.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bb3f44945ded4b73595802a964e4a6331aff22e4ad94e5f8459ee8c490b20ed"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3005,8 +3016,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#4970eb9f67265d4651aae4f07bcca53387c944d1"
+version = "7.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48429ed68b74a8afd6bffd37f34d3aa58dbfad1041c97a7dcd43389f4876fd38"
 dependencies = [
  "cc",
  "failure",
@@ -3019,8 +3031,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "7.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=build/bump-goblin#4970eb9f67265d4651aae4f07bcca53387c944d1"
+version = "7.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94aaff9a1e886cadee073f7783e421960fb7f1a6b56599156f8990c9e6729ae5"
 dependencies = [
  "dmsort",
  "failure",
