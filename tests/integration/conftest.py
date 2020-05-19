@@ -205,7 +205,7 @@ def ios_bucket_config():
     yield {
         "id": "ios",
         "type": "gcs",
-        "bucket": "sentryio-system-symbols",
+        "bucket": "sentryio-system-symbols-0",
         "private_key": GCS_PRIVATE_KEY,
         "client_email": GCS_CLIENT_EMAIL,
         "prefix": "/ios",
