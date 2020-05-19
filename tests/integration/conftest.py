@@ -208,5 +208,6 @@ def ios_bucket_config():
         "bucket": "sentryio-system-symbols-0",
         "private_key": GCS_PRIVATE_KEY,
         "client_email": GCS_CLIENT_EMAIL,
+        "layout": {"type": "unified"},
         "prefix": "/ios",
     }
