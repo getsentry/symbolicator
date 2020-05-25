@@ -23,6 +23,7 @@ mod endpoints;
 mod logging;
 mod middlewares;
 mod server;
+mod services;
 mod types;
 mod utils;
 

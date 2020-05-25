@@ -1,0 +1,264 @@
+//! Support to download from HTTP sources.
+//!
+//! Specifically this supports the [HttpSourceConfig] source.
+
+use std::pin::Pin;
+
+use actix_web::http::header;
+use actix_web::{client, HttpMessage};
+use bytes::Bytes;
+use failure::Fail;
+use failure::ResultExt;
+use futures01::future;
+use futures01::prelude::*;
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+use tempfile::NamedTempFile;
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
+use tokio_retry::Retry;
+use url::Url;
+
+use super::types::{DownloadError, DownloadErrorKind, SourceLocation};
+use crate::types::HttpSourceConfig;
+use crate::utils::http;
+
+/// The maximum number of redirects permitted by a remote symbol server.
+const MAX_HTTP_REDIRECTS: usize = 10;
+
+const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+
+type DownloadStream = Box<dyn Stream<Item = Bytes, Error = DownloadError>>;
+
+/// Joins the relative path to the given URL.
+///
+/// As opposed to `Url::join`, this only supports relative paths. Each segment of the path is
+/// percent-encoded. Empty segments are skipped, for example, `foo//bar` is collapsed to `foo/bar`.
+///
+/// The base URL is treated as directory. If it does not end with a slash, then a slash is
+/// automatically appended.
+///
+/// Returns `Err(())` if the URL is cannot-be-a-base.
+fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
+    let mut joined = base.clone();
+    joined
+        .path_segments_mut()?
+        .pop_if_empty()
+        .extend(path.segments());
+    Ok(joined)
+}
+
+/// Download from an HTTP source.
+///
+/// The file is saved in `dest`, during downloading a temporary file in the same
+/// directory is used.
+pub fn download_source(
+    source: Arc<HttpSourceConfig>,
+    location: SourceLocation,
+    dest: PathBuf,
+) -> Box<dyn Future<Item = PathBuf, Error = DownloadError>> {
+    // ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError> + Send + 'static> {
+    // All file I/O in this function is blocking!
+    let dest2 = dest.clone();
+    let source2 = source.clone();
+    let ret =
+        download_from_source(source, &location).and_then(move |maybe_stream| match maybe_stream {
+            Some(stream) => {
+                log::trace!(
+                    "Downloading file for HTTP source {id} location {loc}",
+                    id = source2.id,
+                    loc = location
+                );
+                let destdir = tryf!(dest.parent().ok_or(DownloadErrorKind::BadDestination));
+                let tmpfile =
+                    tryf!(NamedTempFile::new_in(destdir).context(DownloadErrorKind::TempFile));
+                println!("{:?}", tmpfile.path()); // XXX
+                let tmpfile2 = tryf!(tmpfile.reopen().context(DownloadErrorKind::TempFile));
+                let fut = stream
+                    .fold(tmpfile2, |mut file, chunk| {
+                        file.write_all(chunk.as_ref())
+                            .context(DownloadErrorKind::Write)
+                            .map_err(|ctx| DownloadError::from(ctx))
+                            .map(|_| file)
+                    })
+                    .and_then(|_| {
+                        future::result(
+                            tmpfile
+                                .persist(dest)
+                                .context(DownloadErrorKind::Write)
+                                .map_err(|ctx| DownloadError::from(ctx)),
+                        )
+                    })
+                    .and_then(|_| future::ok(dest2));
+                Box::new(fut) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+            }
+            None => {
+                let fut = future::err(DownloadError::from(DownloadErrorKind::GenericFailed));
+                Box::new(fut) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+            }
+        });
+    Box::new(ret) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+}
+// pub fn download_source(
+//     source: Arc<HttpSourceConfig>,
+//     location: SourceLocation,
+//     dest: PathBuf,
+// ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError>> {
+//     // ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError> + Send + 'static> {
+//     // All file I/O in this function is blocking!
+//     let ret = download_from_source(source, &location)
+//         .and_then(|maybe_stream| match maybe_stream {
+//             Some(stream) => future::ok(stream),
+//             None => future::err(DownloadErrorKind::GenericFailed.into()),
+//         })
+//         .map(|stream| {
+//             log::trace!(
+//                 "Downloading file for HTTP source {id} location {loc}",
+//                 id = source.id,
+//                 loc = location
+//             );
+//             let destdir = tryf!(dest
+//                 .parent()
+//                 .ok_or(DownloadError::from(DownloadErrorKind::BadDestination)));
+//             let tmpfile = tryf!(NamedTempFile::new_in(destdir)
+//                 .context(DownloadErrorKind::TempFile)
+//                 .map_err(|e| e.into()));
+//             let tmpfile2 = tryf!(tmpfile
+//                 .reopen()
+//                 .context(DownloadErrorKind::TempFile)
+//                 .map_err(|e| e.into()));
+//             let async_file = tokio::fs::File::from_std(tmpfile2);
+//             let accumulator = stream
+//                 .fold(async_file, |mut file, chunk| {
+//                     file.write_all(chunk.as_ref())
+//                         .context(DownloadErrorKind::Write)
+//                         .map(|_| file)
+//                 })
+//                 .map_err(|err| err.into())
+//                 .and_then(|_| {
+//                     future::result(
+//                         tmpfile
+//                             .persist(dest)
+//                             .context(DownloadErrorKind::Write.into()),
+//                     )
+//                 })
+//                 .map(|_| future::ok(dest));
+//             Box::new(accumulator)
+//         });
+//     // Box::new(ret)
+//     Box::new(ret) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+// }
+
+// The actors::objects::http::download_from_source with minimal changes.
+fn download_from_source(
+    source: Arc<HttpSourceConfig>,
+    download_path: &SourceLocation,
+) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {
+    // This can effectively never error since the URL is always validated to be a base URL.
+    // Though unfortunately this happens outside of this service, so ideally we'd fix this.
+    let download_url = match join_url_encoded(&source.url, &download_path) {
+        Ok(x) => x,
+        Err(_) => return Box::new(future::ok(None)),
+    };
+    log::debug!("Fetching debug file from {}", download_url);
+    let response = clone!(download_url, source, || {
+        http::follow_redirects(
+            download_url.clone(),
+            MAX_HTTP_REDIRECTS,
+            clone!(source, |url| {
+                let mut builder = client::get(url);
+
+                for (key, value) in source.headers.iter() {
+                    if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                        builder.header(key, value.as_str());
+                    }
+                }
+
+                builder.header(header::USER_AGENT, USER_AGENT);
+
+                // This timeout is for the entire HTTP download *including* the response stream
+                // itself, in contrast to what the Actix-Web docs say. We have tested this
+                // manually.
+                //
+                // The intent is to disable the timeout entirely, but there is no API for that.
+                builder.timeout(Duration::from_secs(9999));
+                builder.finish()
+            }),
+        )
+    });
+
+    let response = Retry::spawn(
+        ExponentialBackoff::from_millis(10).map(jitter).take(3),
+        response,
+    );
+
+    let response = response.map_err(|e| match e {
+        tokio_retry::Error::OperationError(e) => e,
+        e => panic!("{}", e),
+    });
+
+    let response = response.then(move |result| match result {
+        Ok(response) => {
+            if response.status().is_success() {
+                log::trace!("Success hitting {}", download_url);
+                Ok(Some(Box::new(
+                    // This box is the DownloadStream type alias
+                    response
+                        .payload()
+                        .map_err(|e| e.context(DownloadErrorKind::Io).into()),
+                )
+                    as Box<dyn Stream<Item = _, Error = _>>))
+            } else {
+                log::trace!(
+                    "Unexpected status code from {}: {}",
+                    download_url,
+                    response.status()
+                );
+                Ok(None)
+            }
+        }
+        Err(e) => {
+            log::trace!("Skipping response from {}: {}", download_url, e);
+            Ok(None)
+        }
+    });
+
+    Box::new(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::collections::BTreeMap;
+
+    use url::Url;
+
+    #[test]
+    fn test_download_source() {
+        let source = HttpSourceConfig {
+            id: String::from("test-source"),
+            url: Url::parse("https://httpbin.org/").unwrap(),
+            headers: BTreeMap::new(),
+            files: Default::default(),
+        };
+        let loc = SourceLocation::new("/get");
+        let tmpdir = tempfile::tempdir().unwrap();
+        let dest = tmpdir.path().join("dest");
+
+        let worker = crate::utils::futures::RemoteThread::new();
+        use futures::compat::Future01CompatExt;
+        let dl_fut = worker.spawn(|| -> Result<PathBuf, DownloadError> {
+            future::lazy(|| download_source(Arc::new(source), loc, dest))
+            // let fut = async move { download_source(Arc::new(source), loc, dest).compat().await };
+            // let t: () = fut;
+        });
+        // let t: () = dl_fut;
+
+        use futures::TryFutureExt;
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let ret: Result<PathBuf, DownloadError> = rt.block_on(dl_fut.compat()).unwrap();
+        assert_eq!(ret, Ok(dest));
+    }
+}

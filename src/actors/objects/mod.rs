@@ -668,6 +668,12 @@ enum DownloadStream {
     File(PathBuf),
 }
 
+/// Create a list of all DIF downloads to be attempted.
+///
+/// Builds the list of download locations where the relevant Debug Information
+/// Files for a given [ObjectId] might be relative to the [SourceConfig].  This
+/// does not mean that each file exists on the source.  For some sources,
+/// e.g. [SourceConfig::Sentry], this might involve querying the source.
 fn prepare_downloads(
     source: &SourceConfig,
     filetypes: &'static [FileType],

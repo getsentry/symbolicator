@@ -31,6 +31,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "actix-macros"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a60f9ba7c4e6df97f3aacb14bb5c0cd7d98a49dcbaed0d7f292912ad9a6a3ed2"
+dependencies = [
+ "quote 1.0.3",
+ "syn 1.0.17",
+]
+
+[[package]]
 name = "actix-net"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -54,6 +64,36 @@ dependencies = [
  "tokio-timer",
  "tower-service 0.1.0",
  "trust-dns-resolver",
+]
+
+[[package]]
+name = "actix-rt"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "143fcc2912e0d1de2bcf4e2f720d2a60c28652ab4179685a1ee159e0fb3db227"
+dependencies = [
+ "actix-macros",
+ "actix-threadpool",
+ "copyless",
+ "futures-channel",
+ "futures-util",
+ "smallvec 1.2.0",
+ "tokio 0.2.16",
+]
+
+[[package]]
+name = "actix-threadpool"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91164716d956745c79dcea5e66d2aa04506549958accefcede5368c70f2fd4ff"
+dependencies = [
+ "derive_more 0.99.7",
+ "futures-channel",
+ "lazy_static",
+ "log",
+ "num_cpus",
+ "parking_lot 0.10.0",
+ "threadpool",
 ]
 
 [[package]]
@@ -524,6 +564,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "copyless"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ff9c56c9fb2a49c05ef0e431485a22400af20d33226dc0764d891d09e724127"
+
+[[package]]
 name = "core-foundation"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -685,6 +731,17 @@ dependencies = [
  "regex",
  "rustc_version",
  "syn 0.15.44",
+]
+
+[[package]]
+name = "derive_more"
+version = "0.99.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2127768764f1556535c01b5326ef94bd60ff08dcfbdc544d53e69ed155610f5d"
+dependencies = [
+ "proc-macro2 1.0.10",
+ "quote 1.0.3",
+ "syn 1.0.17",
 ]
 
 [[package]]
@@ -3048,6 +3105,7 @@ name = "symbolicator"
 version = "0.1.0"
 dependencies = [
  "actix",
+ "actix-rt",
  "actix-web",
  "apple-crash-report-parser",
  "base64 0.11.0",
@@ -3056,7 +3114,7 @@ dependencies = [
  "chrono",
  "console 0.10.0",
  "crc32fast",
- "derive_more",
+ "derive_more 0.15.0",
  "env_logger",
  "failure",
  "flate2",
@@ -3189,6 +3247,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "threadpool"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2f0c90a5f3459330ac8bc0d2f879c693bb7a2f59689c1083fc4ef83834da865"
+dependencies = [
+ "num_cpus",
+]
+
+[[package]]
 name = "time"
 version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3234,11 +3301,15 @@ dependencies = [
  "futures-core",
  "iovec",
  "lazy_static",
+ "libc",
  "memchr",
  "mio",
+ "mio-uds",
  "num_cpus",
  "pin-project-lite",
+ "signal-hook-registry",
  "slab",
+ "winapi 0.3.8",
 ]
 
 [[package]]

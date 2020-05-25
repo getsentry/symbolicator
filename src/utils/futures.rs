@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::{FutureExt, TryFutureExt};
+use futures::{future, FutureExt, TryFutureExt};
 use tokio::runtime::Runtime as TokioRuntime;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
@@ -19,7 +19,7 @@ pub fn enable_test_mode() {
 }
 
 /// Error returned from a `SpawnHandle` when the thread pool restarts.
-pub use oneshot::Canceled;
+pub use oneshot::Canceled as RemoteCanceled;
 
 /// Handle returned from `ThreadPool::spawn_handle`.
 ///
@@ -76,6 +76,45 @@ impl ThreadPool {
         }
 
         receiver
+    }
+}
+
+/// A remote thread which can run non-sendable futures.
+///
+/// This can be used to implement any services which internally need to use
+/// non-`Send`able futures and are sufficient with running on single thread.
+#[derive(Clone, Debug)]
+pub struct RemoteThread {
+    arbiter: actix_rt::Arbiter,
+}
+
+impl RemoteThread {
+    /// Create a new instance, spawning the thread.
+    pub fn new() -> Self {
+        Self {
+            arbiter: actix_rt::Arbiter::new(),
+        }
+    }
+
+    /// Create a future in the remote thread and run it.
+    ///
+    /// The returned future resolves when the spawned future has completed
+    /// execution.  The output type of the spawned future is wrapped in a
+    /// `Result`, normally the output is returned in an `Ok` but when the remote
+    /// future is dropped because the thread is shut down or restarted for any
+    /// reason it returns `Err(oneshot::Canceled)`.
+    pub fn spawn<F, R, T>(&self, factory: F) -> impl Future<Output = Result<T, RemoteCanceled>>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Future<Output = T> + 'static,
+        T: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        self.arbiter.exec_fn(|| {
+            let fut = factory().then(|output| future::ready(tx.send(output).unwrap_or(())));
+            actix_rt::Arbiter::spawn(fut);
+        });
+        rx
     }
 }
 
