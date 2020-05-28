@@ -41,11 +41,15 @@ impl Downloader {
     /// `source`: The source to download from.
     ///
     /// `dest`: Pathname of filename to save the downloaded file into.
+    ///
+    /// # Returns
+    ///
+    /// xxx
     pub fn download(
         &self,
         source: SourceId,
         dest: PathBuf,
-    ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
             match source {
                 SourceId::Http(source, loc) => {
@@ -55,13 +59,8 @@ impl Downloader {
             }
         });
         let fut01 = fut03
-            .then(|spawn_ret| {
-                let result = match spawn_ret {
-                    Ok(dl_ret) => dl_ret,
-                    Err(RemoteCanceled) => Err(DownloadErrorKind::Tmp.into()),
-                };
-                futures::future::ready(result)
-            })
+            .map(|spawn_ret| spawn_ret.unwrap_or_else(|_| Err(DownloadErrorKind::Tmp.into())))
+            .boxed()
             .compat();
         Box::new(fut01)
     }

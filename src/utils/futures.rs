@@ -85,14 +85,14 @@ impl ThreadPool {
 /// non-`Send`able futures and are sufficient with running on single thread.
 #[derive(Clone, Debug)]
 pub struct RemoteThread {
-    arbiter: actix_rt::Arbiter,
+    arbiter: actix::Addr<actix::Arbiter>,
 }
 
 impl RemoteThread {
     /// Create a new instance, spawning the thread.
     pub fn new() -> Self {
         Self {
-            arbiter: actix_rt::Arbiter::new(),
+            arbiter: actix::Arbiter::new("RemoteThread"),
         }
     }
 
@@ -110,10 +110,13 @@ impl RemoteThread {
         T: Send + 'static,
     {
         let (tx, rx) = oneshot::channel();
-        self.arbiter.exec_fn(|| {
-            let fut = factory().then(|output| future::ready(tx.send(output).unwrap_or(())));
-            actix_rt::Arbiter::spawn(fut);
+        let msg = actix::msgs::Execute::new(|| -> Result<(), ()> {
+            let fut = factory().map(|output| tx.send(output).or(Err(())));
+            let fut01 = fut.boxed_local().compat();
+            actix::spawn(fut01);
+            Ok(())
         });
+        self.arbiter.do_send(msg);
         rx
     }
 }

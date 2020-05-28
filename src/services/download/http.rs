@@ -57,7 +57,7 @@ pub fn download_source(
     source: Arc<HttpSourceConfig>,
     location: SourceLocation,
     dest: PathBuf,
-) -> Box<dyn Future<Item = PathBuf, Error = DownloadError>> {
+) -> Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>> {
     // ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError> + Send + 'static> {
     // All file I/O in this function is blocking!
     let dest2 = dest.clone();
@@ -70,87 +70,28 @@ pub fn download_source(
                     id = source2.id,
                     loc = location
                 );
-                let destdir = tryf!(dest.parent().ok_or(DownloadErrorKind::BadDestination));
-                let tmpfile =
-                    tryf!(NamedTempFile::new_in(destdir).context(DownloadErrorKind::TempFile));
-                println!("{:?}", tmpfile.path()); // XXX
-                let tmpfile2 = tryf!(tmpfile.reopen().context(DownloadErrorKind::TempFile));
+                let file =
+                    tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
                 let fut = stream
-                    .fold(tmpfile2, |mut file, chunk| {
+                    .fold(file, |mut file, chunk| {
                         file.write_all(chunk.as_ref())
                             .context(DownloadErrorKind::Write)
                             .map_err(|ctx| DownloadError::from(ctx))
                             .map(|_| file)
                     })
-                    .and_then(|_| {
-                        future::result(
-                            tmpfile
-                                .persist(dest)
-                                .context(DownloadErrorKind::Write)
-                                .map_err(|ctx| DownloadError::from(ctx)),
-                        )
-                    })
-                    .and_then(|_| future::ok(dest2));
-                Box::new(fut) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+                    .and_then(|_| Ok(Some(dest2)));
+                Box::new(fut) as Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>>
             }
             None => {
-                let fut = future::err(DownloadError::from(DownloadErrorKind::GenericFailed));
-                Box::new(fut) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+                let fut = future::ok(None);
+                Box::new(fut) as Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>>
             }
         });
-    Box::new(ret) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
+    Box::new(ret) as Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>>
 }
-// pub fn download_source(
-//     source: Arc<HttpSourceConfig>,
-//     location: SourceLocation,
-//     dest: PathBuf,
-// ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError>> {
-//     // ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError> + Send + 'static> {
-//     // All file I/O in this function is blocking!
-//     let ret = download_from_source(source, &location)
-//         .and_then(|maybe_stream| match maybe_stream {
-//             Some(stream) => future::ok(stream),
-//             None => future::err(DownloadErrorKind::GenericFailed.into()),
-//         })
-//         .map(|stream| {
-//             log::trace!(
-//                 "Downloading file for HTTP source {id} location {loc}",
-//                 id = source.id,
-//                 loc = location
-//             );
-//             let destdir = tryf!(dest
-//                 .parent()
-//                 .ok_or(DownloadError::from(DownloadErrorKind::BadDestination)));
-//             let tmpfile = tryf!(NamedTempFile::new_in(destdir)
-//                 .context(DownloadErrorKind::TempFile)
-//                 .map_err(|e| e.into()));
-//             let tmpfile2 = tryf!(tmpfile
-//                 .reopen()
-//                 .context(DownloadErrorKind::TempFile)
-//                 .map_err(|e| e.into()));
-//             let async_file = tokio::fs::File::from_std(tmpfile2);
-//             let accumulator = stream
-//                 .fold(async_file, |mut file, chunk| {
-//                     file.write_all(chunk.as_ref())
-//                         .context(DownloadErrorKind::Write)
-//                         .map(|_| file)
-//                 })
-//                 .map_err(|err| err.into())
-//                 .and_then(|_| {
-//                     future::result(
-//                         tmpfile
-//                             .persist(dest)
-//                             .context(DownloadErrorKind::Write.into()),
-//                     )
-//                 })
-//                 .map(|_| future::ok(dest));
-//             Box::new(accumulator)
-//         });
-//     // Box::new(ret)
-//     Box::new(ret) as Box<dyn Future<Item = PathBuf, Error = DownloadError>>
-// }
 
 // The actors::objects::http::download_from_source with minimal changes.
+// Item = None is 404
 fn download_from_source(
     source: Arc<HttpSourceConfig>,
     download_path: &SourceLocation,
@@ -233,32 +174,49 @@ mod tests {
 
     use std::collections::BTreeMap;
 
+    use futures::compat::Future01CompatExt;
+    use futures::{FutureExt, TryFutureExt};
     use url::Url;
+
+    use crate::test;
+    use crate::types::SourceConfig;
+    use crate::utils::futures::{RemoteCanceled, RemoteThread};
 
     #[test]
     fn test_download_source() {
-        let source = HttpSourceConfig {
-            id: String::from("test-source"),
-            url: Url::parse("https://httpbin.org/").unwrap(),
-            headers: BTreeMap::new(),
-            files: Default::default(),
+        test::setup();
+
+        let tmpfile = tempfile::NamedTempFile::new().unwrap();
+        let dest = tmpfile.path().to_owned();
+
+        let (_srv, source) = test::symbol_server();
+        let http_source = match source {
+            SourceConfig::Http(source) => source,
+            _ => panic!("unexpected source"),
         };
-        let loc = SourceLocation::new("/get");
-        let tmpdir = tempfile::tempdir().unwrap();
-        let dest = tmpdir.path().join("dest");
+        let loc = SourceLocation::new("hello.txt");
 
-        let worker = crate::utils::futures::RemoteThread::new();
-        use futures::compat::Future01CompatExt;
-        let dl_fut = worker.spawn(|| -> Result<PathBuf, DownloadError> {
-            future::lazy(|| download_source(Arc::new(source), loc, dest))
-            // let fut = async move { download_source(Arc::new(source), loc, dest).compat().await };
-            // let t: () = fut;
-        });
-        // let t: () = dl_fut;
+        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
+        assert_eq!(ret.unwrap(), Some(dest.clone()));
+        let content = std::fs::read_to_string(dest).unwrap();
+        assert_eq!(content, "hello world\n");
+    }
 
-        use futures::TryFutureExt;
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let ret: Result<PathBuf, DownloadError> = rt.block_on(dl_fut.compat()).unwrap();
-        assert_eq!(ret, Ok(dest));
+    #[test]
+    fn test_download_source_missing() {
+        test::setup();
+
+        let tmpfile = tempfile::NamedTempFile::new().unwrap();
+        let dest = tmpfile.path().to_owned();
+
+        let (_srv, source) = test::symbol_server();
+        let http_source = match source {
+            SourceConfig::Http(source) => source,
+            _ => panic!("unexpected source"),
+        };
+        let loc = SourceLocation::new("i-do-not-exist");
+
+        let ret = test::block_fn(|| download_source(http_source, loc, dest));
+        assert_eq!(ret.unwrap(), None);
     }
 }
