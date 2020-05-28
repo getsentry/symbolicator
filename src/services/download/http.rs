@@ -1,8 +1,8 @@
 //! Support to download from HTTP sources.
 //!
-//! Specifically this supports the [HttpSourceConfig] source.
-
-use std::pin::Pin;
+//! Specifically this supports the [`HttpSourceConfig`] source.
+//!
+//! [`HttpSourceConfig`]: ../../../types/struct.HttpSourceConfig.html
 
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
@@ -15,7 +15,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tempfile::NamedTempFile;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
@@ -51,8 +50,10 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
 
 /// Download from an HTTP source.
 ///
-/// The file is saved in `dest`, during downloading a temporary file in the same
-/// directory is used.
+/// The file is saved in `dest` and will be written incrementally to it.  Once
+/// this successfully returns the file will be completely written.  If this
+/// completes with an error return any data in the file is to be considered
+/// garbage.
 pub fn download_source(
     source: Arc<HttpSourceConfig>,
     location: SourceLocation,
@@ -76,7 +77,7 @@ pub fn download_source(
                     .fold(file, |mut file, chunk| {
                         file.write_all(chunk.as_ref())
                             .context(DownloadErrorKind::Write)
-                            .map_err(|ctx| DownloadError::from(ctx))
+                            .map_err(DownloadError::from)
                             .map(|_| file)
                     })
                     .and_then(|_| Ok(Some(dest2)));

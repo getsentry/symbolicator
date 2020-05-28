@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::{future, FutureExt, TryFutureExt};
+use futures::{FutureExt, TryFutureExt};
 use tokio::runtime::Runtime as TokioRuntime;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);

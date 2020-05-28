@@ -15,35 +15,29 @@ use crate::types::{
 pub enum DownloadErrorKind {
     #[fail(display = "failed to download")]
     Io,
-    #[fail(display = "generic download failure, reason omitted/swallowed")]
-    GenericFailed,
     #[fail(display = "bad file destination")]
     BadDestination,
-    #[fail(display = "failed to create temporary download file")]
-    TempFile,
     #[fail(display = "failed writing the downloaded file")]
     Write,
-    #[fail(display = "temporary fudge error, not to be commited")]
+    #[fail(display = "download was cancelled")]
+    Canceled,
+    #[fail(display = "temporary fudge error, not to be committed")]
     Tmp,
 }
 
 symbolic::common::derive_failure!(
     DownloadError,
     DownloadErrorKind,
-    doc = "Errors happening while downloading from sources"
+    doc = "Errors happening while downloading from sources."
 );
 
-// impl From<failure::Context<DownloadError>> for DownloadError {
-//     fn from(source: failure::Context<DownloadError>) -> Self {
-//         source.get_context()
-//     }
-// }
-
-/// A [SourceId] uniquely identifies a file on a source and how to download it.
+/// A `SourceId` uniquely identifies a file on a source and how to download it.
 ///
-/// This is a combination of the [SourceConfig], which describes a
+/// This is a combination of the [`SourceConfig`], which describes a
 /// download source and how to download from it, with an identifier
 /// describing a single file in that source.
+///
+/// [`SourceConfig`]: ../../../types/enum.SourceConfig.html
 #[derive(Debug, Clone)]
 pub enum SourceId {
     Sentry(Arc<SentrySourceConfig>, SentryFileId),
@@ -53,14 +47,18 @@ pub enum SourceId {
     Filesystem(Arc<FilesystemSourceConfig>, SourceLocation),
 }
 
-/// An identifier for a file retrievable from a [SentrySourceConfig].
+/// An identifier for a file retrievable from a [`SentrySourceConfig`].
+///
+/// [`SentrySourceConfig`]: ../../../types/struct.SentrySourceConfig.html
 #[derive(Debug, Clone)]
 pub struct SentryFileId(String);
 
 /// A location for a file retrievable from many source configs.
 ///
 /// It is essentially a `/`-separated string.  This is currently used by all
-/// sources other than [SentrySourceConfig].  This may change in the future.
+/// sources other than [`SentrySourceConfig`].  This may change in the future.
+///
+/// [`SentrySourceConfig`]: ../../../types/struct.SentrySourceConfig.html
 #[derive(Debug, Clone)]
 pub struct SourceLocation(String);
 
