@@ -22,10 +22,8 @@ use tempfile::{tempfile_in, NamedTempFile};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
-use crate::types::{
-    ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectFeatures,
-    ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
-};
+use crate::sources::{FileType, SourceConfig, SourceFileId};
+use crate::types::{ArcFail, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
@@ -81,7 +79,7 @@ struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
     /// Source-type specific attributes.
-    file_id: FileId,
+    file_id: SourceFileId,
     object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
@@ -96,46 +94,31 @@ struct FetchFileMetaRequest {
 #[derive(Clone, Debug)]
 struct FetchFileDataRequest(FetchFileMetaRequest);
 
-#[derive(Debug, Clone)]
-enum FileId {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId),
-    S3(Arc<S3SourceConfig>, DownloadPath),
-    Gcs(Arc<GcsSourceConfig>, DownloadPath),
-    Http(Arc<HttpSourceConfig>, DownloadPath),
-    Filesystem(Arc<FilesystemSourceConfig>, DownloadPath),
-}
-
-#[derive(Debug, Clone)]
-struct DownloadPath(String);
-
-#[derive(Debug, Clone)]
-struct SentryFileId(String);
-
-impl FileId {
+impl SourceFileId {
     fn source(&self) -> SourceConfig {
         match *self {
-            FileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            FileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            FileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            FileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-            FileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
+            SourceFileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
+            SourceFileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
+            SourceFileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
+            SourceFileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
+            SourceFileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
         }
     }
 
     fn cache_key(&self) -> String {
         match self {
-            FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::Sentry(ref source, ref file_id) => {
+            SourceFileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::Sentry(ref source, ref file_id) => {
                 format!("{}.{}.sentryinternal", source.id, file_id.0)
             }
-            FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
         }
     }
 }
 
-impl WriteSentryScope for FileId {
+impl WriteSentryScope for SourceFileId {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.source().write_sentry_scope(scope);
     }
@@ -463,7 +446,7 @@ pub struct ObjectFile {
     object_id: ObjectId,
     scope: Scope,
 
-    file_id: FileId,
+    file_id: SourceFileId,
     cache_key: CacheKey,
 
     /// The mmapped object.
@@ -598,7 +581,7 @@ impl ObjectsActor {
                 // collect into intermediate vector because of borrowing problems
                 .collect::<Vec<_>>(),
         )
-        .map(|file_ids: Vec<Vec<FileId>>| -> Vec<FileId> {
+        .map(|file_ids: Vec<Vec<SourceFileId>>| -> Vec<SourceFileId> {
             file_ids.into_iter().flatten().collect()
         });
 
@@ -678,7 +661,7 @@ fn prepare_downloads(
     source: &SourceConfig,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<SourceFileId>, Error = ObjectError>> {
     match *source {
         SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
@@ -691,18 +674,22 @@ fn prepare_downloads(
 }
 
 fn download_from_source(
-    file_id: &FileId,
+    file_id: &SourceFileId,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *file_id {
-        FileId::Sentry(ref source, ref file_id) => {
+        SourceFileId::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source.clone(), file_id)
         }
-        FileId::Http(ref source, ref file_id) => {
+        SourceFileId::Http(ref source, ref file_id) => {
             http::download_from_source(source.clone(), file_id)
         }
-        FileId::S3(ref source, ref file_id) => s3::download_from_source(source.clone(), file_id),
-        FileId::Gcs(ref source, ref file_id) => gcs::download_from_source(source.clone(), file_id),
-        FileId::Filesystem(ref source, ref file_id) => {
+        SourceFileId::S3(ref source, ref file_id) => {
+            s3::download_from_source(source.clone(), file_id)
+        }
+        SourceFileId::Gcs(ref source, ref file_id) => {
+            gcs::download_from_source(source.clone(), file_id)
+        }
+        SourceFileId::Filesystem(ref source, ref file_id) => {
             filesystem::download_from_source(source.clone(), file_id)
         }
     }

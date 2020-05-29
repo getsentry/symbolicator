@@ -14,7 +14,8 @@ use crate::utils::futures::RemoteThread;
 mod http;
 mod types;
 
-pub use self::types::{DownloadError, DownloadErrorKind, SentryFileId, SourceId, SourceLocation};
+pub use self::types::{DownloadError, DownloadErrorKind};
+pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
 
 /// A service which can download files from a [`SourceConfig`].
 ///
@@ -56,12 +57,12 @@ impl Downloader {
     /// [`DownloadError`]: types/struct.DownloadError.html
     pub fn download(
         &self,
-        source: SourceId,
+        source: SourceFileId,
         dest: PathBuf,
     ) -> Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
             match source {
-                SourceId::Http(source, loc) => {
+                SourceFileId::Http(source, loc) => {
                     http::download_source(source, loc, dest).compat().await
                 }
                 _ => Err(DownloadErrorKind::Tmp.into()),

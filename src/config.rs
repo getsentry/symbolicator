@@ -9,7 +9,7 @@ use log::LevelFilter;
 use sentry::internals::Dsn;
 use serde::Deserialize;
 
-use crate::types::SourceConfig;
+use crate::sources::SourceConfig;
 
 #[derive(Debug, Fail, derive_more::From)]
 pub enum ConfigError {

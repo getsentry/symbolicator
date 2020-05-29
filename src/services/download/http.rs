@@ -19,8 +19,8 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use super::types::{DownloadError, DownloadErrorKind, SourceLocation};
-use crate::types::HttpSourceConfig;
+use super::types::{DownloadError, DownloadErrorKind};
+use crate::sources::{HttpSourceConfig, SourceLocation};
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
