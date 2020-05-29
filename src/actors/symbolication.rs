@@ -680,7 +680,20 @@ fn symbolicate_frame(
             }
         };
 
+        // There are a few languages that we should always be able to demangle. Only complain about
+        // those but silently ignore the rest.
         let lang = line_info.language();
+        let should_demangle = matches!(lang, Language::Cpp | Language::Rust | Language::Swift);
+        let demangled_opt = line_info.function_name().demangle(DEMANGLE_OPTIONS);
+        if should_demangle && demangled_opt.is_none() {
+            sentry::with_scope(
+                |scope| scope.set_extra("identifier", line_info.function_name().to_string().into()),
+                || {
+                    let message = format!("Failed to demangle {} identifier", lang);
+                    sentry::capture_message(&message, sentry::Level::Error);
+                },
+            );
+        }
 
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
@@ -696,12 +709,10 @@ fn symbolicate_frame(
                 } else {
                     frame.abs_path.clone()
                 },
-                function: Some(
-                    line_info
-                        .function_name()
-                        .try_demangle(DEMANGLE_OPTIONS)
-                        .into_owned(),
-                ),
+                function: Some(match demangled_opt {
+                    Some(demangled) => demangled,
+                    None => line_info.function_name().to_string(),
+                }),
                 filename: if !filename.is_empty() {
                     Some(filename)
                 } else {
