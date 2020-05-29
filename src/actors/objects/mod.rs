@@ -135,7 +135,11 @@ impl CacheItemRequest for FetchFileMetaRequest {
         }
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+        download_svc: Arc<crate::services::download::Downloader>,
+    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
 
@@ -226,7 +230,11 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+        download_svc: Arc<crate::services::download::Downloader>,
+    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
@@ -512,10 +520,15 @@ pub struct ObjectsActor {
 }
 
 impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: ThreadPool) -> Self {
+    pub fn new(
+        meta_cache: Cache,
+        data_cache: Cache,
+        threadpool: ThreadPool,
+        download_svc: Arc<crate::services::download::Downloader>,
+    ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache)),
-            data_cache: Arc::new(Cacher::new(data_cache)),
+            meta_cache: Arc::new(Cacher::new(meta_cache, download_svc.clone())),
+            data_cache: Arc::new(Cacher::new(data_cache, download_svc)),
             threadpool,
         }
     }

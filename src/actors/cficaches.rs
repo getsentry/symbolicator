@@ -60,9 +60,14 @@ pub struct CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
+    pub fn new(
+        cache: Cache,
+        objects: ObjectsActor,
+        threadpool: ThreadPool,
+        download_svc: Arc<crate::services::download::Downloader>,
+    ) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache)),
+            cficaches: Arc::new(Cacher::new(cache, download_svc)),
             objects,
             threadpool,
         }
@@ -113,7 +118,11 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+        download_svc: Arc<crate::services::download::Downloader>,
+    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
