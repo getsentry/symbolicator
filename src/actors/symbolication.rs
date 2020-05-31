@@ -680,16 +680,23 @@ fn symbolicate_frame(
             }
         };
 
-        // There are a few languages that we should always be able to demangle. Only complain about
-        // those but silently ignore the rest.
-        let lang = line_info.language();
-        let should_demangle = matches!(lang, Language::Cpp | Language::Rust | Language::Swift);
-        let demangled_opt = line_info.function_name().demangle(DEMANGLE_OPTIONS);
+        let name = line_info.function_name();
+
+        // Detect the language from the bare name, ignoring any pre-set language. There are a few
+        // languages that we should always be able to demangle. Only complain about those that we
+        // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
+        // reported as C++, which are expected not to demangle.
+        let should_demangle = matches!(
+            Name::new(name.as_str()).detect_language(),
+            Language::Cpp | Language::Rust | Language::Swift
+        );
+
+        let demangled_opt = name.demangle(DEMANGLE_OPTIONS);
         if should_demangle && demangled_opt.is_none() {
             sentry::with_scope(
-                |scope| scope.set_extra("identifier", line_info.function_name().to_string().into()),
+                |scope| scope.set_extra("identifier", name.to_string().into()),
                 || {
-                    let message = format!("Failed to demangle {} identifier", lang);
+                    let message = format!("Failed to demangle {} identifier", line_info.language());
                     sentry::capture_message(&message, sentry::Level::Error);
                 },
             );
@@ -711,7 +718,7 @@ fn symbolicate_frame(
                 },
                 function: Some(match demangled_opt {
                     Some(demangled) => demangled,
-                    None => line_info.function_name().to_string(),
+                    None => name.into_cow().into_owned(),
                 }),
                 filename: if !filename.is_empty() {
                     Some(filename)
@@ -725,10 +732,9 @@ fn symbolicate_frame(
                 sym_addr: Some(HexValue(
                     object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
-                lang: if lang != Language::Unknown {
-                    Some(lang)
-                } else {
-                    frame.lang
+                lang: match line_info.language() {
+                    Language::Unknown => None,
+                    language => Some(language),
                 },
                 trust: frame.trust,
             },
