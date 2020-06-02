@@ -680,7 +680,27 @@ fn symbolicate_frame(
             }
         };
 
-        let lang = line_info.language();
+        let name = line_info.function_name();
+
+        // Detect the language from the bare name, ignoring any pre-set language. There are a few
+        // languages that we should always be able to demangle. Only complain about those that we
+        // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
+        // reported as C++, which are expected not to demangle.
+        let should_demangle = matches!(
+            Name::new(name.as_str()).detect_language(),
+            Language::Cpp | Language::Rust | Language::Swift
+        );
+
+        let demangled_opt = name.demangle(DEMANGLE_OPTIONS);
+        if should_demangle && demangled_opt.is_none() {
+            sentry::with_scope(
+                |scope| scope.set_extra("identifier", name.to_string().into()),
+                || {
+                    let message = format!("Failed to demangle {} identifier", line_info.language());
+                    sentry::capture_message(&message, sentry::Level::Error);
+                },
+            );
+        }
 
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
@@ -696,12 +716,10 @@ fn symbolicate_frame(
                 } else {
                     frame.abs_path.clone()
                 },
-                function: Some(
-                    line_info
-                        .function_name()
-                        .try_demangle(DEMANGLE_OPTIONS)
-                        .into_owned(),
-                ),
+                function: Some(match demangled_opt {
+                    Some(demangled) => demangled,
+                    None => name.into_cow().into_owned(),
+                }),
                 filename: if !filename.is_empty() {
                     Some(filename)
                 } else {
@@ -714,10 +732,9 @@ fn symbolicate_frame(
                 sym_addr: Some(HexValue(
                     object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
-                lang: if lang != Language::Unknown {
-                    Some(lang)
-                } else {
-                    frame.lang
+                lang: match line_info.language() {
+                    Language::Unknown => None,
+                    language => Some(language),
                 },
                 trust: frame.trust,
             },
