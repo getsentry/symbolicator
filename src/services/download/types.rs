@@ -23,3 +23,12 @@ symbolic::common::derive_failure!(
     DownloadErrorKind,
     doc = "Errors happening while downloading from sources."
 );
+
+/// Completion status of a successful download request.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum DownloadStatus {
+    /// The download completed successfully and the file at the path can be used.
+    Completed,
+    /// The requested file was not found, there is no useful data at the provided path.
+    NotFound,
+}

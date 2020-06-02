@@ -19,7 +19,7 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use super::types::{DownloadError, DownloadErrorKind};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{HttpSourceConfig, SourceLocation};
 use crate::utils::http;
 
@@ -58,10 +58,8 @@ pub fn download_source(
     source: Arc<HttpSourceConfig>,
     location: SourceLocation,
     dest: PathBuf,
-) -> Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>> {
-    // ) -> Box<dyn Future<Item = PathBuf, Error = DownloadError> + Send + 'static> {
+) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     // All file I/O in this function is blocking!
-    let dest2 = dest.clone();
     let source2 = source.clone();
     let ret =
         download_from_source(source, &location).and_then(move |maybe_stream| match maybe_stream {
@@ -80,15 +78,15 @@ pub fn download_source(
                             .map_err(DownloadError::from)
                             .map(|_| file)
                     })
-                    .and_then(|_| Ok(Some(dest2)));
-                Box::new(fut) as Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>>
+                    .and_then(|_| Ok(DownloadStatus::Completed));
+                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
             }
             None => {
-                let fut = future::ok(None);
-                Box::new(fut) as Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>>
+                let fut = future::ok(DownloadStatus::NotFound);
+                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
             }
         });
-    Box::new(ret) as Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError>>
+    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
 }
 
 // The actors::objects::http::download_from_source with minimal changes.
@@ -173,15 +171,8 @@ fn download_from_source(
 mod tests {
     use super::*;
 
-    use std::collections::BTreeMap;
-
-    use futures::compat::Future01CompatExt;
-    use futures::{FutureExt, TryFutureExt};
-    use url::Url;
-
+    use crate::sources::SourceConfig;
     use crate::test;
-    use crate::types::SourceConfig;
-    use crate::utils::futures::{RemoteCanceled, RemoteThread};
 
     #[test]
     fn test_download_source() {
@@ -198,7 +189,7 @@ mod tests {
         let loc = SourceLocation::new("hello.txt");
 
         let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
-        assert_eq!(ret.unwrap(), Some(dest.clone()));
+        assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
     }
@@ -218,6 +209,6 @@ mod tests {
         let loc = SourceLocation::new("i-do-not-exist");
 
         let ret = test::block_fn(|| download_source(http_source, loc, dest));
-        assert_eq!(ret.unwrap(), None);
+        assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
 }

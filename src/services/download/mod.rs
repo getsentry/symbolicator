@@ -14,7 +14,7 @@ use crate::utils::futures::RemoteThread;
 mod http;
 mod types;
 
-pub use self::types::{DownloadError, DownloadErrorKind};
+pub use self::types::{DownloadError, DownloadErrorKind, DownloadStatus};
 pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
 
 /// A service which can download files from a [`SourceConfig`].
@@ -59,7 +59,7 @@ impl Downloader {
         &self,
         source: SourceFileId,
         dest: PathBuf,
-    ) -> Box<dyn Future<Item = Option<PathBuf>, Error = DownloadError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
             match source {
                 SourceFileId::Http(source, loc) => {
@@ -82,8 +82,8 @@ mod tests {
     // ensure the service interface works correctly.
     use super::*;
 
+    use crate::sources::SourceConfig;
     use crate::test;
-    use crate::types::SourceConfig;
 
     #[test]
     fn test_download() {
@@ -94,13 +94,15 @@ mod tests {
 
         let (_srv, source) = test::symbol_server();
         let source_id = match source {
-            SourceConfig::Http(source) => SourceId::Http(source, SourceLocation::new("hello.txt")),
+            SourceConfig::Http(source) => {
+                SourceFileId::Http(source, SourceLocation::new("hello.txt"))
+            }
             _ => panic!("unexpected source"),
         };
 
         let dl_svc = Downloader::new(RemoteThread::new());
         let ret = test::block_fn(|| dl_svc.download(source_id, dest.clone()));
-        assert_eq!(ret.unwrap(), Some(dest.clone()));
+        assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
     }
