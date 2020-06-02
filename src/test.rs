@@ -25,7 +25,7 @@ use actix_web::fs::StaticFiles;
 use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
-use crate::types::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
+use crate::sources::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
 
 pub use actix_web::test::*;
 pub use tempfile::TempDir;
