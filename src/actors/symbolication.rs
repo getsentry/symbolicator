@@ -686,10 +686,13 @@ fn symbolicate_frame(
         // languages that we should always be able to demangle. Only complain about those that we
         // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
         // reported as C++, which are expected not to demangle.
-        let should_demangle = matches!(
-            Name::new(name.as_str()).detect_language(),
-            Language::Cpp | Language::Rust | Language::Swift
-        );
+        let detected_language = Name::new(name.as_str()).detect_language();
+        let should_demangle = match (line_info.language(), detected_language) {
+            (_, Language::Unknown) => false, // can't demangle what we cannot detect
+            (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
+            (Language::Unknown, _) => true,  // if there was no language, then rely on detection
+            (lang, detected) => lang == detected, // avoid false-positive detections
+        };
 
         let demangled_opt = name.demangle(DEMANGLE_OPTIONS);
         if should_demangle && demangled_opt.is_none() {
