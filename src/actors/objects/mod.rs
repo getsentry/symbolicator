@@ -1,6 +1,6 @@
 use std::cmp;
 use std::fs;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
@@ -13,8 +13,7 @@ use ::sentry::integrations::failure::capture_fail;
 
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
-use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
-use futures01::{future, Future, IntoFuture, Stream};
+use futures01::{future, Future, Stream};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
@@ -70,6 +69,17 @@ symbolic::common::derive_failure!(
 impl From<io::Error> for ObjectError {
     fn from(e: io::Error) -> Self {
         e.context(ObjectErrorKind::Io).into()
+    }
+}
+
+impl From<crate::services::download::DownloadError> for ObjectError {
+    fn from(source: crate::services::download::DownloadError) -> Self {
+        match source.kind() {
+            crate::services::download::DownloadErrorKind::Canceled => {
+                source.context(ObjectErrorKind::Canceled).into()
+            }
+            _ => source.context(ObjectErrorKind::Io).into(),
+        }
     }
 }
 
@@ -238,7 +248,6 @@ impl CacheItemRequest for FetchFileDataRequest {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
-        let request = download_from_source(&self.0.file_id);
         let path = path.to_owned();
         let threadpool = self.0.threadpool.clone();
         let object_id = self.0.object_id.clone();
@@ -248,131 +257,80 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.write_sentry_scope(scope);
         });
 
-        let result = request.and_then(move |payload| {
-            if let Some(payload) = payload {
-                let download_dir =
-                    tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
+        let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
+        let download_file =
+            tryf!(NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io));
+        let request = download_svc
+            .download(self.0.file_id.clone(), download_file.path().to_owned())
+            .map_err(Into::into);
 
-                let download_file = match payload {
-                    DownloadStream::FutureStream(stream) => {
-                        log::trace!("Downloading file for {}", cache_key);
-
-                        let named_download_file = tryf!(
-                            NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io)
-                        );
-
-                        let file = tryf!(named_download_file.reopen().context(ObjectErrorKind::Io));
-
-                        let future = stream
-                            .fold(
-                                file,
-                                clone!(threadpool, |mut file, chunk| {
-                                    threadpool
-                                        .spawn_handle(async move {
-                                            file.write_all(&chunk).map(|_| file)
-                                        })
-                                        .boxed_local()
-                                        .compat()
-                                        .map_err(|_| io::Error::from(io::ErrorKind::Other))
-                                        .flatten()
-                                }),
-                            )
-                            .map(move |_| DownloadedFile::Temp(named_download_file));
-
-                        future::Either::A(future)
-                    }
-                    DownloadStream::File(path) => {
-                        log::trace!("Importing downloaded file for {}", cache_key);
-
-                        let future = fs::File::open(&path)
-                            .map(|file| DownloadedFile::Local(path.clone(), file))
-                            .context(ObjectErrorKind::Io)
-                            .map_err(ObjectError::from)
-                            .into_future();
-
-                        future::Either::B(future)
-                    }
-                };
-
-                let future = download_file.and_then(clone!(threadpool, |download_file| {
+        let result = request.and_then(move |status| -> Result<CacheStatus, ObjectError> {
+            match status {
+                crate::services::download::DownloadStatus::Completed => {
                     log::trace!("Finished download of {}", cache_key);
-                    let future = future::lazy(move || {
-                        let decompress_result = decompress_object_file(
-                            &cache_key,
-                            download_file.path(),
-                            download_file.reopen().context(ObjectErrorKind::Io)?,
-                            tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
-                        );
+                    let decompress_result = decompress_object_file(
+                        &cache_key,
+                        download_file.path(),
+                        download_file.reopen().context(ObjectErrorKind::Io)?,
+                        tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
+                    );
 
-                        // Treat decompression errors as malformed files. It is more likely that
-                        // the error comes from a corrupt file than a local file system error.
-                        let mut decompressed = match decompress_result {
-                            Ok(decompressed) => decompressed,
-                            Err(_) => return Ok(CacheStatus::Malformed),
+                    // Treat decompression errors as malformed files. It is more likely that
+                    // the error comes from a corrupt file than a local file system error.
+                    let mut decompressed = match decompress_result {
+                        Ok(decompressed) => decompressed,
+                        Err(_) => return Ok(CacheStatus::Malformed),
+                    };
+
+                    // Seek back to the start and parse this object to we can deal with it.
+                    // Since objects in Sentry (and potentially also other sources) might be
+                    // multi-arch files (e.g. FatMach), we parse as Archive and try to
+                    // extract the wanted file.
+                    decompressed
+                        .seek(SeekFrom::Start(0))
+                        .context(ObjectErrorKind::Io)?;
+                    let view = ByteView::map_file(decompressed)?;
+                    let archive = match Archive::parse(&view) {
+                        Ok(archive) => archive,
+                        Err(_) => {
+                            return Ok(CacheStatus::Malformed);
+                        }
+                    };
+                    let mut persist_file = fs::File::create(&path).context(ObjectErrorKind::Io)?;
+                    if archive.is_multi() {
+                        let object_opt = archive
+                            .objects()
+                            .filter_map(Result::ok)
+                            .find(|object| objects::match_id(&object, &object_id));
+
+                        // If we do not find the desired object in this archive - either
+                        // because we can't parse any of the objects within, or because none
+                        // of the objects match the identifier we're looking for - we return
+                        // early.
+                        let object = match object_opt {
+                            Some(object) => object,
+                            None => return Ok(CacheStatus::Negative),
                         };
 
-                        // Seek back to the start and parse this object to we can deal with it.
-                        // Since objects in Sentry (and potentially also other sources) might be
-                        // multi-arch files (e.g. FatMach), we parse as Archive and try to
-                        // extract the wanted file.
-                        decompressed
-                            .seek(SeekFrom::Start(0))
+                        io::copy(&mut object.data(), &mut persist_file)
                             .context(ObjectErrorKind::Io)?;
-                        let view = ByteView::map_file(decompressed)?;
-                        let archive = match Archive::parse(&view) {
-                            Ok(archive) => archive,
-                            Err(_) => {
-                                return Ok(CacheStatus::Malformed);
-                            }
-                        };
-
-                        let mut persist_file =
-                            fs::File::create(&path).context(ObjectErrorKind::Io)?;
-
-                        if archive.is_multi() {
-                            let object_opt = archive
-                                .objects()
-                                .filter_map(Result::ok)
-                                .find(|object| objects::match_id(&object, &object_id));
-
-                            // If we do not find the desired object in this archive - either
-                            // because we can't parse any of the objects within, or because none
-                            // of the objects match the identifier we're looking for - we return
-                            // early.
-                            let object = match object_opt {
-                                Some(object) => object,
-                                None => return Ok(CacheStatus::Negative),
-                            };
-
-                            io::copy(&mut object.data(), &mut persist_file)
-                                .context(ObjectErrorKind::Io)?;
-                        } else {
-                            // Attempt to parse the object to capture errors. The result can be
-                            // discarded as the object's data is the entire ByteView.
-                            if archive.object_by_index(0).is_err() {
-                                return Ok(CacheStatus::Malformed);
-                            }
-
-                            io::copy(&mut view.as_ref(), &mut persist_file)
-                                .context(ObjectErrorKind::Io)?;
+                    } else {
+                        // Attempt to parse the object to capture errors. The result can be
+                        // discarded as the object's data is the entire ByteView.
+                        if archive.object_by_index(0).is_err() {
+                            return Ok(CacheStatus::Malformed);
                         }
 
-                        Ok(CacheStatus::Positive)
-                    });
+                        io::copy(&mut view.as_ref(), &mut persist_file)
+                            .context(ObjectErrorKind::Io)?;
+                    }
 
-                    threadpool
-                        .spawn_handle(future.sentry_hub_current().compat())
-                        .boxed_local()
-                        .compat()
-                        .map_err(|_| ObjectError::from(ObjectErrorKind::Canceled))
-                        .flatten()
-                }));
-
-                Box::new(future) as Box<dyn Future<Item = _, Error = _>>
-            } else {
-                log::debug!("No debug file found for {}", cache_key);
-                Box::new(Ok(CacheStatus::Negative).into_future())
-                    as Box<dyn Future<Item = _, Error = _>>
+                    Ok(CacheStatus::Positive)
+                }
+                crate::services::download::DownloadStatus::NotFound => {
+                    log::debug!("No debug file found for {}", cache_key);
+                    Ok(CacheStatus::Negative)
+                }
             }
         });
 
