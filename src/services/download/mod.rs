@@ -89,6 +89,12 @@ mod tests {
     fn test_download() {
         test::setup();
 
+        // test::setup() enables logging, but this test spawns a thread where
+        // logging is not captured.  For normal test runs we don't want to
+        // pollute the stdout so silence logs here.  When debugging this test
+        // you may want to temporarily remove this.
+        log::set_max_level(log::LevelFilter::Off);
+
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();
 
