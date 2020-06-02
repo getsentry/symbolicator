@@ -211,4 +211,56 @@ mod tests {
         let ret = test::block_fn(|| download_source(http_source, loc, dest));
         assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
+
+    #[test]
+    fn test_join_empty() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("")).unwrap();
+        assert_eq!(joined, "https://example.org/base".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_space() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo bar")).unwrap();
+        assert_eq!(
+            joined,
+            "https://example.org/base/foo%20bar".parse().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_join_multiple() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo/bar")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo/bar".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_trailing_slash() {
+        let base = Url::parse("https://example.org/base/").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_leading_slash() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("/foo")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_multi_slash() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo//bar")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo/bar".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_absolute() {
+        let base = Url::parse("https://example.org/").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo")).unwrap();
+        assert_eq!(joined, "https://example.org/foo".parse().unwrap());
+    }
 }

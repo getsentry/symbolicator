@@ -148,7 +148,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     fn compute(
         &self,
         path: &Path,
-        download_svc: Arc<crate::services::download::Downloader>,
+        _download_svc: Arc<crate::services::download::Downloader>,
     ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -203,35 +203,6 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 }
 
-/// The result of a remote file download operation.
-enum DownloadedFile {
-    /// A locally stored file.
-    Local(PathBuf, fs::File),
-    /// A downloaded file stored in a temp location.
-    Temp(NamedTempFile),
-}
-
-impl DownloadedFile {
-    /// Gets the file system path of the downloaded file.
-    ///
-    /// Note that the path is only guaranteed to be valid until this instance of `DownloadedFile` is
-    /// dropped. After that, a temporary file may get deleted in the file system.
-    fn path(&self) -> &Path {
-        match self {
-            DownloadedFile::Local(path, _) => &path,
-            DownloadedFile::Temp(named) => named.path(),
-        }
-    }
-
-    /// Gets a file handle to the downloaded file.
-    fn reopen(&self) -> io::Result<fs::File> {
-        match self {
-            DownloadedFile::Local(_, file) => file.try_clone(),
-            DownloadedFile::Temp(named) => named.reopen(),
-        }
-    }
-}
-
 impl CacheItemRequest for FetchFileDataRequest {
     type Item = ObjectFile;
     type Error = ObjectError;
@@ -249,7 +220,6 @@ impl CacheItemRequest for FetchFileDataRequest {
         log::trace!("Fetching file data for {}", cache_key);
 
         let path = path.to_owned();
-        let threadpool = self.0.threadpool.clone();
         let object_id = self.0.object_id.clone();
 
         configure_scope(|scope| {
@@ -651,8 +621,9 @@ fn download_from_source(
         SourceFileId::Sentry(ref source, ref file_id) => {
             sentry::download_from_source(source.clone(), file_id)
         }
-        SourceFileId::Http(ref source, ref file_id) => {
-            http::download_from_source(source.clone(), file_id)
+        SourceFileId::Http(_, _) => {
+            // This code is removed.
+            Box::new(future::err(ObjectErrorKind::Canceled.into()))
         }
         SourceFileId::S3(ref source, ref file_id) => {
             s3::download_from_source(source.clone(), file_id)

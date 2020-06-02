@@ -112,10 +112,6 @@ impl ServiceState {
     pub fn config(&self) -> Arc<Config> {
         self.config.clone()
     }
-
-    pub fn download_svc(&self) -> Arc<crate::services::download::Downloader> {
-        self.download_svc.clone()
-    }
 }
 
 /// Typedef for the application type.

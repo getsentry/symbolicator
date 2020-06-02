@@ -121,7 +121,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     fn compute(
         &self,
         path: &Path,
-        download_svc: Arc<crate::services::download::Downloader>,
+        _download_svc: Arc<crate::services::download::Downloader>,
     ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self
