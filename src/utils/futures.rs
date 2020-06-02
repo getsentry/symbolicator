@@ -83,16 +83,37 @@ impl ThreadPool {
 ///
 /// This can be used to implement any services which internally need to use
 /// non-`Send`able futures and are sufficient with running on single thread.
+///
+/// When the global `IS_TEST` is set by calling [`enable_test_mode`] this will
+/// not create a new thread and instead spawn any executions in the current
+/// thread.  This is a workaround for the stdout and panic capturing not being
+/// exposed properly to the test framework users which stops us from enabling
+/// these things in spawned threads during tests.
+///
+/// [`enable_test_mode`]: func.enable_test_mode.html
 #[derive(Clone, Debug)]
 pub struct RemoteThread {
-    arbiter: actix::Addr<actix::Arbiter>,
+    arbiter: Option<actix::Addr<actix::Arbiter>>,
 }
 
 impl RemoteThread {
     /// Create a new instance, spawning the thread.
     pub fn new() -> Self {
+        let arbiter = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
+            None
+        } else {
+            Some(actix::Arbiter::new("RemoteThread"))
+        };
+        Self { arbiter }
+    }
+
+    /// Create a new instance, even when running in test mode.
+    ///
+    /// Some tests actually need to test this stuff works, support that.
+    #[cfg(test)]
+    pub fn new_threaded() -> Self {
         Self {
-            arbiter: actix::Arbiter::new("RemoteThread"),
+            arbiter: Some(actix::Arbiter::new("RemoteThread")),
         }
     }
 
@@ -116,7 +137,13 @@ impl RemoteThread {
             actix::spawn(fut01);
             Ok(())
         });
-        self.arbiter.do_send(msg);
+        match self.arbiter {
+            Some(ref arbiter) => arbiter.do_send(msg),
+            None => {
+                let arbiter = actix::Arbiter::current();
+                arbiter.do_send(msg);
+            }
+        }
         rx
     }
 }
