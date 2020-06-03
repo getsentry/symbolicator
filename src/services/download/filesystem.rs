@@ -15,11 +15,6 @@ use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{FilesystemSourceConfig, SourceLocation};
 
 /// Download from a filesystem source.
-///
-/// The file is saved in `dest` and will be written incrementally to it.  Once
-/// this successfully returns the file will be completely written.  If this
-/// completes with an error return any data in the file is to be considered
-/// garbage.
 pub fn download_source(
     source: Arc<FilesystemSourceConfig>,
     location: SourceLocation,

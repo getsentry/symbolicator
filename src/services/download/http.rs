@@ -50,6 +50,10 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
 /// this successfully returns the file will be completely written.  If this
 /// completes with an error return any data in the file is to be considered
 /// garbage.
+///
+/// See [`Downloader::download`] for futher details of these semantics.
+///
+/// [`Downloader::download`]: ../struct.Downloader.html#method.download
 pub fn download_source(
     source: Arc<HttpSourceConfig>,
     location: SourceLocation,

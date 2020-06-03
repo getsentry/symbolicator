@@ -44,7 +44,7 @@ impl rusoto_core::DispatchSignedRequest for SharedHttpClient {
 ///
 /// See [`Downloader::download`] for the semantics of the file being written at `dest`.
 ///
-/// ['Downloader::download`]: ../func.download.html
+/// [`Downloader::download`]: ../struct.Downloader.html#method.download
 pub fn download_source(
     source: Arc<S3SourceConfig>,
     location: SourceLocation,
