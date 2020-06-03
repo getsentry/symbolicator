@@ -630,8 +630,9 @@ fn download_from_source(
             // This code is removed.
             Box::new(future::err(ObjectErrorKind::Canceled.into()))
         }
-        SourceFileId::Gcs(ref source, ref file_id) => {
-            gcs::download_from_source(source.clone(), file_id)
+        SourceFileId::Gcs(_, _) => {
+            // This code is removed.
+            Box::new(future::err(ObjectErrorKind::Canceled.into()))
         }
         SourceFileId::Filesystem(ref source, ref file_id) => {
             filesystem::download_from_source(source.clone(), file_id)

@@ -12,6 +12,7 @@ use futures01::prelude::*;
 use crate::utils::futures::RemoteThread;
 
 mod clients;
+mod gcs;
 mod http;
 mod s3;
 mod sentry;
@@ -73,6 +74,9 @@ impl Downloader {
                 }
                 SourceFileId::S3(source, loc) => {
                     s3::download_source(source, loc, dest).compat().await
+                }
+                SourceFileId::Gcs(source, loc) => {
+                    gcs::download_source(source, loc, dest).compat().await
                 }
                 _ => Err(DownloadErrorKind::Tmp.into()),
             }
