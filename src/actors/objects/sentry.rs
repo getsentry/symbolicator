@@ -8,13 +8,13 @@ use actix::{Actor, Addr};
 
 use failure::Fail;
 use futures01::future::Either;
-use futures01::{Future, IntoFuture, Stream};
+use futures01::{Future, IntoFuture};
 use parking_lot::Mutex;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::actors::objects::{DownloadStream, ObjectError, ObjectErrorKind, USER_AGENT};
+use crate::actors::objects::{ObjectError, ObjectErrorKind, USER_AGENT};
 use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
 use crate::types::ObjectId;
 
@@ -147,70 +147,4 @@ pub(super) fn prepare_downloads(
     }));
 
     Box::new(entries)
-}
-
-pub(super) fn download_from_source(
-    source: Arc<SentrySourceConfig>,
-    file_id: &SentryFileId,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let download_url = {
-        let mut url = source.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.0);
-        url
-    };
-
-    log::debug!("Fetching debug file from {}", download_url);
-    let token = &source.token;
-    let response = clone!(token, download_url, || {
-        client::get(&download_url)
-            .with_connector((*CLIENT_CONNECTOR).clone())
-            .header("User-Agent", USER_AGENT)
-            .header("Authorization", format!("Bearer {}", token))
-            // This timeout is for the entire HTTP download *including* the response stream
-            // itself, in contrast to what the Actix-Web docs say. We have tested this
-            // manually.
-            //
-            // The intent is to disable the timeout entirely, but there is no API for that.
-            .timeout(Duration::from_secs(9999))
-            .finish()
-            .unwrap()
-            .send()
-    });
-
-    let response = Retry::spawn(
-        ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        response,
-    );
-
-    let response = response.map_err(|e| match e {
-        tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
-    });
-
-    let response = response.then(move |result| match result {
-        Ok(response) => {
-            if response.status().is_success() {
-                log::trace!("Success hitting {}", download_url);
-                Ok(Some(DownloadStream::FutureStream(Box::new(
-                    response
-                        .payload()
-                        .map_err(|e| e.context(ObjectErrorKind::Io).into()),
-                )
-                    as Box<dyn Stream<Item = _, Error = _>>)))
-            } else {
-                log::debug!(
-                    "Unexpected status code from {}: {}",
-                    download_url,
-                    response.status()
-                );
-                Ok(None)
-            }
-        }
-        Err(e) => {
-            log::warn!("Skipping response from {}: {}", download_url, e);
-            Ok(None)
-        }
-    });
-
-    Box::new(response)
 }

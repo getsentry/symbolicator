@@ -2,33 +2,29 @@
 //!
 //! Specifically this supports the [`HttpSourceConfig`] source.
 //!
-//! [`HttpSourceConfig`]: ../../../types/struct.HttpSourceConfig.html
+//! [`HttpSourceConfig`]: ../../../sources/struct.HttpSourceConfig.html
 
-use actix_web::http::header;
-use actix_web::{client, HttpMessage};
-use bytes::Bytes;
-use failure::Fail;
-use failure::ResultExt;
-use futures01::future;
-use futures01::prelude::*;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+
+use actix_web::http::header;
+use actix_web::{client, HttpMessage};
+use failure::{Fail, ResultExt};
+use futures01::future;
+use futures01::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::clients::USER_AGENT;
+use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
 use crate::sources::{HttpSourceConfig, SourceLocation};
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
 const MAX_HTTP_REDIRECTS: usize = 10;
-
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
-
-type DownloadStream = Box<dyn Stream<Item = Bytes, Error = DownloadError>>;
 
 /// Joins the relative path to the given URL.
 ///

@@ -114,6 +114,12 @@ impl SentryFileId {
     }
 }
 
+impl fmt::Display for SentryFileId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Configuration for the Sentry-internal debug files endpoint.
 #[derive(Deserialize, Clone, Debug)]
 pub struct SentrySourceConfig {

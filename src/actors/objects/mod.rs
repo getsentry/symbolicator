@@ -618,8 +618,9 @@ fn download_from_source(
     file_id: &SourceFileId,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     match *file_id {
-        SourceFileId::Sentry(ref source, ref file_id) => {
-            sentry::download_from_source(source.clone(), file_id)
+        SourceFileId::Sentry(_, _) => {
+            // This code is removed.
+            Box::new(future::err(ObjectErrorKind::Canceled.into()))
         }
         SourceFileId::Http(_, _) => {
             // This code is removed.

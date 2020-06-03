@@ -32,3 +32,7 @@ pub enum DownloadStatus {
     /// The requested file was not found, there is no useful data at the provided path.
     NotFound,
 }
+
+/// Common (transitional) type in all downloaders.
+pub type DownloadStream =
+    Box<dyn futures01::stream::Stream<Item = bytes::Bytes, Error = DownloadError>>;

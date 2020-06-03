@@ -11,7 +11,9 @@ use futures01::prelude::*;
 
 use crate::utils::futures::RemoteThread;
 
+mod clients;
 mod http;
+mod sentry;
 mod types;
 
 pub use self::types::{DownloadError, DownloadErrorKind, DownloadStatus};
@@ -62,6 +64,9 @@ impl Downloader {
     ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
             match source {
+                SourceFileId::Sentry(source, loc) => {
+                    sentry::download_source(source, loc, dest).compat().await
+                }
                 SourceFileId::Http(source, loc) => {
                     http::download_source(source, loc, dest).compat().await
                 }
