@@ -14,8 +14,6 @@ pub enum DownloadErrorKind {
     Write,
     #[fail(display = "download was cancelled")]
     Canceled,
-    #[fail(display = "temporary fudge error, not to be committed")]
-    Tmp,
 }
 
 symbolic::common::derive_failure!(

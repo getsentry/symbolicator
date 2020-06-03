@@ -1,7 +1,6 @@
 //! Support to download from Google Cloud Storage buckets.
 //!
-//! Specifically this supports the [`GcsSourceConfig`] source, which allows
-//! to fetch files which were directly uploaded to Sentry itself.
+//! Specifically this supports the [`GcsSourceConfig`] source.
 //!
 //! [`GcsSourceConfig`]: ../../../sources/struct.GcsSourceConfig.html
 

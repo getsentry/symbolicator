@@ -1,7 +1,7 @@
 use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,9 +11,8 @@ use ::sentry::configure_scope;
 #[rustfmt::skip]
 use ::sentry::integrations::failure::capture_fail;
 
-use bytes::Bytes;
 use failure::{Fail, ResultExt};
-use futures01::{future, Future, Stream};
+use futures01::{future, Future};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
@@ -587,11 +586,6 @@ impl ObjectsActor {
     }
 }
 
-enum DownloadStream {
-    FutureStream(Box<dyn Stream<Item = Bytes, Error = ObjectError>>),
-    File(PathBuf),
-}
-
 /// Create a list of all DIF downloads to be attempted.
 ///
 /// Builds the list of download locations where the relevant Debug Information
@@ -610,32 +604,6 @@ fn prepare_downloads(
         SourceConfig::Gcs(ref source) => gcs::prepare_downloads(source, filetypes, object_id),
         SourceConfig::Filesystem(ref source) => {
             filesystem::prepare_downloads(source, filetypes, object_id)
-        }
-    }
-}
-
-fn download_from_source(
-    file_id: &SourceFileId,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    match *file_id {
-        SourceFileId::Sentry(_, _) => {
-            // This code is removed.
-            Box::new(future::err(ObjectErrorKind::Canceled.into()))
-        }
-        SourceFileId::Http(_, _) => {
-            // This code is removed.
-            Box::new(future::err(ObjectErrorKind::Canceled.into()))
-        }
-        SourceFileId::S3(_, _) => {
-            // This code is removed.
-            Box::new(future::err(ObjectErrorKind::Canceled.into()))
-        }
-        SourceFileId::Gcs(_, _) => {
-            // This code is removed.
-            Box::new(future::err(ObjectErrorKind::Canceled.into()))
-        }
-        SourceFileId::Filesystem(ref source, ref file_id) => {
-            filesystem::download_from_source(source.clone(), file_id)
         }
     }
 }

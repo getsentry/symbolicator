@@ -12,6 +12,7 @@ use futures01::prelude::*;
 use crate::utils::futures::RemoteThread;
 
 mod clients;
+mod filesystem;
 mod gcs;
 mod http;
 mod s3;
@@ -78,7 +79,9 @@ impl Downloader {
                 SourceFileId::Gcs(source, loc) => {
                     gcs::download_source(source, loc, dest).compat().await
                 }
-                _ => Err(DownloadErrorKind::Tmp.into()),
+                SourceFileId::Filesystem(source, loc) => {
+                    filesystem::download_source(source, loc, dest)
+                }
             }
         });
         let fut01 = fut03

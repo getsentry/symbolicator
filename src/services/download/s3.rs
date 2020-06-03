@@ -1,7 +1,6 @@
 //! Support to download from S3 buckets.
 //!
-//! Specifically this supports the [`S3SourceConfig`] source, which allows
-//! to fetch files which were directly uploaded to Sentry itself.
+//! Specifically this supports the [`S3SourceConfig`] source.
 //!
 //! [`S3SourceConfig`]: ../../../sources/struct.S3SourceConfig.html
 
