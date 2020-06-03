@@ -13,6 +13,7 @@ use crate::utils::futures::RemoteThread;
 
 mod clients;
 mod http;
+mod s3;
 mod sentry;
 mod types;
 
@@ -69,6 +70,9 @@ impl Downloader {
                 }
                 SourceFileId::Http(source, loc) => {
                     http::download_source(source, loc, dest).compat().await
+                }
+                SourceFileId::S3(source, loc) => {
+                    s3::download_source(source, loc, dest).compat().await
                 }
                 _ => Err(DownloadErrorKind::Tmp.into()),
             }
