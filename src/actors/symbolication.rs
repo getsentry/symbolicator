@@ -1564,7 +1564,7 @@ impl SymbolicationActor {
             .flatten();
 
         Box::new(future_metrics!(
-            "minidump_stackwalk",
+            "parse_apple_crash_report",
             Some((
                 Duration::from_secs(1200),
                 SymbolicationErrorKind::Timeout.into()
