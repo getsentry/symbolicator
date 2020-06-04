@@ -121,6 +121,8 @@ pub fn download_stream(
 mod tests {
     use super::*;
 
+    use super::super::download_stream_fut;
+    use super::super::types::DownloadStatus;
     use crate::sources::SourceConfig;
     use crate::test;
 
@@ -138,7 +140,10 @@ mod tests {
         };
         let loc = SourceLocation::new("hello.txt");
 
-        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
+        let ret = test::block_fn(|| {
+            let stream = download_stream(http_source, &loc);
+            download_stream_fut("test".to_string(), stream, dest.clone())
+        });
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -158,7 +163,10 @@ mod tests {
         };
         let loc = SourceLocation::new("i-do-not-exist");
 
-        let ret = test::block_fn(|| download_source(http_source, loc, dest));
+        let ret = test::block_fn(|| {
+            let stream = download_stream(http_source, &loc);
+            download_stream_fut("test".to_string(), stream, dest.clone())
+        });
         assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
 
