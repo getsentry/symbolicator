@@ -5,71 +5,25 @@
 //!
 //! [`SentrySourceConfig`]: ../../../sources/struct.SentrySourceConfig.html
 
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use actix::{Actor, Addr};
 use actix_web::client::ClientConnector;
 use actix_web::{client, HttpMessage};
-use failure::{Fail, ResultExt};
-use futures01::future;
+use failure::Fail;
 use futures01::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
-use super::clients::USER_AGENT;
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStream, USER_AGENT};
 use crate::sources::{SentryFileId, SentrySourceConfig};
 
 lazy_static::lazy_static! {
-    // static ref SENTRY_SEARCH_RESULTS: Mutex<lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>> =
-    //     Mutex::new(lru::LruCache::new(100_000));
     static ref CLIENT_CONNECTOR: Addr<ClientConnector> = ClientConnector::default().start();
 }
 
-/// Download from a Sentry source.
-///
-/// See [`Downloader::download`] for the semantics of the file being written at `dest`.
-///
-/// [`Downloader::download`]: ../struct.Downloader.html#method.download
-pub fn download_source(
-    source: Arc<SentrySourceConfig>,
-    location: SentryFileId,
-    dest: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
-    // All file I/O in this function is blocking!
-    let source2 = source.clone();
-    let ret =
-        download_from_source(source, &location).and_then(move |maybe_stream| match maybe_stream {
-            Some(stream) => {
-                log::trace!(
-                    "Downloading file for Sentry source {id} location {loc}",
-                    id = source2.id,
-                    loc = location
-                );
-                let file =
-                    tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
-                let fut = stream
-                    .fold(file, |mut file, chunk| {
-                        file.write_all(chunk.as_ref())
-                            .context(DownloadErrorKind::Write)
-                            .map_err(DownloadError::from)
-                            .map(|_| file)
-                    })
-                    .and_then(|_| Ok(DownloadStatus::Completed));
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-            None => {
-                let fut = future::ok(DownloadStatus::NotFound);
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-        });
-    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-}
-
-fn download_from_source(
+pub fn download_stream(
     source: Arc<SentrySourceConfig>,
     file_id: &SentryFileId,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {

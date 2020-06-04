@@ -4,14 +4,11 @@
 //!
 //! [`GcsSourceConfig`]: ../../../sources/struct.GcsSourceConfig.html
 
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::{Fail, ResultExt};
-use futures01::future;
 use futures01::prelude::*;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -19,7 +16,7 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStream};
 use crate::sources::{GcsSourceConfig, GcsSourceKey, SourceLocation};
 
 lazy_static::lazy_static! {
@@ -55,46 +52,6 @@ struct GcsTokenResponse {
 struct GcsToken {
     access_token: String,
     expires_at: DateTime<Utc>,
-}
-
-/// Download from a Google Cloud Storage source.
-///
-/// See [`Downloader::download`] for the semantics of the file being written at `dest`.
-///
-/// [`Downloader::download`]: ../struct.Downloader.html#method.download
-pub fn download_source(
-    source: Arc<GcsSourceConfig>,
-    location: SourceLocation,
-    dest: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
-    // All file I/O in this function is blocking!
-    let source2 = source.clone();
-    let ret =
-        download_from_source(source, &location).and_then(move |maybe_stream| match maybe_stream {
-            Some(stream) => {
-                log::trace!(
-                    "Downloading file for HTTP source {id} location {loc}",
-                    id = source2.id,
-                    loc = location
-                );
-                let file =
-                    tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
-                let fut = stream
-                    .fold(file, |mut file, chunk| {
-                        file.write_all(chunk.as_ref())
-                            .context(DownloadErrorKind::Write)
-                            .map_err(DownloadError::from)
-                            .map(|_| file)
-                    })
-                    .and_then(|_| Ok(DownloadStatus::Completed));
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-            None => {
-                let fut = future::ok(DownloadStatus::NotFound);
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-        });
-    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
 }
 
 fn key_from_string(mut s: &str) -> Result<Vec<u8>, DownloadError> {
@@ -186,7 +143,7 @@ fn get_token(
     }))
 }
 
-fn download_from_source(
+pub fn download_stream(
     source: Arc<GcsSourceConfig>,
     download_path: &SourceLocation,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {

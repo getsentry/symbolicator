@@ -181,10 +181,28 @@ impl FilesystemSourceConfig {
 #[derive(Debug, Clone)]
 pub enum SourceFileId {
     Sentry(Arc<SentrySourceConfig>, SentryFileId),
+    Http(Arc<HttpSourceConfig>, SourceLocation),
     S3(Arc<S3SourceConfig>, SourceLocation),
     Gcs(Arc<GcsSourceConfig>, SourceLocation),
-    Http(Arc<HttpSourceConfig>, SourceLocation),
     Filesystem(Arc<FilesystemSourceConfig>, SourceLocation),
+}
+
+impl fmt::Display for SourceFileId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SourceFileId::Sentry(cfg, id) => {
+                write!(f, "Sentry source '{}' file id '{}'", cfg.id, id)
+            }
+            SourceFileId::Http(cfg, loc) => {
+                write!(f, "HTTP source '{}' location '{}'", cfg.id, loc)
+            }
+            SourceFileId::S3(cfg, loc) => write!(f, "S3 source '{}' location '{}'", cfg.id, loc),
+            SourceFileId::Gcs(cfg, loc) => write!(f, "GCS source '{}' location '{}'", cfg.id, loc),
+            SourceFileId::Filesystem(cfg, loc) => {
+                write!(f, "Filesystem source '{}' location '{}'", cfg.id, loc)
+            }
+        }
+    }
 }
 
 /// Local helper to deserializes an S3 region string in `S3SourceKey`.

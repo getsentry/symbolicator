@@ -4,6 +4,9 @@
 
 use failure::Fail;
 
+/// HTTP User-Agent string to use.
+pub const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+
 #[derive(Debug, Fail, Clone)]
 pub enum DownloadErrorKind {
     #[fail(display = "failed to download")]

@@ -3,15 +3,18 @@
 //! The sources are described on
 //! [https://docs.sentry.io/workflow/debug-files/#symbol-servers](https://docs.sentry.io/workflow/debug-files/#symbol-servers)
 
+use std::io::Write;
 use std::path::PathBuf;
+use std::string::ToString;
 
+use failure::ResultExt;
 use futures::compat::Future01CompatExt;
 use futures::future::{FutureExt, TryFutureExt};
+use futures01::future;
 use futures01::prelude::*;
 
 use crate::utils::futures::RemoteThread;
 
-mod clients;
 mod filesystem;
 mod gcs;
 mod http;
@@ -19,7 +22,7 @@ mod s3;
 mod sentry;
 mod types;
 
-pub use self::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+pub use self::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
 pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
 
 /// A service which can download files from a [`SourceConfig`].
@@ -66,18 +69,23 @@ impl Downloader {
         dest: PathBuf,
     ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
+            let src_desc = source.to_string();
             match source {
                 SourceFileId::Sentry(source, loc) => {
-                    sentry::download_source(source, loc, dest).compat().await
+                    let stream = sentry::download_stream(source, &loc);
+                    download_stream_fut(src_desc, stream, dest).compat().await
                 }
                 SourceFileId::Http(source, loc) => {
-                    http::download_source(source, loc, dest).compat().await
+                    let stream = http::download_stream(source, &loc);
+                    download_stream_fut(src_desc, stream, dest).compat().await
                 }
                 SourceFileId::S3(source, loc) => {
-                    s3::download_source(source, loc, dest).compat().await
+                    let stream = s3::download_stream(source, &loc);
+                    download_stream_fut(src_desc, stream, dest).compat().await
                 }
                 SourceFileId::Gcs(source, loc) => {
-                    gcs::download_source(source, loc, dest).compat().await
+                    let stream = gcs::download_stream(source, &loc);
+                    download_stream_fut(src_desc, stream, dest).compat().await
                 }
                 SourceFileId::Filesystem(source, loc) => {
                     filesystem::download_source(source, loc, dest)
@@ -90,6 +98,38 @@ impl Downloader {
             .compat();
         Box::new(fut01)
     }
+}
+
+/// Download the source from a streaming future.
+///
+/// These streaming futures are currently implemented per source type.
+fn download_stream_fut(
+    source_desc: String,
+    stream: Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>>,
+    dest: PathBuf,
+) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
+    // All file I/O in this function is blocking!
+    let ret = stream.and_then(move |maybe_stream| match maybe_stream {
+        Some(stream) => {
+            log::trace!("Downloading from {}", source_desc);
+            let file =
+                tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
+            let fut = stream
+                .fold(file, |mut file, chunk| {
+                    file.write_all(chunk.as_ref())
+                        .context(DownloadErrorKind::Write)
+                        .map_err(DownloadError::from)
+                        .map(|_| file)
+                })
+                .and_then(|_| Ok(DownloadStatus::Completed));
+            Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
+        }
+        None => {
+            let fut = future::ok(DownloadStatus::NotFound);
+            Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
+        }
+    });
+    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
 }
 
 #[cfg(test)]

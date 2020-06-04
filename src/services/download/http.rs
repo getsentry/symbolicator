@@ -4,22 +4,19 @@
 //!
 //! [`HttpSourceConfig`]: ../../../sources/struct.HttpSourceConfig.html
 
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
-use failure::{Fail, ResultExt};
+use failure::Fail;
 use futures01::future;
 use futures01::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use super::clients::USER_AGENT;
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStream, USER_AGENT};
 use crate::sources::{HttpSourceConfig, SourceLocation};
 use crate::utils::http;
 
@@ -44,54 +41,7 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
     Ok(joined)
 }
 
-/// Download from an HTTP source.
-///
-/// The file is saved in `dest` and will be written incrementally to it.  Once
-/// this successfully returns the file will be completely written.  If this
-/// completes with an error return any data in the file is to be considered
-/// garbage.
-///
-/// See [`Downloader::download`] for futher details of these semantics.
-///
-/// [`Downloader::download`]: ../struct.Downloader.html#method.download
-pub fn download_source(
-    source: Arc<HttpSourceConfig>,
-    location: SourceLocation,
-    dest: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
-    // All file I/O in this function is blocking!
-    let source2 = source.clone();
-    let ret =
-        download_from_source(source, &location).and_then(move |maybe_stream| match maybe_stream {
-            Some(stream) => {
-                log::trace!(
-                    "Downloading file for HTTP source {id} location {loc}",
-                    id = source2.id,
-                    loc = location
-                );
-                let file =
-                    tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
-                let fut = stream
-                    .fold(file, |mut file, chunk| {
-                        file.write_all(chunk.as_ref())
-                            .context(DownloadErrorKind::Write)
-                            .map_err(DownloadError::from)
-                            .map(|_| file)
-                    })
-                    .and_then(|_| Ok(DownloadStatus::Completed));
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-            None => {
-                let fut = future::ok(DownloadStatus::NotFound);
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-        });
-    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-}
-
-// The actors::objects::http::download_from_source with minimal changes.
-// Item = None is 404
-fn download_from_source(
+pub fn download_stream(
     source: Arc<HttpSourceConfig>,
     download_path: &SourceLocation,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {

@@ -4,20 +4,16 @@
 //!
 //! [`S3SourceConfig`]: ../../../sources/struct.S3SourceConfig.html
 
-use std::io::Write;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use failure::ResultExt;
-use futures01::future;
 use futures01::prelude::*;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStream};
 use crate::sources::{S3SourceConfig, S3SourceKey, SourceLocation};
 
 lazy_static::lazy_static! {
@@ -40,46 +36,6 @@ impl rusoto_core::DispatchSignedRequest for SharedHttpClient {
     }
 }
 
-/// Download from an S3 source.
-///
-/// See [`Downloader::download`] for the semantics of the file being written at `dest`.
-///
-/// [`Downloader::download`]: ../struct.Downloader.html#method.download
-pub fn download_source(
-    source: Arc<S3SourceConfig>,
-    location: SourceLocation,
-    dest: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
-    // All file I/O in this function is blocking!
-    let source2 = source.clone();
-    let ret =
-        download_from_source(source, &location).and_then(move |maybe_stream| match maybe_stream {
-            Some(stream) => {
-                log::trace!(
-                    "Downloading file for Sentry source {id} location {loc}",
-                    id = source2.id,
-                    loc = location
-                );
-                let file =
-                    tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
-                let fut = stream
-                    .fold(file, |mut file, chunk| {
-                        file.write_all(chunk.as_ref())
-                            .context(DownloadErrorKind::Write)
-                            .map_err(DownloadError::from)
-                            .map(|_| file)
-                    })
-                    .and_then(|_| Ok(DownloadStatus::Completed));
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-            None => {
-                let fut = future::ok(DownloadStatus::NotFound);
-                Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-            }
-        });
-    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
-}
-
 fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     let mut container = S3_CLIENTS.lock();
     if let Some(client) = container.get(&*key) {
@@ -98,7 +54,7 @@ fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     }
 }
 
-fn download_from_source(
+pub fn download_stream(
     source: Arc<S3SourceConfig>,
     download_path: &SourceLocation,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {
