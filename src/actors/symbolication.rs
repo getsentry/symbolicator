@@ -1120,7 +1120,7 @@ impl SymbolicationActor {
                         "Error while fetching cficache: {}",
                         LogError(&ArcFail(e.clone()))
                     );
-                    unwind_statuses.insert(code_module_id.clone(), (&**e).into());
+                    unwind_statuses.insert(*code_module_id, (&**e).into());
                     continue;
                 }
             };
@@ -1128,19 +1128,19 @@ impl SymbolicationActor {
             // NB: Always collect features, regardless of whether we fail to parse them or not.
             // This gives users the feedback that information is there but potentially not
             // processable by symbolicator.
-            object_features.insert(code_module_id.clone(), cache_file.features());
+            object_features.insert(*code_module_id, cache_file.features());
 
             match cache_file.status() {
                 CacheStatus::Negative => {
-                    unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Missing);
+                    unwind_statuses.insert(*code_module_id, ObjectFileStatus::Missing);
                 }
                 CacheStatus::Malformed => {
                     let e = CfiCacheError::from(CfiCacheErrorKind::ObjectParsing);
                     log::warn!("Error while parsing cficache: {}", LogError(&e));
-                    unwind_statuses.insert(code_module_id.clone(), (&e).into());
+                    unwind_statuses.insert(*code_module_id, (&e).into());
                 }
                 CacheStatus::Positive => {
-                    frame_info_map.insert(code_module_id.clone(), cache_file.path().to_owned());
+                    frame_info_map.insert(*code_module_id, cache_file.path().to_owned());
                 }
             }
         }
@@ -1179,8 +1179,7 @@ impl SymbolicationActor {
 
                             match result {
                                 Ok(cache) => {
-                                    unwind_statuses
-                                        .insert(code_module_id.clone(), ObjectFileStatus::Found);
+                                    unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
                                     cfi.insert(code_module_id, cache);
                                 }
                                 Err(e) => {

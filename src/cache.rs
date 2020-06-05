@@ -125,7 +125,7 @@ impl Cache {
     }
 
     pub fn cache_dir(&self) -> Option<&Path> {
-        self.cache_dir.as_ref().map(|x| &**x)
+        self.cache_dir.as_deref()
     }
 
     pub fn cleanup(&self) -> Result<(), CleanupError> {
