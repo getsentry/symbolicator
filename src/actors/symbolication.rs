@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
+use std::io::Write;
 use std::iter::FromIterator;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,6 +16,7 @@ use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{
     Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name, SelfCell,
@@ -129,6 +132,7 @@ pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
+    minidump_cache: crate::cache::Cache,
     threadpool: ThreadPool,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
@@ -139,6 +143,7 @@ impl SymbolicationActor {
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
+        minidump_cache: crate::cache::Cache,
         threadpool: ThreadPool,
         spawnpool: procspawn::Pool,
     ) -> Self {
@@ -148,6 +153,7 @@ impl SymbolicationActor {
             objects,
             symcaches,
             cficaches,
+            minidump_cache,
             threadpool,
             requests,
             spawnpool: Arc::new(spawnpool),
@@ -1015,15 +1021,21 @@ impl MinidumpState {
 }
 
 impl SymbolicationActor {
+    /// Extract the modules from a minidump.
+    ///
+    /// The modules are needed before we know which DIFs are needed to stackwalk this
+    /// minidump.  The minidumps are processed in a subprocess to avoid crashes from the
+    /// native library bringing down symbolicator.
     fn get_referenced_modules_from_minidump(
         &self,
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
         let pool = self.spawnpool.clone();
+        let minidump_cache = self.minidump_cache.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
-                (minidump, spawn_time),
+                (minidump.clone(), spawn_time),
                 |(minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
                     if let Ok(duration) = spawn_time.elapsed() {
                         metric!(timer("minidump.modules.spawn.duration") = duration);
@@ -1051,17 +1063,13 @@ impl SymbolicationActor {
                 },
             );
 
-            match spawn_result.join_timeout(Duration::from_secs(20)) {
-                Ok(Ok(procspawn::serde::Json(cfi_modules))) => Ok(cfi_modules),
-                Ok(Err(err)) => Err(err.into()),
-                Err(perr) => Err(SymbolicationError::from(if perr.is_timeout() {
-                    metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "timeout");
-                    SymbolicationErrorKind::Timeout
-                } else {
-                    metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "canceled");
-                    SymbolicationErrorKind::Canceled
-                })),
-            }
+            Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(20),
+                "minidump.modules.spawn.error",
+                minidump,
+                minidump_cache,
+            )
         });
 
         let future = self
@@ -1073,6 +1081,75 @@ impl SymbolicationActor {
             .flatten();
 
         Box::new(future)
+    }
+
+    /// Join a procspawn handle with a timeout.
+    ///
+    /// This handles the procspawn result, makes sure to appropriately log any failures and
+    /// save the minidump for debugging.  Returns a simple result converted to the
+    /// `SymbolicationError`.
+    fn join_procspawn<T, E>(
+        handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
+        timeout: Duration,
+        metric: &str,
+        minidump: Bytes,
+        minidump_cache: crate::cache::Cache,
+    ) -> Result<T, SymbolicationError>
+    where
+        T: Serialize + DeserializeOwned,
+        E: Into<SymbolicationError> + Serialize + DeserializeOwned,
+    {
+        match handle.join_timeout(timeout) {
+            Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
+            Ok(Err(err)) => Err(err.into()),
+            Err(perr) => {
+                let reason = if perr.is_timeout() {
+                    "timeout"
+                } else if perr.is_panic() {
+                    "panic"
+                } else if perr.is_remote_close() {
+                    "remote-close"
+                } else if perr.is_cancellation() {
+                    "canceled"
+                } else {
+                    "unknown"
+                };
+                let kind = if perr.is_timeout() {
+                    SymbolicationErrorKind::Timeout
+                } else {
+                    SymbolicationErrorKind::Canceled
+                };
+                metric!(counter(metric) += 1, "reason" => reason);
+                if let SymbolicationErrorKind::Canceled = kind {
+                    Self::save_minidump(minidump, minidump_cache)
+                        .map_err(|e| log::error!("Failed to save minidump {}", LogError(&e)))
+                        .map(|r| match r {
+                            Some(path) => sentry::configure_scope(|scope| {
+                                scope.set_tag("crashed_minidump", path.display());
+                            }),
+                            None => (),
+                        })
+                        .ok();
+                }
+                Err(SymbolicationError::from(kind))
+            }
+        }
+    }
+
+    /// Save a minidump to temporary location.
+    fn save_minidump(
+        minidump: Bytes,
+        failed_cache: crate::cache::Cache,
+    ) -> failure::Fallible<Option<PathBuf>> {
+        if let Some(dir) = failed_cache.cache_dir() {
+            let tmp = tempfile::NamedTempFile::new_in(dir)?;
+            tmp.as_file().write_all(&*minidump)?;
+            let (_file, path) = tmp.keep()?;
+            Ok(Some(path))
+        } else {
+            log::debug!("No minidump crash crash configured, not saving minidump");
+            Ok(None)
+        }
     }
 
     fn load_cfi_caches(
@@ -1146,6 +1223,7 @@ impl SymbolicationActor {
         }
 
         let pool = self.spawnpool.clone();
+        let minidump_cache = self.minidump_cache.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result =
@@ -1154,7 +1232,7 @@ impl SymbolicationActor {
                         frame_info_map,
                         object_features,
                         unwind_statuses,
-                        minidump,
+                        minidump.clone(),
                         spawn_time,
                     ),
                     |(
@@ -1299,21 +1377,13 @@ impl SymbolicationActor {
                     },
                 );
 
-            let procspawn::serde::Json((modules, stacktraces, minidump_state)) = match spawn_result
-                .join_timeout(Duration::from_secs(60))
-            {
-                Ok(Ok(json)) => json,
-                Ok(Err(err)) => return Err(err.into()),
-                Err(perr) => {
-                    return Err(SymbolicationError::from(if perr.is_timeout() {
-                        metric!(counter("minidump.stackwalk.spawn.error") += 1, "reason" => "timeout");
-                        SymbolicationErrorKind::Timeout
-                    } else {
-                        metric!(counter("minidump.stackwalk.spawn.error") += 1, "reason" => "canceled");
-                        SymbolicationErrorKind::Canceled
-                    }));
-                }
-            };
+            let (modules, stacktraces, minidump_state) = Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(60),
+                "minidump.stackwalk.spawn.error",
+                minidump,
+                minidump_cache,
+            )?;
 
             let request = SymbolicateStacktraces {
                 modules,

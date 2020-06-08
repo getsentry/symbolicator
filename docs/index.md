@@ -70,6 +70,26 @@ metrics:
   `true`.
 - `connect_to_reserved_ips`: Allow reserved IP addresses for requests to
   sources. See [Security](#security). Defaults to `false`.
+- `caches`: Fine-tune cache expiry.
+   - `downloaded`: Fine-tune caches for downloaded files.
+      - `max_unused_for`: Maximum duration to keep a file since last
+        use of it.
+      - `retry_misses_after`: Duration to wait before re-trying to
+        download a file which was not found.
+      - `retry_malformed_after`: Duration to wait before re-trying to
+        download a file which was malformed.
+    - `derived`: Fine-tune caches for files which are derived from
+      downloaded files.  These files are usually versions of the
+      downloaded files optimised for fast lookups.
+       - `max_unused_for`: Maximum duration to keep a file since last
+         use of it.
+       - `retry_misses_after`: Duration to wait before re-trying to
+         download a file which was not found.
+       - `retry_malformed_after`: Duration to wait before re-trying to
+         download a file which was malformed.
+    - `minidump`: This configures the duration minidumps which failed
+      to be processed correctly will be stored in the cache.
+       - `max_unused_for`: Duration a minidump will be kept in this cache.
 
 ## Security
 

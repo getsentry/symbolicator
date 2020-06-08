@@ -314,6 +314,7 @@ pub struct Caches {
     pub object_meta: Cache,
     pub symcaches: Cache,
     pub cficaches: Cache,
+    pub minidumps: Cache,
 }
 
 impl Caches {
@@ -334,6 +335,10 @@ impl Caches {
             cficaches: {
                 let path = config.cache_dir("cficaches");
                 Cache::new("cficaches", path, config.caches.derived)
+            },
+            minidumps: {
+                let path = config.cache_dir("minidumps");
+                Cache::new("minidumps", path, config.caches.minidumps)
             },
         }
     }
