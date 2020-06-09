@@ -1123,11 +1123,12 @@ impl SymbolicationActor {
                 if let SymbolicationErrorKind::Canceled = kind {
                     Self::save_minidump(minidump, minidump_cache)
                         .map_err(|e| log::error!("Failed to save minidump {}", LogError(&e)))
-                        .map(|r| match r {
-                            Some(path) => sentry::configure_scope(|scope| {
-                                scope.set_tag("crashed_minidump", path.display());
-                            }),
-                            None => (),
+                        .map(|r| {
+                            if let Some(path) = r {
+                                sentry::configure_scope(|scope| {
+                                    scope.set_tag("crashed_minidump", path.display());
+                                });
+                            }
                         })
                         .ok();
                 }
