@@ -1126,7 +1126,12 @@ impl SymbolicationActor {
                         .map(|r| {
                             if let Some(path) = r {
                                 sentry::configure_scope(|scope| {
-                                    scope.set_tag("crashed_minidump", path.display());
+                                    scope.set_extra(
+                                        "crashed_minidump",
+                                        sentry::protocol::Value::String(
+                                            path.to_string_lossy().to_string(),
+                                        ),
+                                    );
                                 });
                             }
                         })
