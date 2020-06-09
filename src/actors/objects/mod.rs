@@ -20,6 +20,7 @@ use tempfile::{tempfile_in, NamedTempFile};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
+use crate::services::download::DownloadService;
 use crate::sources::{FileType, SourceConfig, SourceFileId};
 use crate::types::{ArcFail, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
@@ -147,7 +148,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     fn compute(
         &self,
         path: &Path,
-        _download_svc: Arc<crate::services::download::Downloader>,
+        _download_svc: Arc<DownloadService>,
     ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -213,7 +214,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     fn compute(
         &self,
         path: &Path,
-        download_svc: Arc<crate::services::download::Downloader>,
+        download_svc: Arc<DownloadService>,
     ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
@@ -451,7 +452,7 @@ impl ObjectsActor {
         meta_cache: Cache,
         data_cache: Cache,
         threadpool: ThreadPool,
-        download_svc: Arc<crate::services::download::Downloader>,
+        download_svc: Arc<DownloadService>,
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, download_svc.clone())),

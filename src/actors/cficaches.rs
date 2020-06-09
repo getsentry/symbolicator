@@ -14,6 +14,7 @@ use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::services::download::DownloadService;
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
@@ -64,7 +65,7 @@ impl CfiCacheActor {
         cache: Cache,
         objects: ObjectsActor,
         threadpool: ThreadPool,
-        download_svc: Arc<crate::services::download::Downloader>,
+        download_svc: Arc<DownloadService>,
     ) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache, download_svc)),
@@ -121,7 +122,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     fn compute(
         &self,
         path: &Path,
-        _download_svc: Arc<crate::services::download::Downloader>,
+        _download_svc: Arc<DownloadService>,
     ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self

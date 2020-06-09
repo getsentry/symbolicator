@@ -32,11 +32,11 @@ pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
 ///
 /// [`SourceConfig`]: ../../types/enum.SourceConfig.html
 #[derive(Debug, Clone)]
-pub struct Downloader {
+pub struct DownloadService {
     worker: RemoteThread,
 }
 
-impl Downloader {
+impl DownloadService {
     pub fn new(worker: RemoteThread) -> Self {
         Self { worker }
     }
@@ -162,7 +162,7 @@ mod tests {
             _ => panic!("unexpected source"),
         };
 
-        let dl_svc = Downloader::new(RemoteThread::new_threaded());
+        let dl_svc = DownloadService::new(RemoteThread::new_threaded());
         let ret = test::block_fn(|| dl_svc.download(source_id, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();

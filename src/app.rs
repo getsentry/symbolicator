@@ -10,6 +10,7 @@ use crate::actors::{
 };
 use crate::cache::Caches;
 use crate::config::Config;
+use crate::services::download::DownloadService;
 use crate::utils::futures::{RemoteThread, ThreadPool};
 use crate::utils::http;
 
@@ -40,7 +41,7 @@ pub struct ServiceState {
     /// The config object.
     config: Arc<Config>,
     /// The download service.
-    download_svc: Arc<crate::services::download::Downloader>,
+    download_svc: Arc<DownloadService>,
 }
 
 impl ServiceState {
@@ -55,7 +56,7 @@ impl ServiceState {
         let io_threadpool = ThreadPool::new();
         let io_thread = RemoteThread::new();
 
-        let download_svc = Arc::new(crate::services::download::Downloader::new(io_thread));
+        let download_svc = Arc::new(DownloadService::new(io_thread));
 
         let caches = Caches::new(&config);
         let objects = ObjectsActor::new(

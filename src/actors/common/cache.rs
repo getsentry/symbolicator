@@ -13,6 +13,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
+use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 use crate::utils::sentry::SentryFutureExt;
@@ -42,7 +43,7 @@ pub struct Cacher<T: CacheItemRequest> {
     current_computations: ComputationMap<T::Item, T::Error>,
 
     /// Application-wide state, provides access to the services.
-    download_svc: Arc<crate::services::download::Downloader>,
+    download_svc: Arc<DownloadService>,
 }
 
 impl<T: CacheItemRequest> Clone for Cacher<T> {
@@ -57,7 +58,7 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache, download_svc: Arc<crate::services::download::Downloader>) -> Self {
+    pub fn new(config: Cache, download_svc: Arc<DownloadService>) -> Self {
         Cacher {
             config,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
@@ -132,7 +133,7 @@ pub trait CacheItemRequest: 'static + Send {
     fn compute(
         &self,
         path: &Path,
-        download_svc: Arc<crate::services::download::Downloader>,
+        download_svc: Arc<crate::services::download::DownloadService>,
     ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>>;
 
     /// Determines whether this item should be loaded.
