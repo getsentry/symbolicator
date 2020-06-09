@@ -105,7 +105,7 @@ impl CacheConfig {
         }
     }
 
-    pub fn default_minidump() -> Self {
+    pub fn default_diagnostics() -> Self {
         CacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24)),
             retry_misses_after: None,
@@ -121,10 +121,12 @@ pub struct CacheConfigs {
     pub downloaded: CacheConfig,
     /// Configure how long caches derived from downloads are cached for.
     pub derived: CacheConfig,
-    /// How long failed minidumps are cached.
+    /// How long diagnostics data is cached.
+    ///
+    /// E.g. minidumps which caused a crash in symbolicator will be stored here.
     ///
     /// Only `max_unused_for` is used here, the others do not make sense.
-    pub minidumps: CacheConfig,
+    pub diagnostics: CacheConfig,
 }
 
 impl Default for CacheConfigs {
@@ -132,7 +134,7 @@ impl Default for CacheConfigs {
         CacheConfigs {
             downloaded: CacheConfig::default_downloaded(),
             derived: CacheConfig::default_derived(),
-            minidumps: CacheConfig::default_minidump(),
+            diagnostics: CacheConfig::default_diagnostics(),
         }
     }
 }

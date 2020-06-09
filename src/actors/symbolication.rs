@@ -132,7 +132,7 @@ pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
-    minidump_cache: crate::cache::Cache,
+    diagnostics_cache: crate::cache::Cache,
     threadpool: ThreadPool,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
@@ -143,7 +143,7 @@ impl SymbolicationActor {
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
-        minidump_cache: crate::cache::Cache,
+        diagnostics_cache: crate::cache::Cache,
         threadpool: ThreadPool,
         spawnpool: procspawn::Pool,
     ) -> Self {
@@ -153,7 +153,7 @@ impl SymbolicationActor {
             objects,
             symcaches,
             cficaches,
-            minidump_cache,
+            diagnostics_cache,
             threadpool,
             requests,
             spawnpool: Arc::new(spawnpool),
@@ -1031,7 +1031,7 @@ impl SymbolicationActor {
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
         let pool = self.spawnpool.clone();
-        let minidump_cache = self.minidump_cache.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
@@ -1068,7 +1068,7 @@ impl SymbolicationActor {
                 Duration::from_secs(20),
                 "minidump.modules.spawn.error",
                 minidump,
-                minidump_cache,
+                diagnostics_cache,
             )
         });
 
@@ -1229,7 +1229,7 @@ impl SymbolicationActor {
         }
 
         let pool = self.spawnpool.clone();
-        let minidump_cache = self.minidump_cache.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result =
@@ -1388,7 +1388,7 @@ impl SymbolicationActor {
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
                 minidump,
-                minidump_cache,
+                diagnostics_cache,
             )?;
 
             let request = SymbolicateStacktraces {

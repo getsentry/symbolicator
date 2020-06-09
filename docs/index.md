@@ -87,9 +87,10 @@ metrics:
          download a file which was not found.
        - `retry_malformed_after`: Duration to wait before re-trying to
          download a file which was malformed.
-    - `minidump`: This configures the duration minidumps which failed
-      to be processed correctly will be stored in the cache.
-       - `max_unused_for`: Duration a minidump will be kept in this cache.
+    - `diagnostics`: This configures the duration diagnostics data
+      will be stored in cache.  E.g. minidumps which failed to be
+      processed correctly will be stored in this cache.
+       - `max_unused_for`: Duration a file will be kept in this cache.
 
 ## Security
 
