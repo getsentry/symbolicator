@@ -76,15 +76,18 @@ impl Default for Metrics {
 }
 
 /// Options for fine-tuning cache expiry.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
 pub struct CacheConfig {
     /// Maximum duration since last use of cache item (item last used).
+    #[serde(with = "humantime_serde", default)]
     pub max_unused_for: Option<Duration>,
 
     /// Maximum duration since creation of negative cache item (item age).
+    #[serde(with = "humantime_serde", default)]
     pub retry_misses_after: Option<Duration>,
 
     /// Maximum duration since creation of malformed cache item (item age).
+    #[serde(with = "humantime_serde", default)]
     pub retry_malformed_after: Option<Duration>,
 }
 
@@ -233,9 +236,89 @@ impl Default for Config {
 
 impl Config {
     pub fn get(path: Option<&Path>) -> Result<Self, ConfigError> {
-        Ok(match path {
-            Some(path) => serde_yaml::from_reader(fs::File::open(path)?)?,
-            None => Config::default(),
-        })
+        match path {
+            Some(path) => Self::from_reader(fs::File::open(path)?),
+            None => Ok(Config::default()),
+        }
+    }
+
+    fn from_reader(reader: impl std::io::Read) -> Result<Self, ConfigError> {
+        let mut cfg: Config = serde_yaml::from_reader(reader)?;
+
+        // The CacheConfig structs have different defaults depending on which cache they are
+        // used for.  Since all values are Options for serde the defaults are None.  Here we
+        // merge the defaults.  For `diagnostics` no patching is needed.
+        let default_downloaded = CacheConfig::default_downloaded();
+        if cfg.caches.downloaded.max_unused_for == None {
+            cfg.caches.downloaded.max_unused_for = default_downloaded.max_unused_for;
+        }
+        if cfg.caches.downloaded.retry_misses_after == None {
+            cfg.caches.downloaded.retry_misses_after = default_downloaded.retry_misses_after;
+        }
+        if cfg.caches.downloaded.retry_malformed_after == None {
+            cfg.caches.downloaded.retry_malformed_after = default_downloaded.retry_malformed_after;
+        }
+        let default_derived = CacheConfig::default_derived();
+        if cfg.caches.derived.max_unused_for == None {
+            cfg.caches.derived.max_unused_for = default_derived.max_unused_for;
+        }
+        if cfg.caches.derived.retry_misses_after == None {
+            cfg.caches.derived.retry_misses_after = default_derived.retry_misses_after;
+        }
+        if cfg.caches.derived.retry_malformed_after == None {
+            cfg.caches.derived.retry_malformed_after = default_derived.retry_malformed_after;
+        }
+        Ok(cfg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_config() {
+        let cfg = Config::get(None).unwrap();
+        assert_eq!(
+            cfg.caches.diagnostics.max_unused_for,
+            Some(Duration::from_secs(3600 * 24))
+        );
+
+        let yml = r#"
+            caches:
+              diagnostics:
+                max_unused_for: 1h
+        "#;
+        let cfg = Config::from_reader(yml.as_bytes()).unwrap();
+        assert_eq!(
+            cfg.caches.diagnostics.max_unused_for,
+            Some(Duration::from_secs(3600))
+        );
+        assert_eq!(cfg.caches.diagnostics.retry_misses_after, None);
+        assert_eq!(cfg.caches.diagnostics.retry_malformed_after, None);
+
+        assert_eq!(cfg.caches.downloaded, CacheConfig::default_downloaded());
+        assert_eq!(cfg.caches.derived, CacheConfig::default_derived());
+
+        let yml = r#"
+            caches:
+              downloaded:
+                max_unused_for: 500s
+        "#;
+        let cfg = Config::from_reader(yml.as_bytes()).unwrap();
+        assert_eq!(
+            cfg.caches.downloaded.max_unused_for,
+            Some(Duration::from_secs(500))
+        );
+        assert_eq!(
+            cfg.caches.downloaded.retry_misses_after,
+            Some(Duration::from_secs(3600))
+        );
+        assert_eq!(
+            cfg.caches.downloaded.retry_malformed_after,
+            Some(Duration::from_secs(3600 * 24))
+        );
+        assert_eq!(cfg.caches.derived, CacheConfig::default_derived());
+        assert_eq!(cfg.caches.diagnostics, CacheConfig::default_diagnostics());
     }
 }

@@ -44,7 +44,7 @@ pub struct ServiceState {
 impl ServiceState {
     pub fn create(config: Config) -> Result<Self, ServiceStateError> {
         let config = Arc::new(config);
-
+        println!("{:#?}", config);
         if !config.connect_to_reserved_ips {
             http::start_safe_connector();
         }
