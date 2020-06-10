@@ -90,7 +90,14 @@ impl DownloadService {
             .map(|spawn_ret| spawn_ret.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
             .boxed()
             .compat();
-        Box::new(fut01)
+        Box::new(future_metrics!(
+            "service.download",
+            Some((
+                std::time::Duration::from_secs(3600),
+                DownloadErrorKind::Canceled.into()
+            )),
+            fut01
+        ))
     }
 }
 
