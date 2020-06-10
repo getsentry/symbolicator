@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
+use std::io::Write;
 use std::iter::FromIterator;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,6 +16,7 @@ use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::integrations::failure::capture_fail;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{
     Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name, SelfCell,
@@ -129,6 +132,7 @@ pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
+    diagnostics_cache: crate::cache::Cache,
     threadpool: ThreadPool,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
@@ -139,6 +143,7 @@ impl SymbolicationActor {
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
+        diagnostics_cache: crate::cache::Cache,
         threadpool: ThreadPool,
         spawnpool: procspawn::Pool,
     ) -> Self {
@@ -148,6 +153,7 @@ impl SymbolicationActor {
             objects,
             symcaches,
             cficaches,
+            diagnostics_cache,
             threadpool,
             requests,
             spawnpool: Arc::new(spawnpool),
@@ -680,7 +686,30 @@ fn symbolicate_frame(
             }
         };
 
-        let lang = line_info.language();
+        let name = line_info.function_name();
+
+        // Detect the language from the bare name, ignoring any pre-set language. There are a few
+        // languages that we should always be able to demangle. Only complain about those that we
+        // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
+        // reported as C++, which are expected not to demangle.
+        let detected_language = Name::new(name.as_str()).detect_language();
+        let should_demangle = match (line_info.language(), detected_language) {
+            (_, Language::Unknown) => false, // can't demangle what we cannot detect
+            (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
+            (Language::Unknown, _) => true,  // if there was no language, then rely on detection
+            (lang, detected) => lang == detected, // avoid false-positive detections
+        };
+
+        let demangled_opt = name.demangle(DEMANGLE_OPTIONS);
+        if should_demangle && demangled_opt.is_none() {
+            sentry::with_scope(
+                |scope| scope.set_extra("identifier", name.to_string().into()),
+                || {
+                    let message = format!("Failed to demangle {} identifier", line_info.language());
+                    sentry::capture_message(&message, sentry::Level::Error);
+                },
+            );
+        }
 
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
@@ -696,12 +725,10 @@ fn symbolicate_frame(
                 } else {
                     frame.abs_path.clone()
                 },
-                function: Some(
-                    line_info
-                        .function_name()
-                        .try_demangle(DEMANGLE_OPTIONS)
-                        .into_owned(),
-                ),
+                function: Some(match demangled_opt {
+                    Some(demangled) => demangled,
+                    None => name.into_cow().into_owned(),
+                }),
                 filename: if !filename.is_empty() {
                     Some(filename)
                 } else {
@@ -714,10 +741,9 @@ fn symbolicate_frame(
                 sym_addr: Some(HexValue(
                     object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
-                lang: if lang != Language::Unknown {
-                    Some(lang)
-                } else {
-                    frame.lang
+                lang: match line_info.language() {
+                    Language::Unknown => None,
+                    language => Some(language),
                 },
                 trust: frame.trust,
             },
@@ -995,15 +1021,21 @@ impl MinidumpState {
 }
 
 impl SymbolicationActor {
+    /// Extract the modules from a minidump.
+    ///
+    /// The modules are needed before we know which DIFs are needed to stackwalk this
+    /// minidump.  The minidumps are processed in a subprocess to avoid crashes from the
+    /// native library bringing down symbolicator.
     fn get_referenced_modules_from_minidump(
         &self,
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
         let pool = self.spawnpool.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
-                (minidump, spawn_time),
+                (minidump.clone(), spawn_time),
                 |(minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
                     if let Ok(duration) = spawn_time.elapsed() {
                         metric!(timer("minidump.modules.spawn.duration") = duration);
@@ -1031,17 +1063,13 @@ impl SymbolicationActor {
                 },
             );
 
-            match spawn_result.join_timeout(Duration::from_secs(20)) {
-                Ok(Ok(procspawn::serde::Json(cfi_modules))) => Ok(cfi_modules),
-                Ok(Err(err)) => Err(err.into()),
-                Err(perr) => Err(SymbolicationError::from(if perr.is_timeout() {
-                    metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "timeout");
-                    SymbolicationErrorKind::Timeout
-                } else {
-                    metric!(counter("minidump.modules.spawn.error") += 1, "reason" => "canceled");
-                    SymbolicationErrorKind::Canceled
-                })),
-            }
+            Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(20),
+                "minidump.modules.spawn.error",
+                minidump,
+                diagnostics_cache,
+            )
         });
 
         let future = self
@@ -1053,6 +1081,81 @@ impl SymbolicationActor {
             .flatten();
 
         Box::new(future)
+    }
+
+    /// Join a procspawn handle with a timeout.
+    ///
+    /// This handles the procspawn result, makes sure to appropriately log any failures and
+    /// save the minidump for debugging.  Returns a simple result converted to the
+    /// `SymbolicationError`.
+    fn join_procspawn<T, E>(
+        handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
+        timeout: Duration,
+        metric: &str,
+        minidump: Bytes,
+        minidump_cache: crate::cache::Cache,
+    ) -> Result<T, SymbolicationError>
+    where
+        T: Serialize + DeserializeOwned,
+        E: Into<SymbolicationError> + Serialize + DeserializeOwned,
+    {
+        match handle.join_timeout(timeout) {
+            Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
+            Ok(Err(err)) => Err(err.into()),
+            Err(perr) => {
+                let reason = if perr.is_timeout() {
+                    "timeout"
+                } else if perr.is_panic() {
+                    "panic"
+                } else if perr.is_remote_close() {
+                    "remote-close"
+                } else if perr.is_cancellation() {
+                    "canceled"
+                } else {
+                    "unknown"
+                };
+                let kind = if perr.is_timeout() {
+                    SymbolicationErrorKind::Timeout
+                } else {
+                    SymbolicationErrorKind::Canceled
+                };
+                metric!(counter(metric) += 1, "reason" => reason);
+                if let SymbolicationErrorKind::Canceled = kind {
+                    Self::save_minidump(minidump, minidump_cache)
+                        .map_err(|e| log::error!("Failed to save minidump {}", LogError(&e)))
+                        .map(|r| {
+                            if let Some(path) = r {
+                                sentry::configure_scope(|scope| {
+                                    scope.set_extra(
+                                        "crashed_minidump",
+                                        sentry::protocol::Value::String(
+                                            path.to_string_lossy().to_string(),
+                                        ),
+                                    );
+                                });
+                            }
+                        })
+                        .ok();
+                }
+                Err(SymbolicationError::from(kind))
+            }
+        }
+    }
+
+    /// Save a minidump to temporary location.
+    fn save_minidump(
+        minidump: Bytes,
+        failed_cache: crate::cache::Cache,
+    ) -> failure::Fallible<Option<PathBuf>> {
+        if let Some(dir) = failed_cache.cache_dir() {
+            let tmp = tempfile::NamedTempFile::new_in(dir)?;
+            tmp.as_file().write_all(&*minidump)?;
+            let (_file, path) = tmp.keep()?;
+            Ok(Some(path))
+        } else {
+            log::debug!("No minidump crash crash configured, not saving minidump");
+            Ok(None)
+        }
     }
 
     fn load_cfi_caches(
@@ -1100,7 +1203,7 @@ impl SymbolicationActor {
                         "Error while fetching cficache: {}",
                         LogError(&ArcFail(e.clone()))
                     );
-                    unwind_statuses.insert(code_module_id.clone(), (&**e).into());
+                    unwind_statuses.insert(*code_module_id, (&**e).into());
                     continue;
                 }
             };
@@ -1108,24 +1211,25 @@ impl SymbolicationActor {
             // NB: Always collect features, regardless of whether we fail to parse them or not.
             // This gives users the feedback that information is there but potentially not
             // processable by symbolicator.
-            object_features.insert(code_module_id.clone(), cache_file.features());
+            object_features.insert(*code_module_id, cache_file.features());
 
             match cache_file.status() {
                 CacheStatus::Negative => {
-                    unwind_statuses.insert(code_module_id.clone(), ObjectFileStatus::Missing);
+                    unwind_statuses.insert(*code_module_id, ObjectFileStatus::Missing);
                 }
                 CacheStatus::Malformed => {
                     let e = CfiCacheError::from(CfiCacheErrorKind::ObjectParsing);
                     log::warn!("Error while parsing cficache: {}", LogError(&e));
-                    unwind_statuses.insert(code_module_id.clone(), (&e).into());
+                    unwind_statuses.insert(*code_module_id, (&e).into());
                 }
                 CacheStatus::Positive => {
-                    frame_info_map.insert(code_module_id.clone(), cache_file.path().to_owned());
+                    frame_info_map.insert(*code_module_id, cache_file.path().to_owned());
                 }
             }
         }
 
         let pool = self.spawnpool.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = future::lazy(move || {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result =
@@ -1134,7 +1238,7 @@ impl SymbolicationActor {
                         frame_info_map,
                         object_features,
                         unwind_statuses,
-                        minidump,
+                        minidump.clone(),
                         spawn_time,
                     ),
                     |(
@@ -1159,8 +1263,7 @@ impl SymbolicationActor {
 
                             match result {
                                 Ok(cache) => {
-                                    unwind_statuses
-                                        .insert(code_module_id.clone(), ObjectFileStatus::Found);
+                                    unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
                                     cfi.insert(code_module_id, cache);
                                 }
                                 Err(e) => {
@@ -1279,21 +1382,13 @@ impl SymbolicationActor {
                     },
                 );
 
-            let procspawn::serde::Json((modules, stacktraces, minidump_state)) = match spawn_result
-                .join_timeout(Duration::from_secs(60))
-            {
-                Ok(Ok(json)) => json,
-                Ok(Err(err)) => return Err(err.into()),
-                Err(perr) => {
-                    return Err(SymbolicationError::from(if perr.is_timeout() {
-                        metric!(counter("minidump.stackwalk.spawn.error") += 1, "reason" => "timeout");
-                        SymbolicationErrorKind::Timeout
-                    } else {
-                        metric!(counter("minidump.stackwalk.spawn.error") += 1, "reason" => "canceled");
-                        SymbolicationErrorKind::Canceled
-                    }));
-                }
-            };
+            let (modules, stacktraces, minidump_state) = Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(60),
+                "minidump.stackwalk.spawn.error",
+                minidump,
+                diagnostics_cache,
+            )?;
 
             let request = SymbolicateStacktraces {
                 modules,
@@ -1544,7 +1639,7 @@ impl SymbolicationActor {
             .flatten();
 
         Box::new(future_metrics!(
-            "minidump_stackwalk",
+            "parse_apple_crash_report",
             Some((
                 Duration::from_secs(1200),
                 SymbolicationErrorKind::Timeout.into()

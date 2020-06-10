@@ -84,6 +84,7 @@ impl ServiceState {
             objects.clone(),
             symcaches,
             cficaches,
+            caches.diagnostics,
             cpu_threadpool.clone(),
             spawnpool,
         );

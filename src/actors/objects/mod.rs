@@ -104,36 +104,6 @@ struct FetchFileMetaRequest {
 #[derive(Clone, Debug)]
 struct FetchFileDataRequest(FetchFileMetaRequest);
 
-impl SourceFileId {
-    fn source(&self) -> SourceConfig {
-        match *self {
-            SourceFileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            SourceFileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            SourceFileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            SourceFileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-            SourceFileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
-        }
-    }
-
-    fn cache_key(&self) -> String {
-        match self {
-            SourceFileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::Sentry(ref source, ref file_id) => {
-                format!("{}.{}.sentryinternal", source.id, file_id.0)
-            }
-            SourceFileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
-        }
-    }
-}
-
-impl WriteSentryScope for SourceFileId {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        self.source().write_sentry_scope(scope);
-    }
-}
-
 impl CacheItemRequest for FetchFileMetaRequest {
     type Item = ObjectFileMeta;
     type Error = ObjectError;

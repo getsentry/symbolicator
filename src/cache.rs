@@ -125,7 +125,7 @@ impl Cache {
     }
 
     pub fn cache_dir(&self) -> Option<&Path> {
-        self.cache_dir.as_ref().map(|x| &**x)
+        self.cache_dir.as_deref()
     }
 
     pub fn cleanup(&self) -> Result<(), CleanupError> {
@@ -314,6 +314,7 @@ pub struct Caches {
     pub object_meta: Cache,
     pub symcaches: Cache,
     pub cficaches: Cache,
+    pub diagnostics: Cache,
 }
 
 impl Caches {
@@ -334,6 +335,10 @@ impl Caches {
             cficaches: {
                 let path = config.cache_dir("cficaches");
                 Cache::new("cficaches", path, config.caches.derived)
+            },
+            diagnostics: {
+                let path = config.cache_dir("diagnostics");
+                Cache::new("diagnostics", path, config.caches.diagnostics)
             },
         }
     }

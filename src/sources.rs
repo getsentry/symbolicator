@@ -1,3 +1,5 @@
+//! Download sources types and related `impl`s.
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -103,7 +105,7 @@ impl fmt::Display for SourceLocation {
 
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
 ///
-/// [`SentrySourceConfig`]: ../../types/struct.SentrySourceConfig.html
+/// [`SentrySourceConfig`]: struct.SentrySourceConfig.html
 // TODO: make the field private.
 #[derive(Debug, Clone)]
 pub struct SentryFileId(pub String);
@@ -185,6 +187,36 @@ pub enum SourceFileId {
     S3(Arc<S3SourceConfig>, SourceLocation),
     Gcs(Arc<GcsSourceConfig>, SourceLocation),
     Filesystem(Arc<FilesystemSourceConfig>, SourceLocation),
+}
+
+impl SourceFileId {
+    pub fn source(&self) -> SourceConfig {
+        match *self {
+            SourceFileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
+            SourceFileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
+            SourceFileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
+            SourceFileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
+            SourceFileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
+        }
+    }
+
+    pub fn cache_key(&self) -> String {
+        match self {
+            SourceFileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            SourceFileId::Sentry(ref source, ref file_id) => {
+                format!("{}.{}.sentryinternal", source.id, file_id.0)
+            }
+            SourceFileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
+        }
+    }
+}
+
+impl WriteSentryScope for SourceFileId {
+    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+        self.source().write_sentry_scope(scope);
+    }
 }
 
 impl fmt::Display for SourceFileId {

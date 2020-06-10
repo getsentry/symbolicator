@@ -9,7 +9,7 @@ structopt = "0.3.2"
 clap = "2.33.0"
 failure = "0.1.5"
 walkdir = "2.2.9"
-symbolic = { version="7.3.1", features = ["debuginfo-serde"] }
+symbolic = { version="7.3.2", features = ["debuginfo-serde"] }
 console = "0.9.0"
 zstd = "0.4.28"
 itertools = "0.8.0"
