@@ -46,49 +46,43 @@ impl DownloadService {
     /// This does not do any deduplication of requests, every requested file is
     /// freshly downloaded.
     ///
-    /// # Arguments
-    ///
-    /// `source` - The source to download from.
-    ///
-    /// `dest` - Pathname of filename to save the downloaded file into.  The
-    ///    file will be created if it does not exist and truncated if it does.
-    ///    On successful completion the file's contents will be the download
-    ///    result.  In case of any error the file's contents is considered
-    ///    garbage.
-    ///
-    /// # Return value
-    ///
-    /// On success returns `Some(dest)`, if the download failed e.g. due to an
-    /// HTTP 404, `None` is returned.  If there is an error during the
-    /// downloading [`DownloadError`] is returned.
-    ///
-    /// [`DownloadError`]: types/struct.DownloadError.html
+    /// The downloaded file is saved into `destination`.  The file will be created if it
+    /// does not exist and truncated if it does.  In case of any error the file's contents
+    /// is considered garbage.
     pub fn download(
         &self,
         source: SourceFileId,
-        dest: PathBuf,
+        destination: PathBuf,
     ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
             let src_desc = source.to_string();
             match source {
                 SourceFileId::Sentry(source, loc) => {
                     let stream = sentry::download_stream(source, &loc);
-                    download_stream_fut(src_desc, stream, dest).compat().await
+                    download_future_stream(src_desc, stream, destination)
+                        .compat()
+                        .await
                 }
                 SourceFileId::Http(source, loc) => {
                     let stream = http::download_stream(source, &loc);
-                    download_stream_fut(src_desc, stream, dest).compat().await
+                    download_future_stream(src_desc, stream, destination)
+                        .compat()
+                        .await
                 }
                 SourceFileId::S3(source, loc) => {
                     let stream = s3::download_stream(source, &loc);
-                    download_stream_fut(src_desc, stream, dest).compat().await
+                    download_future_stream(src_desc, stream, destination)
+                        .compat()
+                        .await
                 }
                 SourceFileId::Gcs(source, loc) => {
                     let stream = gcs::download_stream(source, &loc);
-                    download_stream_fut(src_desc, stream, dest).compat().await
+                    download_future_stream(src_desc, stream, destination)
+                        .compat()
+                        .await
                 }
                 SourceFileId::Filesystem(source, loc) => {
-                    filesystem::download_source(source, loc, dest)
+                    filesystem::download_source(source, loc, destination)
                 }
             }
         });
@@ -103,17 +97,18 @@ impl DownloadService {
 /// Download the source from a streaming future.
 ///
 /// These streaming futures are currently implemented per source type.
-fn download_stream_fut(
+fn download_future_stream(
     source_desc: String,
     stream: Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>>,
-    dest: PathBuf,
+    destination: PathBuf,
 ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     // All file I/O in this function is blocking!
     let ret = stream.and_then(move |maybe_stream| match maybe_stream {
         Some(stream) => {
             log::trace!("Downloading from {}", source_desc);
-            let file =
-                tryf!(std::fs::File::create(&dest).context(DownloadErrorKind::BadDestination));
+            let file = tryf!(
+                std::fs::File::create(&destination).context(DownloadErrorKind::BadDestination)
+            );
             let fut = stream
                 .fold(file, |mut file, chunk| {
                     file.write_all(chunk.as_ref())
@@ -129,7 +124,7 @@ fn download_stream_fut(
             Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
         }
     });
-    Box::new(ret) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
+    Box::new(ret)
 }
 
 #[cfg(test)]

@@ -121,7 +121,7 @@ pub fn download_stream(
 mod tests {
     use super::*;
 
-    use super::super::download_stream_fut;
+    use super::super::download_future_stream;
     use super::super::types::DownloadStatus;
     use crate::sources::SourceConfig;
     use crate::test;
@@ -142,7 +142,7 @@ mod tests {
 
         let ret = test::block_fn(|| {
             let stream = download_stream(http_source, &loc);
-            download_stream_fut("test".to_string(), stream, dest.clone())
+            download_future_stream("test".to_string(), stream, dest.clone())
         });
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
@@ -165,7 +165,7 @@ mod tests {
 
         let ret = test::block_fn(|| {
             let stream = download_stream(http_source, &loc);
-            download_stream_fut("test".to_string(), stream, dest.clone())
+            download_future_stream("test".to_string(), stream, dest.clone())
         });
         assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
