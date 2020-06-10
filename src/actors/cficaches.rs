@@ -14,7 +14,8 @@ use symbolic::{common::ByteView, minidump::cfi::CfiCache};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::types::{FileType, ObjectFeatures, ObjectId, ObjectType, Scope, SourceConfig};
+use crate::sources::{FileType, SourceConfig};
+use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 

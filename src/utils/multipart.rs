@@ -3,7 +3,7 @@ use actix_web::{dev::Payload, error, multipart, Error};
 use bytes::{Bytes, BytesMut};
 use futures01::{Future, Stream};
 
-use crate::types::SourceConfig;
+use crate::sources::SourceConfig;
 
 const MAX_SOURCES_SIZE: usize = 1_000_000;
 
