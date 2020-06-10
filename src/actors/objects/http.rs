@@ -10,10 +10,9 @@ use tokio_retry::Retry;
 use url::Url;
 
 use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{
-    DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind, USER_AGENT,
-};
-use crate::types::{FileType, HttpSourceConfig, ObjectId};
+use crate::actors::objects::{DownloadStream, ObjectError, ObjectErrorKind, USER_AGENT};
+use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
+use crate::types::ObjectId;
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
@@ -41,14 +40,14 @@ pub(super) fn prepare_downloads(
     source: &Arc<HttpSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<SourceFileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
         &source.files.filters,
         source.files.layout,
     )
-    .map(|download_path| FileId::Http(source.clone(), download_path))
+    .map(|download_path| SourceFileId::Http(source.clone(), download_path))
     .collect();
 
     Box::new(future::ok(ids))
@@ -56,7 +55,7 @@ pub(super) fn prepare_downloads(
 
 pub(super) fn download_from_source(
     source: Arc<HttpSourceConfig>,
-    download_path: &DownloadPath,
+    download_path: &SourceLocation,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     // This can effectively never error since the URL is always validated to be a base URL.
     let download_url = match join_url_encoded(&source.url, &download_path.0) {

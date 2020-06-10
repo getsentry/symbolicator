@@ -11,8 +11,9 @@ use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};
-use crate::types::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
+use crate::actors::objects::{DownloadStream, ObjectError, ObjectErrorKind};
+use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
+use crate::types::ObjectId;
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -142,14 +143,14 @@ pub(super) fn prepare_downloads(
     source: &Arc<GcsSourceConfig>,
     filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<SourceFileId>, Error = ObjectError>> {
     let ids = prepare_download_paths(
         object_id,
         filetypes,
         &source.files.filters,
         source.files.layout,
     )
-    .map(|download_path| FileId::Gcs(source.clone(), download_path))
+    .map(|download_path| SourceFileId::Gcs(source.clone(), download_path))
     .collect();
 
     Box::new(Ok(ids).into_future())
@@ -157,7 +158,7 @@ pub(super) fn prepare_downloads(
 
 pub(super) fn download_from_source(
     source: Arc<GcsSourceConfig>,
-    download_path: &DownloadPath,
+    download_path: &SourceLocation,
 ) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
     let key = {
         let prefix = source.prefix.trim_matches(&['/'][..]);

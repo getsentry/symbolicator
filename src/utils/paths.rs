@@ -3,9 +3,8 @@ use std::fmt::Write;
 
 use symbolic::common::{CodeId, DebugId, Uuid};
 
-use crate::types::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId, ObjectType,
-};
+use crate::sources::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing};
+use crate::types::{Glob, ObjectId, ObjectType};
 
 const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
     case_sensitive: false,

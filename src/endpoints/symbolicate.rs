@@ -10,9 +10,8 @@ use serde::Deserialize;
 
 use crate::actors::symbolication::SymbolicateStacktraces;
 use crate::app::{ServiceApp, ServiceState};
-use crate::types::{
-    RawObjectInfo, RawStacktrace, Scope, Signal, SourceConfig, SymbolicationResponse,
-};
+use crate::sources::SourceConfig;
+use crate::types::{RawObjectInfo, RawStacktrace, Scope, Signal, SymbolicationResponse};
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 /// Query parameters of the symbolication request.
