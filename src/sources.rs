@@ -1,3 +1,5 @@
+//! Download sources types and related `impl`s.
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -90,7 +92,7 @@ impl fmt::Display for SourceLocation {
 
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
 ///
-/// [`SentrySourceConfig`]: ../../types/struct.SentrySourceConfig.html
+/// [`SentrySourceConfig`]: struct.SentrySourceConfig.html
 // TODO: make the field private.
 #[derive(Debug, Clone)]
 pub struct SentryFileId(pub String);
