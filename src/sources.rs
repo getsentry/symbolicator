@@ -86,7 +86,7 @@ pub struct SourceLocation(pub String);
 
 impl SourceLocation {
     /// Return an iterator of the location segments.
-    pub fn segments<'a>(&'a self) -> impl std::iter::Iterator<Item = &str> + 'a {
+    pub fn segments<'a>(&'a self) -> impl Iterator<Item = &str> + 'a {
         self.0.split('/').filter(|s| !s.is_empty())
     }
 }
