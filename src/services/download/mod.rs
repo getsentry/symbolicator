@@ -1,7 +1,7 @@
 //! Service which handles all downloading from multiple kinds of sources.
 //!
 //! The sources are described on
-//! [https://docs.sentry.io/workflow/debug-files/#symbol-servers](https://docs.sentry.io/workflow/debug-files/#symbol-servers)
+//! [https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/](https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/)
 
 use std::io::Write;
 use std::path::PathBuf;
