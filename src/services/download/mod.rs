@@ -6,7 +6,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use failure::ResultExt;
+use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::future;
@@ -19,10 +19,42 @@ mod gcs;
 mod http;
 mod s3;
 mod sentry;
-mod types;
 
-pub use self::types::{DownloadError, DownloadErrorKind, DownloadStatus, DownloadStream};
 pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
+
+/// HTTP User-Agent string to use.
+const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+
+#[derive(Debug, Fail, Clone)]
+pub enum DownloadErrorKind {
+    #[fail(display = "failed to download")]
+    Io,
+    #[fail(display = "bad file destination")]
+    BadDestination,
+    #[fail(display = "failed writing the downloaded file")]
+    Write,
+    #[fail(display = "download was cancelled")]
+    Canceled,
+}
+
+symbolic::common::derive_failure!(
+    DownloadError,
+    DownloadErrorKind,
+    doc = "Errors happening while downloading from sources."
+);
+
+/// Completion status of a successful download request.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum DownloadStatus {
+    /// The download completed successfully and the file at the path can be used.
+    Completed,
+    /// The requested file was not found, there is no useful data at the provided path.
+    NotFound,
+}
+
+/// Common (transitional) type in many downloaders.
+type DownloadStream =
+    Box<dyn futures01::stream::Stream<Item = bytes::Bytes, Error = DownloadError>>;
 
 /// A service which can download files from a [`SourceConfig`].
 ///

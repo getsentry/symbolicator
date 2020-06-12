@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
 
 lazy_static::lazy_static! {

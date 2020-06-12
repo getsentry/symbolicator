@@ -11,7 +11,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{FilesystemSourceConfig, SourceLocation};
 
 /// Download from a filesystem source.

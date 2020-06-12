@@ -17,7 +17,7 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
 
 lazy_static::lazy_static! {

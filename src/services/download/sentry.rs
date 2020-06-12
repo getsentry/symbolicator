@@ -17,7 +17,7 @@ use futures01::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{SentryFileId, SentrySourceConfig, SourceFileId};
 
 lazy_static::lazy_static! {

@@ -17,7 +17,7 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::utils::http;
 
@@ -127,7 +127,6 @@ pub fn download_source(
 mod tests {
     use super::*;
 
-    use super::super::types::DownloadStatus;
     use crate::sources::SourceConfig;
     use crate::test;
 
