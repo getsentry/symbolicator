@@ -13,7 +13,6 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
-use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 use crate::utils::sentry::SentryFutureExt;
@@ -41,9 +40,6 @@ pub struct Cacher<T: CacheItemRequest> {
 
     /// Used for deduplicating cache lookups.
     current_computations: ComputationMap<T::Item, T::Error>,
-
-    /// Application-wide state, provides access to the services.
-    download_svc: Arc<DownloadService>,
 }
 
 impl<T: CacheItemRequest> Clone for Cacher<T> {
@@ -52,17 +48,15 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         Cacher {
             config: self.config.clone(),
             current_computations: self.current_computations.clone(),
-            download_svc: self.download_svc.clone(),
         }
     }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache, download_svc: Arc<DownloadService>) -> Self {
+    pub fn new(config: Cache) -> Self {
         Cacher {
             config,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
-            download_svc,
         }
     }
 }
@@ -130,11 +124,7 @@ pub trait CacheItemRequest: 'static + Send {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(
-        &self,
-        path: &Path,
-        download_svc: Arc<crate::services::download::DownloadService>,
-    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>>;
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>>;
 
     /// Determines whether this item should be loaded.
     fn should_load(&self, _data: &[u8]) -> bool {
@@ -220,41 +210,39 @@ impl<T: CacheItemRequest> Cacher<T> {
             tryf!(NamedTempFile::new())
         };
 
-        let future = request
-            .compute(temp_file.path(), self.download_svc.clone())
-            .and_then(move |status| {
-                if let Some(ref cache_path) = cache_path {
-                    sentry::configure_scope(|scope| {
-                        scope.set_extra(
-                            &format!("cache.{}.cache_path", name),
-                            cache_path.to_string_lossy().into(),
-                        );
-                    });
+        let future = request.compute(temp_file.path()).and_then(move |status| {
+            if let Some(ref cache_path) = cache_path {
+                sentry::configure_scope(|scope| {
+                    scope.set_extra(
+                        &format!("cache.{}.cache_path", name),
+                        cache_path.to_string_lossy().into(),
+                    );
+                });
 
-                    log::trace!("Creating {} at path {:?}", name, cache_path);
+                log::trace!("Creating {} at path {:?}", name, cache_path);
+            }
+
+            let byteview = ByteView::open(temp_file.path())?;
+
+            metric!(
+                counter(&format!("caches.{}.file.write", name)) += 1,
+                "status" => status.as_ref(),
+            );
+            metric!(
+                time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                "hit" => "false"
+            );
+
+            let path = match cache_path {
+                Some(ref cache_path) => {
+                    status.persist_item(cache_path, temp_file)?;
+                    CachePath::Cached(cache_path.to_path_buf())
                 }
+                None => CachePath::Temp(temp_file.into_temp_path()),
+            };
 
-                let byteview = ByteView::open(temp_file.path())?;
-
-                metric!(
-                    counter(&format!("caches.{}.file.write", name)) += 1,
-                    "status" => status.as_ref(),
-                );
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                    "hit" => "false"
-                );
-
-                let path = match cache_path {
-                    Some(ref cache_path) => {
-                        status.persist_item(cache_path, temp_file)?;
-                        CachePath::Cached(cache_path.to_path_buf())
-                    }
-                    None => CachePath::Temp(temp_file.into_temp_path()),
-                };
-
-                Ok(request.load(key.scope.clone(), status, byteview, path))
-            });
+            Ok(request.load(key.scope.clone(), status, byteview, path))
+        });
 
         Box::new(future)
     }

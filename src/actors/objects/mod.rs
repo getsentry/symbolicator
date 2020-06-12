@@ -97,6 +97,7 @@ struct FetchFileMetaRequest {
     // state for computing.
     threadpool: ThreadPool,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
+    download_svc: Arc<crate::services::download::DownloadService>,
 }
 
 /// This requests the file content of a single file at a specific path/url.
@@ -115,11 +116,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         }
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-        _download_svc: Arc<DownloadService>,
-    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
 
@@ -181,11 +178,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-        download_svc: Arc<DownloadService>,
-    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
@@ -200,7 +193,9 @@ impl CacheItemRequest for FetchFileDataRequest {
         let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
         let download_file =
             tryf!(NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io));
-        let request = download_svc
+        let request = self
+            .0
+            .download_svc
             .download(self.0.file_id.clone(), download_file.path().to_owned())
             .map_err(Into::into);
 
@@ -415,6 +410,7 @@ pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     threadpool: ThreadPool,
+    download_svc: Arc<DownloadService>,
 }
 
 impl ObjectsActor {
@@ -425,9 +421,10 @@ impl ObjectsActor {
         download_svc: Arc<DownloadService>,
     ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache, download_svc.clone())),
-            data_cache: Arc::new(Cacher::new(data_cache, download_svc)),
+            meta_cache: Arc::new(Cacher::new(meta_cache)),
+            data_cache: Arc::new(Cacher::new(data_cache)),
             threadpool,
+            download_svc,
         }
     }
 }
@@ -499,6 +496,7 @@ impl ObjectsActor {
         let meta_cache = self.meta_cache.clone();
         let threadpool = self.threadpool.clone();
         let data_cache = self.data_cache.clone();
+        let download_svc = self.download_svc.clone();
 
         let file_metas = file_ids.and_then(move |file_ids| {
             future::join_all(file_ids.into_iter().map(move |file_id| {
@@ -512,6 +510,7 @@ impl ObjectsActor {
                     object_id: identifier.clone(),
                     threadpool: threadpool.clone(),
                     data_cache: data_cache.clone(),
+                    download_svc: download_svc.clone(),
                 };
 
                 meta_cache

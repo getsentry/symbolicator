@@ -65,18 +65,10 @@ impl ServiceState {
             io_threadpool.clone(),
             download_svc.clone(),
         );
-        let symcaches = SymCacheActor::new(
-            caches.symcaches,
-            objects.clone(),
-            cpu_threadpool.clone(),
-            download_svc.clone(),
-        );
-        let cficaches = CfiCacheActor::new(
-            caches.cficaches,
-            objects.clone(),
-            cpu_threadpool.clone(),
-            download_svc.clone(),
-        );
+        let symcaches =
+            SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
+        let cficaches =
+            CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
         let spawnpool =
             procspawn::Pool::new(num_cpus::get()).context(ServiceStateErrorKind::Spawn)?;
 

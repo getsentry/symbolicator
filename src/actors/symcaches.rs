@@ -15,7 +15,6 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::services::download::DownloadService;
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
@@ -62,14 +61,9 @@ pub struct SymCacheActor {
 }
 
 impl SymCacheActor {
-    pub fn new(
-        cache: Cache,
-        objects: ObjectsActor,
-        threadpool: ThreadPool,
-        download_svc: Arc<DownloadService>,
-    ) -> Self {
+    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache, download_svc)),
+            symcaches: Arc::new(Cacher::new(cache)),
             objects,
             threadpool,
         }
@@ -125,11 +119,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-        _download_svc: Arc<DownloadService>,
-    ) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
