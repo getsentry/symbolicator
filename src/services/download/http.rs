@@ -4,6 +4,7 @@
 //!
 //! [`HttpSourceConfig`]: ../../../sources/struct.HttpSourceConfig.html
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,8 +17,8 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStream, USER_AGENT};
-use crate::sources::{HttpSourceConfig, SourceLocation};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use crate::sources::{HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
@@ -41,15 +42,16 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
     Ok(joined)
 }
 
-pub fn download_stream(
+pub fn download_source(
     source: Arc<HttpSourceConfig>,
-    download_path: &SourceLocation,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {
+    download_path: SourceLocation,
+    destination: PathBuf,
+) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     // This can effectively never error since the URL is always validated to be a base URL.
     // Though unfortunately this happens outside of this service, so ideally we'd fix this.
     let download_url = match join_url_encoded(&source.url, &download_path) {
         Ok(x) => x,
-        Err(_) => return Box::new(future::ok(None)),
+        Err(_) => return Box::new(future::ok(DownloadStatus::NotFound)),
     };
     log::debug!("Fetching debug file from {}", download_url);
     let response = clone!(download_url, source, || {
@@ -110,18 +112,21 @@ pub fn download_stream(
         }
         Err(e) => {
             log::trace!("Skipping response from {}: {}", download_url, e);
-            Ok(None)
+            Ok(None) // must be wrong type
         }
     });
 
-    Box::new(response)
+    super::download_future_stream(
+        SourceFileId::Http(source, download_path),
+        Box::new(response),
+        destination,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use super::super::download_future_stream;
     use super::super::types::DownloadStatus;
     use crate::sources::SourceConfig;
     use crate::test;
@@ -140,10 +145,7 @@ mod tests {
         };
         let loc = SourceLocation::new("hello.txt");
 
-        let ret = test::block_fn(|| {
-            let stream = download_stream(http_source, &loc);
-            download_future_stream("test".to_string(), stream, dest.clone())
-        });
+        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -163,10 +165,7 @@ mod tests {
         };
         let loc = SourceLocation::new("i-do-not-exist");
 
-        let ret = test::block_fn(|| {
-            let stream = download_stream(http_source, &loc);
-            download_future_stream("test".to_string(), stream, dest.clone())
-        });
+        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
 

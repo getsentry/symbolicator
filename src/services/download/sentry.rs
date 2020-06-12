@@ -5,6 +5,7 @@
 //!
 //! [`SentrySourceConfig`]: ../../../sources/struct.SentrySourceConfig.html
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,17 +17,18 @@ use futures01::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStream, USER_AGENT};
-use crate::sources::{SentryFileId, SentrySourceConfig};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use crate::sources::{SentryFileId, SentrySourceConfig, SourceFileId};
 
 lazy_static::lazy_static! {
     static ref CLIENT_CONNECTOR: Addr<ClientConnector> = ClientConnector::default().start();
 }
 
-pub fn download_stream(
+pub fn download_source(
     source: Arc<SentrySourceConfig>,
-    file_id: &SentryFileId,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {
+    file_id: SentryFileId,
+    destination: PathBuf,
+) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     let download_url = {
         let mut url = source.url.clone();
         url.query_pairs_mut().append_pair("id", &file_id.0);
@@ -86,5 +88,9 @@ pub fn download_stream(
         }
     });
 
-    Box::new(response)
+    super::download_future_stream(
+        SourceFileId::Sentry(source, file_id),
+        Box::new(response),
+        destination,
+    )
 }

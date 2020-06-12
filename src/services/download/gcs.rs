@@ -4,6 +4,7 @@
 //!
 //! [`GcsSourceConfig`]: ../../../sources/struct.GcsSourceConfig.html
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix_web::{client, HttpMessage};
@@ -16,8 +17,8 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStream};
-use crate::sources::{GcsSourceConfig, GcsSourceKey, SourceLocation};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+use crate::sources::{GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -143,10 +144,11 @@ fn get_token(
     }))
 }
 
-pub fn download_stream(
+pub fn download_source(
     source: Arc<GcsSourceConfig>,
-    download_path: &SourceLocation,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {
+    download_path: SourceLocation,
+    destination: PathBuf,
+) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     let key = {
         let prefix = source.prefix.trim_matches(&['/'][..]);
         if prefix.is_empty() {
@@ -157,8 +159,9 @@ pub fn download_stream(
     };
     log::debug!("Fetching from GCS: {} (from {})", &key, source.bucket);
 
+    let source2 = source.clone();
     let try_response = move || {
-        let source = source.clone();
+        let source = source2.clone();
         let key = key.clone();
         let url = format!(
             "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
@@ -214,8 +217,13 @@ pub fn download_stream(
         try_response,
     );
 
-    Box::new(response.map_err(|e| match e {
+    let stream = Box::new(response.map_err(|e| match e {
         tokio_retry::Error::OperationError(e) => e,
         e => panic!("{}", e),
-    }))
+    }));
+    super::download_future_stream(
+        SourceFileId::Gcs(source, download_path),
+        stream,
+        destination,
+    )
 }

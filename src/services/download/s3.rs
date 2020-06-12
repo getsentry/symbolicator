@@ -4,6 +4,7 @@
 //!
 //! [`S3SourceConfig`]: ../../../sources/struct.S3SourceConfig.html
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,8 +14,8 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use super::types::{DownloadError, DownloadErrorKind, DownloadStream};
-use crate::sources::{S3SourceConfig, S3SourceKey, SourceLocation};
+use super::types::{DownloadError, DownloadErrorKind, DownloadStatus};
+use crate::sources::{S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
 
 lazy_static::lazy_static! {
     static ref AWS_HTTP_CLIENT: rusoto_core::HttpClient = rusoto_core::HttpClient::new().unwrap();
@@ -54,10 +55,11 @@ fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     }
 }
 
-pub fn download_stream(
+pub fn download_source(
     source: Arc<S3SourceConfig>,
-    download_path: &SourceLocation,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>> {
+    download_path: SourceLocation,
+    destination: PathBuf,
+) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     let key = {
         let prefix = source.prefix.trim_matches(&['/'][..]);
         if prefix.is_empty() {
@@ -104,5 +106,9 @@ pub fn download_stream(
         }
     });
 
-    Box::new(response)
+    super::download_future_stream(
+        SourceFileId::S3(source, download_path),
+        Box::new(response),
+        destination,
+    )
 }

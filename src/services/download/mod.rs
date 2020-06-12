@@ -5,7 +5,6 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::string::ToString;
 
 use failure::ResultExt;
 use futures::compat::Future01CompatExt;
@@ -55,29 +54,22 @@ impl DownloadService {
         destination: PathBuf,
     ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
         let fut03 = self.worker.spawn(|| async move {
-            let src_desc = source.to_string();
             match source {
                 SourceFileId::Sentry(source, loc) => {
-                    let stream = sentry::download_stream(source, &loc);
-                    download_future_stream(src_desc, stream, destination)
+                    sentry::download_source(source, loc, destination)
                         .compat()
                         .await
                 }
                 SourceFileId::Http(source, loc) => {
-                    let stream = http::download_stream(source, &loc);
-                    download_future_stream(src_desc, stream, destination)
+                    http::download_source(source, loc, destination)
                         .compat()
                         .await
                 }
                 SourceFileId::S3(source, loc) => {
-                    let stream = s3::download_stream(source, &loc);
-                    download_future_stream(src_desc, stream, destination)
-                        .compat()
-                        .await
+                    s3::download_source(source, loc, destination).compat().await
                 }
                 SourceFileId::Gcs(source, loc) => {
-                    let stream = gcs::download_stream(source, &loc);
-                    download_future_stream(src_desc, stream, destination)
+                    gcs::download_source(source, loc, destination)
                         .compat()
                         .await
                 }
@@ -105,14 +97,14 @@ impl DownloadService {
 ///
 /// These streaming futures are currently implemented per source type.
 fn download_future_stream(
-    source_desc: String,
+    source: SourceFileId,
     stream: Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>>,
     destination: PathBuf,
 ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
     // All file I/O in this function is blocking!
     let ret = stream.and_then(move |maybe_stream| match maybe_stream {
         Some(stream) => {
-            log::trace!("Downloading from {}", source_desc);
+            log::trace!("Downloading from {}", source);
             let file = tryf!(
                 std::fs::File::create(&destination).context(DownloadErrorKind::BadDestination)
             );
