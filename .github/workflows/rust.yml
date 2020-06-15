@@ -56,7 +56,7 @@ jobs:
           cache-name: cache-rust-deps
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ hashFiles('**/Cargo.lock' }}
+          key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
