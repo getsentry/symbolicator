@@ -33,7 +33,7 @@ jobs:
       - name: Run cargo build
         uses: actions-rs/cargo@v1
         with:
-          command: build
+          command: check
           args: --workspace --all-features --locked
 
   test:
