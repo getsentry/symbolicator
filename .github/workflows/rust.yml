@@ -26,21 +26,21 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-              ~/.cargo/registry
+              /usr/share/rust/.cargo/registry
               ./target
           key: rust-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run cargo check
+      - name: Run cargo build
         uses: actions-rs/cargo@v1
         with:
-          command: check
+          command: build
           args: --workspace --all-features --locked
 
       - name: Cache Cargo
         uses: actions/upload-artifact@v2
         with:
           name: cargo-cache
-          path: ~/.cargo
+          path: /usr/share/rust/.cargo
 
       - name: Cache Rust build
         uses: actions/upload-artifact@v2
