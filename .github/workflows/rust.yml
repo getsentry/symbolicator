@@ -30,6 +30,12 @@ jobs:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Cache Rust build
+        uses: actions/cache@v2
+        with:
+          path: ./target
+          key: target-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_has }}-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
