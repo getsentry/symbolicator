@@ -7,8 +7,8 @@ on:
 name: Rust
 
 jobs:
-  check:
-    name: Check
+  build:
+    name: Install Rust and build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -22,19 +22,13 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Cache Rust registry
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-rust-deps
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Rust build
+      - name: Cache Rust registry and build
         uses: actions/cache@v2
         with:
-          path: ./target
-          key: target-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_has }}-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+              ~/.cargo/registry
+              ./target
+          key: rust-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -42,27 +36,36 @@ jobs:
           command: check
           args: --workspace --all-features --locked
 
+      - name: Cache Cargo
+        uses: actions/upload-artifact@v2
+        with:
+          name: cargo-cache
+          path: ~/.cargo
+
+      - name: Cache Rust build
+        uses: actions/upload-artefact@v2
+        with:
+          name: rust-cache
+          path: ./target
+
   test:
     name: Tests
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Restore Cargo cache
+        uses: actions/download-artifact@v2
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          name: cargo-cache
+          path: ~/
 
-      - name: Cache Rust dependencies download
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-rust-deps
+      - name: Restore Rust build cache
+        uses: actions/download-artifact@v2
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ hashFiles('**/Cargo.lock') }}
+          name: rust-cache
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
