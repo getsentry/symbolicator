@@ -7,8 +7,8 @@ on:
 name: Rust
 
 jobs:
-  build:
-    name: Install Rust and build
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -28,25 +28,13 @@ jobs:
           path: |
               /usr/share/rust/.cargo/registry
               ./target
-          key: rust-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: check-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --workspace --all-features --locked
-
-      - name: Cache Cargo
-        uses: actions/upload-artifact@v2
-        with:
-          name: cargo-cache
-          path: /usr/share/rust/.cargo
-
-      - name: Cache Rust build
-        uses: actions/upload-artifact@v2
-        with:
-          name: rust-cache
-          path: ./target
 
   test:
     name: Tests
@@ -56,16 +44,21 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Restore Cargo cache
-        uses: actions/download-artifact@v2
+      - name: Install stable toolchain
+        id: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          name: cargo-cache
-          path: ~/
+          profile: minimal
+          toolchain: stable
+          override: true
 
-      - name: Restore Rust build cache
-        uses: actions/download-artifact@v2
+      - name: Cache Rust registry and build
+        uses: actions/cache@v2
         with:
-          name: rust-cache
+          path: |
+              /usr/share/rust/.cargo/registry
+              ./target
+          key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -87,6 +80,14 @@ jobs:
           toolchain: stable
           override: true
           components: rustfmt, clippy
+
+      - name: Cache Rust registry and build
+        uses: actions/cache@v2
+        with:
+          path: |
+              /usr/share/rust/.cargo/registry
+              ./target
+          key: lints-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
