@@ -27,6 +27,7 @@ jobs:
         with:
           path: |
               /usr/share/rust/.cargo/registry
+              /usr/share/rust/.cargo/git
               ./target
           key: check-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
@@ -56,6 +57,7 @@ jobs:
         with:
           path: |
               /usr/share/rust/.cargo/registry
+              /usr/share/rust/.cargo/git
               ./target
           key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
@@ -85,6 +87,7 @@ jobs:
         with:
           path: |
               /usr/share/rust/.cargo/registry
+              /usr/share/rust/.cargo/git
               ./target
           key: lints-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
