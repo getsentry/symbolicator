@@ -22,12 +22,13 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Cache build
+      - name: Cache downloads and build
         uses: actions/cache@v2
         with:
           path: |
+              /usr/share/rust/.cargo/registry
               ./target
-          key: check-v2-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: check-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -50,12 +51,13 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Cache build
+      - name: Cache downloads and build
         uses: actions/cache@v2
         with:
           path: |
+              /usr/share/rust/.cargo/registry
               ./target
-          key: tests-v2-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -78,12 +80,13 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: Cache build
+      - name: Cache downloads and build
         uses: actions/cache@v2
         with:
           path: |
+              /usr/share/rust/.cargo/registry
               ./target
-          key: lints-v2-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: lints-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
