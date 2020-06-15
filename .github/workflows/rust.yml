@@ -28,7 +28,7 @@ jobs:
           cache-name: cache-rust-deps
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock' }}
+          key: ${{ runner.os }}-download-${{ env.cache-name }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
