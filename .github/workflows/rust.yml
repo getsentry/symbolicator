@@ -26,11 +26,10 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-              /usr/share/rust/.cargo/registry
               ./target
-          key: check-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: check-v2-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run cargo build
+      - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
           command: check
@@ -55,9 +54,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-              /usr/share/rust/.cargo/registry
               ./target
-          key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: tests-v2-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -84,9 +82,8 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-              /usr/share/rust/.cargo/registry
               ./target
-          key: lints-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: lints-v2-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
