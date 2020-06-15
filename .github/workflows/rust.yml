@@ -43,7 +43,7 @@ jobs:
           path: ~/.cargo
 
       - name: Cache Rust build
-        uses: actions/upload-artefact@v2
+        uses: actions/upload-artifact@v2
         with:
           name: rust-cache
           path: ./target
