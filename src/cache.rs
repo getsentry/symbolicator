@@ -219,7 +219,7 @@ impl Cache {
 
             let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
                 created_at.elapsed(),
-                self.cache_config.retry_malformed_after,
+                self.cache_config.retry_malformed_after(),
             ) {
                 elapsed > retry_malformed_after
             } else {
@@ -233,9 +233,9 @@ impl Cache {
         }
 
         let max_mtime = if is_negative {
-            self.cache_config.retry_misses_after
+            self.cache_config.retry_misses_after()
         } else {
-            self.cache_config.max_unused_for
+            self.cache_config.max_unused_for()
         };
 
         let mtime = if let Some(max_mtime) = max_mtime {
@@ -322,23 +322,23 @@ impl Caches {
         Self {
             objects: {
                 let path = config.cache_dir("objects");
-                Cache::new("objects", path, config.caches.downloaded)
+                Cache::new("objects", path, config.caches.downloaded.into())
             },
             object_meta: {
                 let path = config.cache_dir("object_meta");
-                Cache::new("object_meta", path, config.caches.derived)
+                Cache::new("object_meta", path, config.caches.derived.into())
             },
             symcaches: {
                 let path = config.cache_dir("symcaches");
-                Cache::new("symcaches", path, config.caches.derived)
+                Cache::new("symcaches", path, config.caches.derived.into())
             },
             cficaches: {
                 let path = config.cache_dir("cficaches");
-                Cache::new("cficaches", path, config.caches.derived)
+                Cache::new("cficaches", path, config.caches.derived.into())
             },
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
-                Cache::new("diagnostics", path, config.caches.diagnostics)
+                Cache::new("diagnostics", path, config.caches.diagnostics.into())
             },
         }
     }
@@ -360,111 +360,121 @@ pub fn cleanup(config: Config) -> Result<(), CleanupError> {
 }
 
 #[cfg(test)]
-fn tempdir() -> io::Result<tempfile::TempDir> {
-    tempfile::tempdir_in(".")
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn test_max_unused_for() -> Result<(), CleanupError> {
     use std::fs::create_dir_all;
     use std::io::Write;
     use std::thread::sleep;
 
-    let tempdir = tempdir()?;
-    create_dir_all(tempdir.path().join("foo"))?;
+    use crate::config::DerivedCacheConfig;
 
-    let cache = Cache::new(
-        "test",
-        Some(tempdir.path()),
-        CacheConfig {
-            max_unused_for: Some(Duration::from_millis(10)),
-            ..CacheConfig::default_derived()
-        },
-    );
+    fn tempdir() -> io::Result<tempfile::TempDir> {
+        tempfile::tempdir_in(".")
+    }
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(11));
+    #[test]
+    fn test_max_unused_for() -> Result<(), CleanupError> {
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
 
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
-    cache.cleanup()?;
+        let cache = Cache::new(
+            "test",
+            Some(tempdir.path()),
+            CacheConfig::Derived(DerivedCacheConfig {
+                max_unused_for: Some(Duration::from_millis(10)),
+                ..Default::default()
+            }),
+        );
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
+        sleep(Duration::from_millis(11));
 
-    basenames.sort();
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        cache.cleanup()?;
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
 
-    Ok(())
-}
+        basenames.sort();
 
-#[test]
-fn test_retry_misses_after() -> Result<(), CleanupError> {
-    use std::fs::create_dir_all;
-    use std::io::Write;
-    use std::thread::sleep;
+        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
 
-    let tempdir = tempdir()?;
-    create_dir_all(tempdir.path().join("foo"))?;
+        Ok(())
+    }
 
-    let cache = Cache::new(
-        "test",
-        Some(tempdir.path()),
-        CacheConfig {
-            retry_misses_after: Some(Duration::from_millis(20)),
-            ..CacheConfig::default_derived()
-        },
-    );
+    #[test]
+    fn test_retry_misses_after() -> Result<(), CleanupError> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
 
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(25));
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
 
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
-    cache.cleanup()?;
+        let cache = Cache::new(
+            "test",
+            Some(tempdir.path()),
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(20)),
+                ..Default::default()
+            }),
+        );
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
+        sleep(Duration::from_millis(25));
 
-    basenames.sort();
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
+        cache.cleanup()?;
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
 
-    Ok(())
-}
+        basenames.sort();
 
-#[test]
-fn test_cleanup_malformed() -> Result<(), CleanupError> {
-    use std::fs::create_dir_all;
-    use std::io::Write;
-    use std::thread::sleep;
+        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
 
-    let tempdir = tempdir()?;
-    create_dir_all(tempdir.path().join("foo"))?;
+        Ok(())
+    }
 
-    // File has same amount of chars as "malformed", check that optimization works
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+    #[test]
+    fn test_cleanup_malformed() -> Result<(), CleanupError> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
 
-    sleep(Duration::from_millis(10));
+        // File has same amount of chars as "malformed", check that optimization works
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
 
-    // Creation of this struct == "process startup"
-    let cache = Cache::new("test", Some(tempdir.path()), CacheConfig::default_derived());
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
 
-    cache.cleanup()?;
+        sleep(Duration::from_millis(10));
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
+        // Creation of this struct == "process startup"
+        let cache = Cache::new(
+            "test",
+            Some(tempdir.path()),
+            CacheConfig::Derived(Default::default()),
+        );
 
-    basenames.sort();
+        cache.cleanup()?;
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
 
-    Ok(())
+        basenames.sort();
+
+        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+        Ok(())
+    }
 }

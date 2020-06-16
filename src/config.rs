@@ -36,7 +36,7 @@ pub enum LogFormat {
 
 /// Controls the logging system.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct Logging {
     /// The log level for the relay.
     pub level: LevelFilter,
@@ -58,7 +58,7 @@ impl Default for Logging {
 
 /// Control the metrics.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct Metrics {
     /// host/port of statsd instance
     pub statsd: Option<String>,
@@ -75,76 +75,149 @@ impl Default for Metrics {
     }
 }
 
-/// Options for fine-tuning cache expiry.
+/// Fine-tuning downloaded cache expiry.
+///
+/// These differ from `DerivedCacheConfig` in the `Default::default` implementation.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
-pub struct CacheConfig {
+#[serde(deny_unknown_fields, default)]
+pub struct DownloadedCacheConfig {
     /// Maximum duration since last use of cache item (item last used).
-    #[serde(with = "humantime_serde", default)]
+    #[serde(with = "humantime_serde")]
     pub max_unused_for: Option<Duration>,
 
     /// Maximum duration since creation of negative cache item (item age).
-    #[serde(with = "humantime_serde", default)]
+    #[serde(with = "humantime_serde")]
     pub retry_misses_after: Option<Duration>,
 
     /// Maximum duration since creation of malformed cache item (item age).
-    #[serde(with = "humantime_serde", default)]
+    #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
 }
 
-impl CacheConfig {
-    pub fn default_derived() -> Self {
-        CacheConfig {
+impl Default for DownloadedCacheConfig {
+    fn default() -> Self {
+        Self {
+            max_unused_for: Some(Duration::from_secs(3600 * 24)),
+            retry_misses_after: Some(Duration::from_secs(3600)),
+            retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+        }
+    }
+}
+
+/// Fine-tuning derived cache expiry.
+///
+/// These differ from `DownloadedCacheConfig` in the `Default::default` implementation.
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields, default)]
+pub struct DerivedCacheConfig {
+    /// Maximum duration since last use of cache item (item last used).
+    #[serde(with = "humantime_serde")]
+    pub max_unused_for: Option<Duration>,
+
+    /// Maximum duration since creation of negative cache item (item age).
+    #[serde(with = "humantime_serde")]
+    pub retry_misses_after: Option<Duration>,
+
+    /// Maximum duration since creation of malformed cache item (item age).
+    #[serde(with = "humantime_serde")]
+    pub retry_malformed_after: Option<Duration>,
+}
+
+impl Default for DerivedCacheConfig {
+    fn default() -> Self {
+        Self {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
         }
     }
+}
 
-    pub fn default_downloaded() -> Self {
-        CacheConfig {
-            max_unused_for: Some(Duration::from_secs(3600 * 24)),
-            retry_misses_after: Some(Duration::from_secs(3600)),
-            retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
-        }
-    }
+/// Fine-tuning diagnostics caches.
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields, default)]
+pub struct DiagnosticsCacheConfig {
+    /// Time to keep diagnostics files cached.
+    #[serde(with = "humantime_serde")]
+    pub duration: Option<Duration>,
+}
 
-    pub fn default_diagnostics() -> Self {
-        CacheConfig {
-            max_unused_for: Some(Duration::from_secs(3600 * 24)),
-            retry_misses_after: None,
-            retry_malformed_after: None,
+impl Default for DiagnosticsCacheConfig {
+    fn default() -> Self {
+        Self {
+            duration: Some(Duration::from_secs(3600 * 24)),
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+/// Struct to treat all cache configs identical in cache code.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CacheConfig {
+    Downloaded(DownloadedCacheConfig),
+    Derived(DerivedCacheConfig),
+    Diagnostics(DiagnosticsCacheConfig),
+}
+
+impl CacheConfig {
+    pub fn max_unused_for(&self) -> Option<Duration> {
+        match self {
+            Self::Downloaded(cfg) => cfg.max_unused_for,
+            Self::Derived(cfg) => cfg.max_unused_for,
+            Self::Diagnostics(cfg) => cfg.duration,
+        }
+    }
+
+    pub fn retry_misses_after(&self) -> Option<Duration> {
+        match self {
+            Self::Downloaded(cfg) => cfg.retry_misses_after,
+            Self::Derived(cfg) => cfg.retry_misses_after,
+            Self::Diagnostics(_cfg) => None,
+        }
+    }
+
+    pub fn retry_malformed_after(&self) -> Option<Duration> {
+        match self {
+            Self::Downloaded(cfg) => cfg.retry_malformed_after,
+            Self::Derived(cfg) => cfg.retry_malformed_after,
+            Self::Diagnostics(_cfg) => None,
+        }
+    }
+}
+
+impl From<DownloadedCacheConfig> for CacheConfig {
+    fn from(source: DownloadedCacheConfig) -> Self {
+        Self::Downloaded(source)
+    }
+}
+
+impl From<DerivedCacheConfig> for CacheConfig {
+    fn from(source: DerivedCacheConfig) -> Self {
+        Self::Derived(source)
+    }
+}
+
+impl From<DiagnosticsCacheConfig> for CacheConfig {
+    fn from(source: DiagnosticsCacheConfig) -> Self {
+        Self::Diagnostics(source)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
 pub struct CacheConfigs {
     /// Configure how long downloads are cached for.
-    pub downloaded: CacheConfig,
+    pub downloaded: DownloadedCacheConfig,
     /// Configure how long caches derived from downloads are cached for.
-    pub derived: CacheConfig,
+    pub derived: DerivedCacheConfig,
     /// How long diagnostics data is cached.
     ///
     /// E.g. minidumps which caused a crash in symbolicator will be stored here.
-    ///
-    /// Only `max_unused_for` is used here, the others do not make sense.
-    pub diagnostics: CacheConfig,
-}
-
-impl Default for CacheConfigs {
-    fn default() -> CacheConfigs {
-        CacheConfigs {
-            downloaded: CacheConfig::default_downloaded(),
-            derived: CacheConfig::default_derived(),
-            diagnostics: CacheConfig::default_diagnostics(),
-        }
-    }
+    pub diagnostics: DiagnosticsCacheConfig,
 }
 
 /// See README.md for more information on config values.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct Config {
     /// Which directory to use when caching. Default is not to cache.
     pub cache_dir: Option<PathBuf>,
@@ -243,31 +316,7 @@ impl Config {
     }
 
     fn from_reader(reader: impl std::io::Read) -> Result<Self, ConfigError> {
-        let mut cfg: Config = serde_yaml::from_reader(reader)?;
-
-        // The CacheConfig structs have different defaults depending on which cache they are
-        // used for.  Since all values are Options for serde the defaults are None.  Here we
-        // merge the defaults.  For `diagnostics` no patching is needed.
-        let default_downloaded = CacheConfig::default_downloaded();
-        if cfg.caches.downloaded.max_unused_for == None {
-            cfg.caches.downloaded.max_unused_for = default_downloaded.max_unused_for;
-        }
-        if cfg.caches.downloaded.retry_misses_after == None {
-            cfg.caches.downloaded.retry_misses_after = default_downloaded.retry_misses_after;
-        }
-        if cfg.caches.downloaded.retry_malformed_after == None {
-            cfg.caches.downloaded.retry_malformed_after = default_downloaded.retry_malformed_after;
-        }
-        let default_derived = CacheConfig::default_derived();
-        if cfg.caches.derived.max_unused_for == None {
-            cfg.caches.derived.max_unused_for = default_derived.max_unused_for;
-        }
-        if cfg.caches.derived.retry_misses_after == None {
-            cfg.caches.derived.retry_misses_after = default_derived.retry_misses_after;
-        }
-        if cfg.caches.derived.retry_malformed_after == None {
-            cfg.caches.derived.retry_malformed_after = default_derived.retry_malformed_after;
-        }
+        let cfg: Config = serde_yaml::from_reader(reader)?;
         Ok(cfg)
     }
 }
@@ -278,34 +327,34 @@ mod tests {
 
     #[test]
     fn test_cache_config() {
+        // It should be possible to set individual caches in reasonable units without
+        // affecting other caches' default values.
         let cfg = Config::get(None).unwrap();
         assert_eq!(
-            cfg.caches.diagnostics.max_unused_for,
+            cfg.caches.diagnostics.duration,
             Some(Duration::from_secs(3600 * 24))
         );
 
-        let yml = r#"
+        let yaml = r#"
             caches:
               diagnostics:
-                max_unused_for: 1h
+                duration: 1h
         "#;
-        let cfg = Config::from_reader(yml.as_bytes()).unwrap();
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         assert_eq!(
-            cfg.caches.diagnostics.max_unused_for,
+            cfg.caches.diagnostics.duration,
             Some(Duration::from_secs(3600))
         );
-        assert_eq!(cfg.caches.diagnostics.retry_misses_after, None);
-        assert_eq!(cfg.caches.diagnostics.retry_malformed_after, None);
 
-        assert_eq!(cfg.caches.downloaded, CacheConfig::default_downloaded());
-        assert_eq!(cfg.caches.derived, CacheConfig::default_derived());
+        assert_eq!(cfg.caches.downloaded, DownloadedCacheConfig::default());
+        assert_eq!(cfg.caches.derived, DerivedCacheConfig::default());
 
-        let yml = r#"
+        let yaml = r#"
             caches:
               downloaded:
                 max_unused_for: 500s
         "#;
-        let cfg = Config::from_reader(yml.as_bytes()).unwrap();
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         assert_eq!(
             cfg.caches.downloaded.max_unused_for,
             Some(Duration::from_secs(500))
@@ -318,7 +367,40 @@ mod tests {
             cfg.caches.downloaded.retry_malformed_after,
             Some(Duration::from_secs(3600 * 24))
         );
-        assert_eq!(cfg.caches.derived, CacheConfig::default_derived());
-        assert_eq!(cfg.caches.diagnostics, CacheConfig::default_diagnostics());
+        assert_eq!(cfg.caches.derived, DerivedCacheConfig::default());
+        assert_eq!(cfg.caches.diagnostics, DiagnosticsCacheConfig::default());
+    }
+
+    #[test]
+    fn test_disabling_expiry() {
+        // It should be possible to set a cache value to `None` meaning "do not expire".
+        let yaml = r#"
+            caches:
+              downloaded:
+                max_unused_for: null
+        "#;
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
+        let downloaded_default = DownloadedCacheConfig::default();
+        assert_eq!(cfg.caches.downloaded.max_unused_for, None);
+        assert_eq!(
+            cfg.caches.downloaded.retry_misses_after,
+            downloaded_default.retry_misses_after
+        );
+        assert_eq!(
+            cfg.caches.downloaded.retry_malformed_after,
+            downloaded_default.retry_malformed_after,
+        )
+    }
+
+    #[test]
+    fn test_unknown_fields() {
+        // Unknown fields should not be silently accepted.
+        let yaml = r#"
+            caches:
+              not_a_cache:
+                max_unused_for: 1h
+        "#;
+        let cfg = Config::from_reader(yaml.as_bytes());
+        assert!(cfg.is_err());
     }
 }

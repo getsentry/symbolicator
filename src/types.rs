@@ -68,6 +68,7 @@ pub enum SourceConfig {
 
 /// Configuration for the Sentry-internal debug files endpoint.
 #[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct SentrySourceConfig {
     /// Unique source identifier.
     pub id: String,
@@ -82,6 +83,7 @@ pub struct SentrySourceConfig {
 
 /// Configuration for symbol server HTTP endpoints.
 #[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct HttpSourceConfig {
     /// Unique source identifier.
     pub id: String,
@@ -100,6 +102,7 @@ pub struct HttpSourceConfig {
 
 /// Configuration for reading from the local file system.
 #[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct FilesystemSourceConfig {
     /// Unique source identifier.
     pub id: String,
@@ -127,6 +130,7 @@ where
 
 /// Amazon S3 authorization information.
 #[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
@@ -159,6 +163,7 @@ impl std::hash::Hash for S3SourceKey {
 
 /// GCS authorization information.
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
 pub struct GcsSourceKey {
     /// Gcs authorization key.
     pub private_key: String,
@@ -169,6 +174,7 @@ pub struct GcsSourceKey {
 
 /// Configuration for a GCS symbol buckets.
 #[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct GcsSourceConfig {
     /// Unique source identifier.
     pub id: String,
@@ -190,6 +196,7 @@ pub struct GcsSourceConfig {
 
 /// Configuration for S3 symbol buckets.
 #[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct S3SourceConfig {
     /// Unique source identifier.
     pub id: String,
@@ -211,7 +218,7 @@ pub struct S3SourceConfig {
 
 /// Common parameters for external filesystem-like buckets configured by users.
 #[derive(Deserialize, Clone, Debug, Default)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct CommonSourceConfig {
     /// Influence whether this source will be selected
     pub filters: SourceFilters,
@@ -225,7 +232,7 @@ pub struct CommonSourceConfig {
 
 /// Common attributes to make the symbolicator skip/consider sources by certain criteria.
 #[derive(Deserialize, Clone, Debug, Default)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct SourceFilters {
     /// File types that are supported by this server.
     pub filetypes: Vec<FileType>,
@@ -271,7 +278,7 @@ impl Deref for Glob {
 
 /// Determines how files are named in an external source.
 #[derive(Deserialize, Clone, Copy, Debug)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct DirectoryLayout {
     /// Directory layout of this symbol server.
     #[serde(rename = "type")]
