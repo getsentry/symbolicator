@@ -322,13 +322,15 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
             {
                 "type": bucket_type,
                 "id": "broken",
-                "layout": {"type": "symstore"},  # only relevant for http type
                 "url": f"{hitcounter.url}/respond_statuscode/{statuscode}/",
-                "token": "123abc",  # only relevant for sentry type
             }
         ],
         **WINDOWS_DATA,
     )
+    if bucket_type == "sentry":
+        input["sources"][0]["token"] = "123abc"
+    elif bucket_type == "http":
+        input["sources"][0]["layout"] = {"type": "symstore"}
 
     service = symbolicator()
     service.wait_healthcheck()
