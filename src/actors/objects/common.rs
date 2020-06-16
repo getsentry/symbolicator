@@ -1,9 +1,9 @@
-use crate::actors::objects::DownloadPath;
-use crate::types::{DirectoryLayout, FileType, ObjectId, SourceFilters};
+use crate::sources::{DirectoryLayout, FileType, SourceFilters, SourceLocation};
+use crate::types::ObjectId;
 use crate::utils::paths::get_directory_paths;
 
 #[derive(Debug)]
-pub(super) struct DownloadPathIter<'a> {
+pub(super) struct SourceLocationIter<'a> {
     filetypes: std::slice::Iter<'a, FileType>,
     filters: &'a SourceFilters,
     object_id: &'a ObjectId,
@@ -11,8 +11,8 @@ pub(super) struct DownloadPathIter<'a> {
     next: Vec<String>,
 }
 
-impl Iterator for DownloadPathIter<'_> {
-    type Item = DownloadPath;
+impl Iterator for SourceLocationIter<'_> {
+    type Item = SourceLocation;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.next.is_empty() {
@@ -26,7 +26,7 @@ impl Iterator for DownloadPathIter<'_> {
             }
         }
 
-        self.next.pop().map(DownloadPath)
+        self.next.pop().map(SourceLocation)
     }
 }
 
@@ -41,8 +41,8 @@ pub(super) fn prepare_download_paths<'a>(
     filetypes: &'a [FileType],
     filters: &'a SourceFilters,
     layout: DirectoryLayout,
-) -> DownloadPathIter<'a> {
-    DownloadPathIter {
+) -> SourceLocationIter<'a> {
+    SourceLocationIter {
         filetypes: filetypes.iter(),
         filters,
         object_id,

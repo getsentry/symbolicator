@@ -14,10 +14,9 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 use url::Url;
 
-use crate::actors::objects::{
-    DownloadStream, FileId, ObjectError, ObjectErrorKind, SentryFileId, USER_AGENT,
-};
-use crate::types::{FileType, ObjectId, SentrySourceConfig};
+use crate::actors::objects::{DownloadStream, ObjectError, ObjectErrorKind, USER_AGENT};
+use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
+use crate::types::ObjectId;
 
 lazy_static::lazy_static! {
     static ref SENTRY_SEARCH_RESULTS: Mutex<lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>> =
@@ -117,7 +116,7 @@ pub(super) fn prepare_downloads(
     source: &Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
+) -> Box<dyn Future<Item = Vec<SourceFileId>, Error = ObjectError>> {
     let index_url = {
         let mut url = source.url.clone();
         if let Some(ref debug_id) = object_id.debug_id {
@@ -141,7 +140,9 @@ pub(super) fn prepare_downloads(
     let entries = perform_search(query).map(clone!(source, |entries| {
         entries
             .into_iter()
-            .map(move |api_response| FileId::Sentry(source.clone(), SentryFileId(api_response.id)))
+            .map(move |api_response| {
+                SourceFileId::Sentry(source.clone(), SentryFileId(api_response.id))
+            })
             .collect()
     }));
 
