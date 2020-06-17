@@ -20,7 +20,7 @@ use tempfile::{tempfile_in, NamedTempFile};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
-use crate::services::download::DownloadService;
+use crate::services::download::{DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
 use crate::types::{ArcFail, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
@@ -201,7 +201,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let result = request.and_then(move |status| -> Result<CacheStatus, ObjectError> {
             match status {
-                crate::services::download::DownloadStatus::Completed => {
+                DownloadStatus::Completed => {
                     log::trace!("Finished download of {}", cache_key);
                     let decompress_result = decompress_object_file(
                         &cache_key,
@@ -262,7 +262,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                     Ok(CacheStatus::Positive)
                 }
-                crate::services::download::DownloadStatus::NotFound => {
+                DownloadStatus::NotFound => {
                     log::debug!("No debug file found for {}", cache_key);
                     Ok(CacheStatus::Negative)
                 }
