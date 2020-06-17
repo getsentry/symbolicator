@@ -84,15 +84,13 @@ impl WriteSentryScope for SourceConfig {
 pub struct SourceLocation(String);
 
 impl SourceLocation {
+    pub fn new(loc: impl Into<String>) -> Self {
+        SourceLocation(loc.into())
+    }
+
     /// Return an iterator of the location segments.
     pub fn segments<'a>(&'a self) -> impl Iterator<Item = &str> + 'a {
         self.0.split('/').filter(|s| !s.is_empty())
-    }
-}
-
-impl SourceLocation {
-    pub fn new(loc: impl Into<String>) -> Self {
-        SourceLocation(loc.into())
     }
 }
 
