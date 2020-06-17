@@ -320,7 +320,7 @@ pub struct GcsSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-fn join_prefix_location(prefix: &String, location: &SourceLocation) -> String {
+fn join_prefix_location(prefix: &str, location: &SourceLocation) -> String {
     let trimmed = prefix.trim_matches(&['/'][..]);
     if trimmed.is_empty() {
         location.0.clone()
