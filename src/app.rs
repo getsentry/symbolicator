@@ -10,7 +10,8 @@ use crate::actors::{
 };
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::utils::futures::ThreadPool;
+use crate::services::download::DownloadService;
+use crate::utils::futures::{RemoteThread, ThreadPool};
 use crate::utils::http;
 
 /// Variants of [ServiceStateError].
@@ -39,6 +40,8 @@ pub struct ServiceState {
     objects: ObjectsActor,
     /// The config object.
     config: Arc<Config>,
+    /// The download service.
+    download_svc: Arc<DownloadService>,
 }
 
 impl ServiceState {
@@ -51,9 +54,17 @@ impl ServiceState {
 
         let cpu_threadpool = ThreadPool::new();
         let io_threadpool = ThreadPool::new();
+        let io_thread = RemoteThread::new();
+
+        let download_svc = Arc::new(DownloadService::new(io_thread));
 
         let caches = Caches::new(&config);
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, io_threadpool.clone());
+        let objects = ObjectsActor::new(
+            caches.object_meta,
+            caches.objects,
+            io_threadpool.clone(),
+            download_svc.clone(),
+        );
         let symcaches =
             SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
         let cficaches =
@@ -76,6 +87,7 @@ impl ServiceState {
             symbolication,
             objects,
             config,
+            download_svc,
         })
     }
 

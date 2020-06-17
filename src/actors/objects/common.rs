@@ -26,7 +26,7 @@ impl Iterator for SourceLocationIter<'_> {
             }
         }
 
-        self.next.pop().map(SourceLocation)
+        self.next.pop().map(SourceLocation::new)
     }
 }
 

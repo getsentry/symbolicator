@@ -19,7 +19,7 @@ pub fn enable_test_mode() {
 }
 
 /// Error returned from a `SpawnHandle` when the thread pool restarts.
-pub use oneshot::Canceled;
+pub use oneshot::Canceled as RemoteCanceled;
 
 /// Handle returned from `ThreadPool::spawn_handle`.
 ///
@@ -76,6 +76,75 @@ impl ThreadPool {
         }
 
         receiver
+    }
+}
+
+/// A remote thread which can run non-sendable futures.
+///
+/// This can be used to implement any services which internally need to use
+/// non-`Send`able futures and are sufficient with running on single thread.
+///
+/// When the global `IS_TEST` is set by calling [`enable_test_mode`] this will
+/// not create a new thread and instead spawn any executions in the current
+/// thread.  This is a workaround for the stdout and panic capturing not being
+/// exposed properly to the test framework users which stops us from enabling
+/// these things in spawned threads during tests.
+///
+/// [`enable_test_mode`]: func.enable_test_mode.html
+#[derive(Clone, Debug)]
+pub struct RemoteThread {
+    arbiter: Option<actix::Addr<actix::Arbiter>>,
+}
+
+impl RemoteThread {
+    /// Create a new instance, spawning the thread.
+    pub fn new() -> Self {
+        let arbiter = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
+            None
+        } else {
+            Some(actix::Arbiter::new("RemoteThread"))
+        };
+        Self { arbiter }
+    }
+
+    /// Create a new instance, even when running in test mode.
+    ///
+    /// Some tests actually need to test this stuff works, support that.
+    #[cfg(test)]
+    pub fn new_threaded() -> Self {
+        Self {
+            arbiter: Some(actix::Arbiter::new("RemoteThread")),
+        }
+    }
+
+    /// Create a future in the remote thread and run it.
+    ///
+    /// The returned future resolves when the spawned future has completed
+    /// execution.  The output type of the spawned future is wrapped in a
+    /// `Result`, normally the output is returned in an `Ok` but when the remote
+    /// future is dropped because the thread is shut down or restarted for any
+    /// reason it returns `Err(oneshot::Canceled)`.
+    pub fn spawn<F, R, T>(&self, factory: F) -> impl Future<Output = Result<T, RemoteCanceled>>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Future<Output = T> + 'static,
+        T: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        let msg = actix::msgs::Execute::new(|| -> Result<(), ()> {
+            let fut = factory().map(|output| tx.send(output).or(Err(())));
+            let fut01 = fut.boxed_local().compat();
+            actix::spawn(fut01);
+            Ok(())
+        });
+        match self.arbiter {
+            Some(ref arbiter) => arbiter.do_send(msg),
+            None => {
+                let arbiter = actix::Arbiter::current();
+                arbiter.do_send(msg);
+            }
+        }
+        rx
     }
 }
 

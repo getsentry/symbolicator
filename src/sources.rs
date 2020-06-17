@@ -84,6 +84,19 @@ impl WriteSentryScope for SourceConfig {
 #[derive(Debug, Clone)]
 pub struct SourceLocation(pub String);
 
+impl SourceLocation {
+    /// Return an iterator of the location segments.
+    pub fn segments<'a>(&'a self) -> impl Iterator<Item = &str> + 'a {
+        self.0.split('/').filter(|s| !s.is_empty())
+    }
+}
+
+impl SourceLocation {
+    pub fn new(loc: impl Into<String>) -> Self {
+        SourceLocation(loc.into())
+    }
+}
+
 impl fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
@@ -96,6 +109,12 @@ impl fmt::Display for SourceLocation {
 // TODO: make the field private.
 #[derive(Debug, Clone)]
 pub struct SentryFileId(pub String);
+
+impl SentryFileId {
+    pub fn new(id: impl Into<String>) -> Self {
+        SentryFileId(id.into())
+    }
+}
 
 impl fmt::Display for SentryFileId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -146,6 +165,12 @@ pub struct FilesystemSourceConfig {
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
+}
+
+impl FilesystemSourceConfig {
+    pub fn join_loc(&self, loc: &SourceLocation) -> PathBuf {
+        self.path.join(&loc.0)
+    }
 }
 
 /// This uniquely identifies a file on a source and how to download it.
