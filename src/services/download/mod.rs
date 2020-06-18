@@ -85,35 +85,40 @@ impl DownloadService {
         source: SourceFileId,
         destination: PathBuf,
     ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
-        let fut03 = self.worker.spawn(|| async move {
-            match source {
-                SourceFileId::Sentry(source, loc) => {
-                    sentry::download_source(source, loc, destination)
-                        .compat()
-                        .await
+        let fut03 = self.worker.spawn(
+            "service.download",
+            std::time::Duration::from_secs(3600),
+            || async move {
+                match source {
+                    SourceFileId::Sentry(source, loc) => {
+                        sentry::download_source(source, loc, destination)
+                            .compat()
+                            .await
+                    }
+                    SourceFileId::Http(source, loc) => {
+                        http::download_source(source, loc, destination)
+                            .compat()
+                            .await
+                    }
+                    SourceFileId::S3(source, loc) => {
+                        s3::download_source(source, loc, destination).compat().await
+                    }
+                    SourceFileId::Gcs(source, loc) => {
+                        gcs::download_source(source, loc, destination)
+                            .compat()
+                            .await
+                    }
+                    SourceFileId::Filesystem(source, loc) => {
+                        filesystem::download_source(source, loc, destination)
+                    }
                 }
-                SourceFileId::Http(source, loc) => {
-                    http::download_source(source, loc, destination)
-                        .compat()
-                        .await
-                }
-                SourceFileId::S3(source, loc) => {
-                    s3::download_source(source, loc, destination).compat().await
-                }
-                SourceFileId::Gcs(source, loc) => {
-                    gcs::download_source(source, loc, destination)
-                        .compat()
-                        .await
-                }
-                SourceFileId::Filesystem(source, loc) => {
-                    filesystem::download_source(source, loc, destination)
-                }
-            }
-        });
+            },
+        );
         let fut01 = fut03
             .map(|spawn_ret| spawn_ret.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
             .boxed()
             .compat();
+        // TODO: remote future_metrics! macro
         Box::new(future_metrics!(
             "service.download",
             Some((

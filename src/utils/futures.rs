@@ -1,9 +1,12 @@
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
-use futures::{FutureExt, TryFutureExt};
+use futures::{future, FutureExt, TryFutureExt};
+use futures01::future::Future as Future01;
+use tokio::prelude::FutureExt as TokioFutureExt;
 use tokio::runtime::Runtime as TokioRuntime;
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
@@ -96,6 +99,11 @@ pub struct RemoteThread {
     arbiter: Option<actix::Addr<actix::Arbiter>>,
 }
 
+pub enum SpawnError {
+    Canceled,
+    Timeout,
+}
+
 impl RemoteThread {
     /// Create a new instance, spawning the thread.
     pub fn new() -> Self {
@@ -124,16 +132,63 @@ impl RemoteThread {
     /// `Result`, normally the output is returned in an `Ok` but when the remote
     /// future is dropped because the thread is shut down or restarted for any
     /// reason it returns `Err(oneshot::Canceled)`.
-    pub fn spawn<F, R, T>(&self, factory: F) -> impl Future<Output = Result<T, RemoteCanceled>>
+    pub fn spawn<F, R, T>(
+        &self,
+        task_name: &'static str,
+        timeout: Duration,
+        factory: F,
+    ) -> impl Future<Output = Result<T, SpawnError>>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Future<Output = T> + 'static,
         T: Send + 'static,
     {
+        enum ChannelMsg<T> {
+            Output(T),
+            Timeout,
+        };
         let (tx, rx) = oneshot::channel();
-        let msg = actix::msgs::Execute::new(|| -> Result<(), ()> {
-            let fut = factory().map(|output| tx.send(output).or(Err(())));
-            let fut01 = fut.boxed_local().compat();
+        let creation_time = Instant::now();
+        let msg = actix::msgs::Execute::new(move || -> Result<(), ()> {
+            let fut01 = futures01::future::lazy(move || {
+                metric!(
+                    timer("futures.wait_time") = creation_time.elapsed(),
+                    "task_name" => task_name,
+                );
+                let task_name = task_name.clone();
+                let start_time = Instant::now();
+                factory()
+                    .then(|o| future::ok(o))
+                    .boxed_local()
+                    .compat()
+                    .timeout(timeout)
+                    .then(move |r: Result<T, tokio::timer::timeout::Error<()>>| {
+                        match r {
+                            // TODO: Should send failures be logged?  Panic?
+                            Ok(o) => {
+                                metric!(
+                                    timer("futures.done") = start_time.elapsed(),
+                                    "task_name" => task_name,
+                                    "status" => "done",
+                                );
+                                tx.send(ChannelMsg::Output(o)).ok()
+                            }
+                            Err(_) => {
+                                // Because we wrapped our T into future::ok() above to make a
+                                // TryFuture, we know the <Timeout as Future>::Error will only
+                                // occur if the error is actually because of a timeout, so we do
+                                // not need to check with .is_timer() or .is_inner().
+                                metric!(
+                                    timer("futures.done") = start_time.elapsed(),
+                                    "task_name" => task_name,
+                                    "status" => "timeout",
+                                );
+                                tx.send(ChannelMsg::Timeout).ok()
+                            }
+                        };
+                        futures01::future::ok(())
+                    })
+            });
             actix::spawn(fut01);
             Ok(())
         });
@@ -144,7 +199,11 @@ impl RemoteThread {
                 arbiter.do_send(msg);
             }
         }
-        rx
+        rx.then(|oneshot_result| match oneshot_result {
+            Ok(ChannelMsg::Output(o)) => future::ready(Ok(o)),
+            Ok(ChannelMsg::Timeout) => future::ready(Err(SpawnError::Timeout)),
+            Err(oneshot::Canceled) => future::ready(Err(SpawnError::Canceled)),
+        })
     }
 }
 
