@@ -80,20 +80,17 @@ impl WriteSentryScope for SourceConfig {
 /// sources other than [`SentrySourceConfig`].  This may change in the future.
 ///
 /// [`SentrySourceConfig`]: struct.SentrySourceConfig.html
-// TODO: make the field private.
-#[derive(Debug, Clone)]
-pub struct SourceLocation(pub String);
-
-impl SourceLocation {
-    /// Return an iterator of the location segments.
-    pub fn segments<'a>(&'a self) -> impl Iterator<Item = &str> + 'a {
-        self.0.split('/').filter(|s| !s.is_empty())
-    }
-}
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct SourceLocation(String);
 
 impl SourceLocation {
     pub fn new(loc: impl Into<String>) -> Self {
         SourceLocation(loc.into())
+    }
+
+    /// Return an iterator of the location segments.
+    pub fn segments<'a>(&'a self) -> impl Iterator<Item = &str> + 'a {
+        self.0.split('/').filter(|s| !s.is_empty())
     }
 }
 
@@ -106,9 +103,8 @@ impl fmt::Display for SourceLocation {
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
 ///
 /// [`SentrySourceConfig`]: struct.SentrySourceConfig.html
-// TODO: make the field private.
-#[derive(Debug, Clone)]
-pub struct SentryFileId(pub String);
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct SentryFileId(String);
 
 impl SentryFileId {
     pub fn new(id: impl Into<String>) -> Self {
@@ -134,6 +130,14 @@ pub struct SentrySourceConfig {
 
     /// Bearer authorization token.
     pub token: String,
+}
+
+impl SentrySourceConfig {
+    pub fn download_url(&self, file_id: &SentryFileId) -> Url {
+        let mut url = self.url.clone();
+        url.query_pairs_mut().append_pair("id", &file_id.0);
+        url
+    }
 }
 
 /// Configuration for symbol server HTTP endpoints.
@@ -314,6 +318,24 @@ pub struct GcsSourceConfig {
     pub files: CommonSourceConfig,
 }
 
+fn join_prefix_location(prefix: &str, location: &SourceLocation) -> String {
+    let trimmed = prefix.trim_matches(&['/'][..]);
+    if trimmed.is_empty() {
+        location.0.clone()
+    } else {
+        format!("{}/{}", trimmed, location.0)
+    }
+}
+
+impl GcsSourceConfig {
+    /// Return the bucket's key for the required file.
+    ///
+    /// This key identifies the file in the bucket.
+    pub fn get_key(&self, location: &SourceLocation) -> String {
+        join_prefix_location(&self.prefix, location)
+    }
+}
+
 /// Configuration for S3 symbol buckets.
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceConfig {
@@ -333,6 +355,15 @@ pub struct S3SourceConfig {
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
+}
+
+impl S3SourceConfig {
+    /// Return the bucket's key for the required file.
+    ///
+    /// This key identifies the file in the bucket.
+    pub fn get_key(&self, location: &SourceLocation) -> String {
+        join_prefix_location(&self.prefix, location)
+    }
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
@@ -505,5 +536,37 @@ impl AsRef<str> for FileType {
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_join_prefix_location() {
+        let key = join_prefix_location(&String::from(""), &SourceLocation::new("spam/ham"));
+        assert_eq!(key, "spam/ham");
+
+        let key = join_prefix_location(&String::from("eggs"), &SourceLocation::new("spam/ham"));
+        assert_eq!(key, "eggs/spam/ham");
+
+        let key = join_prefix_location(&String::from("/eggs/bacon/"), &SourceLocation::new("spam"));
+        assert_eq!(key, "eggs/bacon/spam");
+
+        let key = join_prefix_location(&String::from("//eggs//"), &SourceLocation::new("spam"));
+        assert_eq!(key, "eggs/spam");
+    }
+
+    #[test]
+    fn test_sentry_source_download_url() {
+        let source = SentrySourceConfig {
+            id: "test".into(),
+            url: Url::parse("https://example.net/endpoint/").unwrap(),
+            token: "token".into(),
+        };
+        let file_id = SentryFileId("abc123".into());
+        let url = source.download_url(&file_id);
+        assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
 }
