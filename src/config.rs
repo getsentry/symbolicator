@@ -139,13 +139,13 @@ impl Default for DerivedCacheConfig {
 pub struct DiagnosticsCacheConfig {
     /// Time to keep diagnostics files cached.
     #[serde(with = "humantime_serde")]
-    pub duration: Option<Duration>,
+    pub retention: Option<Duration>,
 }
 
 impl Default for DiagnosticsCacheConfig {
     fn default() -> Self {
         Self {
-            duration: Some(Duration::from_secs(3600 * 24)),
+            retention: Some(Duration::from_secs(3600 * 24)),
         }
     }
 }
@@ -163,7 +163,7 @@ impl CacheConfig {
         match self {
             Self::Downloaded(cfg) => cfg.max_unused_for,
             Self::Derived(cfg) => cfg.max_unused_for,
-            Self::Diagnostics(cfg) => cfg.duration,
+            Self::Diagnostics(cfg) => cfg.retention,
         }
     }
 
@@ -331,18 +331,18 @@ mod tests {
         // affecting other caches' default values.
         let cfg = Config::get(None).unwrap();
         assert_eq!(
-            cfg.caches.diagnostics.duration,
+            cfg.caches.diagnostics.retention,
             Some(Duration::from_secs(3600 * 24))
         );
 
         let yaml = r#"
             caches:
               diagnostics:
-                duration: 1h
+                retention: 1h
         "#;
         let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         assert_eq!(
-            cfg.caches.diagnostics.duration,
+            cfg.caches.diagnostics.retention,
             Some(Duration::from_secs(3600))
         );
 

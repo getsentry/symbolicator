@@ -96,7 +96,7 @@ metrics:
     - `diagnostics`: This configures the duration diagnostics data
       will be stored in cache.  E.g. minidumps which failed to be
       processed correctly will be stored in this cache.
-       - `duration`: Duration a file will be kept in this cache.
+       - `retention`: Duration a file will be kept in this cache.
 
 ## Security
 
