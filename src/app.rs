@@ -19,6 +19,8 @@ use crate::utils::http;
 pub enum ServiceStateErrorKind {
     #[fail(display = "failed to create process pool")]
     Spawn,
+    #[fail(display = "failed to create local caches")]
+    Cache,
 }
 
 symbolic::common::derive_failure!(
@@ -58,7 +60,7 @@ impl ServiceState {
 
         let download_svc = Arc::new(DownloadService::new(io_thread));
 
-        let caches = Caches::new(&config);
+        let caches = Caches::new(&config).context(ServiceStateErrorKind::Cache)?;
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,

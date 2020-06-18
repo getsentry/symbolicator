@@ -107,17 +107,20 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn new<P: AsRef<Path>>(
+    pub fn new(
         name: &'static str,
-        cache_dir: Option<P>,
+        cache_dir: Option<PathBuf>,
         cache_config: CacheConfig,
-    ) -> Self {
-        Cache {
+    ) -> io::Result<Self> {
+        if let Some(ref dir) = cache_dir {
+            std::fs::create_dir_all(dir)?;
+        }
+        Ok(Cache {
             name,
-            cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
+            cache_dir,
             start_time: SystemTime::now(),
             cache_config,
-        }
+        })
     }
 
     pub fn name(&self) -> &'static str {
@@ -318,29 +321,29 @@ pub struct Caches {
 }
 
 impl Caches {
-    pub fn new(config: &Config) -> Self {
-        Self {
+    pub fn new(config: &Config) -> io::Result<Self> {
+        Ok(Self {
             objects: {
                 let path = config.cache_dir("objects");
-                Cache::new("objects", path, config.caches.downloaded.into())
+                Cache::new("objects", path, config.caches.downloaded.into())?
             },
             object_meta: {
                 let path = config.cache_dir("object_meta");
-                Cache::new("object_meta", path, config.caches.derived.into())
+                Cache::new("object_meta", path, config.caches.derived.into())?
             },
             symcaches: {
                 let path = config.cache_dir("symcaches");
-                Cache::new("symcaches", path, config.caches.derived.into())
+                Cache::new("symcaches", path, config.caches.derived.into())?
             },
             cficaches: {
                 let path = config.cache_dir("cficaches");
-                Cache::new("cficaches", path, config.caches.derived.into())
+                Cache::new("cficaches", path, config.caches.derived.into())?
             },
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
-                Cache::new("diagnostics", path, config.caches.diagnostics.into())
+                Cache::new("diagnostics", path, config.caches.diagnostics.into())?
             },
-        }
+        })
     }
 
     pub fn cleanup(&self) -> Result<(), CleanupError> {
@@ -356,14 +359,14 @@ impl Caches {
 ///
 /// This will clean up all caches based on configured cache retention.
 pub fn cleanup(config: Config) -> Result<(), CleanupError> {
-    Caches::new(&config).cleanup()
+    Caches::new(&config)?.cleanup()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use std::fs::create_dir_all;
+    use std::fs::{self, create_dir_all};
     use std::io::Write;
     use std::thread::sleep;
 
@@ -374,18 +377,31 @@ mod tests {
     }
 
     #[test]
+    fn test_cache_dir_created() {
+        let basedir = tempdir().unwrap();
+        let cachedir = basedir.path().join("cache");
+        let _cache = Cache::new(
+            "test",
+            Some(cachedir.clone()),
+            CacheConfig::Downloaded(Default::default()),
+        );
+        let fsinfo = fs::metadata(cachedir).unwrap();
+        assert!(fsinfo.is_dir());
+    }
+
+    #[test]
     fn test_max_unused_for() -> Result<(), CleanupError> {
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::new(
             "test",
-            Some(tempdir.path()),
+            Some(tempdir.path().to_path_buf()),
             CacheConfig::Derived(DerivedCacheConfig {
                 max_unused_for: Some(Duration::from_millis(10)),
                 ..Default::default()
             }),
-        );
+        )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
@@ -416,12 +432,12 @@ mod tests {
 
         let cache = Cache::new(
             "test",
-            Some(tempdir.path()),
+            Some(tempdir.path().to_path_buf()),
             CacheConfig::Derived(DerivedCacheConfig {
                 retry_misses_after: Some(Duration::from_millis(20)),
                 ..Default::default()
             }),
-        );
+        )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
@@ -461,9 +477,9 @@ mod tests {
         // Creation of this struct == "process startup"
         let cache = Cache::new(
             "test",
-            Some(tempdir.path()),
+            Some(tempdir.path().to_path_buf()),
             CacheConfig::Derived(Default::default()),
-        );
+        )?;
 
         cache.cleanup()?;
 

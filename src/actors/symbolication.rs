@@ -1153,7 +1153,7 @@ impl SymbolicationActor {
             let (_file, path) = tmp.keep()?;
             Ok(Some(path))
         } else {
-            log::debug!("No minidump crash crash configured, not saving minidump");
+            log::debug!("No diagnostics retention configured, not saving minidump");
             Ok(None)
         }
     }
