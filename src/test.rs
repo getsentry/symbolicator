@@ -118,6 +118,10 @@ where
     })
 }
 
+/// Run the std::future::Future until completion.
+///
+/// Block the current thread and run the std::future::Future aka futures03 future to
+/// completion, returning the output it resolves to.
 pub fn block_on<F, T>(f: F) -> T
 where
     F: std::future::Future<Output = T>,

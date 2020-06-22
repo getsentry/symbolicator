@@ -145,11 +145,12 @@ impl RemoteThread {
 
     /// Create a future in the remote thread and run it.
     ///
-    /// The returned future resolves when the spawned future has completed
-    /// execution.  The output type of the spawned future is wrapped in a
-    /// `Result`, normally the output is returned in an `Ok` but when the remote
-    /// future is dropped because the thread is shut down or restarted for any
-    /// reason it returns `Err(oneshot::Canceled)`.
+    /// The returned future resolves when the spawned future has completed execution.  The
+    /// output type of the spawned future is wrapped in a `Result`, normally the output is
+    /// returned in an `Ok`.
+    ///
+    /// Then the future takes too long `SpawnError::Timeout` is returned, ifthe
+    /// `RemoteThread` it is running on is dropped `SpawnError::Canceled` is returned.
     pub fn spawn<F, R, T>(
         &self,
         task_name: &'static str,
