@@ -99,10 +99,27 @@ pub struct RemoteThread {
     arbiter: Option<actix::Addr<actix::Arbiter>>,
 }
 
+/// Spawning the future on the remote failed.
+///
+/// This is an error caused by the remote, not the result or output of the future itself.
+/// In the future this could include loadshedding errors and the like.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum SpawnError {
+    /// The future was cancelled, e.g. because the remote was dropped.
     Canceled,
+    /// The future exceeded its timeout.
     Timeout,
+}
+
+/// Dropping terminates the RemoteThread, cancelling all futures.
+impl Drop for RemoteThread {
+    fn drop(&mut self) {
+        // Without sending the StopArbiter message the arbiter thread keeps running even if
+        // you drop the arbiter.
+        if let Some(ref addr) = self.arbiter {
+            addr.do_send(actix::msgs::StopArbiter(0));
+        }
+    }
 }
 
 impl RemoteThread {
@@ -123,18 +140,6 @@ impl RemoteThread {
     pub fn new_threaded() -> Self {
         Self {
             arbiter: Some(actix::Arbiter::new("RemoteThread")),
-        }
-    }
-
-    /// Stop the arbiter.
-    ///
-    /// This will stop even if system is running and there are futures on the executor.
-    // TODO: should this be Drop?
-    #[cfg(test)]
-    pub fn stop(&self) {
-        match self.arbiter {
-            Some(ref addr) => addr.do_send(actix::msgs::StopArbiter(0)),
-            None => (),
         }
     }
 
@@ -168,10 +173,9 @@ impl RemoteThread {
                     timer("futures.wait_time") = creation_time.elapsed(),
                     "task_name" => task_name,
                 );
-                let task_name = task_name.clone();
                 let start_time = Instant::now();
                 factory()
-                    .then(|o| future::ok(o))
+                    .then(future::ok)
                     .boxed_local()
                     .compat()
                     .timeout(timeout)
@@ -314,7 +318,6 @@ mod tests {
             });
             rx
         });
-        remote.stop();
         std::mem::drop(remote);
         let ret = test::block_on(fut);
         println!("{:?}", ret);

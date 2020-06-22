@@ -114,19 +114,13 @@ impl DownloadService {
                 }
             },
         );
+
+        // Map all SpawnError variants into DownloadErrorKind::Canceled.
         let fut01 = fut03
             .map(|spawn_ret| spawn_ret.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
             .boxed()
             .compat();
-        // TODO: remote future_metrics! macro
-        Box::new(future_metrics!(
-            "service.download",
-            Some((
-                std::time::Duration::from_secs(3600),
-                DownloadErrorKind::Canceled.into()
-            )),
-            fut01
-        ))
+        Box::new(fut01)
     }
 }
 

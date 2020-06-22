@@ -129,11 +129,7 @@ where
         inner.set_current();
         inner
             .runner()
-            .block_on(
-                f.then(|o| futures::future::ok::<T, ()>(o))
-                    .boxed_local()
-                    .compat(),
-            )
+            .block_on(f.then(futures::future::ok::<T, ()>).boxed_local().compat())
             .unwrap()
     })
 }
