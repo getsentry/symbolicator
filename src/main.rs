@@ -5,8 +5,7 @@
 //! Symbolicator can act as a proxy to symbol servers supporting multiple formats, such as
 //! Microsoft's symbol server or Breakpad symbol repositories.
 
-#![warn(missing_docs)]
-#![warn(missing_debug_implementations)]
+#![deny(missing_debug_implementations, missing_docs, clippy::all)]
 
 #[macro_use]
 mod macros;

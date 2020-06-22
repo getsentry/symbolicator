@@ -73,7 +73,7 @@ lint-python: .venv/bin/python
 
 lint-rust:
 	@rustup component add clippy --toolchain stable 2> /dev/null
-	cargo +stable clippy --all-features --all --tests --examples -- -D clippy::all
+	cargo +stable clippy --all-features --all --tests --examples
 .PHONY: lint-rust
 
 # Formatting
