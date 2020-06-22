@@ -118,6 +118,26 @@ where
     })
 }
 
+pub fn block_on<F, T>(f: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    use futures::future::{FutureExt, TryFutureExt};
+
+    SYSTEM.with(|cell| {
+        let mut inner = cell.borrow_mut();
+        inner.set_current();
+        inner
+            .runner()
+            .block_on(
+                f.then(|o| futures::future::ok::<T, ()>(o))
+                    .boxed_local()
+                    .compat(),
+            )
+            .unwrap()
+    })
+}
+
 /// Get bucket configuration for the local fixtures.
 ///
 /// Files are served directly via the local file system without the indirection through a HTTP

@@ -99,6 +99,7 @@ pub struct RemoteThread {
     arbiter: Option<actix::Addr<actix::Arbiter>>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum SpawnError {
     Canceled,
     Timeout,
@@ -122,6 +123,18 @@ impl RemoteThread {
     pub fn new_threaded() -> Self {
         Self {
             arbiter: Some(actix::Arbiter::new("RemoteThread")),
+        }
+    }
+
+    /// Stop the arbiter.
+    ///
+    /// This will stop even if system is running and there are futures on the executor.
+    // TODO: should this be Drop?
+    #[cfg(test)]
+    pub fn stop(&self) {
+        match self.arbiter {
+            Some(ref addr) => addr.do_send(actix::msgs::StopArbiter(0)),
+            None => (),
         }
     }
 
@@ -229,5 +242,82 @@ impl Drop for CallOnDrop {
         if let Some(f) = self.f.take() {
             f();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::test;
+
+    #[test]
+    fn test_remote_thread() {
+        // Ensure actix is setup.
+        test::setup();
+
+        // test::setup() enables logging, but this test spawns a thread where
+        // logging is not captured.  For normal test runs we don't want to
+        // pollute the stdout so silence logs here.  When debugging this test
+        // you may want to temporarily remove this.
+        log::set_max_level(log::LevelFilter::Off);
+
+        let remote = RemoteThread::new_threaded();
+        let fut = remote.spawn("task", Duration::from_secs(10), || future::ready(42));
+        let ret = test::block_on(fut);
+        assert_eq!(ret, Ok(42));
+    }
+
+    #[test]
+    fn test_remote_thread_timeout() {
+        // Ensure actix is setup.
+        test::setup();
+
+        // test::setup() enables logging, but this test spawns a thread where
+        // logging is not captured.  For normal test runs we don't want to
+        // pollute the stdout so silence logs here.  When debugging this test
+        // you may want to temporarily remove this.
+        log::set_max_level(log::LevelFilter::Off);
+
+        let remote = RemoteThread::new_threaded();
+        let fut = remote.spawn("task", Duration::from_nanos(1), || {
+            // Elaborate executor-neutral way of sleeping in a future
+            let (tx, rx) = oneshot::channel();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(1));
+                tx.send(42).ok();
+            });
+            rx
+        });
+        let ret = test::block_on(fut);
+        assert_eq!(ret, Err(SpawnError::Timeout));
+    }
+
+    #[test]
+    fn test_remote_thread_canceled() {
+        // Ensure actix is setup.
+        test::setup();
+
+        // test::setup() enables logging, but this test spawns a thread where
+        // logging is not captured.  For normal test runs we don't want to
+        // pollute the stdout so silence logs here.  When debugging this test
+        // you may want to temporarily remove this.
+        log::set_max_level(log::LevelFilter::Off);
+
+        let remote = RemoteThread::new_threaded();
+        let fut = remote.spawn("task", Duration::from_secs(10), || {
+            // Elaborate executor-neutral way of sleeping in a future
+            let (tx, rx) = oneshot::channel();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(10));
+                tx.send(42).ok();
+            });
+            rx
+        });
+        remote.stop();
+        std::mem::drop(remote);
+        let ret = test::block_on(fut);
+        println!("{:?}", ret);
+        assert_eq!(ret, Err(SpawnError::Canceled));
     }
 }
