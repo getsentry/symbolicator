@@ -107,7 +107,7 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn new(
+    pub fn from_config(
         name: &'static str,
         cache_dir: Option<PathBuf>,
         cache_config: CacheConfig,
@@ -325,23 +325,23 @@ impl Caches {
         Ok(Self {
             objects: {
                 let path = config.cache_dir("objects");
-                Cache::new("objects", path, config.caches.downloaded.into())?
+                Cache::from_config("objects", path, config.caches.downloaded.into())?
             },
             object_meta: {
                 let path = config.cache_dir("object_meta");
-                Cache::new("object_meta", path, config.caches.derived.into())?
+                Cache::from_config("object_meta", path, config.caches.derived.into())?
             },
             symcaches: {
                 let path = config.cache_dir("symcaches");
-                Cache::new("symcaches", path, config.caches.derived.into())?
+                Cache::from_config("symcaches", path, config.caches.derived.into())?
             },
             cficaches: {
                 let path = config.cache_dir("cficaches");
-                Cache::new("cficaches", path, config.caches.derived.into())?
+                Cache::from_config("cficaches", path, config.caches.derived.into())?
             },
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
-                Cache::new("diagnostics", path, config.caches.diagnostics.into())?
+                Cache::from_config("diagnostics", path, config.caches.diagnostics.into())?
             },
         })
     }
@@ -380,7 +380,7 @@ mod tests {
     fn test_cache_dir_created() {
         let basedir = tempdir().unwrap();
         let cachedir = basedir.path().join("cache");
-        let _cache = Cache::new(
+        let _cache = Cache::from_config(
             "test",
             Some(cachedir.clone()),
             CacheConfig::Downloaded(Default::default()),
@@ -394,7 +394,7 @@ mod tests {
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
-        let cache = Cache::new(
+        let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
             CacheConfig::Derived(DerivedCacheConfig {
@@ -430,7 +430,7 @@ mod tests {
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
-        let cache = Cache::new(
+        let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
             CacheConfig::Derived(DerivedCacheConfig {
@@ -475,7 +475,7 @@ mod tests {
         sleep(Duration::from_millis(10));
 
         // Creation of this struct == "process startup"
-        let cache = Cache::new(
+        let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
             CacheConfig::Derived(Default::default()),
