@@ -181,29 +181,23 @@ impl RemoteThread {
                     .compat()
                     .timeout(timeout)
                     .then(move |r: Result<T, tokio::timer::timeout::Error<()>>| {
-                        match r {
-                            // TODO: Should send failures be logged?  Panic?
-                            Ok(o) => {
-                                metric!(
-                                    timer("futures.done") = start_time.elapsed(),
-                                    "task_name" => task_name,
-                                    "status" => "done",
-                                );
-                                tx.send(ChannelMsg::Output(o)).ok()
-                            }
+                        metric!(
+                            timer("futures.done") = start_time.elapsed(),
+                            "task_name" => task_name,
+                            "status" => if r.is_ok() {"done"} else {"timeout"},
+                        );
+                        let msg = match r {
+                            Ok(o) => ChannelMsg::Output(o),
                             Err(_) => {
                                 // Because we wrapped our T into future::ok() above to make a
                                 // TryFuture, we know the <Timeout as Future>::Error will only
                                 // occur if the error is actually because of a timeout, so we do
                                 // not need to check with .is_timer() or .is_inner().
-                                metric!(
-                                    timer("futures.done") = start_time.elapsed(),
-                                    "task_name" => task_name,
-                                    "status" => "timeout",
-                                );
-                                tx.send(ChannelMsg::Timeout).ok()
+                                ChannelMsg::Timeout
                             }
                         };
+                        // TODO: Should send failures be logged?  Panic?
+                        tx.send(msg).ok();
                         futures01::future::ok(())
                     })
             });
