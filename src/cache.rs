@@ -321,7 +321,7 @@ pub struct Caches {
 }
 
 impl Caches {
-    pub fn new(config: &Config) -> io::Result<Self> {
+    pub fn from_config(config: &Config) -> io::Result<Self> {
         Ok(Self {
             objects: {
                 let path = config.cache_dir("objects");
@@ -359,7 +359,7 @@ impl Caches {
 ///
 /// This will clean up all caches based on configured cache retention.
 pub fn cleanup(config: Config) -> Result<(), CleanupError> {
-    Caches::new(&config)?.cleanup()
+    Caches::from_config(&config)?.cleanup()
 }
 
 #[cfg(test)]

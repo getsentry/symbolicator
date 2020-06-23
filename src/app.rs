@@ -60,7 +60,7 @@ impl ServiceState {
 
         let download_svc = Arc::new(DownloadService::new(io_thread));
 
-        let caches = Caches::new(&config).context(ServiceStateErrorKind::Cache)?;
+        let caches = Caches::from_config(&config).context(ServiceStateErrorKind::Cache)?;
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
