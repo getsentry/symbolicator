@@ -260,6 +260,31 @@ def test_sources_filetypes(symbolicator, hitcounter):
     assert not hitcounter.hits
 
 
+def test_unknown_source_config(symbolicator, hitcounter):
+    # Requests could contain invalid data which should not stop symbolication,
+    # name is sent by Sentry and is unknown.
+    input = dict(
+        sources=[
+            {
+                "type": "http",
+                "id": "unknown",
+                "layout": {"type": "symstore"},
+                "url": f"{hitcounter.url}/respond_statuscode/400",
+                "name": "not a known field",
+                "not-a-field": "more unknown fields",
+            }
+        ],
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+    assert response.json() == MISSING_FILE
+
+
 def test_timeouts(symbolicator, hitcounter):
     hitcounter.before_request = lambda: time.sleep(3)
 
@@ -322,15 +347,13 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
             {
                 "type": bucket_type,
                 "id": "broken",
+                "layout": {"type": "symstore"},  # only relevant for http type
                 "url": f"{hitcounter.url}/respond_statuscode/{statuscode}/",
+                "token": "123abc",  # only relevant for sentry type
             }
         ],
         **WINDOWS_DATA,
     )
-    if bucket_type == "sentry":
-        input["sources"][0]["token"] = "123abc"
-    elif bucket_type == "http":
-        input["sources"][0]["layout"] = {"type": "symstore"}
 
     service = symbolicator()
     service.wait_healthcheck()
