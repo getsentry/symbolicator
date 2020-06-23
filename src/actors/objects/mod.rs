@@ -12,6 +12,7 @@ use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 
 use failure::{Fail, ResultExt};
+use futures::future::TryFutureExt;
 use futures01::{future, Future};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -197,6 +198,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             .0
             .download_svc
             .download(self.0.file_id.clone(), download_file.path().to_owned())
+            .compat()
             .map_err(Into::into);
 
         let result = request.and_then(move |status| -> Result<CacheStatus, ObjectError> {
