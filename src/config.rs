@@ -36,7 +36,7 @@ pub enum LogFormat {
 
 /// Controls the logging system.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct Logging {
     /// The log level for the relay.
     pub level: LevelFilter,
@@ -58,7 +58,7 @@ impl Default for Logging {
 
 /// Control the metrics.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct Metrics {
     /// host/port of statsd instance
     pub statsd: Option<String>,
@@ -79,7 +79,7 @@ impl Default for Metrics {
 ///
 /// These differ from `DerivedCacheConfig` in the `Default::default` implementation.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct DownloadedCacheConfig {
     /// Maximum duration since last use of cache item (item last used).
     #[serde(with = "humantime_serde")]
@@ -108,7 +108,7 @@ impl Default for DownloadedCacheConfig {
 ///
 /// These differ from `DownloadedCacheConfig` in the `Default::default` implementation.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct DerivedCacheConfig {
     /// Maximum duration since last use of cache item (item last used).
     #[serde(with = "humantime_serde")]
@@ -135,7 +135,7 @@ impl Default for DerivedCacheConfig {
 
 /// Fine-tuning diagnostics caches.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct DiagnosticsCacheConfig {
     /// Time to keep diagnostics files cached.
     #[serde(with = "humantime_serde")]
@@ -203,7 +203,7 @@ impl From<DiagnosticsCacheConfig> for CacheConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct CacheConfigs {
     /// Configure how long downloads are cached for.
     pub downloaded: DownloadedCacheConfig,
@@ -217,7 +217,7 @@ pub struct CacheConfigs {
 
 /// See README.md for more information on config values.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct Config {
     /// Which directory to use when caching. Default is not to cache.
     pub cache_dir: Option<PathBuf>,
@@ -394,13 +394,13 @@ mod tests {
 
     #[test]
     fn test_unknown_fields() {
-        // Unknown fields should not be silently accepted.
+        // Unknown fields should not cause failure
         let yaml = r#"
             caches:
               not_a_cache:
                 max_unused_for: 1h
         "#;
         let cfg = Config::from_reader(yaml.as_bytes());
-        assert!(cfg.is_err());
+        assert!(cfg.is_ok());
     }
 }
