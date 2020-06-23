@@ -1148,12 +1148,13 @@ impl SymbolicationActor {
         failed_cache: crate::cache::Cache,
     ) -> failure::Fallible<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
+            std::fs::create_dir_all(dir)?;
             let tmp = tempfile::NamedTempFile::new_in(dir)?;
             tmp.as_file().write_all(&*minidump)?;
             let (_file, path) = tmp.keep()?;
             Ok(Some(path))
         } else {
-            log::debug!("No minidump crash crash configured, not saving minidump");
+            log::debug!("No diagnostics retention configured, not saving minidump");
             Ok(None)
         }
     }
