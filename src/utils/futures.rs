@@ -149,7 +149,7 @@ impl RemoteThread {
     /// output type of the spawned future is wrapped in a `Result`, normally the output is
     /// returned in an `Ok`.
     ///
-    /// Then the future takes too long `SpawnError::Timeout` is returned, ifthe
+    /// When the future takes too long `SpawnError::Timeout` is returned, if the
     /// `RemoteThread` it is running on is dropped `SpawnError::Canceled` is returned.
     pub fn spawn<F, R, T>(
         &self,
@@ -321,7 +321,6 @@ mod tests {
         });
         std::mem::drop(remote);
         let ret = test::block_on(fut);
-        println!("{:?}", ret);
         assert_eq!(ret, Err(SpawnError::Canceled));
     }
 }
