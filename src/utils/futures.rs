@@ -196,8 +196,12 @@ impl RemoteThread {
                                 ChannelMsg::Timeout
                             }
                         };
-                        // TODO: Should send failures be logged?  Panic?
-                        tx.send(msg).ok();
+                        tx.send(msg).unwrap_or_else(|_| {
+                            log::info!(
+                                "Failed to send result of {} task, caller dropped",
+                                task_name
+                            )
+                        });
                         futures01::future::ok(())
                     })
             });
