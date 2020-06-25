@@ -6,7 +6,9 @@
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
 
+use ::sentry::Hub;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::FutureExt;
@@ -14,6 +16,7 @@ use futures01::future;
 use futures01::prelude::*;
 
 use crate::utils::futures::RemoteThread;
+use crate::utils::sentry::SentryFutureExtStd;
 
 mod filesystem;
 mod gcs;
@@ -66,11 +69,19 @@ type DownloadStream =
 #[derive(Debug, Clone)]
 pub struct DownloadService {
     worker: RemoteThread,
+    hub: Option<Arc<Hub>>,
 }
 
 impl DownloadService {
     pub fn new(worker: RemoteThread) -> Self {
-        Self { worker }
+        Self { worker, hub: None }
+    }
+
+    pub fn bind_hub(&self, hub: Arc<Hub>) -> Self {
+        Self {
+            worker: self.worker.clone(),
+            hub: Some(hub),
+        }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -92,33 +103,40 @@ impl DownloadService {
                 + 'static,
         >,
     > {
+        let hub = self.hub.clone();
         self.worker
             .spawn(
                 "service.download",
                 std::time::Duration::from_secs(3600),
-                || async move {
-                    match source {
-                        SourceFileId::Sentry(source, loc) => {
-                            sentry::download_source(source, loc, destination)
-                                .compat()
-                                .await
+                || {
+                    let fut = async move {
+                        match source {
+                            SourceFileId::Sentry(source, loc) => {
+                                sentry::download_source(source, loc, destination)
+                                    .compat()
+                                    .await
+                            }
+                            SourceFileId::Http(source, loc) => {
+                                http::download_source(source, loc, destination)
+                                    .compat()
+                                    .await
+                            }
+                            SourceFileId::S3(source, loc) => {
+                                s3::download_source(source, loc, destination).compat().await
+                            }
+                            SourceFileId::Gcs(source, loc) => {
+                                gcs::download_source(source, loc, destination)
+                                    .compat()
+                                    .await
+                            }
+                            SourceFileId::Filesystem(source, loc) => {
+                                filesystem::download_source(source, loc, destination)
+                            }
                         }
-                        SourceFileId::Http(source, loc) => {
-                            http::download_source(source, loc, destination)
-                                .compat()
-                                .await
-                        }
-                        SourceFileId::S3(source, loc) => {
-                            s3::download_source(source, loc, destination).compat().await
-                        }
-                        SourceFileId::Gcs(source, loc) => {
-                            gcs::download_source(source, loc, destination)
-                                .compat()
-                                .await
-                        }
-                        SourceFileId::Filesystem(source, loc) => {
-                            filesystem::download_source(source, loc, destination)
-                        }
+                    };
+                    match hub {
+                        Some(hub) => fut.bind_hub(hub.clone()).left_future(),
+                        None => fut.right_future(),
                     }
                 },
             )
@@ -192,7 +210,7 @@ mod tests {
         };
 
         let svc = DownloadService::new(RemoteThread::new_threaded());
-        let ret = test::block_on(svc.download(source_id, dest.clone()));
+        let ret = test::block_on(svc.download(source_id, dest.clone(), Hub::current()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")

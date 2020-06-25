@@ -6,10 +6,8 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[rustfmt::skip]
-use ::sentry::configure_scope;
-#[rustfmt::skip]
 use ::sentry::integrations::failure::capture_fail;
+use ::sentry::{configure_scope, Hub};
 
 use failure::{Fail, ResultExt};
 use futures::future::TryFutureExt;
@@ -197,6 +195,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         let request = self
             .0
             .download_svc
+            .bind_hub(Hub::current())
             .download(self.0.file_id.clone(), download_file.path().to_owned())
             .compat()
             .map_err(Into::into);
