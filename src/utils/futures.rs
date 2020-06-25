@@ -96,6 +96,18 @@ impl ThreadPool {
 /// [`enable_test_mode`]: func.enable_test_mode.html
 #[derive(Clone, Debug)]
 pub struct RemoteThread {
+    inner: Arc<InnerRemoteThread>,
+}
+
+/// Inner `RemoteThread` struct to get correct clone behaviour.
+///
+/// We only have an `actix::Addr` to the arbiter, which itself can be cloned.  Dropping this
+/// does not terminate the arbiter, but we wan the `RemoteThread` to stop when dropped.  So
+/// we need to implement `Drop`, but only want to actually trigger this drop when all clones
+/// of our `RemoteThread` are dropped.  Hence the need to put the drop on an inner struct
+/// which is wrapped in an Arc.
+#[derive(Debug)]
+struct InnerRemoteThread {
     arbiter: Option<actix::Addr<actix::Arbiter>>,
 }
 
@@ -112,7 +124,7 @@ pub enum SpawnError {
 }
 
 /// Dropping terminates the RemoteThread, cancelling all futures.
-impl Drop for RemoteThread {
+impl Drop for InnerRemoteThread {
     fn drop(&mut self) {
         // Without sending the StopArbiter message the arbiter thread keeps running even if
         // you drop the arbiter.
@@ -130,7 +142,9 @@ impl RemoteThread {
         } else {
             Some(actix::Arbiter::new("RemoteThread"))
         };
-        Self { arbiter }
+        Self {
+            inner: Arc::new(InnerRemoteThread { arbiter }),
+        }
     }
 
     /// Create a new instance, even when running in test mode.
@@ -139,7 +153,9 @@ impl RemoteThread {
     #[cfg(test)]
     pub fn new_threaded() -> Self {
         Self {
-            arbiter: Some(actix::Arbiter::new("RemoteThread")),
+            inner: Arc::new(InnerRemoteThread {
+                arbiter: Some(actix::Arbiter::new("RemoteThread")),
+            }),
         }
     }
 
@@ -208,7 +224,7 @@ impl RemoteThread {
             actix::spawn(fut01);
             Ok(())
         });
-        match self.arbiter {
+        match self.inner.arbiter {
             Some(ref arbiter) => arbiter.do_send(msg),
             None => {
                 let arbiter = actix::Arbiter::current();
@@ -254,8 +270,8 @@ mod tests {
 
     use crate::test;
 
-    #[test]
-    fn test_remote_thread() {
+    /// Create a new RemoteThread for testing purposes.
+    fn setup_remote_thread() -> RemoteThread {
         // Ensure actix is setup.
         test::setup();
 
@@ -265,7 +281,12 @@ mod tests {
         // you may want to temporarily remove this.
         log::set_max_level(log::LevelFilter::Off);
 
-        let remote = RemoteThread::new_threaded();
+        RemoteThread::new_threaded()
+    }
+
+    #[test]
+    fn test_remote_thread() {
+        let remote = setup_remote_thread();
         let fut = remote.spawn("task", Duration::from_secs(10), || future::ready(42));
         let ret = test::block_on(fut);
         assert_eq!(ret, Ok(42));
@@ -273,16 +294,7 @@ mod tests {
 
     #[test]
     fn test_remote_thread_timeout() {
-        // Ensure actix is setup.
-        test::setup();
-
-        // test::setup() enables logging, but this test spawns a thread where
-        // logging is not captured.  For normal test runs we don't want to
-        // pollute the stdout so silence logs here.  When debugging this test
-        // you may want to temporarily remove this.
-        log::set_max_level(log::LevelFilter::Off);
-
-        let remote = RemoteThread::new_threaded();
+        let remote = setup_remote_thread();
         let fut = remote.spawn("task", Duration::from_nanos(1), || {
             // Elaborate executor-neutral way of sleeping in a future
             let (tx, rx) = oneshot::channel();
@@ -298,16 +310,7 @@ mod tests {
 
     #[test]
     fn test_remote_thread_canceled() {
-        // Ensure actix is setup.
-        test::setup();
-
-        // test::setup() enables logging, but this test spawns a thread where
-        // logging is not captured.  For normal test runs we don't want to
-        // pollute the stdout so silence logs here.  When debugging this test
-        // you may want to temporarily remove this.
-        log::set_max_level(log::LevelFilter::Off);
-
-        let remote = RemoteThread::new_threaded();
+        let remote = setup_remote_thread();
         let fut = remote.spawn("task", Duration::from_secs(10), || {
             // Elaborate executor-neutral way of sleeping in a future
             let (tx, rx) = oneshot::channel();
@@ -320,5 +323,16 @@ mod tests {
         std::mem::drop(remote);
         let ret = test::block_on(fut);
         assert_eq!(ret, Err(SpawnError::Canceled));
+    }
+
+    #[test]
+    fn test_remote_thread_clone_drop() {
+        // When dropping a clone of the RemoteThread the other one needs to keep working.
+        let remote0 = setup_remote_thread();
+        let remote1 = remote0.clone();
+        std::mem::drop(remote0);
+        let fut = remote1.spawn("task", Duration::from_secs(10), || future::ready(42));
+        let ret = test::block_on(fut);
+        assert_eq!(ret, Ok(42));
     }
 }
