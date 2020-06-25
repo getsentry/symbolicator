@@ -135,7 +135,7 @@ impl DownloadService {
                         }
                     };
                     match hub {
-                        Some(hub) => fut.bind_hub(hub.clone()).left_future(),
+                        Some(hub) => fut.bind_hub(hub).left_future(),
                         None => fut.right_future(),
                     }
                 },
@@ -210,7 +210,7 @@ mod tests {
         };
 
         let svc = DownloadService::new(RemoteThread::new_threaded());
-        let ret = test::block_on(svc.download(source_id, dest.clone(), Hub::current()));
+        let ret = test::block_on(svc.download(source_id, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
