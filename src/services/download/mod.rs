@@ -24,7 +24,8 @@ mod http;
 mod s3;
 mod sentry;
 
-pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
+pub use crate::sources::{FileType, SentryFileId, SourceConfig, SourceFileId, SourceLocation};
+pub use crate::types::ObjectId;
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -143,6 +144,15 @@ impl DownloadService {
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
             .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
             .boxed()
+    }
+
+    pub fn list_files(
+        &self,
+        source: SourceConfig,
+        filetypes: &[FileType],
+        object_id: &ObjectId,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>>>> {
+        ()
     }
 }
 
