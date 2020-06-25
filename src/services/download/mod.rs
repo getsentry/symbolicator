@@ -16,7 +16,7 @@ use futures01::future;
 use futures01::prelude::*;
 
 use crate::utils::futures::RemoteThread;
-use crate::utils::sentry::SentryFutureExtStd;
+use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
 mod gcs;

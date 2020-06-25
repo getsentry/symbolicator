@@ -64,7 +64,7 @@ impl<F> SentryFutureExt for F where F: futures01::future::Future {}
 
 // The same as `SentryFutureExt` but we can not re-use the trait because the blanket
 // implementations would conflict.
-pub trait SentryFutureExtStd: Sized {
+pub trait SentryStdFutureExt: Sized {
     fn bind_hub<H>(self, hub: H) -> SentryFuture<Self>
     where
         H: Into<Arc<Hub>>,
@@ -84,7 +84,7 @@ pub trait SentryFutureExtStd: Sized {
     }
 }
 
-impl<F> SentryFutureExtStd for F where F: std::future::Future {}
+impl<F> SentryStdFutureExt for F where F: std::future::Future {}
 
 /// Write own data to Sentry scope, only the subset that is considered useful for debugging. Right
 /// now this could've been a simple method, but the idea is that one day we want a custom derive
