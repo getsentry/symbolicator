@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
+use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
@@ -104,6 +105,10 @@ pub(crate) fn tempdir() -> TempDir {
 /// error. The result of the future is then returned from this function
 /// call.
 ///
+/// This is provided rather than a `block_on()`-like interface to avoid accidentally calling
+/// a function which spawns before creating a future, which would attempt to spawn before
+/// actix is initialised.
+///
 /// Note that this function is intended to be used only for testing purpose.
 /// This function panics on nested call.
 pub fn block_fn<F, R>(f: F) -> Result<R::Item, R::Error>
@@ -118,6 +123,22 @@ where
     })
 }
 
+/// Version of `block_fn` which works with std::future aka futures03.
+pub fn block_fn03<F, R, T>(f: F) -> T
+where
+    F: FnOnce() -> R,
+    R: std::future::Future<Output = T>,
+{
+    SYSTEM.with(|cell| {
+        let mut inner = cell.borrow_mut();
+        inner.set_current();
+        inner
+            .runner()
+            .block_on(async move { f().await }.unit_error().boxed_local().compat())
+            .unwrap()
+    })
+}
+
 /// Run the std::future::Future until completion.
 ///
 /// Block the current thread and run the std::future::Future aka futures03 future to
@@ -126,14 +147,12 @@ pub fn block_on<F, T>(f: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
-    use futures::future::{FutureExt, TryFutureExt};
-
     SYSTEM.with(|cell| {
         let mut inner = cell.borrow_mut();
         inner.set_current();
         inner
             .runner()
-            .block_on(f.then(futures::future::ok::<T, ()>).boxed_local().compat())
+            .block_on(f.unit_error().boxed_local().compat())
             .unwrap()
     })
 }
