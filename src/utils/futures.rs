@@ -192,7 +192,7 @@ impl RemoteThread {
                 );
                 let start_time = Instant::now();
                 factory()
-                    .then(future::ok)
+                    .unit_error()
                     .boxed_local()
                     .compat()
                     .timeout(timeout)
@@ -205,10 +205,11 @@ impl RemoteThread {
                         let msg = match r {
                             Ok(o) => ChannelMsg::Output(o),
                             Err(_) => {
-                                // Because we wrapped our T into future::ok() above to make a
-                                // TryFuture, we know the <Timeout as Future>::Error will only
-                                // occur if the error is actually because of a timeout, so we do
-                                // not need to check with .is_timer() or .is_inner().
+                                // Because we wrapped our T into Ok() above using
+                                // .unit_error() to make a TryFuture, we know the <Timeout
+                                // as Future>::Error will only occur if the error is
+                                // actually because of a timeout, so we do not need to check
+                                // with .is_timer() or .is_inner().
                                 ChannelMsg::Timeout
                             }
                         };
