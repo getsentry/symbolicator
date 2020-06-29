@@ -144,7 +144,7 @@ mod tests {
         };
         let loc = SourceLocation::new("hello.txt");
 
-        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
+        let ret = test::block_fn01(|| download_source(http_source, loc, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -164,7 +164,7 @@ mod tests {
         };
         let loc = SourceLocation::new("i-do-not-exist");
 
-        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
+        let ret = test::block_fn01(|| download_source(http_source, loc, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
 
