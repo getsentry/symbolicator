@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
-use futures::compat::Future01CompatExt;
-use futures::{FutureExt, TryFutureExt};
+use futures::{future, FutureExt, TryFutureExt};
+use futures01::future::Future as Future01;
 use tokio::prelude::FutureExt as TokioFutureExt;
 use tokio::runtime::Runtime as TokioRuntime;
 
@@ -21,8 +21,8 @@ pub fn enable_test_mode() {
     IS_TEST.store(true, Ordering::Relaxed);
 }
 
-/// Error returned when the spawned future was canceled.
-use oneshot::Canceled as RemoteCanceled;
+/// Error returned from a `SpawnHandle` when the thread pool restarts.
+pub use oneshot::Canceled as RemoteCanceled;
 
 /// Handle returned from `ThreadPool::spawn_handle`.
 ///
@@ -82,98 +82,6 @@ impl ThreadPool {
     }
 }
 
-/// A plain remote thread which can execute non-send futures.
-///
-/// When the global `IS_TEST` is set by calling [`enable_test_mode`] this will
-/// not create a new thread and instead spawn any executions in the current
-/// thread.  This is a workaround for the stdout and panic capturing not being
-/// exposed properly to the test framework users which stops us from enabling
-/// these things in spawned threads during tests.
-///
-/// [`enable_test_mode`]: func.enable_test_mode.html
-#[derive(Debug, Clone)]
-struct BareRemoteThread {
-    inner: Arc<InnerBareRemoteThread>,
-}
-
-/// Inner `BareRemoteThread` struct to get correct clone behaviour.
-///
-/// We only have an `actix::Addr` to the arbiter, which itself can be cloned.  Dropping this
-/// does not terminate the arbiter, but we wan the `RemoteThread` to stop when dropped.  So
-/// we need to implement `Drop`, but only want to actually trigger this drop when all clones
-/// of our `RemoteThread` are dropped.  Hence the need to put the drop on an inner struct
-/// which is wrapped in an Arc.
-#[derive(Debug)]
-struct InnerBareRemoteThread {
-    arbiter: Option<actix::Addr<actix::Arbiter>>,
-}
-
-/// Dropping terminates the BareRemoteThread, cancelling all futures.
-impl Drop for InnerBareRemoteThread {
-    fn drop(&mut self) {
-        // Without sending the StopArbiter message the arbiter thread keeps running even if
-        // you drop the arbiter.
-        if let Some(ref addr) = self.arbiter {
-            addr.do_send(actix::msgs::StopArbiter(0));
-        }
-    }
-}
-
-impl BareRemoteThread {
-    /// Create a new instance, spawning the thread.
-    fn new() -> Self {
-        let arbiter = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
-            None
-        } else {
-            Some(actix::Arbiter::new("RemoteThread"))
-        };
-        Self {
-            inner: Arc::new(InnerBareRemoteThread { arbiter }),
-        }
-    }
-
-    /// Create a new instance, even when running in test mode.
-    ///
-    /// Some tests actually need to test this stuff works, support that.
-    #[cfg(test)]
-    pub fn new_threaded() -> Self {
-        Self {
-            inner: Arc::new(InnerBareRemoteThread {
-                arbiter: Some(actix::Arbiter::new("RemoteThread")),
-            }),
-        }
-    }
-
-    /// Create a future in the remote thread and run it.
-    ///
-    /// The returned future resolves when the spawned future has completed execution.  The
-    /// output type of the spawned future is wrapped in a `Result`, normally the output is
-    /// returned in an `Ok`.
-    // TODO: Dropping the returned future should cancel the spawned future.
-    pub fn spawn<F, R, T>(&self, factory: F) -> impl Future<Output = Result<T, RemoteCanceled>>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Future<Output = T> + 'static,
-        T: Send + 'static,
-    {
-        let (tx, rx) = oneshot::channel();
-        let msg = actix::msgs::Execute::new(move || -> Result<(), ()> {
-            let fut = factory().map(|output| tx.send(output).or(Err(())));
-            let fut01 = fut.boxed_local().compat();
-            actix::spawn(fut01);
-            Ok(())
-        });
-        match self.inner.arbiter {
-            Some(ref arbiter) => arbiter.do_send(msg),
-            None => {
-                let arbiter = actix::Arbiter::current();
-                arbiter.do_send(msg);
-            }
-        }
-        rx
-    }
-}
-
 /// A remote thread which can run non-sendable futures.
 ///
 /// This can be used to implement any services which internally need to use
@@ -185,13 +93,22 @@ impl BareRemoteThread {
 /// exposed properly to the test framework users which stops us from enabling
 /// these things in spawned threads during tests.
 ///
-/// NOTE: This implementation will still change to not handle the timeout and instead
-///    support cancellation on dropping of the returned future.
-///
 /// [`enable_test_mode`]: func.enable_test_mode.html
 #[derive(Clone, Debug)]
 pub struct RemoteThread {
-    remote: BareRemoteThread,
+    inner: Arc<InnerRemoteThread>,
+}
+
+/// Inner `RemoteThread` struct to get correct clone behaviour.
+///
+/// We only have an `actix::Addr` to the arbiter, which itself can be cloned.  Dropping this
+/// does not terminate the arbiter, but we wan the `RemoteThread` to stop when dropped.  So
+/// we need to implement `Drop`, but only want to actually trigger this drop when all clones
+/// of our `RemoteThread` are dropped.  Hence the need to put the drop on an inner struct
+/// which is wrapped in an Arc.
+#[derive(Debug)]
+struct InnerRemoteThread {
+    arbiter: Option<actix::Addr<actix::Arbiter>>,
 }
 
 /// Spawning the future on the remote failed.
@@ -206,11 +123,27 @@ pub enum SpawnError {
     Timeout,
 }
 
+/// Dropping terminates the RemoteThread, cancelling all futures.
+impl Drop for InnerRemoteThread {
+    fn drop(&mut self) {
+        // Without sending the StopArbiter message the arbiter thread keeps running even if
+        // you drop the arbiter.
+        if let Some(ref addr) = self.arbiter {
+            addr.do_send(actix::msgs::StopArbiter(0));
+        }
+    }
+}
+
 impl RemoteThread {
     /// Create a new instance, spawning the thread.
     pub fn new() -> Self {
+        let arbiter = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
+            None
+        } else {
+            Some(actix::Arbiter::new("RemoteThread"))
+        };
         Self {
-            remote: BareRemoteThread::new(),
+            inner: Arc::new(InnerRemoteThread { arbiter }),
         }
     }
 
@@ -220,7 +153,9 @@ impl RemoteThread {
     #[cfg(test)]
     pub fn new_threaded() -> Self {
         Self {
-            remote: BareRemoteThread::new_threaded(),
+            inner: Arc::new(InnerRemoteThread {
+                arbiter: Some(actix::Arbiter::new("RemoteThread")),
+            }),
         }
     }
 
@@ -232,7 +167,6 @@ impl RemoteThread {
     ///
     /// When the future takes too long `SpawnError::Timeout` is returned, if the
     /// `RemoteThread` it is running on is dropped `SpawnError::Canceled` is returned.
-    // TODO: rename to spawn_task?
     pub fn spawn<F, R, T>(
         &self,
         task_name: &'static str,
@@ -248,46 +182,60 @@ impl RemoteThread {
             Output(T),
             Timeout,
         };
+        let (tx, rx) = oneshot::channel();
         let creation_time = Instant::now();
-        let spawn_rx = self.remote.spawn(move || async move {
-            metric!(
-                timer("futures.wait_time") = creation_time.elapsed(),
-                "task_name" => task_name,
-            );
-            let start_time = Instant::now();
-            let timeout_output = factory()
-                .unit_error()
-                .boxed_local()
-                .compat()
-                .timeout(timeout)
-                .compat()
-                .await;
-            metric!(
-                timer("futures.done") = start_time.elapsed(),
-                "task_name" => task_name,
-                "status" => if timeout_output.is_ok() {"done"} else {"timeout"},
-            );
-            match timeout_output {
-                Ok(output) => ChannelMsg::Output(output),
-                // Because we wrapped the original future in Ok with .unit_error() we know
-                // any error here is from the timeout and not from the future.  So we do not
-                // need to check using with .is_timer() or .is_inner().
-                Err(_) => ChannelMsg::Timeout,
-            }
+        let msg = actix::msgs::Execute::new(move || -> Result<(), ()> {
+            let fut01 = futures01::future::lazy(move || {
+                metric!(
+                    timer("futures.wait_time") = creation_time.elapsed(),
+                    "task_name" => task_name,
+                );
+                let start_time = Instant::now();
+                factory()
+                    .then(future::ok)
+                    .boxed_local()
+                    .compat()
+                    .timeout(timeout)
+                    .then(move |r: Result<T, tokio::timer::timeout::Error<()>>| {
+                        metric!(
+                            timer("futures.done") = start_time.elapsed(),
+                            "task_name" => task_name,
+                            "status" => if r.is_ok() {"done"} else {"timeout"},
+                        );
+                        let msg = match r {
+                            Ok(o) => ChannelMsg::Output(o),
+                            Err(_) => {
+                                // Because we wrapped our T into future::ok() above to make a
+                                // TryFuture, we know the <Timeout as Future>::Error will only
+                                // occur if the error is actually because of a timeout, so we do
+                                // not need to check with .is_timer() or .is_inner().
+                                ChannelMsg::Timeout
+                            }
+                        };
+                        tx.send(msg).unwrap_or_else(|_| {
+                            log::info!(
+                                "Failed to send result of {} task, caller dropped",
+                                task_name
+                            )
+                        });
+                        futures01::future::ok(())
+                    })
+            });
+            actix::spawn(fut01);
+            Ok(())
         });
-        async move {
-            match spawn_rx.await {
-                Ok(ChannelMsg::Output(output)) => Ok(output),
-                Ok(ChannelMsg::Timeout) => Err(SpawnError::Timeout),
-                Err(RemoteCanceled) => {
-                    metric!(
-                        counter("futures.canceled") += 1,
-                        "task_name" => task_name,
-                    );
-                    Err(SpawnError::Canceled)
-                }
+        match self.inner.arbiter {
+            Some(ref arbiter) => arbiter.do_send(msg),
+            None => {
+                let arbiter = actix::Arbiter::current();
+                arbiter.do_send(msg);
             }
         }
+        rx.then(|oneshot_result| match oneshot_result {
+            Ok(ChannelMsg::Output(o)) => future::ready(Ok(o)),
+            Ok(ChannelMsg::Timeout) => future::ready(Err(SpawnError::Timeout)),
+            Err(oneshot::Canceled) => future::ready(Err(SpawnError::Canceled)),
+        })
     }
 }
 
@@ -320,59 +268,7 @@ impl Drop for CallOnDrop {
 mod tests {
     use super::*;
 
-    use futures::future;
-
     use crate::test;
-
-    fn setup() {
-        // Ensure actix is setup.
-        test::setup();
-
-        // test::setup() enables logging, but this test spawns a thread where
-        // logging is not captured.  For normal test runs we don't want to
-        // pollute the stdout so silence logs here.  When debugging this test
-        // you may want to temporarily remove this.
-        log::set_max_level(log::LevelFilter::Off);
-    }
-
-    #[test]
-    fn test_bare_remote_thread() {
-        setup();
-        let remote = BareRemoteThread::new_threaded();
-        let fut = remote.spawn(|| future::ready(42));
-        let ret = test::block_fn03(|| fut);
-        assert_eq!(ret, Ok(42));
-    }
-
-    #[test]
-    fn test_bare_remote_thread_canceled() {
-        setup();
-        let remote = BareRemoteThread::new_threaded();
-        let fut = remote.spawn(|| {
-            // Elaborate executor-neutral way of sleeping in a future.
-            let (tx, rx) = oneshot::channel();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_secs(10));
-                tx.send(42).ok();
-            });
-            rx
-        });
-        std::mem::drop(remote);
-        let ret = test::block_fn03(|| fut);
-        assert_eq!(ret, Err(RemoteCanceled));
-    }
-
-    #[test]
-    fn test_bare_remote_thread_clone_drop() {
-        // When dropping a clone of the BareRemoteThread the other one needs to keep working.
-        setup();
-        let remote0 = BareRemoteThread::new_threaded();
-        let remote1 = remote0.clone();
-        std::mem::drop(remote0);
-        let fut = remote1.spawn(|| future::ready(42));
-        let ret = test::block_on(fut);
-        assert_eq!(ret, Ok(42));
-    }
 
     /// Create a new RemoteThread for testing purposes.
     fn setup_remote_thread() -> RemoteThread {
