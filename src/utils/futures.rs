@@ -232,10 +232,16 @@ impl RemoteThread {
                 arbiter.do_send(msg);
             }
         }
-        rx.then(|oneshot_result| match oneshot_result {
+        rx.then(move |oneshot_result| match oneshot_result {
             Ok(ChannelMsg::Output(o)) => future::ready(Ok(o)),
             Ok(ChannelMsg::Timeout) => future::ready(Err(SpawnError::Timeout)),
-            Err(oneshot::Canceled) => future::ready(Err(SpawnError::Canceled)),
+            Err(oneshot::Canceled) => {
+                metric!(
+                    counter("futures.canceled") += 1,
+                    "task_name" => task_name,
+                );
+                future::ready(Err(SpawnError::Canceled))
+            }
         })
     }
 }
