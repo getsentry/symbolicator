@@ -288,7 +288,7 @@ mod tests {
     fn test_remote_thread() {
         let remote = setup_remote_thread();
         let fut = remote.spawn("task", Duration::from_secs(10), || future::ready(42));
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Ok(42));
     }
 
@@ -304,7 +304,7 @@ mod tests {
             });
             rx
         });
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Err(SpawnError::Timeout));
     }
 
@@ -321,7 +321,7 @@ mod tests {
             rx
         });
         std::mem::drop(remote);
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Err(SpawnError::Canceled));
     }
 
@@ -332,7 +332,7 @@ mod tests {
         let remote1 = remote0.clone();
         std::mem::drop(remote0);
         let fut = remote1.spawn("task", Duration::from_secs(10), || future::ready(42));
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Ok(42));
     }
 }
