@@ -192,7 +192,7 @@ impl RemoteThread {
                 );
                 let start_time = Instant::now();
                 factory()
-                    .then(future::ok)
+                    .unit_error()
                     .boxed_local()
                     .compat()
                     .timeout(timeout)
@@ -205,10 +205,11 @@ impl RemoteThread {
                         let msg = match r {
                             Ok(o) => ChannelMsg::Output(o),
                             Err(_) => {
-                                // Because we wrapped our T into future::ok() above to make a
-                                // TryFuture, we know the <Timeout as Future>::Error will only
-                                // occur if the error is actually because of a timeout, so we do
-                                // not need to check with .is_timer() or .is_inner().
+                                // Because we wrapped our T into Ok() above using
+                                // .unit_error() to make a TryFuture, we know the <Timeout
+                                // as Future>::Error will only occur if the error is
+                                // actually because of a timeout, so we do not need to check
+                                // with .is_timer() or .is_inner().
                                 ChannelMsg::Timeout
                             }
                         };
@@ -231,10 +232,16 @@ impl RemoteThread {
                 arbiter.do_send(msg);
             }
         }
-        rx.then(|oneshot_result| match oneshot_result {
+        rx.then(move |oneshot_result| match oneshot_result {
             Ok(ChannelMsg::Output(o)) => future::ready(Ok(o)),
             Ok(ChannelMsg::Timeout) => future::ready(Err(SpawnError::Timeout)),
-            Err(oneshot::Canceled) => future::ready(Err(SpawnError::Canceled)),
+            Err(oneshot::Canceled) => {
+                metric!(
+                    counter("futures.canceled") += 1,
+                    "task_name" => task_name,
+                );
+                future::ready(Err(SpawnError::Canceled))
+            }
         })
     }
 }
@@ -288,7 +295,7 @@ mod tests {
     fn test_remote_thread() {
         let remote = setup_remote_thread();
         let fut = remote.spawn("task", Duration::from_secs(10), || future::ready(42));
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Ok(42));
     }
 
@@ -304,7 +311,7 @@ mod tests {
             });
             rx
         });
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Err(SpawnError::Timeout));
     }
 
@@ -321,7 +328,7 @@ mod tests {
             rx
         });
         std::mem::drop(remote);
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Err(SpawnError::Canceled));
     }
 
@@ -332,7 +339,7 @@ mod tests {
         let remote1 = remote0.clone();
         std::mem::drop(remote0);
         let fut = remote1.spawn("task", Duration::from_secs(10), || future::ready(42));
-        let ret = test::block_on(fut);
+        let ret = test::block_fn(|| fut);
         assert_eq!(ret, Ok(42));
     }
 }

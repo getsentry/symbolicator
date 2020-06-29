@@ -220,7 +220,7 @@ mod tests {
             app.resource("/", |resource| resource.f(|_| "OK"));
         });
 
-        let response = test::block_fn(|| server.get().finish().unwrap().send());
+        let response = test::block_fn01(|| server.get().finish().unwrap().send());
         assert!(response.is_err());
 
         Ok(())
