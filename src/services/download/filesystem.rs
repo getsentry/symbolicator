@@ -35,7 +35,7 @@ pub fn download_source(
 
 pub fn list_files(
     source: Arc<FilesystemSourceConfig>,
-    filetypes: Vec<FileType>,
+    filetypes: &'static [FileType],
     object_id: ObjectId,
 ) -> Vec<SourceFileId> {
     super::SourceLocationIter {

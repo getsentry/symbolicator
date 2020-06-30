@@ -191,7 +191,7 @@ fn perform_search(
 
 pub fn list_files(
     source: Arc<SentrySourceConfig>,
-    _filetypes: Vec<FileType>,
+    _filetypes: &'static [FileType],
     object_id: ObjectId,
 ) -> impl Future<Item = Vec<SourceFileId>, Error = DownloadError> {
     let index_url = {

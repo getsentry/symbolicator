@@ -126,7 +126,7 @@ pub fn download_source(
 
 pub fn list_files(
     source: Arc<HttpSourceConfig>,
-    filetypes: Vec<FileType>,
+    filetypes: &'static [FileType],
     object_id: ObjectId,
 ) -> Vec<SourceFileId> {
     super::SourceLocationIter {

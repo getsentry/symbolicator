@@ -26,15 +26,6 @@ use crate::utils::futures::ThreadPool;
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
-mod common;
-mod filesystem;
-mod gcs;
-mod http;
-mod s3;
-mod sentry;
-
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
-
 #[derive(Debug, Fail, Clone, Copy)]
 pub enum ObjectErrorKind {
     #[fail(display = "failed to download")]
@@ -51,9 +42,6 @@ pub enum ObjectErrorKind {
 
     #[fail(display = "object download took too long")]
     Timeout,
-
-    #[fail(display = "failed to fetch data from Sentry")]
-    Sentry,
 
     #[fail(display = "download was canceled internally")]
     Canceled,
@@ -475,7 +463,10 @@ impl ObjectsActor {
                 .map(|source| {
                     let type_name = source.type_name();
 
-                    prepare_downloads(&source, filetypes, &identifier)
+                    self.download_svc
+                        .bind_hub(Arc::new(Hub::new_from_top(Hub::current())))
+                        .list_files(source.clone(), filetypes, identifier.clone())
+                        .compat()
                         .or_else(move |e| {
                             // This basically only happens for the Sentry source type, when doing the
                             // search by debug/code id. We do not surface those errors to the user
@@ -484,8 +475,6 @@ impl ObjectsActor {
                             log::error!("Failed to download from {}: {}", type_name, LogError(&e));
                             Ok(Vec::new())
                         })
-                        // create a new hub for each prepare_downloads call
-                        .sentry_hub_new_from_current()
                 })
                 // collect into intermediate vector because of borrowing problems
                 .collect::<Vec<_>>(),
@@ -554,31 +543,6 @@ impl ObjectsActor {
                 .map(|(_, response)| response)
                 .transpose()
         })
-    }
-}
-
-/// Create a list of all DIF downloads to be attempted.
-///
-/// Builds the list of download locations where the relevant Debug Information Files for a
-/// given [ObjectId] might be relative to the [`SourceConfig`].  This does not mean that
-/// each file exists on the source.  For some sources, e.g. [`SourceConfig::Sentry`], this
-/// might involve querying the source.
-///
-/// [`SourceConfig`]: ../../sources/enum.SourceConfig.html
-/// [`SourceConfig::Sentry`]: ../../sources/enum.SourceConfig.html#variant.Sentry
-fn prepare_downloads(
-    source: &SourceConfig,
-    filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<SourceFileId>, Error = ObjectError>> {
-    match *source {
-        SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::S3(ref source) => s3::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Gcs(ref source) => gcs::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Filesystem(ref source) => {
-            filesystem::prepare_downloads(source, filetypes, object_id)
-        }
     }
 }
 

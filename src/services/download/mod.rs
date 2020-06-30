@@ -155,7 +155,7 @@ impl DownloadService {
     pub fn list_files(
         &self,
         source: SourceConfig,
-        filetypes: Vec<FileType>,
+        filetypes: &'static [FileType],
         object_id: ObjectId,
     ) -> Pin<
         Box<
@@ -235,6 +235,12 @@ fn download_future_stream(
     Box::new(ret)
 }
 
+/// Iterator to generate a list of filepaths to try downloading from.
+///
+///  - `object_id`: Information about the image we want to download.
+///  - `filetypes`: Limit search to these filetypes.
+///  - `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
+///  - `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
 #[derive(Debug)]
 struct SourceLocationIter<'a> {
     filetypes: std::slice::Iter<'a, FileType>,
@@ -271,6 +277,7 @@ mod tests {
 
     use crate::sources::SourceConfig;
     use crate::test;
+    use crate::types::ObjectType;
 
     #[test]
     fn test_download() {
@@ -298,5 +305,37 @@ mod tests {
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
+    }
+
+    #[test]
+    fn test_list_files() {
+        test::setup();
+
+        // test::setup() enables logging, but this test spawns a thread where
+        // logging is not captured.  For normal test runs we don't want to
+        // pollute the stdout so silence logs here.  When debugging this test
+        // you may want to temporarily remove this.
+        log::set_max_level(log::LevelFilter::Off);
+
+        let source = test::local_source();
+        let objid = ObjectId {
+            code_id: Some("5ab380779000".parse().unwrap()),
+            code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
+            debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
+            debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+            object_type: ObjectType::Pe,
+        };
+
+        let svc = DownloadService::new(RemoteThread::new_threaded());
+        let ret =
+            test::block_fn(|| svc.list_files(source.clone(), FileType::all(), objid)).unwrap();
+
+        assert!(ret.len() > 0);
+        let item = &ret[0];
+        if let SourceFileId::Filesystem(source_cfg, _loc) = item {
+            assert_eq!(source_cfg.id, source.id());
+        } else {
+            panic!("Not a filesystem item");
+        }
     }
 }
