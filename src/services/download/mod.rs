@@ -294,7 +294,7 @@ mod tests {
         };
 
         let svc = DownloadService::new(RemoteThread::new_threaded());
-        let ret = test::block_fn01(|| svc.download(source_id, dest.clone()));
+        let ret = test::block_fn(|| svc.download(source_id, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
