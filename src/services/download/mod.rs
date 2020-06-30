@@ -16,6 +16,7 @@ use futures01::future;
 use futures01::prelude::*;
 
 use crate::utils::futures::RemoteThread;
+use crate::utils::paths::get_directory_paths;
 use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
@@ -24,7 +25,10 @@ mod http;
 mod s3;
 mod sentry;
 
-pub use crate::sources::{FileType, SentryFileId, SourceConfig, SourceFileId, SourceLocation};
+pub use crate::sources::{
+    DirectoryLayout, FileType, SentryFileId, SourceConfig, SourceFileId, SourceFilters,
+    SourceLocation,
+};
 pub use crate::types::ObjectId;
 
 /// HTTP User-Agent string to use.
@@ -40,6 +44,8 @@ pub enum DownloadErrorKind {
     Write,
     #[fail(display = "download was cancelled")]
     Canceled,
+    #[fail(display = "failed to fetch data from Sentry")]
+    Sentry,
 }
 
 symbolic::common::derive_failure!(
@@ -149,10 +155,50 @@ impl DownloadService {
     pub fn list_files(
         &self,
         source: SourceConfig,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>>>> {
-        ()
+        filetypes: Vec<FileType>,
+        object_id: ObjectId,
+    ) -> Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>>
+                + Send
+                + 'static,
+        >,
+    > {
+        let hub = self.hub.clone();
+        self.worker
+            .spawn(
+                "service.download.list_files",
+                std::time::Duration::from_secs(1800),
+                move || {
+                    let fut = async move {
+                        match source {
+                            SourceConfig::Sentry(cfg) => {
+                                let vec = sentry::list_files(cfg, filetypes, object_id)
+                                    .compat()
+                                    .await?;
+                                Ok(vec)
+                            }
+                            SourceConfig::Http(cfg) => {
+                                Ok(http::list_files(cfg, filetypes, object_id))
+                            }
+                            SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
+                            SourceConfig::Gcs(cfg) => {
+                                Ok(gcs::list_files(cfg, filetypes, object_id))
+                            }
+                            SourceConfig::Filesystem(cfg) => {
+                                Ok(filesystem::list_files(cfg, filetypes, object_id))
+                            }
+                        }
+                    };
+                    match hub {
+                        Some(hub) => fut.bind_hub(hub).left_future(),
+                        None => fut.right_future(),
+                    }
+                },
+            )
+            // Map all SpawnError variants into DownloadErrorKind::Canceled.
+            .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
+            .boxed()
     }
 }
 
@@ -187,6 +233,34 @@ fn download_future_stream(
         }
     });
     Box::new(ret)
+}
+
+#[derive(Debug)]
+struct SourceLocationIter<'a> {
+    filetypes: std::slice::Iter<'a, FileType>,
+    filters: &'a SourceFilters,
+    object_id: &'a ObjectId,
+    layout: DirectoryLayout,
+    next: Vec<String>,
+}
+
+impl Iterator for SourceLocationIter<'_> {
+    type Item = SourceLocation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.next.is_empty() {
+            if let Some(&filetype) = self.filetypes.next() {
+                if !self.filters.is_allowed(self.object_id, filetype) {
+                    continue;
+                }
+                self.next = get_directory_paths(self.layout, filetype, self.object_id);
+            } else {
+                return None;
+            }
+        }
+
+        self.next.pop().map(SourceLocation::new)
+    }
 }
 
 #[cfg(test)]
