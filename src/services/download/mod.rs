@@ -5,12 +5,12 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
-use futures::future::{FutureExt, TryFutureExt};
-use futures01::future;
-use futures01::prelude::*;
+use futures::future::FutureExt;
+use futures01::{future, Future, Stream};
 
 use crate::utils::futures::RemoteThread;
 
@@ -52,9 +52,38 @@ pub enum DownloadStatus {
     NotFound,
 }
 
+/// Dispatches downloading of the given file to the appropriate source.
+async fn dispatch_download(
+    source: SourceFileId,
+    destination: PathBuf,
+) -> Result<DownloadStatus, DownloadError> {
+    match source {
+        SourceFileId::Sentry(source, loc) => {
+            sentry::download_source(source, loc, destination)
+                .compat()
+                .await
+        }
+        SourceFileId::Http(source, loc) => {
+            http::download_source(source, loc, destination)
+                .compat()
+                .await
+        }
+        SourceFileId::S3(source, loc) => {
+            s3::download_source(source, loc, destination).compat().await
+        }
+        SourceFileId::Gcs(source, loc) => {
+            gcs::download_source(source, loc, destination)
+                .compat()
+                .await
+        }
+        SourceFileId::Filesystem(source, loc) => {
+            filesystem::download_source(source, loc, destination)
+        }
+    }
+}
+
 /// Common (transitional) type in many downloaders.
-type DownloadStream =
-    Box<dyn futures01::stream::Stream<Item = bytes::Bytes, Error = DownloadError>>;
+type DownloadStream = Box<dyn Stream<Item = bytes::Bytes, Error = DownloadError>>;
 
 /// A service which can download files from a [`SourceConfig`].
 ///
@@ -68,6 +97,7 @@ pub struct DownloadService {
 }
 
 impl DownloadService {
+    /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(worker: RemoteThread) -> Self {
         Self { worker }
     }
@@ -84,43 +114,13 @@ impl DownloadService {
         &self,
         source: SourceFileId,
         destination: PathBuf,
-    ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError> + Send + 'static> {
-        let fut03 = self.worker.spawn(
-            "service.download",
-            std::time::Duration::from_secs(3600),
-            || async move {
-                match source {
-                    SourceFileId::Sentry(source, loc) => {
-                        sentry::download_source(source, loc, destination)
-                            .compat()
-                            .await
-                    }
-                    SourceFileId::Http(source, loc) => {
-                        http::download_source(source, loc, destination)
-                            .compat()
-                            .await
-                    }
-                    SourceFileId::S3(source, loc) => {
-                        s3::download_source(source, loc, destination).compat().await
-                    }
-                    SourceFileId::Gcs(source, loc) => {
-                        gcs::download_source(source, loc, destination)
-                            .compat()
-                            .await
-                    }
-                    SourceFileId::Filesystem(source, loc) => {
-                        filesystem::download_source(source, loc, destination)
-                    }
-                }
-            },
-        );
-
-        // Map all SpawnError variants into DownloadErrorKind::Canceled.
-        let fut01 = fut03
-            .map(|spawn_ret| spawn_ret.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
-            .boxed()
-            .compat();
-        Box::new(fut01)
+    ) -> impl std::future::Future<Output = Result<DownloadStatus, DownloadError>> {
+        self.worker
+            .spawn("service.download", Duration::from_secs(3600), || {
+                dispatch_download(source, destination)
+            })
+            // Map all SpawnError variants into DownloadErrorKind::Canceled.
+            .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
     }
 }
 
@@ -187,8 +187,11 @@ mod tests {
             _ => panic!("unexpected source"),
         };
 
-        let svc = DownloadService::new(RemoteThread::new_threaded());
-        let ret = test::block_fn01(|| svc.download(source_id, dest.clone()));
+        let service = DownloadService::new(RemoteThread::new_threaded());
+        let dest2 = dest.clone();
+
+        // Jump through some hoops here, to prove that we can .await the service.
+        let ret = test::block_fn(move || async move { service.download(source_id, dest2).await });
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
