@@ -7,12 +7,14 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use ::sentry::Hub;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::FutureExt;
 use futures01::{future, Future, Stream};
 
 use crate::utils::futures::RemoteThread;
+use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
 mod gcs;
@@ -115,9 +117,11 @@ impl DownloadService {
         source: SourceFileId,
         destination: PathBuf,
     ) -> impl std::future::Future<Output = Result<DownloadStatus, DownloadError>> {
+        let hub = Hub::current();
+
         self.worker
-            .spawn("service.download", Duration::from_secs(3600), || {
-                dispatch_download(source, destination)
+            .spawn("service.download", Duration::from_secs(3600), move || {
+                dispatch_download(source, destination).bind_hub(hub)
             })
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
             .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))

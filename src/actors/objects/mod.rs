@@ -6,9 +6,7 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[rustfmt::skip]
 use ::sentry::configure_scope;
-#[rustfmt::skip]
 use ::sentry::integrations::failure::capture_fail;
 
 use failure::{Fail, ResultExt};
