@@ -150,14 +150,7 @@ pub fn download_source(
     download_path: SourceLocation,
     destination: PathBuf,
 ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
-    let key = {
-        let prefix = source.prefix.trim_matches(&['/'][..]);
-        if prefix.is_empty() {
-            download_path.0.clone()
-        } else {
-            format!("{}/{}", prefix, download_path.0)
-        }
-    };
+    let key = source.get_key(&download_path);
     log::debug!("Fetching from GCS: {} (from {})", &key, source.bucket);
 
     let source2 = source.clone();

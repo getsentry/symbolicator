@@ -56,7 +56,7 @@ pub trait SentryFutureExt: Sized {
     }
 
     fn sentry_hub_new_from_current(self) -> SentryFuture<Self> {
-        self.bind_hub(Arc::new(Hub::new_from_top(Hub::current())))
+        self.bind_hub(Hub::new_from_top(Hub::current()))
     }
 }
 
@@ -80,7 +80,7 @@ pub trait SentryStdFutureExt: Sized {
     }
 
     fn sentry_hub_new_from_current(self) -> SentryFuture<Self> {
-        self.bind_hub(Arc::new(Hub::new_from_top(Hub::current())))
+        self.bind_hub(Hub::new_from_top(Hub::current()))
     }
 }
 

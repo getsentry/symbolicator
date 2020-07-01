@@ -6,6 +6,7 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 use ::sentry::{configure_scope, Hub};
 

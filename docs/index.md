@@ -71,6 +71,12 @@ metrics:
 - `connect_to_reserved_ips`: Allow reserved IP addresses for requests to
   sources. See [Security](#security). Defaults to `false`.
 - `caches`: Fine-tune cache expiry.
+
+   All time units can be either a time expression like `1s`.  Units
+   can be `s`, `seconds`, `m`, `minutes`, `h`, `hours`, `d`, `days`,
+   `w`, `weeks`, `M`, `months`, `y`, `years`.  Or they can be `null`
+   in which case the cache will never expire.
+
    - `downloaded`: Fine-tune caches for downloaded files.
       - `max_unused_for`: Maximum duration to keep a file since last
         use of it.
@@ -90,7 +96,7 @@ metrics:
     - `diagnostics`: This configures the duration diagnostics data
       will be stored in cache.  E.g. minidumps which failed to be
       processed correctly will be stored in this cache.
-       - `max_unused_for`: Duration a file will be kept in this cache.
+       - `retention`: Duration a file will be kept in this cache.
 
 ## Security
 

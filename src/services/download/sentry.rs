@@ -35,11 +35,7 @@ pub fn download_source(
     file_id: SentryFileId,
     destination: PathBuf,
 ) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
-    let download_url = {
-        let mut url = source.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.0);
-        url
-    };
+    let download_url = source.download_url(&file_id);
 
     log::debug!("Fetching debug file from {}", download_url);
     let token = &source.token;
