@@ -1800,7 +1800,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let response = test::block_fn(|| {
+        let response = test::block_fn01(|| {
             let request = get_symbolication_request(vec![source]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
             service.symbolication().get_response(request_id, None)
@@ -1808,7 +1808,7 @@ mod tests {
 
         insta::assert_yaml_snapshot!(response);
 
-        let response = test::block_fn(|| {
+        let response = test::block_fn01(|| {
             let request = get_symbolication_request(vec![]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
             service.symbolication().get_response(request_id, None)
@@ -1827,7 +1827,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let response = test::block_fn(|| {
+        let response = test::block_fn01(|| {
             let request = get_symbolication_request(vec![]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
             service.symbolication().get_response(request_id, None)
@@ -1835,7 +1835,7 @@ mod tests {
 
         insta::assert_yaml_snapshot!(response);
 
-        let response = test::block_fn(|| {
+        let response = test::block_fn01(|| {
             let request = get_symbolication_request(vec![source]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
             service.symbolication().get_response(request_id, None)
@@ -1851,7 +1851,7 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = Bytes::from(fs::read(path)?);
-        let response = test::block_fn(|| {
+        let response = test::block_fn01(|| {
             let symbolication = service.symbolication();
             let request_id = symbolication.process_minidump(Scope::Global, minidump, vec![source]);
             service.symbolication().get_response(request_id, None)
@@ -1891,7 +1891,7 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
-        let response = test::block_fn(|| {
+        let response = test::block_fn01(|| {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
                 report_file,
