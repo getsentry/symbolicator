@@ -10,7 +10,7 @@ use std::time::Duration;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::FutureExt;
-use futures01::{future, prelude::*, Stream};
+use futures01::{future, Future, Stream};
 
 use crate::utils::futures::RemoteThread;
 
