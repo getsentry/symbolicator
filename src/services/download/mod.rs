@@ -5,7 +5,6 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::Hub;
@@ -15,6 +14,7 @@ use futures::future::FutureExt;
 use futures01::{future, Future, Stream};
 
 use crate::utils::futures::RemoteThread;
+use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
 mod gcs;
@@ -96,20 +96,12 @@ type DownloadStream = Box<dyn Stream<Item = bytes::Bytes, Error = DownloadError>
 #[derive(Debug, Clone)]
 pub struct DownloadService {
     worker: RemoteThread,
-    hub: Option<Arc<Hub>>,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(worker: RemoteThread) -> Self {
-        Self { worker, hub: None }
-    }
-
-    pub fn bind_hub(&self, hub: Arc<Hub>) -> Self {
-        Self {
-            worker: self.worker.clone(),
-            hub: Some(hub),
-        }
+        Self { worker }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -125,9 +117,11 @@ impl DownloadService {
         source: SourceFileId,
         destination: PathBuf,
     ) -> impl std::future::Future<Output = Result<DownloadStatus, DownloadError>> {
+        let hub = Hub::current();
+
         self.worker
-            .spawn("service.download", Duration::from_secs(3600), || {
-                dispatch_download(source, destination)
+            .spawn("service.download", Duration::from_secs(3600), move || {
+                dispatch_download(source, destination).bind_hub(hub)
             })
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
             .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
