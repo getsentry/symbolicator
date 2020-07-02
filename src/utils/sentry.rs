@@ -5,7 +5,6 @@ use futures01::Poll;
 
 use sentry::{Hub, Scope};
 
-// TODO: where is the warning about the missing Debug impl???
 pub struct SentryFuture<F> {
     pub(crate) hub: Arc<Hub>,
     pub(crate) inner: F,

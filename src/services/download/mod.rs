@@ -91,6 +91,26 @@ async fn dispatch_download(
     }
 }
 
+/// Dispatches listing files one the appropriate source type.
+async fn dispatch_list_files(
+    source: SourceConfig,
+    filetypes: &'static [FileType],
+    object_id: ObjectId,
+) -> Result<Vec<SourceFileId>, DownloadError> {
+    match source {
+        SourceConfig::Sentry(cfg) => {
+            let vec = sentry::list_files(cfg, filetypes, object_id)
+                .compat()
+                .await?;
+            Ok(vec)
+        }
+        SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
+        SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
+        SourceConfig::Gcs(cfg) => Ok(gcs::list_files(cfg, filetypes, object_id)),
+        SourceConfig::Filesystem(cfg) => Ok(filesystem::list_files(cfg, filetypes, object_id)),
+    }
+}
+
 /// Common (transitional) type in many downloaders.
 type DownloadStream = Box<dyn Stream<Item = bytes::Bytes, Error = DownloadError>>;
 
@@ -103,20 +123,12 @@ type DownloadStream = Box<dyn Stream<Item = bytes::Bytes, Error = DownloadError>
 #[derive(Debug, Clone)]
 pub struct DownloadService {
     worker: RemoteThread,
-    hub: Option<Arc<Hub>>,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(worker: RemoteThread) -> Self {
-        Self { worker, hub: None }
-    }
-
-    pub fn bind_hub(&self, hub: Arc<Hub>) -> Self {
-        Self {
-            worker: self.worker.clone(),
-            hub: Some(hub),
-        }
+        Self { worker }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -135,7 +147,7 @@ impl DownloadService {
         let hub = Hub::current();
 
         self.worker
-            .spawn("service.download", Duration::from_secs(3600), move || {
+            .spawn("service.download", Duration::from_secs(1800), move || {
                 dispatch_download(source, destination).bind_hub(hub)
             })
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
@@ -147,48 +159,16 @@ impl DownloadService {
         source: SourceConfig,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Pin<
-        Box<
-            dyn std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>>
-                + Send
-                + 'static,
-        >,
-    > {
-        let hub = self.hub.clone();
+    ) -> impl std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
+        let hub = Hub::current();
         self.worker
             .spawn(
                 "service.download.list_files",
                 std::time::Duration::from_secs(1800),
-                move || {
-                    let fut = async move {
-                        match source {
-                            SourceConfig::Sentry(cfg) => {
-                                let vec = sentry::list_files(cfg, filetypes, object_id)
-                                    .compat()
-                                    .await?;
-                                Ok(vec)
-                            }
-                            SourceConfig::Http(cfg) => {
-                                Ok(http::list_files(cfg, filetypes, object_id))
-                            }
-                            SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
-                            SourceConfig::Gcs(cfg) => {
-                                Ok(gcs::list_files(cfg, filetypes, object_id))
-                            }
-                            SourceConfig::Filesystem(cfg) => {
-                                Ok(filesystem::list_files(cfg, filetypes, object_id))
-                            }
-                        }
-                    };
-                    match hub {
-                        Some(hub) => fut.bind_hub(hub).left_future(),
-                        None => fut.right_future(),
-                    }
-                },
+                move || dispatch_list_files(source, filetypes, object_id).bind_hub(hub),
             )
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
             .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
-            .boxed()
     }
 }
 

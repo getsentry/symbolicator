@@ -6,7 +6,6 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::sentry::configure_scope;
 use ::sentry::integrations::failure::capture_fail;
 use ::sentry::{configure_scope, Hub};
 
@@ -184,7 +183,6 @@ impl CacheItemRequest for FetchFileDataRequest {
         let request = self
             .0
             .download_svc
-            .bind_hub(Hub::current())
             .download(self.0.file_id.clone(), download_file.path().to_owned())
             .compat()
             .map_err(Into::into);
@@ -463,19 +461,24 @@ impl ObjectsActor {
                 .iter()
                 .map(|source| {
                     let type_name = source.type_name();
-
-                    self.download_svc
-                        .bind_hub(Arc::new(Hub::new_from_top(Hub::current())))
-                        .list_files(source.clone(), filetypes, identifier.clone())
-                        .compat()
-                        .or_else(move |e| {
-                            // This basically only happens for the Sentry source type, when doing the
-                            // search by debug/code id. We do not surface those errors to the user
-                            // (instead we default to an empty search result) and only report them
-                            // internally.
-                            log::error!("Failed to download from {}: {}", type_name, LogError(&e));
-                            Ok(Vec::new())
-                        })
+                    let hub = Hub::new_from_top(Hub::current());
+                    Hub::run(Arc::new(hub), || {
+                        self.download_svc
+                            .list_files(source.clone(), filetypes, identifier.clone())
+                            .compat()
+                            .or_else(move |e| {
+                                // This basically only happens for the Sentry source type, when doing the
+                                // search by debug/code id. We do not surface those errors to the user
+                                // (instead we default to an empty search result) and only report them
+                                // internally.
+                                log::error!(
+                                    "Failed to download from {}: {}",
+                                    type_name,
+                                    LogError(&e)
+                                );
+                                Ok(Vec::new())
+                            })
+                    })
                 })
                 // collect into intermediate vector because of borrowing problems
                 .collect::<Vec<_>>(),
