@@ -5,13 +5,14 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::time::Duration;
 
 use ::sentry::Hub;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::FutureExt;
-use futures01::{future, Future, Stream};
+use futures01::{Future, Stream};
 
 use crate::utils::futures::RemoteThread;
 use crate::utils::paths::get_directory_paths;
@@ -91,26 +92,6 @@ async fn dispatch_download(
     }
 }
 
-/// Dispatches listing files one the appropriate source type.
-async fn dispatch_list_files(
-    source: SourceConfig,
-    filetypes: &'static [FileType],
-    object_id: ObjectId,
-) -> Result<Vec<SourceFileId>, DownloadError> {
-    match source {
-        SourceConfig::Sentry(cfg) => {
-            let vec = sentry::list_files(cfg, filetypes, object_id)
-                .compat()
-                .await?;
-            Ok(vec)
-        }
-        SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
-        SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
-        SourceConfig::Gcs(cfg) => Ok(gcs::list_files(cfg, filetypes, object_id)),
-        SourceConfig::Filesystem(cfg) => Ok(filesystem::list_files(cfg, filetypes, object_id)),
-    }
-}
-
 /// Common (transitional) type in many downloaders.
 type DownloadStream = Box<dyn Stream<Item = bytes::Bytes, Error = DownloadError>>;
 
@@ -159,16 +140,35 @@ impl DownloadService {
         source: SourceConfig,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> impl std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
-        let hub = Hub::current();
-        self.worker
-            .spawn(
-                "service.download.list_files",
-                std::time::Duration::from_secs(1800),
-                move || dispatch_list_files(source, filetypes, object_id).bind_hub(hub),
-            )
-            // Map all SpawnError variants into DownloadErrorKind::Canceled.
-            .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>>>> {
+        let worker = self.worker.clone();
+        async move {
+            let hub = Hub::current();
+            match source {
+                SourceConfig::Sentry(cfg) => {
+                    worker
+                        .spawn(
+                            "service.download.list_files",
+                            Duration::from_secs(1800),
+                            move || {
+                                sentry::list_files(cfg, filetypes, object_id)
+                                    .compat()
+                                    .bind_hub(hub)
+                            },
+                        )
+                        // Map all SpawnError variants into DownloadErrorKind::Canceled
+                        .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
+                        .await
+                }
+                SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
+                SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
+                SourceConfig::Gcs(cfg) => Ok(gcs::list_files(cfg, filetypes, object_id)),
+                SourceConfig::Filesystem(cfg) => {
+                    Ok(filesystem::list_files(cfg, filetypes, object_id))
+                }
+            }
+        }
+        .boxed()
     }
 }
 
@@ -198,7 +198,7 @@ fn download_future_stream(
             Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
         }
         None => {
-            let fut = future::ok(DownloadStatus::NotFound);
+            let fut = futures01::future::ok(DownloadStatus::NotFound);
             Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
         }
     });
@@ -303,7 +303,7 @@ mod tests {
         let ret =
             test::block_fn(|| svc.list_files(source.clone(), FileType::all(), objid)).unwrap();
 
-        assert!(ret.len() > 0);
+        assert!(!ret.is_empty());
         let item = &ret[0];
         if let SourceFileId::Filesystem(source_cfg, _loc) = item {
             assert_eq!(source_cfg.id, source.id());
