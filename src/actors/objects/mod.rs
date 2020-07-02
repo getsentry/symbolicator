@@ -10,7 +10,7 @@ use ::sentry::integrations::failure::capture_fail;
 use ::sentry::{configure_scope, Hub};
 
 use failure::{Fail, ResultExt};
-use futures::future::TryFutureExt;
+use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, Future};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -461,24 +461,19 @@ impl ObjectsActor {
                 .iter()
                 .map(|source| {
                     let type_name = source.type_name();
-                    let hub = Hub::new_from_top(Hub::current());
-                    Hub::run(Arc::new(hub), || {
-                        self.download_svc
-                            .list_files(source.clone(), filetypes, identifier.clone())
-                            .compat()
-                            .or_else(move |e| {
-                                // This basically only happens for the Sentry source type, when doing the
-                                // search by debug/code id. We do not surface those errors to the user
-                                // (instead we default to an empty search result) and only report them
-                                // internally.
-                                log::error!(
-                                    "Failed to download from {}: {}",
-                                    type_name,
-                                    LogError(&e)
-                                );
-                                Ok(Vec::new())
-                            })
-                    })
+                    let hub = Arc::new(Hub::new_from_top(Hub::current()));
+                    self.download_svc
+                        .list_files(source.clone(), filetypes, identifier.clone(), hub)
+                        .boxed_local()
+                        .compat()
+                        .or_else(move |e| {
+                            // This basically only happens for the Sentry source type, when doing
+                            // the search by debug/code id. We do not surface those errors to the
+                            // user (instead we default to an empty search result) and only report
+                            // them internally.
+                            log::error!("Failed to download from {}: {}", type_name, LogError(&e));
+                            Ok(Vec::new())
+                        })
                 })
                 // collect into intermediate vector because of borrowing problems
                 .collect::<Vec<_>>(),

@@ -5,7 +5,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::Hub;
@@ -128,7 +128,7 @@ impl DownloadService {
         let hub = Hub::current();
 
         self.worker
-            .spawn("service.download", Duration::from_secs(1800), move || {
+            .spawn("service.download", Duration::from_secs(300), move || {
                 dispatch_download(source, destination).bind_hub(hub)
             })
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
@@ -140,25 +140,25 @@ impl DownloadService {
         source: SourceConfig,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>>>> {
+        hub: Arc<Hub>,
+    ) -> impl std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
         let worker = self.worker.clone();
         async move {
-            let hub = Hub::current();
             match source {
                 SourceConfig::Sentry(cfg) => {
                     worker
                         .spawn(
                             "service.download.list_files",
-                            Duration::from_secs(1800),
+                            Duration::from_secs(30),
                             move || {
                                 sentry::list_files(cfg, filetypes, object_id)
                                     .compat()
                                     .bind_hub(hub)
                             },
                         )
-                        // Map all SpawnError variants into DownloadErrorKind::Canceled
-                        .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
                         .await
+                        // Map all SpawnError variants into DownloadErrorKind::Canceled
+                        .unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into()))
                 }
                 SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
                 SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
@@ -168,7 +168,6 @@ impl DownloadService {
                 }
             }
         }
-        .boxed()
     }
 }
 
@@ -300,8 +299,10 @@ mod tests {
         };
 
         let svc = DownloadService::new(RemoteThread::new_threaded());
-        let ret =
-            test::block_fn(|| svc.list_files(source.clone(), FileType::all(), objid)).unwrap();
+        let ret = test::block_fn(|| {
+            svc.list_files(source.clone(), FileType::all(), objid, Hub::current())
+        })
+        .unwrap();
 
         assert!(!ret.is_empty());
         let item = &ret[0];
