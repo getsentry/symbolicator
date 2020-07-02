@@ -18,7 +18,8 @@ use tokio_retry::Retry;
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
-use crate::sources::{HttpSourceConfig, SourceFileId, SourceLocation};
+use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
+use crate::types::ObjectId;
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
@@ -121,6 +122,22 @@ pub fn download_source(
         Box::new(response),
         destination,
     )
+}
+
+pub fn list_files(
+    source: Arc<HttpSourceConfig>,
+    filetypes: &'static [FileType],
+    object_id: ObjectId,
+) -> Vec<SourceFileId> {
+    super::SourceLocationIter {
+        filetypes: filetypes.iter(),
+        filters: &source.files.filters,
+        object_id: &object_id,
+        layout: source.files.layout,
+        next: Vec::new(),
+    }
+    .map(|loc| SourceFileId::Http(source.clone(), loc))
+    .collect()
 }
 
 #[cfg(test)]

@@ -18,7 +18,8 @@ use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus};
-use crate::sources::{GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
+use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
+use crate::types::ObjectId;
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -219,4 +220,20 @@ pub fn download_source(
         stream,
         destination,
     )
+}
+
+pub fn list_files(
+    source: Arc<GcsSourceConfig>,
+    filetypes: &'static [FileType],
+    object_id: ObjectId,
+) -> Vec<SourceFileId> {
+    super::SourceLocationIter {
+        filetypes: filetypes.iter(),
+        filters: &source.files.filters,
+        object_id: &object_id,
+        layout: source.files.layout,
+        next: Vec::new(),
+    }
+    .map(|loc| SourceFileId::Gcs(source.clone(), loc))
+    .collect()
 }

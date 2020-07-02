@@ -5,15 +5,17 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::Hub;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::FutureExt;
-use futures01::{future, Future, Stream};
+use futures01::{Future, Stream};
 
 use crate::utils::futures::RemoteThread;
+use crate::utils::paths::get_directory_paths;
 use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
@@ -22,7 +24,11 @@ mod http;
 mod s3;
 mod sentry;
 
-pub use crate::sources::{SentryFileId, SourceFileId, SourceLocation};
+pub use crate::sources::{
+    DirectoryLayout, FileType, SentryFileId, SourceConfig, SourceFileId, SourceFilters,
+    SourceLocation,
+};
+pub use crate::types::ObjectId;
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -37,6 +43,8 @@ pub enum DownloadErrorKind {
     Write,
     #[fail(display = "download was cancelled")]
     Canceled,
+    #[fail(display = "failed to fetch data from Sentry")]
+    Sentry,
 }
 
 symbolic::common::derive_failure!(
@@ -120,11 +128,46 @@ impl DownloadService {
         let hub = Hub::current();
 
         self.worker
-            .spawn("service.download", Duration::from_secs(3600), move || {
+            .spawn("service.download", Duration::from_secs(300), move || {
                 dispatch_download(source, destination).bind_hub(hub)
             })
             // Map all SpawnError variants into DownloadErrorKind::Canceled.
             .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
+    }
+
+    pub fn list_files(
+        &self,
+        source: SourceConfig,
+        filetypes: &'static [FileType],
+        object_id: ObjectId,
+        hub: Arc<Hub>,
+    ) -> impl std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
+        let worker = self.worker.clone();
+        async move {
+            match source {
+                SourceConfig::Sentry(cfg) => {
+                    worker
+                        .spawn(
+                            "service.download.list_files",
+                            Duration::from_secs(30),
+                            move || {
+                                sentry::list_files(cfg, filetypes, object_id)
+                                    .compat()
+                                    .bind_hub(hub)
+                            },
+                        )
+                        .await
+                        // Map all SpawnError variants into DownloadErrorKind::Canceled
+                        .unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into()))
+                }
+                SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
+                SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
+                SourceConfig::Gcs(cfg) => Ok(gcs::list_files(cfg, filetypes, object_id)),
+                SourceConfig::Filesystem(cfg) => {
+                    Ok(filesystem::list_files(cfg, filetypes, object_id))
+                }
+            }
+        }
     }
 }
 
@@ -154,11 +197,45 @@ fn download_future_stream(
             Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
         }
         None => {
-            let fut = future::ok(DownloadStatus::NotFound);
+            let fut = futures01::future::ok(DownloadStatus::NotFound);
             Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
         }
     });
     Box::new(ret)
+}
+
+/// Iterator to generate a list of filepaths to try downloading from.
+///
+///  - `object_id`: Information about the image we want to download.
+///  - `filetypes`: Limit search to these filetypes.
+///  - `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
+///  - `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
+#[derive(Debug)]
+struct SourceLocationIter<'a> {
+    filetypes: std::slice::Iter<'a, FileType>,
+    filters: &'a SourceFilters,
+    object_id: &'a ObjectId,
+    layout: DirectoryLayout,
+    next: Vec<String>,
+}
+
+impl Iterator for SourceLocationIter<'_> {
+    type Item = SourceLocation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.next.is_empty() {
+            if let Some(&filetype) = self.filetypes.next() {
+                if !self.filters.is_allowed(self.object_id, filetype) {
+                    continue;
+                }
+                self.next = get_directory_paths(self.layout, filetype, self.object_id);
+            } else {
+                return None;
+            }
+        }
+
+        self.next.pop().map(SourceLocation::new)
+    }
 }
 
 #[cfg(test)]
@@ -169,6 +246,7 @@ mod tests {
 
     use crate::sources::SourceConfig;
     use crate::test;
+    use crate::types::ObjectType;
 
     #[test]
     fn test_download() {
@@ -199,5 +277,39 @@ mod tests {
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
+    }
+
+    #[test]
+    fn test_list_files() {
+        test::setup();
+
+        // test::setup() enables logging, but this test spawns a thread where
+        // logging is not captured.  For normal test runs we don't want to
+        // pollute the stdout so silence logs here.  When debugging this test
+        // you may want to temporarily remove this.
+        log::set_max_level(log::LevelFilter::Off);
+
+        let source = test::local_source();
+        let objid = ObjectId {
+            code_id: Some("5ab380779000".parse().unwrap()),
+            code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
+            debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
+            debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+            object_type: ObjectType::Pe,
+        };
+
+        let svc = DownloadService::new(RemoteThread::new_threaded());
+        let ret = test::block_fn(|| {
+            svc.list_files(source.clone(), FileType::all(), objid, Hub::current())
+        })
+        .unwrap();
+
+        assert!(!ret.is_empty());
+        let item = &ret[0];
+        if let SourceFileId::Filesystem(source_cfg, _loc) = item {
+            assert_eq!(source_cfg.id, source.id());
+        } else {
+            panic!("Not a filesystem item");
+        }
     }
 }

@@ -15,7 +15,8 @@ use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus};
-use crate::sources::{S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
+use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
+use crate::types::ObjectId;
 
 lazy_static::lazy_static! {
     static ref AWS_HTTP_CLIENT: rusoto_core::HttpClient = rusoto_core::HttpClient::new().unwrap();
@@ -103,4 +104,20 @@ pub fn download_source(
         Box::new(response),
         destination,
     )
+}
+
+pub fn list_files(
+    source: Arc<S3SourceConfig>,
+    filetypes: &'static [FileType],
+    object_id: ObjectId,
+) -> Vec<SourceFileId> {
+    super::SourceLocationIter {
+        filetypes: filetypes.iter(),
+        filters: &source.files.filters,
+        object_id: &object_id,
+        layout: source.files.layout,
+        next: Vec::new(),
+    }
+    .map(|loc| SourceFileId::S3(source.clone(), loc))
+    .collect()
 }
