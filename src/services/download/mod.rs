@@ -12,6 +12,7 @@ use ::sentry::Hub;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
 use futures::future::FutureExt;
+use futures::stream::StreamExt;
 use futures01::{Future, Stream};
 
 use crate::utils::futures::RemoteThread;
@@ -73,11 +74,7 @@ async fn dispatch_download(
                 .compat()
                 .await
         }
-        SourceFileId::Http(source, loc) => {
-            http::download_source(source, loc, destination)
-                .compat()
-                .await
-        }
+        SourceFileId::Http(source, loc) => http::download_source(source, loc, destination).await,
         SourceFileId::S3(source, loc) => {
             s3::download_source(source, loc, destination).compat().await
         }
@@ -202,6 +199,25 @@ fn download_future_stream(
         }
     });
     Box::new(ret)
+}
+
+async fn download_stream(
+    source: SourceFileId,
+    stream: impl futures::stream::Stream<Item = Result<bytes::Bytes, DownloadError>>,
+    destination: PathBuf,
+) -> Result<DownloadStatus, DownloadError> {
+    // All file I/O in this function is blocking!
+    log::trace!("Downloading from {}", source);
+    let mut file =
+        std::fs::File::create(&destination).context(DownloadErrorKind::BadDestination)?;
+    let mut stream = Box::pin(stream);
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        file.write_all(chunk.as_ref())
+            .context(DownloadErrorKind::Write)?;
+    }
+    Ok(DownloadStatus::Completed)
 }
 
 /// Iterator to generate a list of filepaths to try downloading from.
