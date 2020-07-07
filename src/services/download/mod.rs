@@ -210,7 +210,7 @@ async fn download_stream(
     log::trace!("Downloading from {}", source);
     let mut file =
         std::fs::File::create(&destination).context(DownloadErrorKind::BadDestination)?;
-    let mut stream = Box::pin(stream);
+    futures::pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
