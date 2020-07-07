@@ -43,6 +43,33 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
     Ok(joined)
 }
 
+/// Start a request to the web server.
+///
+/// This initiates the request, when the future resolves the headers will have been
+/// retrieved but not the entire payload.
+async fn start_request(
+    source: Arc<HttpSourceConfig>,
+    url: Url,
+) -> Result<client::ClientResponse, client::SendRequestError> {
+    http::follow_redirects(url, MAX_HTTP_REDIRECTS, move |url| {
+        let mut builder = client::get(url);
+        for (key, value) in source.headers.iter() {
+            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                builder.header(key, value.as_str());
+            }
+        }
+        builder.header(header::USER_AGENT, USER_AGENT);
+        // This timeout is for the entire HTTP download *including* the response stream
+        // itself, in contrast to what the Actix-Web docs say. We have tested this
+        // manually.
+        //
+        // The intent is to disable the timeout entirely, but there is no API for that.
+        builder.timeout(Duration::from_secs(9999));
+        builder.finish()
+    })
+    .await
+}
+
 pub async fn download_source(
     source: Arc<HttpSourceConfig>,
     download_path: SourceLocation,
@@ -55,34 +82,13 @@ pub async fn download_source(
         Err(_) => return Ok(DownloadStatus::NotFound),
     };
     log::debug!("Fetching debug file from {}", download_url);
-    let connect = clone!(download_url, source, || {
-        http::follow_redirects(
-            download_url.clone(),
-            MAX_HTTP_REDIRECTS,
-            clone!(source, |url| {
-                let mut builder = client::get(url);
-                for (key, value) in source.headers.iter() {
-                    if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                        builder.header(key, value.as_str());
-                    }
-                }
-                builder.header(header::USER_AGENT, USER_AGENT);
-
-                // This timeout is for the entire HTTP download *including* the response stream
-                // itself, in contrast to what the Actix-Web docs say. We have tested this
-                // manually.
-                //
-                // The intent is to disable the timeout entirely, but there is no API for that.
-                builder.timeout(Duration::from_secs(9999));
-                builder.finish()
-            }),
-        )
-        .boxed_local()
-        .compat()
-    });
     let response = Retry::spawn(
         ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        connect,
+        || {
+            start_request(source.clone(), download_url.clone())
+                .boxed_local()
+                .compat()
+        },
     )
     .compat()
     .await
