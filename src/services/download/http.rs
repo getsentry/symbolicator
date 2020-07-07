@@ -11,15 +11,15 @@ use std::time::Duration;
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
+use futures::compat::Stream01CompatExt;
 use futures::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
+use crate::utils::futures::delay;
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
@@ -82,21 +82,14 @@ pub async fn download_source(
         Err(_) => return Ok(DownloadStatus::NotFound),
     };
     log::debug!("Fetching debug file from {}", download_url);
-    let response = Retry::spawn(
-        ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        || {
-            start_request(source.clone(), download_url.clone())
-                .boxed_local()
-                .compat()
-        },
-    )
-    .compat()
-    .await
-    .map_err(|e| match e {
-        tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
-    });
-
+    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+    let response = loop {
+        let result = start_request(source.clone(), download_url.clone()).await;
+        match backoff.next() {
+            Some(duration) if result.is_err() => delay(duration).await,
+            _ => break result,
+        }
+    };
     match response {
         Ok(response) => {
             if response.status().is_success() {
