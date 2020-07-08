@@ -3,17 +3,18 @@
 //! The sources are described on
 //! [https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/](https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/)
 
+use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::Hub;
+use bytes::Bytes;
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
-use futures::future::FutureExt;
-use futures::stream::StreamExt;
-use futures01::{Future, Stream};
+use futures::prelude::*;
+use futures01::{Future as Future01, Stream as Stream01};
 
 use crate::utils::futures::RemoteThread;
 use crate::utils::paths::get_directory_paths;
@@ -90,7 +91,7 @@ async fn dispatch_download(
 }
 
 /// Common (transitional) type in many downloaders.
-type DownloadStream = Box<dyn Stream<Item = bytes::Bytes, Error = DownloadError>>;
+type DownloadStream = Box<dyn Stream01<Item = Bytes, Error = DownloadError>>;
 
 /// A service which can download files from a [`SourceConfig`].
 ///
@@ -121,7 +122,7 @@ impl DownloadService {
         &self,
         source: SourceFileId,
         destination: PathBuf,
-    ) -> impl std::future::Future<Output = Result<DownloadStatus, DownloadError>> {
+    ) -> impl Future<Output = Result<DownloadStatus, DownloadError>> {
         let hub = Hub::current();
 
         self.worker
@@ -138,7 +139,7 @@ impl DownloadService {
         filetypes: &'static [FileType],
         object_id: ObjectId,
         hub: Arc<Hub>,
-    ) -> impl std::future::Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
+    ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
         let worker = self.worker.clone();
         async move {
             match source {
@@ -173,9 +174,9 @@ impl DownloadService {
 /// These streaming futures are currently implemented per source type.
 fn download_future_stream(
     source: SourceFileId,
-    stream: Box<dyn Future<Item = Option<DownloadStream>, Error = DownloadError>>,
+    stream: Box<dyn Future01<Item = Option<DownloadStream>, Error = DownloadError>>,
     destination: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
+) -> Box<dyn Future01<Item = DownloadStatus, Error = DownloadError>> {
     // All file I/O in this function is blocking!
     let ret = stream.and_then(move |maybe_stream| match maybe_stream {
         Some(stream) => {
@@ -191,11 +192,11 @@ fn download_future_stream(
                         .map(|_| file)
                 })
                 .and_then(|_| Ok(DownloadStatus::Completed));
-            Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
+            Box::new(fut) as Box<dyn Future01<Item = DownloadStatus, Error = DownloadError>>
         }
         None => {
             let fut = futures01::future::ok(DownloadStatus::NotFound);
-            Box::new(fut) as Box<dyn Future<Item = DownloadStatus, Error = DownloadError>>
+            Box::new(fut) as Box<dyn Future01<Item = DownloadStatus, Error = DownloadError>>
         }
     });
     Box::new(ret)
@@ -203,13 +204,12 @@ fn download_future_stream(
 
 async fn download_stream(
     source: SourceFileId,
-    stream: impl futures::stream::Stream<Item = Result<bytes::Bytes, DownloadError>>,
+    stream: impl Stream<Item = Result<Bytes, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
     log::trace!("Downloading from {}", source);
-    let mut file =
-        std::fs::File::create(&destination).context(DownloadErrorKind::BadDestination)?;
+    let mut file = File::create(&destination).context(DownloadErrorKind::BadDestination)?;
     futures::pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
