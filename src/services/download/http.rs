@@ -48,7 +48,7 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
 /// This initiates the request, when the future resolves the headers will have been
 /// retrieved but not the entire payload.
 async fn start_request(
-    source: Arc<HttpSourceConfig>,
+    source: &HttpSourceConfig,
     url: Url,
 ) -> Result<client::ClientResponse, client::SendRequestError> {
     http::follow_redirects(url, MAX_HTTP_REDIRECTS, move |url| {
@@ -84,7 +84,7 @@ pub async fn download_source(
     log::debug!("Fetching debug file from {}", download_url);
     let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
     let response = loop {
-        let result = start_request(source.clone(), download_url.clone()).await;
+        let result = start_request(&source, download_url.clone()).await;
         match backoff.next() {
             Some(duration) if result.is_err() => delay(duration).await,
             _ => break result,

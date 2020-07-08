@@ -26,50 +26,51 @@ lazy_static::lazy_static! {
 }
 
 pub async fn follow_redirects<F>(
-    initial_url: Url,
-    max_redirects: usize,
+    mut url: Url,
+    mut max_redirects: usize,
     make_request: F,
 ) -> Result<ClientResponse, SendRequestError>
 where
-    F: Fn(&str) -> Result<ClientRequest, actix_web::error::Error> + Send + 'static,
+    F: Fn(&str) -> Result<ClientRequest, actix_web::error::Error> + Send,
 {
-    let mut url = initial_url;
-    let mut redirects = max_redirects;
     let mut trusted = true;
 
-    let response = loop {
+    loop {
         let mut request = make_request(url.as_str()).map_err(|err| {
             let message = format!("Failed creating request: {} (URI: {})", err, url);
             sentry::capture_message(&message, sentry::Level::Error);
             SendRequestError::Connector(ClientConnectorError::InvalidUrl)
         })?;
+
         if !trusted {
             let headers = request.headers_mut();
             headers.remove(header::AUTHORIZATION);
             headers.remove(header::COOKIE);
         }
+
         let response = request.send().compat().await?;
-        if response.status().is_redirection() && redirects > 0 {
+        if response.status().is_redirection() && max_redirects > 0 {
             let location = response
                 .headers()
                 .get(header::LOCATION)
                 .and_then(|l| l.to_str().ok());
+
             if let Some(location) = location {
                 let redirect_url = url.join(location).map_err(|e| {
                     let message = format!("bad request uri: {}", e);
                     SendRequestError::Io(io::Error::new(io::ErrorKind::InvalidData, message))
                 })?;
+
                 log::trace!("Following redirect: {:?}", &redirect_url);
                 let is_same_origin = redirect_url.origin() == url.origin();
                 trusted = trusted && is_same_origin;
                 url = redirect_url;
-                redirects -= 1;
+                max_redirects -= 1;
                 continue;
             }
         }
-        break response;
-    };
-    Ok(response)
+        return Ok(response);
+    }
 }
 
 /// A Resolver-like actor for the actix-web http client that refuses to resolve to reserved IP addresses.
