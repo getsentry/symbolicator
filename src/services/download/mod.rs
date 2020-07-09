@@ -202,6 +202,9 @@ fn download_future_stream(
     Box::new(ret)
 }
 
+/// Download the source from a stream.
+///
+/// This is common functionality used by all many downloaders.
 async fn download_stream(
     source: SourceFileId,
     stream: impl Stream<Item = Result<Bytes, DownloadError>>,
