@@ -11,15 +11,15 @@ use std::time::Duration;
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
-use futures01::future;
-use futures01::prelude::*;
+use futures::compat::Stream01CompatExt;
+use futures::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
+use crate::utils::futures::delay;
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
@@ -43,85 +43,83 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
     Ok(joined)
 }
 
-pub fn download_source(
+/// Start a request to the web server.
+///
+/// This initiates the request, when the future resolves the headers will have been
+/// retrieved but not the entire payload.
+async fn start_request(
+    source: &HttpSourceConfig,
+    url: Url,
+) -> Result<client::ClientResponse, client::SendRequestError> {
+    http::follow_redirects(url, MAX_HTTP_REDIRECTS, move |url| {
+        let mut builder = client::get(url);
+        for (key, value) in source.headers.iter() {
+            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                builder.header(key, value.as_str());
+            }
+        }
+        builder.header(header::USER_AGENT, USER_AGENT);
+        // This timeout is for the entire HTTP download *including* the response stream
+        // itself, in contrast to what the Actix-Web docs say. We have tested this
+        // manually.
+        //
+        // The intent is to disable the timeout entirely, but there is no API for that.
+        builder.timeout(Duration::from_secs(9999));
+        builder.finish()
+    })
+    .await
+}
+
+pub async fn download_source(
     source: Arc<HttpSourceConfig>,
     download_path: SourceLocation,
     destination: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
+) -> Result<DownloadStatus, DownloadError> {
     // This can effectively never error since the URL is always validated to be a base URL.
     // Though unfortunately this happens outside of this service, so ideally we'd fix this.
     let download_url = match join_url_encoded(&source.url, &download_path) {
         Ok(x) => x,
-        Err(_) => return Box::new(future::ok(DownloadStatus::NotFound)),
+        Err(_) => return Ok(DownloadStatus::NotFound),
     };
     log::debug!("Fetching debug file from {}", download_url);
-    let response = clone!(download_url, source, || {
-        http::follow_redirects(
-            download_url.clone(),
-            MAX_HTTP_REDIRECTS,
-            clone!(source, |url| {
-                let mut builder = client::get(url);
 
-                for (key, value) in source.headers.iter() {
-                    if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                        builder.header(key, value.as_str());
-                    }
-                }
+    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+    let response = loop {
+        let result = start_request(&source, download_url.clone()).await;
+        match backoff.next() {
+            Some(duration) if result.is_err() => delay(duration).await,
+            _ => break result,
+        }
+    };
 
-                builder.header(header::USER_AGENT, USER_AGENT);
-
-                // This timeout is for the entire HTTP download *including* the response stream
-                // itself, in contrast to what the Actix-Web docs say. We have tested this
-                // manually.
-                //
-                // The intent is to disable the timeout entirely, but there is no API for that.
-                builder.timeout(Duration::from_secs(9999));
-                builder.finish()
-            }),
-        )
-    });
-
-    let response = Retry::spawn(
-        ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        response,
-    );
-
-    let response = response.map_err(|e| match e {
-        tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
-    });
-
-    let response = response.then(move |result| match result {
+    match response {
         Ok(response) => {
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);
-                Ok(Some(Box::new(
-                    // This box is the DownloadStream type alias
-                    response
-                        .payload()
-                        .map_err(|e| e.context(DownloadErrorKind::Io).into()),
+                let stream = response
+                    .payload()
+                    .compat()
+                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
+                super::download_stream(
+                    SourceFileId::Http(source, download_path),
+                    stream,
+                    destination,
                 )
-                    as Box<dyn Stream<Item = _, Error = _>>))
+                .await
             } else {
                 log::trace!(
                     "Unexpected status code from {}: {}",
                     download_url,
                     response.status()
                 );
-                Ok(None)
+                Ok(DownloadStatus::NotFound)
             }
         }
         Err(e) => {
             log::trace!("Skipping response from {}: {}", download_url, e);
-            Ok(None) // must be wrong type
+            Ok(DownloadStatus::NotFound) // must be wrong type
         }
-    });
-
-    super::download_future_stream(
-        SourceFileId::Http(source, download_path),
-        Box::new(response),
-        destination,
-    )
+    }
 }
 
 pub fn list_files(
@@ -161,7 +159,7 @@ mod tests {
         };
         let loc = SourceLocation::new("hello.txt");
 
-        let ret = test::block_fn01(|| download_source(http_source, loc, dest.clone()));
+        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -181,7 +179,7 @@ mod tests {
         };
         let loc = SourceLocation::new("i-do-not-exist");
 
-        let ret = test::block_fn01(|| download_source(http_source, loc, dest.clone()));
+        let ret = test::block_fn(|| download_source(http_source, loc, dest.clone()));
         assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
     }
 

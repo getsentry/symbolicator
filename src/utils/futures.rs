@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
+use futures::compat::Future01CompatExt;
 use futures::{future, FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
 use tokio::prelude::FutureExt as TokioFutureExt;
@@ -269,6 +270,14 @@ impl Drop for CallOnDrop {
             f();
         }
     }
+}
+
+/// Delay aka sleep for a given duration
+pub async fn delay(duration: Duration) {
+    tokio::timer::Delay::new(Instant::now() + duration)
+        .compat()
+        .await
+        .ok();
 }
 
 #[cfg(test)]
