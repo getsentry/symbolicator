@@ -82,6 +82,7 @@ pub async fn download_source(
         Err(_) => return Ok(DownloadStatus::NotFound),
     };
     log::debug!("Fetching debug file from {}", download_url);
+
     let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
     let response = loop {
         let result = start_request(&source, download_url.clone()).await;
@@ -90,6 +91,7 @@ pub async fn download_source(
             _ => break result,
         }
     };
+
     match response {
         Ok(response) => {
             if response.status().is_success() {
