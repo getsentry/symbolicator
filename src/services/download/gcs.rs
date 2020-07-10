@@ -10,16 +10,17 @@ use std::sync::Arc;
 use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::{Fail, ResultExt};
-use futures01::prelude::*;
+use futures::compat::{Future01CompatExt, Stream01CompatExt};
+use futures::prelude::*;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
+use crate::utils::futures::delay;
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -88,14 +89,9 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Do
     Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8).context(DownloadErrorKind::Io)?)
 }
 
-fn request_new_token(
-    source_key: &GcsSourceKey,
-) -> Box<dyn Future<Item = GcsToken, Error = DownloadError>> {
+async fn request_new_token(source_key: &GcsSourceKey) -> Result<GcsToken, DownloadError> {
     let expires_at = Utc::now() + Duration::minutes(58);
-    let auth_jwt = match get_auth_jwt(source_key, expires_at.timestamp() + 30) {
-        Ok(auth_jwt) => auth_jwt,
-        Err(err) => return Box::new(Err(err).into_future()),
-    };
+    let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
 
     let mut builder = client::post("https://www.googleapis.com/oauth2/v4/token");
     // for some inexplicable reason we otherwise get gzipped data back that actix-web
@@ -109,117 +105,106 @@ fn request_new_token(
         .unwrap()
         .send();
 
-    let response = response
-        .map_err(|err| {
-            log::debug!("Failed to authenticate against gcs: {}", err);
-            DownloadError::from(DownloadErrorKind::Io)
-        })
-        .and_then(move |resp| {
-            resp.json::<GcsTokenResponse>()
-                .map_err(|e| e.context(DownloadErrorKind::Io).into())
-                .map(move |token| GcsToken {
-                    access_token: token.access_token,
-                    expires_at,
-                })
-        });
-
-    Box::new(response)
+    let response = response.compat().await.map_err(|err| {
+        log::debug!("Failed to authenticate against gcs: {}", err);
+        DownloadError::from(DownloadErrorKind::Io)
+    })?;
+    let token = response
+        .json::<GcsTokenResponse>()
+        .compat()
+        .await
+        .map_err(|e| e.context(DownloadErrorKind::Io))?;
+    Ok(GcsToken {
+        access_token: token.access_token,
+        expires_at,
+    })
 }
 
-fn get_token(
-    source_key: &Arc<GcsSourceKey>,
-) -> Box<dyn Future<Item = Arc<GcsToken>, Error = DownloadError>> {
+async fn get_token(source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, DownloadError> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at >= Utc::now() {
             metric!(counter("source.gcs.token.cached") += 1);
-            return Box::new(Ok(token.clone()).into_future());
+            return Ok(token.clone());
         }
     }
 
     let source_key = source_key.clone();
-    Box::new(request_new_token(&source_key).map(move |token| {
-        metric!(counter("source.gcs.token.requests") += 1);
-        let token = Arc::new(token);
-        GCS_TOKENS.lock().put(source_key, token.clone());
-        token
-    }))
+    let token = request_new_token(&source_key).await?;
+    metric!(counter("source.gcs.token.requests") += 1);
+    let token = Arc::new(token);
+    GCS_TOKENS.lock().put(source_key, token.clone());
+    Ok(token)
 }
 
-pub fn download_source(
+async fn start_request(
+    url: &str,
+    token: &GcsToken,
+) -> Result<client::ClientResponse, client::SendRequestError> {
+    let mut builder = client::get(&url);
+    builder.header("authorization", format!("Bearer {}", token.access_token));
+    builder.finish().unwrap().send().compat().await
+}
+
+pub async fn download_source(
     source: Arc<GcsSourceConfig>,
     download_path: SourceLocation,
     destination: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
+) -> Result<DownloadStatus, DownloadError> {
     let key = source.get_key(&download_path);
     log::debug!("Fetching from GCS: {} (from {})", &key, source.bucket);
+    let token = get_token(&source.source_key).await?;
+    log::debug!("Got valid GCS token: {:?}", &token);
 
-    let source2 = source.clone();
-    let try_response = move || {
-        let source = source2.clone();
-        let key = key.clone();
-        let url = format!(
-            "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
-            percent_encode(source.bucket.as_bytes(), PATH_SEGMENT_ENCODE_SET),
-            percent_encode(key.as_bytes(), PATH_SEGMENT_ENCODE_SET),
-        );
-        get_token(&source.source_key)
-            .and_then(move |token| {
-                log::debug!("Got valid GCS token: {:?}", &token);
-                let mut builder = client::get(&url);
-                builder.header("authorization", format!("Bearer {}", token.access_token));
-                builder
-                    .finish()
-                    .unwrap()
-                    .send()
-                    .map_err(|err| err.context(DownloadErrorKind::Io).into())
-            })
-            .then(move |result| match result {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                        Ok(Some(Box::new(
-                            response
-                                .payload()
-                                .map_err(|e| e.context(DownloadErrorKind::Io).into()),
-                        )
-                            as Box<dyn Stream<Item = _, Error = _>>))
-                    } else {
-                        log::trace!(
-                            "Unexpected status code from GCS {} (from {}): {}",
-                            &key,
-                            source.bucket,
-                            response.status()
-                        );
-                        Ok(None)
-                    }
-                }
-                Err(e) => {
-                    log::trace!(
-                        "Skipping response from GCS {} (from {}): {} ({:?})",
-                        &key,
-                        source.bucket,
-                        &e,
-                        &e
-                    );
-                    Ok(None)
-                }
-            })
-    };
-
-    let response = Retry::spawn(
-        ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        try_response,
+    let url = format!(
+        "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
+        percent_encode(source.bucket.as_bytes(), PATH_SEGMENT_ENCODE_SET),
+        percent_encode(key.as_bytes(), PATH_SEGMENT_ENCODE_SET),
     );
 
-    let stream = Box::new(response.map_err(|e| match e {
-        tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
-    }));
-    super::download_future_stream(
-        SourceFileId::Gcs(source, download_path),
-        stream,
-        destination,
-    )
+    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+    let response = loop {
+        let result = start_request(&url, &token).await;
+        match backoff.next() {
+            Some(duration) if result.is_err() => delay(duration).await,
+            _ => break result,
+        }
+    };
+
+    match response {
+        Ok(response) => {
+            if response.status().is_success() {
+                log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
+                let stream = response
+                    .payload()
+                    .compat()
+                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
+                super::download_stream(
+                    SourceFileId::Gcs(source, download_path),
+                    stream,
+                    destination,
+                )
+                .await
+            } else {
+                log::trace!(
+                    "Unexpected status code from GCS {} (from {}): {}",
+                    &key,
+                    source.bucket,
+                    response.status()
+                );
+                Ok(DownloadStatus::NotFound)
+            }
+        }
+        Err(e) => {
+            log::trace!(
+                "Skipping response from GCS {} (from {}): {} ({:?})",
+                &key,
+                source.bucket,
+                &e,
+                &e
+            );
+            Ok(DownloadStatus::NotFound)
+        }
+    }
 }
 
 pub fn list_files(

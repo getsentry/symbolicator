@@ -77,11 +77,7 @@ async fn dispatch_download(
         }
         SourceFileId::Http(source, loc) => http::download_source(source, loc, destination).await,
         SourceFileId::S3(source, loc) => s3::download_source(source, loc, destination).await,
-        SourceFileId::Gcs(source, loc) => {
-            gcs::download_source(source, loc, destination)
-                .compat()
-                .await
-        }
+        SourceFileId::Gcs(source, loc) => gcs::download_source(source, loc, destination).await,
         SourceFileId::Filesystem(source, loc) => {
             filesystem::download_source(source, loc, destination)
         }
