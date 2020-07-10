@@ -1055,7 +1055,7 @@ impl SymbolicationActor {
                             (
                                 code_module
                                     .id()
-                                    .unwrap_or_else(|| CodeModuleId::from(DebugId::nil())),
+                                    .unwrap_or_default(),
                                 object_info_from_minidump_module(object_type, code_module),
                             )
                         })
