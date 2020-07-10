@@ -10,19 +10,19 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use actix::{Actor, Addr};
-use actix_web::client::ClientConnector;
+use actix_web::client::{ClientConnector, ClientResponse, SendRequestError};
 use actix_web::{client, HttpMessage};
 use failure::Fail;
-use futures01::future::Either;
-use futures01::prelude::*;
+use futures::compat::{Future01CompatExt, Stream01CompatExt};
+use futures::prelude::*;
 use parking_lot::Mutex;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
 use crate::types::ObjectId;
+use crate::utils::futures::{delay, TimedTaskExt};
 
 lazy_static::lazy_static! {
     static ref CLIENT_CONNECTOR: Addr<ClientConnector> = ClientConnector::default().start();
@@ -30,71 +30,66 @@ lazy_static::lazy_static! {
         Mutex::new(lru::LruCache::new(100_000));
 }
 
-pub fn download_source(
+async fn start_request(
+    source: &SentrySourceConfig,
+    url: &Url,
+) -> Result<ClientResponse, SendRequestError> {
+    // The timeout is for the entire HTTP download *including* the response stream itself,
+    // in contrast to what the Actix-Web docs say. We have tested this manually.
+    //
+    // The intent is to disable the timeout entirely, but there is no API for that.
+    client::get(url)
+        .with_connector((*CLIENT_CONNECTOR).clone())
+        .header("User-Agent", USER_AGENT)
+        .header("Authorization", format!("Bearer {}", &source.token))
+        .timeout(Duration::from_secs(9999))
+        .finish()
+        .unwrap()
+        .send()
+        .compat()
+        .await
+}
+
+pub async fn download_source(
     source: Arc<SentrySourceConfig>,
     file_id: SentryFileId,
     destination: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
+) -> Result<DownloadStatus, DownloadError> {
     let download_url = source.download_url(&file_id);
-
     log::debug!("Fetching debug file from {}", download_url);
-    let token = &source.token;
-    let response = clone!(token, download_url, || {
-        client::get(&download_url)
-            .with_connector((*CLIENT_CONNECTOR).clone())
-            .header("User-Agent", USER_AGENT)
-            .header("Authorization", format!("Bearer {}", token))
-            // This timeout is for the entire HTTP download *including* the response stream
-            // itself, in contrast to what the Actix-Web docs say. We have tested this
-            // manually.
-            //
-            // The intent is to disable the timeout entirely, but there is no API for that.
-            .timeout(Duration::from_secs(9999))
-            .finish()
-            .unwrap()
-            .send()
-    });
+    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+    let response = loop {
+        let result = start_request(&source, &download_url).await;
+        match backoff.next() {
+            Some(duration) if result.is_err() => delay(duration).await,
+            _ => break result,
+        }
+    };
 
-    let response = Retry::spawn(
-        ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        response,
-    );
-
-    let response = response.map_err(|e| match e {
-        tokio_retry::Error::OperationError(e) => e,
-        e => panic!("{}", e),
-    });
-
-    let response = response.then(move |result| match result {
+    match response {
         Ok(response) => {
             if response.status().is_success() {
                 log::trace!("Success hitting {}", download_url);
-                Ok(Some(Box::new(
-                    response
-                        .payload()
-                        .map_err(|e| e.context(DownloadErrorKind::Io).into()),
-                )
-                    as Box<dyn Stream<Item = _, Error = _>>))
+                let stream = response
+                    .payload()
+                    .compat()
+                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
+                super::download_stream(SourceFileId::Sentry(source, file_id), stream, destination)
+                    .await
             } else {
-                log::debug!(
+                log::trace!(
                     "Unexpected status code from {}: {}",
                     download_url,
                     response.status()
                 );
-                Ok(None)
+                Ok(DownloadStatus::NotFound)
             }
         }
         Err(e) => {
-            log::warn!("Skipping response from {}: {}", download_url, e);
-            Ok(None)
+            log::trace!("Skipping response from {}: {}", download_url, e);
+            Ok(DownloadStatus::NotFound) // must be wrong type
         }
-    });
-
-    super::download_future_stream(
-        SourceFileId::Sentry(source, file_id),
-        Box::new(response),
-        destination,
-    )
+    }
 }
 
 #[derive(Debug, Fail, Clone, Copy)]
@@ -127,69 +122,78 @@ symbolic::common::derive_failure!(
     doc = "Errors happening while fetching data from Sentry"
 );
 
-fn perform_search(
-    query: SearchQuery,
-) -> impl Future<Item = Vec<SearchResult>, Error = DownloadError> {
+/// Make a request to sentry, parse the result as a JSON SearchResult list.
+async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, SentryError> {
+    let response = client::get(&query.index_url)
+        .with_connector((*CLIENT_CONNECTOR).clone())
+        .header("Accept-Encoding", "identity")
+        .header("User-Agent", USER_AGENT)
+        .header("Authorization", format!("Bearer {}", &query.token))
+        .finish()
+        .unwrap()
+        .send()
+        .compat()
+        .await
+        .map_err(|e| SentryError::from(e.context(SentryErrorKind::SendRequest)))?;
+    if response.status().is_success() {
+        log::trace!("Success fetching index from Sentry");
+        response
+            .json()
+            .compat()
+            .await
+            .map_err(|e| e.context(SentryErrorKind::Parsing).into())
+    } else {
+        log::warn!("Sentry returned status code {}", response.status());
+        Err(SentryError::from(SentryErrorKind::BadStatusCode))
+    }
+}
+
+/// Query sentry to do the do search.
+///
+/// This includes retry logic with exponential backoff.
+async fn search_sentry(query: &SearchQuery) -> Result<Vec<SearchResult>, DownloadError> {
+    log::debug!(
+        "Fetching list of Sentry debug files from {}",
+        &query.index_url
+    );
+    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+
+    let search_result = loop {
+        let result = fetch_sentry_json(query).await;
+
+        match backoff.next() {
+            Some(duration) if result.is_err() => delay(duration).await,
+            _ => break result,
+        }
+    };
+
+    search_result.map_err(|e| e.context(DownloadErrorKind::Sentry).into())
+}
+
+/// Return the search results.
+///
+/// If there are cached search results this skips the actual search.
+async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, DownloadError> {
     if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
         if created.elapsed() < Duration::from_secs(3600) {
-            return Either::A(Ok(entries.clone()).into_future());
+            return Ok(entries.clone());
         }
     }
 
-    let index_url = query.index_url.clone();
-    let token = query.token.clone();
+    let entries = search_sentry(&query).await?;
 
-    log::debug!("Fetching list of Sentry debug files from {}", index_url);
-    let index_request = move || {
-        client::get(&index_url)
-            .with_connector((*CLIENT_CONNECTOR).clone())
-            .header("Accept-Encoding", "identity")
-            .header("User-Agent", USER_AGENT)
-            .header("Authorization", format!("Bearer {}", token.clone()))
-            .finish()
-            .unwrap()
-            .send()
-            .map_err(|e| e.context(SentryErrorKind::SendRequest).into())
-            .and_then(move |response| {
-                if response.status().is_success() {
-                    log::trace!("Success fetching index from Sentry");
-                    Either::A(
-                        response
-                            .json::<Vec<SearchResult>>()
-                            .map_err(|e| e.context(SentryErrorKind::Parsing).into()),
-                    )
-                } else {
-                    log::warn!("Sentry returned status code {}", response.status());
-                    Either::B(Err(SentryError::from(SentryErrorKind::BadStatusCode)).into_future())
-                }
-            })
-    };
+    SENTRY_SEARCH_RESULTS
+        .lock()
+        .put(query, (Instant::now(), entries.clone()));
 
-    let index_request = Retry::spawn(
-        ExponentialBackoff::from_millis(10).map(jitter).take(3),
-        index_request,
-    );
-
-    let index_request = index_request.map(move |entries| {
-        SENTRY_SEARCH_RESULTS
-            .lock()
-            .put(query, (Instant::now(), entries.clone()));
-        entries
-    });
-
-    Either::B(
-        future_metrics!("downloads.sentry.index", None, index_request).map_err(|e| match e {
-            tokio_retry::Error::OperationError(e) => e.context(DownloadErrorKind::Sentry).into(),
-            e => panic!("{}", e),
-        }),
-    )
+    Ok(entries)
 }
 
-pub fn list_files(
+pub async fn list_files(
     source: Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: ObjectId,
-) -> impl Future<Item = Vec<SourceFileId>, Error = DownloadError> {
+) -> Result<Vec<SourceFileId>, DownloadError> {
     let index_url = {
         let mut url = source.url.clone();
         if let Some(ref debug_id) = object_id.debug_id {
@@ -204,20 +208,18 @@ pub fn list_files(
 
         url
     };
-
     let query = SearchQuery {
         index_url,
         token: source.token.clone(),
     };
 
-    let entries = perform_search(query).map(clone!(source, |entries| {
-        entries
-            .into_iter()
-            .map(move |api_response| {
-                SourceFileId::Sentry(source.clone(), SentryFileId::new(api_response.id))
-            })
-            .collect()
-    }));
-
-    Box::new(entries)
+    let entries = cached_sentry_search(query)
+        .task_metrics("downloads.sentry.index")
+        .await?
+        .iter()
+        .map(|search_result| {
+            SourceFileId::Sentry(source.clone(), SentryFileId::new(search_result.id.clone()))
+        })
+        .collect();
+    Ok(entries)
 }

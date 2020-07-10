@@ -71,9 +71,7 @@ async fn dispatch_download(
 ) -> Result<DownloadStatus, DownloadError> {
     match source {
         SourceFileId::Sentry(source, loc) => {
-            sentry::download_source(source, loc, destination)
-                .compat()
-                .await
+            sentry::download_source(source, loc, destination).await
         }
         SourceFileId::Http(source, loc) => http::download_source(source, loc, destination).await,
         SourceFileId::S3(source, loc) => s3::download_source(source, loc, destination).await,
@@ -142,11 +140,7 @@ impl DownloadService {
                         .spawn(
                             "service.download.list_files",
                             Duration::from_secs(30),
-                            move || {
-                                sentry::list_files(cfg, filetypes, object_id)
-                                    .compat()
-                                    .bind_hub(hub)
-                            },
+                            move || sentry::list_files(cfg, filetypes, object_id).bind_hub(hub),
                         )
                         .await
                         // Map all SpawnError variants into DownloadErrorKind::Canceled
