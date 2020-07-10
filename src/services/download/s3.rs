@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use futures01::prelude::*;
+use futures::compat::Future01CompatExt;
+use futures::compat::Stream01CompatExt;
+use futures01::Stream;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
@@ -56,37 +58,42 @@ fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     }
 }
 
-pub fn download_source(
+pub async fn download_source(
     source: Arc<S3SourceConfig>,
     download_path: SourceLocation,
     destination: PathBuf,
-) -> Box<dyn Future<Item = DownloadStatus, Error = DownloadError>> {
+) -> Result<DownloadStatus, DownloadError> {
     let key = source.get_key(&download_path);
     log::debug!("Fetching from s3: {} (from {})", &key, source.bucket);
 
     let bucket = source.bucket.clone();
     let source_key = &source.source_key;
-    let response = get_s3_client(&source_key).get_object(rusoto_s3::GetObjectRequest {
-        key: key.clone(),
-        bucket: bucket.clone(),
-        ..Default::default()
-    });
+    let response = get_s3_client(&source_key)
+        .get_object(rusoto_s3::GetObjectRequest {
+            key: key.clone(),
+            bucket: bucket.clone(),
+            ..Default::default()
+        })
+        .compat()
+        .await;
 
-    let response = response.then(move |result| match result {
+    match response {
         Ok(mut result) => {
             let body_read = match result.body.take() {
                 Some(body) => body.into_async_read(),
                 None => {
                     log::debug!("Empty response from s3:{}{}", bucket, &key);
-                    return Ok(None);
+                    return Ok(DownloadStatus::NotFound);
                 }
             };
 
-            let bytes = FramedRead::new(body_read, BytesCodec::new())
+            let stream = FramedRead::new(body_read, BytesCodec::new())
                 .map(BytesMut::freeze)
-                .map_err(|_err| DownloadError::from(DownloadErrorKind::Io));
+                .map_err(|_err| DownloadError::from(DownloadErrorKind::Io))
+                .compat();
 
-            Ok(Some(Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>))
+            super::download_stream(SourceFileId::S3(source, download_path), stream, destination)
+                .await
         }
         Err(err) => {
             // For missing files, Amazon returns different status codes based on the given
@@ -95,15 +102,9 @@ pub fn download_source(
             // - If `ListBucket` is premitted, a 404 is returned for missing objects.
             // - Otherwise, a 403 ("access denied") is returned.
             log::debug!("Skipping response from s3:{}{}: {}", bucket, &key, err);
-            Ok(None)
+            Ok(DownloadStatus::NotFound)
         }
-    });
-
-    super::download_future_stream(
-        SourceFileId::S3(source, download_path),
-        Box::new(response),
-        destination,
-    )
+    }
 }
 
 pub fn list_files(
