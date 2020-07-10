@@ -33,6 +33,8 @@ uuid = { version = "0.8.1", features = ["v4", "serde"] }
 symbolic = { version = "7.3.2", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 sentry = { version = "0.18.0", features = ["with_debug_meta"] }
 sentry-actix = "0.18.0"
+# rusoto >= 0.43 supports async/await natively, with tokio 0.2 under the hood
+# For now we will stick with an older version, until our downloader client / runtime is compatible with tokio 0.2
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
 rusoto_credential = "0.40.0"
