@@ -9,8 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use futures::compat::Future01CompatExt;
-use futures::compat::Stream01CompatExt;
+use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures01::Stream;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
