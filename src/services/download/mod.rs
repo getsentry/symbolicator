@@ -202,7 +202,7 @@ fn download_future_stream(
 ///
 /// This is common functionality used by all many downloaders.
 async fn download_stream(
-    source: SourceFileId,
+    source: &str,
     stream: impl Stream<Item = Result<Bytes, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {

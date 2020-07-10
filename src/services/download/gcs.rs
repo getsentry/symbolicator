@@ -4,6 +4,7 @@
 //!
 //! [`GcsSourceConfig`]: ../../../sources/struct.GcsSourceConfig.html
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -11,17 +12,14 @@ use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
 use failure::{Fail, ResultExt};
 use futures::compat::Future01CompatExt;
-use futures::compat::Stream01CompatExt;
-use futures::prelude::*;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
+use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
-use crate::utils::futures::delay;
 
 lazy_static::lazy_static! {
     static ref GCS_TOKENS: Mutex<lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>> =
@@ -137,15 +135,6 @@ async fn get_token(source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, Down
     Ok(token)
 }
 
-async fn start_request(
-    url: &str,
-    token: &GcsToken,
-) -> Result<client::ClientResponse, client::SendRequestError> {
-    let mut builder = client::get(&url);
-    builder.header("authorization", format!("Bearer {}", token.access_token));
-    builder.finish().unwrap().send().compat().await
-}
-
 pub async fn download_source(
     source: Arc<GcsSourceConfig>,
     download_path: SourceLocation,
@@ -156,56 +145,20 @@ pub async fn download_source(
     let token = get_token(&source.source_key).await?;
     log::debug!("Got valid GCS token: {:?}", &token);
 
-    let url = format!(
+    let url = Url::parse(&format!(
         "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
         percent_encode(source.bucket.as_bytes(), PATH_SEGMENT_ENCODE_SET),
         percent_encode(key.as_bytes(), PATH_SEGMENT_ENCODE_SET),
+    ))
+    .unwrap();
+
+    let mut headers = BTreeMap::new();
+    headers.insert(
+        "authorization".to_owned(),
+        format!("Bearer {}", token.access_token),
     );
 
-    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-    let response = loop {
-        let result = start_request(&url, &token).await;
-        match backoff.next() {
-            Some(duration) if result.is_err() => delay(duration).await,
-            _ => break result,
-        }
-    };
-
-    match response {
-        Ok(response) => {
-            if response.status().is_success() {
-                log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                let stream = response
-                    .payload()
-                    .compat()
-                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
-                super::download_stream(
-                    SourceFileId::Gcs(source, download_path),
-                    stream,
-                    destination,
-                )
-                .await
-            } else {
-                log::trace!(
-                    "Unexpected status code from GCS {} (from {}): {}",
-                    &key,
-                    source.bucket,
-                    response.status()
-                );
-                Ok(DownloadStatus::NotFound)
-            }
-        }
-        Err(e) => {
-            log::trace!(
-                "Skipping response from GCS {} (from {}): {} ({:?})",
-                &key,
-                source.bucket,
-                &e,
-                &e
-            );
-            Ok(DownloadStatus::NotFound)
-        }
-    }
+    super::http::download_url(url, &headers, destination).await
 }
 
 pub fn list_files(

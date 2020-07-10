@@ -4,6 +4,7 @@
 //!
 //! [`HttpSourceConfig`]: ../../../sources/struct.HttpSourceConfig.html
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,12 +49,12 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
 /// This initiates the request, when the future resolves the headers will have been
 /// retrieved but not the entire payload.
 async fn start_request(
-    source: &HttpSourceConfig,
     url: Url,
+    headers: &BTreeMap<String, String>,
 ) -> Result<client::ClientResponse, client::SendRequestError> {
     http::follow_redirects(url, MAX_HTTP_REDIRECTS, move |url| {
         let mut builder = client::get(url);
-        for (key, value) in source.headers.iter() {
+        for (key, value) in headers.iter() {
             if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
                 builder.header(key, value.as_str());
             }
@@ -70,22 +71,20 @@ async fn start_request(
     .await
 }
 
-pub async fn download_source(
-    source: Arc<HttpSourceConfig>,
-    download_path: SourceLocation,
+/// Downloads the given `url` to `destination`.
+///
+/// This will internally follow HTTP redirects, adding the given `headers` to each intermediate
+/// request. It will further apply an exponential backoff in case of download errors.
+pub async fn download_url(
+    url: Url,
+    headers: &BTreeMap<String, String>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
-    // This can effectively never error since the URL is always validated to be a base URL.
-    // Though unfortunately this happens outside of this service, so ideally we'd fix this.
-    let download_url = match join_url_encoded(&source.url, &download_path) {
-        Ok(x) => x,
-        Err(_) => return Ok(DownloadStatus::NotFound),
-    };
-    log::debug!("Fetching debug file from {}", download_url);
+    log::debug!("Fetching debug file from {}", url);
 
     let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
     let response = loop {
-        let result = start_request(&source, download_url.clone()).await;
+        let result = start_request(url.clone(), headers).await;
         match backoff.next() {
             Some(duration) if result.is_err() => delay(duration).await,
             _ => break result,
@@ -95,31 +94,37 @@ pub async fn download_source(
     match response {
         Ok(response) => {
             if response.status().is_success() {
-                log::trace!("Success hitting {}", download_url);
+                log::trace!("Success hitting {}", url);
                 let stream = response
                     .payload()
                     .compat()
                     .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
-                super::download_stream(
-                    SourceFileId::Http(source, download_path),
-                    stream,
-                    destination,
-                )
-                .await
+                super::download_stream(url.as_str(), stream, destination).await
             } else {
-                log::trace!(
-                    "Unexpected status code from {}: {}",
-                    download_url,
-                    response.status()
-                );
+                log::trace!("Unexpected status code from {}: {}", url, response.status());
                 Ok(DownloadStatus::NotFound)
             }
         }
         Err(e) => {
-            log::trace!("Skipping response from {}: {}", download_url, e);
+            log::trace!("Skipping response from {}: {}", url, e);
             Ok(DownloadStatus::NotFound) // must be wrong type
         }
     }
+}
+
+pub async fn download_source(
+    source: Arc<HttpSourceConfig>,
+    download_path: SourceLocation,
+    destination: PathBuf,
+) -> Result<DownloadStatus, DownloadError> {
+    // This can effectively never error since the URL is always validated to be a base URL.
+    // Though unfortunately this happens outside of this service, so ideally we'd fix this.
+    let url = match join_url_encoded(&source.url, &download_path) {
+        Ok(x) => x,
+        Err(_) => return Ok(DownloadStatus::NotFound),
+    };
+
+    download_url(url, &source.headers, destination).await
 }
 
 pub fn list_files(
