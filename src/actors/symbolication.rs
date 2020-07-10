@@ -1051,11 +1051,13 @@ impl SymbolicationActor {
                     let cfi_modules = state
                         .referenced_modules()
                         .into_iter()
-                        .filter_map(|code_module| {
-                            Some((
-                                code_module.id()?,
+                        .map(|code_module| {
+                            (
+                                code_module
+                                    .id()
+                                    .unwrap_or_else(|| CodeModuleId::from(DebugId::nil())),
                                 object_info_from_minidump_module(object_type, code_module),
-                            ))
+                            )
                         })
                         .collect();
 
