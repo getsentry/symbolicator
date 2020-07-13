@@ -22,7 +22,7 @@ use url::Url;
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
 use crate::types::ObjectId;
-use crate::utils::futures::{delay, TimedTaskExt};
+use crate::utils::futures as future_utils;
 
 lazy_static::lazy_static! {
     static ref CLIENT_CONNECTOR: Addr<ClientConnector> = ClientConnector::default().start();
@@ -61,7 +61,7 @@ pub async fn download_source(
     let response = loop {
         let result = start_request(&source, &download_url).await;
         match backoff.next() {
-            Some(duration) if result.is_err() => delay(duration).await,
+            Some(duration) if result.is_err() => future_utils::delay(duration).await,
             _ => break result,
         }
     };
@@ -162,7 +162,7 @@ async fn search_sentry(query: &SearchQuery) -> Result<Vec<SearchResult>, Downloa
         let result = fetch_sentry_json(query).await;
 
         match backoff.next() {
-            Some(duration) if result.is_err() => delay(duration).await,
+            Some(duration) if result.is_err() => future_utils::delay(duration).await,
             _ => break result,
         }
     };
@@ -213,8 +213,8 @@ pub async fn list_files(
         token: source.token.clone(),
     };
 
-    let entries = cached_sentry_search(query)
-        .task_metrics("downloads.sentry.index")
+    let search = cached_sentry_search(query);
+    let entries = future_utils::time_task("downloads.sentry.index", search)
         .await?
         .iter()
         .map(|search_result| {

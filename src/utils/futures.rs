@@ -283,7 +283,7 @@ pub async fn delay(duration: Duration) {
 /// Time a future execution and expose using metrics.
 ///
 /// The future is expected to resolve to a Result and the status is logged as well.
-pub async fn timed_task<F, T, E>(task_name: &str, future: F) -> F::Output
+pub async fn time_task<F, T, E>(task_name: &str, future: F) -> F::Output
 where
     F: Future<Output = Result<T, E>>,
 {
@@ -296,22 +296,6 @@ where
     );
     ret
 }
-
-pub trait TimedTaskExt<T, E>: Future<Output = Result<T, E>> + Sized {
-    fn task_metrics<'s>(
-        self,
-        task_name: &'s str,
-    ) -> std::pin::Pin<Box<dyn Future<Output = Self::Output> + 's>>
-    where
-        Self: 's,
-        T: 's,
-        E: 's,
-    {
-        Box::pin(timed_task(task_name, self))
-    }
-}
-
-impl<F, T, E> TimedTaskExt<T, E> for F where F: Future<Output = Result<T, E>> {}
 
 #[cfg(test)]
 mod tests {
