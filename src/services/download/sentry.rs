@@ -16,7 +16,6 @@ use failure::Fail;
 use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
@@ -57,14 +56,7 @@ pub async fn download_source(
 ) -> Result<DownloadStatus, DownloadError> {
     let download_url = source.download_url(&file_id);
     log::debug!("Fetching debug file from {}", download_url);
-    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-    let response = loop {
-        let result = start_request(&source, &download_url).await;
-        match backoff.next() {
-            Some(duration) if result.is_err() => future_utils::delay(duration).await,
-            _ => break result,
-        }
-    };
+    let response = future_utils::retry(|| start_request(&source, &download_url)).await;
 
     match response {
         Ok(response) => {
@@ -200,7 +192,7 @@ pub async fn list_files(
     let search = cached_sentry_search(query);
     let entries = future_utils::time_task("downloads.sentry.index", search)
         .await?
-        .iter()
+        .into_iter()
         .map(|search_result| {
             SourceFileId::Sentry(source.clone(), SentryFileId::new(search_result.id.clone()))
         })
