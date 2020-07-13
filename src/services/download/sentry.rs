@@ -148,28 +148,6 @@ async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, Sen
     }
 }
 
-/// Query sentry to do the do search.
-///
-/// This includes retry logic with exponential backoff.
-async fn search_sentry(query: &SearchQuery) -> Result<Vec<SearchResult>, DownloadError> {
-    log::debug!(
-        "Fetching list of Sentry debug files from {}",
-        &query.index_url
-    );
-    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-
-    let search_result = loop {
-        let result = fetch_sentry_json(query).await;
-
-        match backoff.next() {
-            Some(duration) if result.is_err() => future_utils::delay(duration).await,
-            _ => break result,
-        }
-    };
-
-    search_result.map_err(|e| e.context(DownloadErrorKind::Sentry).into())
-}
-
 /// Return the search results.
 ///
 /// If there are cached search results this skips the actual search.
@@ -180,7 +158,13 @@ async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, D
         }
     }
 
-    let entries = search_sentry(&query).await?;
+    log::debug!(
+        "Fetching list of Sentry debug files from {}",
+        &query.index_url
+    );
+    let entries = future_utils::retry(|| fetch_sentry_json(&query))
+        .await
+        .map_err(|e| DownloadError::from(e.context(DownloadErrorKind::Sentry)))?;
 
     SENTRY_SEARCH_RESULTS
         .lock()

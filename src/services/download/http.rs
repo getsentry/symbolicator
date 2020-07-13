@@ -13,13 +13,12 @@ use actix_web::{client, HttpMessage};
 use failure::Fail;
 use futures::compat::Stream01CompatExt;
 use futures::prelude::*;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
-use crate::utils::futures::delay;
+use crate::utils::futures as future_utils;
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
@@ -82,15 +81,7 @@ pub async fn download_source(
         Err(_) => return Ok(DownloadStatus::NotFound),
     };
     log::debug!("Fetching debug file from {}", download_url);
-
-    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-    let response = loop {
-        let result = start_request(&source, download_url.clone()).await;
-        match backoff.next() {
-            Some(duration) if result.is_err() => delay(duration).await,
-            _ => break result,
-        }
-    };
+    let response = future_utils::retry(|| start_request(&source, download_url.clone())).await;
 
     match response {
         Ok(response) => {
