@@ -194,7 +194,7 @@ pub async fn list_files(
         .await?
         .into_iter()
         .map(|search_result| {
-            SourceFileId::Sentry(source.clone(), SentryFileId::new(search_result.id.clone()))
+            SourceFileId::Sentry(source.clone(), SentryFileId::new(search_result.id))
         })
         .collect();
     Ok(entries)
