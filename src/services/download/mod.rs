@@ -12,9 +12,7 @@ use std::time::Duration;
 use ::sentry::Hub;
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
-use futures::compat::Future01CompatExt;
 use futures::prelude::*;
-use futures01::{Future as Future01, Stream as Stream01};
 
 use crate::utils::futures::RemoteThread;
 use crate::utils::paths::get_directory_paths;
@@ -81,9 +79,6 @@ async fn dispatch_download(
         }
     }
 }
-
-/// Common (transitional) type in many downloaders.
-type DownloadStream = Box<dyn Stream01<Item = Bytes, Error = DownloadError>>;
 
 /// A service which can download files from a [`SourceConfig`].
 ///
@@ -155,39 +150,6 @@ impl DownloadService {
             }
         }
     }
-}
-
-/// Download the source from a streaming future.
-///
-/// These streaming futures are currently implemented per source type.
-fn download_future_stream(
-    source: SourceFileId,
-    stream: Box<dyn Future01<Item = Option<DownloadStream>, Error = DownloadError>>,
-    destination: PathBuf,
-) -> Box<dyn Future01<Item = DownloadStatus, Error = DownloadError>> {
-    // All file I/O in this function is blocking!
-    let ret = stream.and_then(move |maybe_stream| match maybe_stream {
-        Some(stream) => {
-            log::trace!("Downloading from {}", source);
-            let file = tryf!(
-                std::fs::File::create(&destination).context(DownloadErrorKind::BadDestination)
-            );
-            let fut = stream
-                .fold(file, |mut file, chunk| {
-                    file.write_all(chunk.as_ref())
-                        .context(DownloadErrorKind::Write)
-                        .map_err(DownloadError::from)
-                        .map(|_| file)
-                })
-                .and_then(|_| Ok(DownloadStatus::Completed));
-            Box::new(fut) as Box<dyn Future01<Item = DownloadStatus, Error = DownloadError>>
-        }
-        None => {
-            let fut = futures01::future::ok(DownloadStatus::NotFound);
-            Box::new(fut) as Box<dyn Future01<Item = DownloadStatus, Error = DownloadError>>
-        }
-    });
-    Box::new(ret)
 }
 
 /// Download the source from a stream.
