@@ -9,6 +9,7 @@ use futures::{future, FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
 use tokio::prelude::FutureExt as TokioFutureExt;
 use tokio::runtime::Runtime as TokioRuntime;
+use tokio_retry::strategy::{jitter, ExponentialBackoff};
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
 
@@ -278,6 +279,39 @@ pub async fn delay(duration: Duration) {
         .compat()
         .await
         .ok();
+}
+
+/// Time a future execution and expose using metrics.
+///
+/// The future is expected to resolve to a Result and the status is logged as well.
+pub async fn time_task<F, T, E>(task_name: &str, future: F) -> F::Output
+where
+    F: Future<Output = Result<T, E>>,
+{
+    let start_time = Instant::now();
+    let ret = future.await;
+    metric!(
+        timer("futures.done") = start_time.elapsed(),
+        "task_name" => task_name,
+        "status" => if ret.is_ok() { "ok" } else {"err"},
+    );
+    ret
+}
+
+/// Retry a future 3 times with exponential backoff.
+pub async fn retry<G, F, T, E>(task_gen: G) -> Result<T, E>
+where
+    G: Fn() -> F,
+    F: Future<Output = Result<T, E>>,
+{
+    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+    loop {
+        let result = task_gen().await;
+        match backoff.next() {
+            Some(duration) if result.is_err() => delay(duration).await,
+            _ => break result,
+        }
+    }
 }
 
 #[cfg(test)]
