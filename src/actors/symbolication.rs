@@ -1053,9 +1053,7 @@ impl SymbolicationActor {
                         .into_iter()
                         .map(|code_module| {
                             (
-                                code_module
-                                    .id()
-                                    .unwrap_or_default(),
+                                code_module.id().unwrap_or_default(),
                                 object_info_from_minidump_module(object_type, code_module),
                             )
                         })
@@ -1171,6 +1169,7 @@ impl SymbolicationActor {
 
         let futures = requests
             .into_iter()
+            .filter(|(code_module_id, _object_info)| !code_module_id.uuid().is_nil())
             .map(move |(code_module_id, object_info)| {
                 cficaches
                     .fetch(FetchCfiCache {
