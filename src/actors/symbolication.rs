@@ -1169,10 +1169,6 @@ impl SymbolicationActor {
 
         let futures = requests
             .into_iter()
-            // .filter(|(code_module_id, _object_info)| {
-            //     println!("code module: {:?} {}", _object_info.code_id, code_module_id);
-            //     !code_module_id.uuid().is_nil()
-            // })
             .map(move |(code_module_id, object_info)| {
                 cficaches
                     .fetch(FetchCfiCache {
