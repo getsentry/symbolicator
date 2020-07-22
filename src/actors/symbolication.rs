@@ -1304,7 +1304,7 @@ impl SymbolicationActor {
                                     object_info_from_minidump_module(object_type, code_module)
                                         .into();
 
-                                let module_id: Option<CodeModuleId> = code_module.id();
+                                let module_id = code_module.id();
 
                                 let status = match module_id {
                                     Some(id) => unwind_statuses
