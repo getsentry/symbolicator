@@ -1299,15 +1299,20 @@ impl SymbolicationActor {
                         let modules = process_state
                             .modules()
                             .into_iter()
-                            .filter_map(|code_module| {
+                            .map(|code_module| {
                                 let mut info: CompleteObjectInfo =
                                     object_info_from_minidump_module(object_type, code_module)
                                         .into();
 
-                                let status = unwind_statuses
-                                    .get(&code_module.id()?)
-                                    .cloned()
-                                    .unwrap_or(ObjectFileStatus::Unused);
+                                let module_id = code_module.id();
+
+                                let status = match module_id {
+                                    Some(id) => unwind_statuses
+                                        .get(&id)
+                                        .cloned()
+                                        .unwrap_or(ObjectFileStatus::Unused),
+                                    None => ObjectFileStatus::Malformed,
+                                };
 
                                 metric!(
                                     counter("symbolication.unwind_status") += 1,
@@ -1315,14 +1320,16 @@ impl SymbolicationActor {
                                 );
                                 info.unwind_status = Some(status);
 
-                                let features = object_features
-                                    .get(&code_module.id()?)
-                                    .copied()
-                                    .unwrap_or_default();
+                                let features = match module_id {
+                                    Some(id) => {
+                                        object_features.get(&id).copied().unwrap_or_default()
+                                    }
+                                    None => Default::default(),
+                                };
 
                                 info.features.merge(features);
 
-                                Some(info)
+                                info
                             })
                             .collect::<Vec<_>>();
 
