@@ -1299,7 +1299,7 @@ impl SymbolicationActor {
                         let modules = process_state
                             .modules()
                             .into_iter()
-                            .filter_map(|code_module| {
+                            .map(|code_module| {
                                 let mut info: CompleteObjectInfo =
                                     object_info_from_minidump_module(object_type, code_module)
                                         .into();
@@ -1329,7 +1329,7 @@ impl SymbolicationActor {
 
                                 info.features.merge(features);
 
-                                Some(info)
+                                info
                             })
                             .collect::<Vec<_>>();
 
