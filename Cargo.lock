@@ -541,9 +541,8 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13c924384107361ca729c7d46b9134151b9a955ce99a773784f2777498e8552d"
+version = "0.3.0"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=fix/increase-recursions#d479a062d0230dd5097119133581ab1517a8c0c7"
 dependencies = [
  "cfg-if",
  "glob",
@@ -3051,9 +3050,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "7.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b697590c027c7cb05abfd40aebb91cc6b9458d2d79bb875f02204cc0d92bfc2e"
+version = "7.4.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3064,9 +3062,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "7.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58b4a469c3cfae500c30dfb6ba7b378e52911d3110b87e57cb297545c5b0c74e"
+version = "7.4.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
 dependencies = [
  "debugid",
  "failure",
@@ -3078,9 +3075,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "7.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9a1113ac26949f949c77b9405037dadf7f850a7f0c75f8023779dc80f758a24"
+version = "7.4.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
 dependencies = [
  "dmsort",
  "failure",
@@ -3104,9 +3100,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "7.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac87800518bbe29728122004cecc14d502e441b7e79fcdfd238183f0931ec704"
+version = "7.4.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3117,9 +3112,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "7.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11963846e24eba5532797b46a55766f03df18a49bfe47c49c10a4fb234c8c219"
+version = "7.4.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
 dependencies = [
  "cc",
  "failure",
@@ -3132,9 +3126,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "7.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9982813bde070b31c8feed5f9f7e91ec46a502200c5a226e84aa80694c7d6eae"
+version = "7.4.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
 dependencies = [
  "dmsort",
  "failure",

@@ -625,11 +625,11 @@ fn symbolicate_frame(
         Err(_) => return Err(FrameStatus::Malformed),
     };
 
-    let crashing_frame = index == 0;
-
-    let ip_reg = if crashing_frame {
+    let is_crashing_frame = index == 0;
+    let ip_register_value = if is_crashing_frame {
         symcache
             .arch()
+            .cpu_family()
             .ip_register_name()
             .and_then(|ip_reg_name| registers.get(ip_reg_name))
             .map(|x| x.0)
@@ -637,14 +637,11 @@ fn symbolicate_frame(
         None
     };
 
-    let instruction_info = InstructionInfo {
-        addr: frame.instruction_addr.0,
-        arch: symcache.arch(),
-        signal: signal.map(|x| x.0),
-        crashing_frame,
-        ip_reg,
-    };
-    let caller_address = instruction_info.caller_address();
+    let caller_address = InstructionInfo::new(symcache.arch(), frame.instruction_addr.0)
+        .is_crashing_frame(is_crashing_frame)
+        .signal(signal.map(|signal| signal.0).unwrap_or(0))
+        .ip_register_value(ip_register_value.unwrap_or(0))
+        .caller_address();
 
     let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
         Some(x) => x,
