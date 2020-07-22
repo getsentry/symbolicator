@@ -322,7 +322,7 @@ def test_timeouts(symbolicator, hitcounter):
             request_id = response["request_id"]
         else:
             assert False
-        time.sleep(0.3)         # 0.3 * 10 iterations = 3s => expect timeout on 4th iteration
+        time.sleep(0.3)  # 0.3 * 10 iterations = 3s => expect timeout on 4th iteration
 
     for response in responses[:-1]:
         assert response["status"] == "pending"

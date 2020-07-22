@@ -65,6 +65,7 @@ def background_process(request):
 
     The return value of the function is the subprocess.Popen object.
     """
+
     def inner(*args, **kwargs):
         p = subprocess.Popen(*args, **kwargs)
         request.addfinalizer(p.kill)
@@ -120,6 +121,7 @@ def symbolicator(tmpdir, request, random_port, background_process):
 
     The return value of the function is a :class:`Symbolicator` object.
     """
+
     def inner(**config_data):
         config = tmpdir.join("config")
         port = random_port()
@@ -207,14 +209,14 @@ class HitCounter:
             start_response("302 Found", [("Location", path)])
             return [b""]
         elif path.startswith("/msdl/"):
-            print(f'got requested: {path}')
+            print(f"got requested: {path}")
             path = path[len("/msdl/") :]
-            print(f'proxying {path}')
+            print(f"proxying {path}")
             with requests.get(
                 f"https://msdl.microsoft.com/download/symbols/{path}",
                 allow_redirects=False,  # test redirects with msdl
             ) as r:
-                print(f'status code: {r.status_code}')
+                print(f"status code: {r.status_code}")
                 start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
                 return [r.content]
         elif path.startswith("/respond_statuscode/"):
