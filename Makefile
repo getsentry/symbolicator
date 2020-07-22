@@ -22,9 +22,9 @@ test-rust:
 .PHONY: test-rust
 
 test-integration: .venv/bin/python
-	.venv/bin/pip install -U pytest pytest-rerunfailures pytest-localserver requests pytest-xdist pytest-icdiff boto3
+	.venv/bin/pip install -U pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
 	cargo build --locked
-	@.venv/bin/pytest tests --reruns 5 -n12 -vv
+	@.venv/bin/pytest tests -n12 -vv
 .PHONY: test-integration
 
 # Documentation

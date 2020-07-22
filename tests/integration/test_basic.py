@@ -322,6 +322,7 @@ def test_timeouts(symbolicator, hitcounter):
             request_id = response["request_id"]
         else:
             assert False
+        time.sleep(0.3)         # 0.3 * 10 iterations = 3s => expect timeout on 4th iteration
 
     for response in responses[:-1]:
         assert response["status"] == "pending"
@@ -442,10 +443,10 @@ def test_redirects(symbolicator, hitcounter):
     assert response.json() == SUCCESS_WINDOWS
 
 
-@pytest.mark.parametrize("value", [True, False])
+@pytest.mark.parametrize("allow_reserved_ip", [True, False])
 @pytest.mark.parametrize("hostname", ["dev.getsentry.net", "localhost", "127.0.0.1"])
-def test_reserved_ip_addresses(symbolicator, hitcounter, value, hostname):
-    service = symbolicator(connect_to_reserved_ips=value)
+def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, hostname):
+    service = symbolicator(connect_to_reserved_ips=allow_reserved_ip)
     service.wait_healthcheck()
 
     url = hitcounter.url.replace("localhost", hostname).replace("127.0.0.1", hostname)
@@ -466,7 +467,9 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, value, hostname):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    if value:
+    if allow_reserved_ip:
+        assert hitcounter.hits
         assert response.json() == SUCCESS_WINDOWS
     else:
+        assert not hitcounter.hits
         assert response.json() == MISSING_FILE
