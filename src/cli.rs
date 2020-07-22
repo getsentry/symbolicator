@@ -86,7 +86,6 @@ pub fn execute() -> Result<(), CliError> {
     });
 
     logging::init_logging(&config);
-    sentry::integrations::panic::register_panic_handler();
     if let Some(ref statsd) = config.metrics.statsd {
         metrics::configure_statsd(&config.metrics.prefix, statsd);
     }

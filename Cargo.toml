@@ -31,8 +31,8 @@ parking_lot = "0.10.0"
 tokio = "0.1.22"
 uuid = { version = "0.8.1", features = ["v4", "serde"] }
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-recursion", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
-sentry = { version = "0.18.0", features = ["with_debug_meta"] }
-sentry-actix = "0.18.0"
+sentry = { version = "0.19.0", features = ["debug-images", "log"] }
+sentry-actix = "0.19.0"
 # rusoto >= 0.43 supports async/await natively, with tokio 0.2 under the hood
 # For now we will stick with an older version, until our downloader client / runtime is compatible with tokio 0.2
 rusoto_s3 = "0.40.0"
