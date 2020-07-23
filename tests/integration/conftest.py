@@ -1,16 +1,17 @@
 import collections
+import json
+import os
+import resource
+import socket
 import subprocess
+import threading
+import time
 import traceback
 import uuid
-import time
-import socket
-import os
-import json
+
+import boto3
 import pytest
 import requests
-import threading
-import boto3
-
 from pytest_localserver.http import WSGIServer
 
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
@@ -22,6 +23,17 @@ GCS_PRIVATE_KEY = os.environ.get("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY")
 GCS_CLIENT_EMAIL = os.environ.get("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL")
 
 session = requests.session()
+
+
+@pytest.hookimpl
+def pytest_sessionstart(session):
+    no_fds_soft, no_fds_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if no_fds_soft < 2028:
+        session.warn(
+            pytest.PytestWarning(
+                f"Too low open filedescriptor limit: {no_fds_soft} (try `ulimit -n 4096`)"
+            )
+        )
 
 
 @pytest.hookimpl(hookwrapper=True)
