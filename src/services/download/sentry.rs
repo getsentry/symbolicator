@@ -170,32 +170,38 @@ pub async fn list_files(
     _filetypes: &'static [FileType],
     object_id: ObjectId,
 ) -> Result<Vec<SourceFileId>, DownloadError> {
-    let index_url = {
-        let mut url = source.url.clone();
-        if let Some(ref debug_id) = object_id.debug_id {
-            url.query_pairs_mut()
-                .append_pair("debug_id", &debug_id.to_string());
-        }
+    // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
+    // return a list of all debug files in the project.
+    if object_id.debug_id.is_none() && object_id.code_id.is_none() {
+        return Ok(Vec::new());
+    }
 
-        if let Some(ref code_id) = object_id.code_id {
-            url.query_pairs_mut()
-                .append_pair("code_id", &code_id.to_string());
-        }
+    let mut index_url = source.url.clone();
+    if let Some(ref debug_id) = object_id.debug_id {
+        index_url
+            .query_pairs_mut()
+            .append_pair("debug_id", &debug_id.to_string());
+    }
 
-        url
-    };
+    if let Some(ref code_id) = object_id.code_id {
+        index_url
+            .query_pairs_mut()
+            .append_pair("code_id", &code_id.to_string());
+    }
+
     let query = SearchQuery {
         index_url,
         token: source.token.clone(),
     };
 
     let search = cached_sentry_search(query);
-    let entries = future_utils::time_task("downloads.sentry.index", search)
-        .await?
+    let entries = future_utils::time_task("downloads.sentry.index", search).await?;
+    let file_ids = entries
         .into_iter()
         .map(|search_result| {
             SourceFileId::Sentry(source.clone(), SentryFileId::new(search_result.id))
         })
         .collect();
-    Ok(entries)
+
+    Ok(file_ids)
 }
