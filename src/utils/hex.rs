@@ -83,7 +83,7 @@ macro_rules! impl_hex_serde {
     };
 }
 
-#[derive(Clone, Default, Debug, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct HexValue(pub u64);
 
 impl_hex_serde!(HexValue, u64);

@@ -127,6 +127,83 @@ type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationRespon
 
 type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
 
+/// A builder for a clean set of code modules.
+///
+/// On several platforms, the list of code modules can include shared memory regions or memory
+/// mapped fonts. These are not valid code modules and should be excluded from the list. In some
+/// cases, however, actual modules end up being mapped from shared memory. In such a case, stack
+/// frames reference code moduels without a provided code identifier.
+///
+/// This type exposes `build`, which returns all modules that either have a valid identifier,
+/// or that are referenced from a stack trace. Use `mark_referenced` to indicate that a frame
+/// references a module.
+struct CodeModulesBuilder {
+    inner: Vec<(CompleteObjectInfo, bool)>,
+}
+
+impl CodeModulesBuilder {
+    /// Creates a new `CodeModulesBuilder` from a list of code modules.
+    pub fn new<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = CompleteObjectInfo>,
+    {
+        let mut inner = iter
+            .into_iter()
+            .map(|info| (info, false))
+            .collect::<Vec<_>>();
+
+        // Sort by image address for binary search in `mark`.
+        inner.sort_by_key(|(info, _)| info.raw.image_addr);
+        Self { inner }
+    }
+
+    /// Records a module covering the given address as referenced.
+    ///
+    /// The respective module will always be included in the final list of modules.
+    pub fn mark_referenced(&mut self, addr: u64) {
+        let search_index = self
+            .inner
+            .binary_search_by_key(&addr, |(info, _)| info.raw.image_addr.0);
+
+        let info_index = match search_index {
+            Ok(index) => index,
+            Err(0) => return,
+            Err(index) => index - 1,
+        };
+
+        let (info, marked) = &mut self.inner[info_index];
+        let HexValue(image_addr) = info.raw.image_addr;
+        let should_mark = match info.raw.image_size {
+            Some(size) => addr < image_addr + size,
+            // If there is no image size, the image implicitly counts up to the next image. Because
+            // we know that the search address is somewhere in this range, we can mark it.
+            None => true,
+        };
+
+        if should_mark {
+            *marked = true;
+        }
+    }
+
+    /// Returns the final clean set of code modules.
+    pub fn build(self) -> Vec<CompleteObjectInfo> {
+        self.inner
+            .into_iter()
+            .filter(|(info, marked)| *marked || info.raw.debug_id.is_some())
+            .map(|(info, _)| info)
+            .collect()
+    }
+}
+
+impl FromIterator<CompleteObjectInfo> for CodeModulesBuilder {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = CompleteObjectInfo>,
+    {
+        Self::new(iter)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     objects: ObjectsActor,
@@ -1293,7 +1370,7 @@ impl SymbolicationActor {
 
                         let object_type = get_object_type_from_minidump(&os_name).to_owned();
 
-                        let modules = process_state
+                        let mut module_builder = process_state
                             .modules()
                             .into_iter()
                             .map(|code_module| {
@@ -1304,11 +1381,11 @@ impl SymbolicationActor {
                                 let module_id = code_module.id();
 
                                 let status = match module_id {
-                                    Some(id) => unwind_statuses
-                                        .get(&id)
-                                        .cloned()
-                                        .unwrap_or(ObjectFileStatus::Unused),
-                                    None => ObjectFileStatus::Malformed,
+                                    Some(id) => {
+                                        unwind_statuses.get(&id).copied().unwrap_or_default()
+                                    }
+                                    // TODO: Emit a custom status for code modules without debug_id
+                                    None => ObjectFileStatus::Missing,
                                 };
 
                                 metric!(
@@ -1328,7 +1405,7 @@ impl SymbolicationActor {
 
                                 info
                             })
-                            .collect::<Vec<_>>();
+                            .collect::<CodeModulesBuilder>();
 
                         let minidump_state = MinidumpState {
                             timestamp: process_state.timestamp(),
@@ -1346,7 +1423,6 @@ impl SymbolicationActor {
 
                         let requesting_thread_index: Option<usize> =
                             process_state.requesting_thread().try_into().ok();
-
                         let threads = process_state.threads();
                         let mut stacktraces = Vec::with_capacity(threads.len());
                         for (index, thread) in threads.iter().enumerate() {
@@ -1355,21 +1431,23 @@ impl SymbolicationActor {
                                 None => Registers::new(),
                             };
 
-                            let frames = thread
-                                .frames()
-                                .iter()
-                                .map(|frame| RawFrame {
-                                    instruction_addr: HexValue(frame.return_address(cpu_arch)),
+                            // Trim infinite recursions explicitly because those do not
+                            // correlate to minidump size. Every other kind of bloated
+                            // input data we know is already trimmed/rejected by raw
+                            // byte size alone.
+                            let frame_count = thread.frames().len().min(20000);
+                            let mut frames = Vec::with_capacity(frame_count);
+                            for frame in thread.frames().iter().take(frame_count) {
+                                let return_address = frame.return_address(cpu_arch);
+                                module_builder.mark_referenced(return_address);
+
+                                frames.push(RawFrame {
+                                    instruction_addr: HexValue(return_address),
                                     package: frame.module().map(CodeModule::code_file),
                                     trust: frame.trust(),
                                     ..RawFrame::default()
-                                })
-                                // Trim infinite recursions explicitly because those do not
-                                // correlate to minidump size. Every other kind of bloated
-                                // input data we know is already trimmed/rejected by raw
-                                // byte size alone.
-                                .take(20000)
-                                .collect();
+                                });
+                            }
 
                             stacktraces.push(RawStacktrace {
                                 is_requesting: requesting_thread_index.map(|r| r == index),
@@ -1380,7 +1458,7 @@ impl SymbolicationActor {
                         }
 
                         Ok(procspawn::serde::Json((
-                            modules,
+                            module_builder.build(),
                             stacktraces,
                             minidump_state,
                         )))
@@ -1931,5 +2009,102 @@ mod tests {
         assert_eq!(a, 0);
         assert_eq!(b, &info);
         assert!(c.is_none());
+    }
+
+    fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {
+        RawObjectInfo {
+            ty: ObjectType::Elf,
+            code_id: None,
+            code_file: None,
+            debug_id: Some(uuid::Uuid::new_v4().to_string()).filter(|_| has_id),
+            debug_file: None,
+            image_addr: HexValue(addr),
+            image_size: size,
+        }
+        .into()
+    }
+
+    #[test]
+    fn test_code_module_builder_empty() {
+        let modules = vec![];
+
+        let valid = CodeModulesBuilder::new(modules.clone()).build();
+        assert_eq!(valid, modules);
+    }
+
+    #[test]
+    fn test_code_module_builder_valid() {
+        let modules = vec![
+            create_object_info(true, 0x1000, Some(0x1000)),
+            create_object_info(true, 0x3000, Some(0x1000)),
+        ];
+
+        let valid = CodeModulesBuilder::new(modules.clone()).build();
+        assert_eq!(valid, modules);
+    }
+
+    #[test]
+    fn test_code_module_builder_unreferenced() {
+        let valid_object = create_object_info(true, 0x1000, Some(0x1000));
+        let modules = vec![
+            valid_object.clone(),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let valid = CodeModulesBuilder::new(modules).build();
+        assert_eq!(valid, vec![valid_object]);
+    }
+
+    #[test]
+    fn test_code_module_builder_referenced() {
+        let modules = vec![
+            create_object_info(true, 0x1000, Some(0x1000)),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules.clone());
+        builder.mark_referenced(0x3500);
+        let valid = builder.build();
+        assert_eq!(valid, modules);
+    }
+
+    #[test]
+    fn test_code_module_builder_miss_first() {
+        let modules = vec![
+            create_object_info(false, 0x1000, Some(0x1000)),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules);
+        builder.mark_referenced(0xfff);
+        let valid = builder.build();
+        assert_eq!(valid, vec![]);
+    }
+
+    #[test]
+    fn test_code_module_builder_gap() {
+        let modules = vec![
+            create_object_info(false, 0x1000, Some(0x1000)),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules);
+        builder.mark_referenced(0x2800); // in the gap between both modules
+        let valid = builder.build();
+        assert_eq!(valid, vec![]);
+    }
+
+    #[test]
+    fn test_code_module_builder_implicit_size() {
+        let valid_object = create_object_info(false, 0x1000, None);
+        let modules = vec![
+            valid_object.clone(),
+            create_object_info(false, 0x3000, None),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules);
+        builder.mark_referenced(0x2800); // in the gap between both modules
+        let valid = builder.build();
+        assert_eq!(valid, vec![valid_object]);
     }
 }
