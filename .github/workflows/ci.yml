@@ -155,7 +155,7 @@ jobs:
 
   docs:
     name: Docs
-    runs-on: ubunut-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
