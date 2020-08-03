@@ -59,7 +59,7 @@ jobs:
               /usr/share/rust/.cargo/registry
               /usr/share/rust/.cargo/git
               ./target
-          key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: unit-tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       # TODO: Consider using Makefile for this as well.
       - name: Run cargo test
@@ -98,7 +98,7 @@ jobs:
               /usr/share/rust/.cargo/registry
               /usr/share/rust/.cargo/git
               ./target
-          key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
+          key: integration-tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Integration tests
         run: 'make test-integration'
