@@ -107,10 +107,24 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: fmt
-          args: --all -- --check
+          args: --workspace -- --check
 
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-features --all --tests --examples -- -D clippy::all
+          args: --all-features --workspace --tests --examples -- -D clippy::all
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+
+      - name: Setup Virtualenv
+        run: 'python -m pip install virtualenv'
+
+      - name: Python Formatting
+        run: 'make format-python'
+
+      - name: Python Lints
+        run: 'make lint-python'
