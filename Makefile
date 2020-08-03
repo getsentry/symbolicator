@@ -18,7 +18,7 @@ test: test-rust test-integration
 .PHONY: test
 
 test-rust:
-	cargo test --all --all-features --locked
+	cargo test --workspace --all-features --locked
 .PHONY: test-rust
 
 test-integration: .venv/bin/python

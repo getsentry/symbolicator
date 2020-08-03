@@ -61,11 +61,23 @@ jobs:
               ./target
           key: tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
+      # TODO: Consider using Makefile for this as well.
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --workspace --all-features --locked
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+
+      - name: Setup Virtualenv
+        run: 'python -m pip install virtualenv'
+
+      - name: Integration tests
+        run: 'make test-integration'
 
   lints:
     name: Lints
