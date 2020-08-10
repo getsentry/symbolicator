@@ -101,7 +101,7 @@ jobs:
           key: integration-tests-${{ runner.os }}-rustc-${{ steps.toolchain.outputs.rustc_hash }}-lock-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Integration tests
-        run: 'make test-integration'
+        run: 'make test-integration CI_ARGS="--ci"'
 
   lints:
     name: Lints

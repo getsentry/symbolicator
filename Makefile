@@ -24,7 +24,7 @@ test-rust:
 test-integration: .venv/bin/python
 	.venv/bin/pip install -U pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
 	cargo build --locked
-	@.venv/bin/pytest tests -n12 -vv
+	@.venv/bin/pytest $(CI_ARGS) tests/integration -n12 -vv
 .PHONY: test-integration
 
 # Documentation
