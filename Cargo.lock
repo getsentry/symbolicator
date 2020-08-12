@@ -542,7 +542,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 [[package]]
 name = "cpp_demangle"
 version = "0.3.0"
-source = "git+https://github.com/Swatinem/cpp_demangle?branch=fix/increase-recursions#d479a062d0230dd5097119133581ab1517a8c0c7"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=fix/increase-recursions#a303bfe8b7f96d2c2c7549aa9f1ee892d46553f2"
 dependencies = [
  "cfg-if",
  "glob",
