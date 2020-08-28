@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* This changelog is entirely incomplete, future releases will try to
+  improve this.
+
 ### Breaking Changes
 
 * The configuration file is stricter on which fields can be present,
