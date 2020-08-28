@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 * This changelog is entirely incomplete, future releases will try to
   improve this.
