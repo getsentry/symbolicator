@@ -3050,8 +3050,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "7.4.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
+version = "7.5.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3062,8 +3062,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "7.4.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
+version = "7.5.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
 dependencies = [
  "debugid",
  "failure",
@@ -3075,8 +3075,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "7.4.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
+version = "7.5.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
 dependencies = [
  "dmsort",
  "failure",
@@ -3100,8 +3100,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "7.4.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
+version = "7.5.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3112,8 +3112,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "7.4.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
+version = "7.5.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
 dependencies = [
  "cc",
  "failure",
@@ -3126,8 +3126,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "7.4.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#8315cd08c29e94d2fd10c66de7772dbf3b5fb031"
+version = "7.5.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
 dependencies = [
  "dmsort",
  "failure",
