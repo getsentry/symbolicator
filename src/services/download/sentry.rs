@@ -149,7 +149,6 @@ async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, Sen
 /// If there are cached search results this skips the actual search.
 async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, DownloadError> {
     if let Some(cache_duration) = query.index_cache_ttl {
-        unreachable!();
         if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
             if created.elapsed() < cache_duration {
                 return Ok(entries.clone());
