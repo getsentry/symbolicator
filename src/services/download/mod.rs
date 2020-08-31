@@ -24,6 +24,7 @@ mod http;
 mod s3;
 mod sentry;
 
+use crate::config::Config;
 pub use crate::sources::{
     DirectoryLayout, FileType, SentryFileId, SourceConfig, SourceFileId, SourceFilters,
     SourceLocation,
@@ -89,12 +90,13 @@ async fn dispatch_download(
 #[derive(Debug, Clone)]
 pub struct DownloadService {
     worker: RemoteThread,
+    config: Arc<Config>,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(worker: RemoteThread) -> Self {
-        Self { worker }
+    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Self {
+        Self { worker, config }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -128,6 +130,14 @@ impl DownloadService {
         hub: Arc<Hub>,
     ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
         let worker = self.worker.clone();
+
+        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
+        let sentry_index_cache_ttl = if self.config.cache_dir.is_some() {
+            self.config.caches.downloaded.retry_misses_after
+        } else {
+            None
+        };
+
         async move {
             match source {
                 SourceConfig::Sentry(cfg) => {
@@ -135,7 +145,15 @@ impl DownloadService {
                         .spawn(
                             "service.download.list_files",
                             Duration::from_secs(30),
-                            move || sentry::list_files(cfg, filetypes, object_id).bind_hub(hub),
+                            move || {
+                                sentry::list_files(
+                                    cfg,
+                                    filetypes,
+                                    object_id,
+                                    sentry_index_cache_ttl,
+                                )
+                                .bind_hub(hub)
+                            },
                         )
                         .await
                         // Map all SpawnError variants into DownloadErrorKind::Canceled

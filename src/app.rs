@@ -58,7 +58,7 @@ impl ServiceState {
         let io_threadpool = ThreadPool::new();
         let io_thread = RemoteThread::new();
 
-        let download_svc = Arc::new(DownloadService::new(io_thread));
+        let download_svc = Arc::new(DownloadService::new(io_thread, config.clone()));
 
         let caches = Caches::from_config(&config).context(ServiceStateErrorKind::Cache)?;
         let objects = ObjectsActor::new(

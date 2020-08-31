@@ -106,6 +106,10 @@ struct SearchResult {
 struct SearchQuery {
     index_url: Url,
     token: String,
+
+    // Whether Sentry index search results should be cached in-memory, and if so (`Some`), for how
+    // long.
+    index_cache_ttl: Option<Duration>,
 }
 
 symbolic::common::derive_failure!(
@@ -144,9 +148,12 @@ async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, Sen
 ///
 /// If there are cached search results this skips the actual search.
 async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, DownloadError> {
-    if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
-        if created.elapsed() < Duration::from_secs(3600) {
-            return Ok(entries.clone());
+    if let Some(cache_duration) = query.index_cache_ttl {
+        unreachable!();
+        if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
+            if created.elapsed() < cache_duration {
+                return Ok(entries.clone());
+            }
         }
     }
 
@@ -158,9 +165,11 @@ async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, D
         .await
         .map_err(|e| DownloadError::from(e.context(DownloadErrorKind::Sentry)))?;
 
-    SENTRY_SEARCH_RESULTS
-        .lock()
-        .put(query, (Instant::now(), entries.clone()));
+    if query.index_cache_ttl.is_some() {
+        SENTRY_SEARCH_RESULTS
+            .lock()
+            .put(query, (Instant::now(), entries.clone()));
+    }
 
     Ok(entries)
 }
@@ -169,6 +178,7 @@ pub async fn list_files(
     source: Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: ObjectId,
+    index_cache_ttl: Option<Duration>,
 ) -> Result<Vec<SourceFileId>, DownloadError> {
     // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
     // return a list of all debug files in the project.
@@ -192,6 +202,7 @@ pub async fn list_files(
     let query = SearchQuery {
         index_url,
         token: source.token.clone(),
+        index_cache_ttl,
     };
 
     let search = cached_sentry_search(query);
