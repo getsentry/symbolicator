@@ -19,6 +19,7 @@ use parking_lot::Mutex;
 use url::Url;
 
 use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use crate::config::Config;
 use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
@@ -106,10 +107,6 @@ struct SearchResult {
 struct SearchQuery {
     index_url: Url,
     token: String,
-
-    // Whether Sentry index search results should be cached in-memory, and if so (`Some`), for how
-    // long.
-    index_cache_ttl: Option<Duration>,
 }
 
 symbolic::common::derive_failure!(
@@ -147,12 +144,24 @@ async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, Sen
 /// Return the search results.
 ///
 /// If there are cached search results this skips the actual search.
-async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, DownloadError> {
-    if let Some(cache_duration) = query.index_cache_ttl {
-        if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
-            if created.elapsed() < cache_duration {
-                return Ok(entries.clone());
-            }
+async fn cached_sentry_search(
+    query: SearchQuery,
+    config: Arc<Config>,
+) -> Result<Vec<SearchResult>, DownloadError> {
+    // The Sentry cache index should expire as soon as we attempt to retry negative caches.
+    let cache_duration = if config.cache_dir.is_some() {
+        config
+            .caches
+            .downloaded
+            .retry_misses_after
+            .unwrap_or_else(|| Duration::from_secs(0))
+    } else {
+        Duration::from_secs(0)
+    };
+
+    if let Some((created, entries)) = SENTRY_SEARCH_RESULTS.lock().get(&query) {
+        if created.elapsed() < cache_duration {
+            return Ok(entries.clone());
         }
     }
 
@@ -164,7 +173,7 @@ async fn cached_sentry_search(query: SearchQuery) -> Result<Vec<SearchResult>, D
         .await
         .map_err(|e| DownloadError::from(e.context(DownloadErrorKind::Sentry)))?;
 
-    if query.index_cache_ttl.is_some() {
+    if cache_duration > Duration::from_secs(0) {
         SENTRY_SEARCH_RESULTS
             .lock()
             .put(query, (Instant::now(), entries.clone()));
@@ -177,7 +186,7 @@ pub async fn list_files(
     source: Arc<SentrySourceConfig>,
     _filetypes: &'static [FileType],
     object_id: ObjectId,
-    index_cache_ttl: Option<Duration>,
+    config: Arc<Config>,
 ) -> Result<Vec<SourceFileId>, DownloadError> {
     // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
     // return a list of all debug files in the project.
@@ -201,10 +210,9 @@ pub async fn list_files(
     let query = SearchQuery {
         index_url,
         token: source.token.clone(),
-        index_cache_ttl,
     };
 
-    let search = cached_sentry_search(query);
+    let search = cached_sentry_search(query, config);
     let entries = future_utils::time_task("downloads.sentry.index", search).await?;
     let file_ids = entries
         .into_iter()

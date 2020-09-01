@@ -130,21 +130,13 @@ impl DownloadService {
         hub: Arc<Hub>,
     ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
         let worker = self.worker.clone();
-
-        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
-        let sentry_index_cache_ttl = if self.config.cache_dir.is_some() {
-            self.config.caches.downloaded.retry_misses_after
-        } else {
-            None
-        };
+        let config = self.config.clone();
 
         async move {
             match source {
                 SourceConfig::Sentry(cfg) => {
-                    let job = move || {
-                        sentry::list_files(cfg, filetypes, object_id, sentry_index_cache_ttl)
-                            .bind_hub(hub)
-                    };
+                    let job =
+                        move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
 
                     worker
                         .spawn("service.download.list_files", Duration::from_secs(30), job)
