@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+* Fix a bug where Sentry requests were cached even though caches were disabled. ([#260](https://github.com/getsentry/symbolicator/pull/260))
+
 ## 0.2.0
 
 * This changelog is entirely incomplete, future releases will try to

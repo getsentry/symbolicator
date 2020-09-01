@@ -24,6 +24,7 @@ mod http;
 mod s3;
 mod sentry;
 
+use crate::config::Config;
 pub use crate::sources::{
     DirectoryLayout, FileType, SentryFileId, SourceConfig, SourceFileId, SourceFilters,
     SourceLocation,
@@ -89,12 +90,13 @@ async fn dispatch_download(
 #[derive(Debug, Clone)]
 pub struct DownloadService {
     worker: RemoteThread,
+    config: Arc<Config>,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(worker: RemoteThread) -> Self {
-        Self { worker }
+    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Self {
+        Self { worker, config }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -128,15 +130,16 @@ impl DownloadService {
         hub: Arc<Hub>,
     ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
         let worker = self.worker.clone();
+        let config = self.config.clone();
+
         async move {
             match source {
                 SourceConfig::Sentry(cfg) => {
+                    let job =
+                        move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
+
                     worker
-                        .spawn(
-                            "service.download.list_files",
-                            Duration::from_secs(30),
-                            move || sentry::list_files(cfg, filetypes, object_id).bind_hub(hub),
-                        )
+                        .spawn("service.download.list_files", Duration::from_secs(30), job)
                         .await
                         // Map all SpawnError variants into DownloadErrorKind::Canceled
                         .unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into()))
@@ -238,7 +241,9 @@ mod tests {
             _ => panic!("unexpected source"),
         };
 
-        let service = DownloadService::new(RemoteThread::new_threaded());
+        let config = Arc::new(Config::default());
+
+        let service = DownloadService::new(RemoteThread::new_threaded(), config);
         let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
@@ -267,7 +272,8 @@ mod tests {
             object_type: ObjectType::Pe,
         };
 
-        let svc = DownloadService::new(RemoteThread::new_threaded());
+        let config = Arc::new(Config::default());
+        let svc = DownloadService::new(RemoteThread::new_threaded(), config);
         let ret = test::block_fn(|| {
             svc.list_files(source.clone(), FileType::all(), objid, Hub::current())
         })
