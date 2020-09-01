@@ -256,7 +256,9 @@ mod tests {
             _ => panic!("unexpected source"),
         };
 
-        let service = DownloadService::new(RemoteThread::new_threaded());
+        let config = Arc::new(Config::default());
+
+        let service = DownloadService::new(RemoteThread::new_threaded(), config);
         let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
@@ -285,7 +287,8 @@ mod tests {
             object_type: ObjectType::Pe,
         };
 
-        let svc = DownloadService::new(RemoteThread::new_threaded());
+        let config = Arc::new(Config::default());
+        let svc = DownloadService::new(RemoteThread::new_threaded(), config);
         let ret = test::block_fn(|| {
             svc.list_files(source.clone(), FileType::all(), objid, Hub::current())
         })
