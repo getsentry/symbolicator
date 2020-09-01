@@ -141,20 +141,13 @@ impl DownloadService {
         async move {
             match source {
                 SourceConfig::Sentry(cfg) => {
+                    let job = move || {
+                        sentry::list_files(cfg, filetypes, object_id, sentry_index_cache_ttl)
+                            .bind_hub(hub)
+                    };
+
                     worker
-                        .spawn(
-                            "service.download.list_files",
-                            Duration::from_secs(30),
-                            move || {
-                                sentry::list_files(
-                                    cfg,
-                                    filetypes,
-                                    object_id,
-                                    sentry_index_cache_ttl,
-                                )
-                                .bind_hub(hub)
-                            },
-                        )
+                        .spawn("service.download.list_files", Duration::from_secs(30), job)
                         .await
                         // Map all SpawnError variants into DownloadErrorKind::Canceled
                         .unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into()))
