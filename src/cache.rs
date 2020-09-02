@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use failure::Fail;
-use sentry::integrations::failure::capture_fail;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
@@ -156,8 +155,10 @@ impl Cache {
                 if path.is_dir() {
                     directories.push(path.to_owned());
                 } else if let Err(e) = self.try_cleanup_path(&path) {
-                    log::error!("Failed to clean up {}: {}", path.display(), LogError(&e));
-                    capture_fail(&e);
+                    sentry::with_scope(
+                        |scope| scope.set_extra("path", path.display().to_string().into()),
+                        || log::error!("Failed to clean cache file: {}", LogError(&e)),
+                    );
                 }
             }
         }
