@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use failure::Fail;
-use sentry::integrations::failure::capture_fail;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
