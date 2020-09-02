@@ -1274,7 +1274,7 @@ impl SymbolicationActor {
             let cache_file = match result {
                 Ok(x) => x,
                 Err(e) => {
-                    log::info!(
+                    log::debug!(
                         "Error while fetching cficache: {}",
                         LogError(&ArcFail(e.clone()))
                     );
