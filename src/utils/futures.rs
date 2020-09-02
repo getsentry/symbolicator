@@ -216,7 +216,7 @@ impl RemoteThread {
                             }
                         };
                         tx.send(msg).unwrap_or_else(|_| {
-                            log::info!(
+                            log::debug!(
                                 "Failed to send result of {} task, caller dropped",
                                 task_name
                             )

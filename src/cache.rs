@@ -169,7 +169,7 @@ impl Cache {
         log::trace!("Checking {}", path.display());
         if path.is_file() {
             if catch_not_found(|| self.check_expiry(path))?.is_none() {
-                log::info!("Removing {}", path.display());
+                log::debug!("Removing {}", path.display());
                 catch_not_found(|| remove_file(path))?;
             }
 
