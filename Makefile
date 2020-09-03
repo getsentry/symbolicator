@@ -12,6 +12,19 @@ clean:
 	rm -rf .venv
 .PHONY: clean
 
+# Builds
+
+build:
+	cargo build
+.PHONY: build
+
+release:
+	cargo build --release
+	objcopy --only-keep-debug target/release/symbolicator{,.debug}
+	objcopy --strip-debug --strip-unneeded target/release/symbolicator
+	objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
+.PHONY: release
+
 # Tests
 
 test: test-rust test-integration

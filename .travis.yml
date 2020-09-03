@@ -13,7 +13,6 @@ branches:
   only:
     - master
     - /^release\/[\d.]+$/
-    - /^deploy\/.*$/
 
 env:
   - CXX=clang
@@ -32,7 +31,17 @@ jobs:
     - name: "e2e"
       script: make -e test-integration
 
-    - name: "docs"
+    - name: "release: linux x86_64"
+      if: branch ~= /^release\/[\d.]+$/
+      before_script: npm install -g @zeus-ci/cli
+      script:
+        - make release
+        - zeus upload -t "application/octet-stream" -n symbolicator-Linux-x86_64 target/release/symbolicator
+        - zip symbolicator-debug.zip target/symbolicator/symbolicator.debug
+        - zeus upload -t "application/octet-stream" -n symbolicator-Linux-x86_64-debug.zip symbolicator-debug.zip
+
+    - name: "release: docs"
+      if: branch ~= /^release\/[\d.]+$/
       before_script: npm install -g @zeus-ci/cli
       script: make -e travis-upload-docs
 
