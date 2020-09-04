@@ -348,12 +348,6 @@ pub struct Caches {
 impl Caches {
     pub fn from_config(config: &Config) -> io::Result<Self> {
         let tmp_dir = config.cache_dir("tmp");
-        if let Some(ref tmp) = tmp_dir {
-            if tmp.exists() {
-                std::fs::remove_dir_all(tmp)?;
-            }
-            std::fs::create_dir_all(tmp)?;
-        }
         Ok(Self {
             objects: {
                 let path = config.cache_dir("objects");
@@ -401,6 +395,20 @@ impl Caches {
                 )?
             },
         })
+    }
+
+    /// Clear the temporary files.
+    ///
+    /// We need to do this on startup of the main symbolicator process to avoid accidentally
+    /// leaving temporary files which survive a hard crash.
+    pub fn clear_tmp(&self, config: &Config) -> io::Result<()> {
+        if let Some(ref tmp) = config.cache_dir("tmp") {
+            if tmp.exists() {
+                std::fs::remove_dir_all(tmp)?;
+            }
+            std::fs::create_dir_all(tmp)?;
+        }
+        Ok(())
     }
 
     pub fn cleanup(&self) -> Result<(), CleanupError> {
@@ -453,10 +461,12 @@ mod tests {
         let cachedir = basedir.path().join("cache");
         let tmpdir = cachedir.join("tmp");
 
-        let _caches = Caches::from_config(&Config {
+        let cfg = Config {
             cache_dir: Some(cachedir),
             ..Default::default()
-        });
+        };
+        let caches = Caches::from_config(&cfg).unwrap();
+        caches.clear_tmp(&cfg);
 
         let fsinfo = fs::metadata(tmpdir).unwrap();
         assert!(fsinfo.is_dir());
@@ -474,10 +484,12 @@ mod tests {
         let fsinfo = fs::metadata(&spam).unwrap();
         assert!(fsinfo.is_file());
 
-        let _caches = Caches::from_config(&Config {
+        let cfg = Config {
             cache_dir: Some(cachedir),
             ..Default::default()
-        });
+        };
+        let caches = Caches::from_config(&cfg).unwrap();
+        caches.clear_tmp(&cfg);
 
         let fsinfo = fs::metadata(spam);
         assert!(fsinfo.is_err());
