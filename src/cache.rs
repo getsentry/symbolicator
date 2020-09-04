@@ -466,7 +466,7 @@ mod tests {
             ..Default::default()
         };
         let caches = Caches::from_config(&cfg).unwrap();
-        caches.clear_tmp(&cfg);
+        caches.clear_tmp(&cfg).unwrap();
 
         let fsinfo = fs::metadata(tmpdir).unwrap();
         assert!(fsinfo.is_dir());
@@ -489,7 +489,7 @@ mod tests {
             ..Default::default()
         };
         let caches = Caches::from_config(&cfg).unwrap();
-        caches.clear_tmp(&cfg);
+        caches.clear_tmp(&cfg).unwrap();
 
         let fsinfo = fs::metadata(spam);
         assert!(fsinfo.is_err());
