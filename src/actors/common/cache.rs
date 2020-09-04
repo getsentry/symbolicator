@@ -41,12 +41,6 @@ pub struct Cacher<T: CacheItemRequest> {
     current_computations: ComputationMap<T::Item, T::Error>,
 }
 
-impl<T: CacheItemRequest> Cacher<T> {
-    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
-        self.config.tempfile()
-    }
-}
-
 impl<T: CacheItemRequest> Clone for Cacher<T> {
     fn clone(&self) -> Self {
         // https://github.com/rust-lang/rust/issues/26925
@@ -63,6 +57,10 @@ impl<T: CacheItemRequest> Cacher<T> {
             config,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
+    }
+
+    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
+        self.config.tempfile()
     }
 }
 
