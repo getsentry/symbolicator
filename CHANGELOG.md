@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-* Fix a bug where Sentry requests were cached even though caches were disabled. ([#260](https://github.com/getsentry/symbolicator/pull/260))
+* Fix a bug where Sentry requests were cached even though caches were
+  disabled. ([#260](https://github.com/getsentry/symbolicator/pull/260))
+* Use a dedicated `tmp` sub-directory in the cache directory to write
+  temporary files
+  into. ([#265](https://github.com/getsentry/symbolicator/pull/265))
+
 
 ## 0.2.0
 
