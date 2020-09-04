@@ -14,7 +14,7 @@ use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, Future};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
-use tempfile::{tempfile_in, NamedTempFile};
+use tempfile::tempfile_in;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -177,9 +177,12 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.write_sentry_scope(scope);
         });
 
-        let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
-        let download_file =
-            tryf!(NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io));
+        let download_file = tryf!(self.0.data_cache.tempfile().context(ObjectErrorKind::Io));
+        let download_dir = tryf!(download_file
+            .path()
+            .parent()
+            .ok_or(ObjectErrorKind::NoTempDir))
+        .to_owned();
         let request = self
             .0
             .download_svc

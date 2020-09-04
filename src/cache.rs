@@ -96,7 +96,18 @@ pub struct Cache {
     name: &'static str,
 
     /// Directory to use for storing cache items. Will be created if it does not exist.
+    ///
+    /// Leaving this as None will disable this cache.
     cache_dir: Option<PathBuf>,
+
+    /// Directory to use for temporary files.
+    ///
+    /// When writing a new file into the cache it is best to write it to a temporary file in
+    /// a sibling directory, once fully written it can then be atomically moved to the
+    /// actual location withing the `cache_dir`.
+    ///
+    /// Just like for `cache_dir` when this cache is disabled this will be `None`.
+    tmp_dir: Option<PathBuf>,
 
     /// Time when this process started.
     start_time: SystemTime,
@@ -109,6 +120,7 @@ impl Cache {
     pub fn from_config(
         name: &'static str,
         cache_dir: Option<PathBuf>,
+        tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
@@ -117,6 +129,7 @@ impl Cache {
         Ok(Cache {
             name,
             cache_dir,
+            tmp_dir,
             start_time: SystemTime::now(),
             cache_config,
         })
@@ -278,6 +291,17 @@ impl Cache {
             ByteView::open(path)
         })
     }
+
+    /// Create a new temporary file to use in the cache.
+    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
+        match self.tmp_dir {
+            Some(ref path) => {
+                std::fs::create_dir_all(path)?;
+                Ok(tempfile::Builder::new().prefix("tmp").tempfile_in(path)?)
+            }
+            None => Ok(NamedTempFile::new()?),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -323,26 +347,58 @@ pub struct Caches {
 
 impl Caches {
     pub fn from_config(config: &Config) -> io::Result<Self> {
+        let tmp_dir = config.cache_dir("tmp");
+        if let Some(ref tmp) = tmp_dir {
+            if tmp.exists() {
+                std::fs::remove_dir_all(tmp)?;
+            }
+            std::fs::create_dir_all(tmp)?;
+        }
         Ok(Self {
             objects: {
                 let path = config.cache_dir("objects");
-                Cache::from_config("objects", path, config.caches.downloaded.into())?
+                Cache::from_config(
+                    "objects",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.downloaded.into(),
+                )?
             },
             object_meta: {
                 let path = config.cache_dir("object_meta");
-                Cache::from_config("object_meta", path, config.caches.derived.into())?
+                Cache::from_config(
+                    "object_meta",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                )?
             },
             symcaches: {
                 let path = config.cache_dir("symcaches");
-                Cache::from_config("symcaches", path, config.caches.derived.into())?
+                Cache::from_config(
+                    "symcaches",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                )?
             },
             cficaches: {
                 let path = config.cache_dir("cficaches");
-                Cache::from_config("cficaches", path, config.caches.derived.into())?
+                Cache::from_config(
+                    "cficaches",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                )?
             },
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
-                Cache::from_config("diagnostics", path, config.caches.diagnostics.into())?
+                Cache::from_config(
+                    "diagnostics",
+                    path,
+                    tmp_dir,
+                    config.caches.diagnostics.into(),
+                )?
             },
         })
     }
@@ -384,10 +440,47 @@ mod tests {
         let _cache = Cache::from_config(
             "test",
             Some(cachedir.clone()),
+            None,
             CacheConfig::Downloaded(Default::default()),
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
+    }
+
+    #[test]
+    fn test_caches_tmp_created() {
+        let basedir = tempdir().unwrap();
+        let cachedir = basedir.path().join("cache");
+        let tmpdir = cachedir.join("tmp");
+
+        let _caches = Caches::from_config(&Config {
+            cache_dir: Some(cachedir),
+            ..Default::default()
+        });
+
+        let fsinfo = fs::metadata(tmpdir).unwrap();
+        assert!(fsinfo.is_dir());
+    }
+
+    #[test]
+    fn test_caches_tmp_cleared() {
+        let basedir = tempdir().unwrap();
+        let cachedir = basedir.path().join("cache");
+        let tmpdir = cachedir.join("tmp");
+
+        create_dir_all(&tmpdir).unwrap();
+        let spam = tmpdir.join("spam");
+        File::create(&spam).unwrap();
+        let fsinfo = fs::metadata(&spam).unwrap();
+        assert!(fsinfo.is_file());
+
+        let _caches = Caches::from_config(&Config {
+            cache_dir: Some(cachedir),
+            ..Default::default()
+        });
+
+        let fsinfo = fs::metadata(spam);
+        assert!(fsinfo.is_err());
     }
 
     #[test]
@@ -398,6 +491,7 @@ mod tests {
         let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
+            None,
             CacheConfig::Derived(DerivedCacheConfig {
                 max_unused_for: Some(Duration::from_millis(10)),
                 ..Default::default()
@@ -434,6 +528,7 @@ mod tests {
         let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
+            None,
             CacheConfig::Derived(DerivedCacheConfig {
                 retry_misses_after: Some(Duration::from_millis(20)),
                 ..Default::default()
@@ -479,6 +574,7 @@ mod tests {
         let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
+            None,
             CacheConfig::Derived(Default::default()),
         )?;
 

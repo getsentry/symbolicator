@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
-use std::io::Write;
+use std::io::{self, Write};
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1220,12 +1220,15 @@ impl SymbolicationActor {
     fn save_minidump(
         minidump: Bytes,
         failed_cache: crate::cache::Cache,
-    ) -> failure::Fallible<Option<PathBuf>> {
+    ) -> io::Result<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
             std::fs::create_dir_all(dir)?;
-            let tmp = tempfile::NamedTempFile::new_in(dir)?;
+            let tmp = tempfile::Builder::new()
+                .prefix("minidump")
+                .suffix(".dmp")
+                .tempfile_in(dir)?;
             tmp.as_file().write_all(&*minidump)?;
-            let (_file, path) = tmp.keep()?;
+            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
             Ok(Some(path))
         } else {
             log::debug!("No diagnostics retention configured, not saving minidump");
