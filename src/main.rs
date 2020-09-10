@@ -35,7 +35,11 @@ fn main() {
     match cli::execute() {
         Ok(()) => std::process::exit(0),
         Err(error) => {
-            logging::ensure_log_error(&error);
+            if log::log_enabled!(log::Level::Error) {
+                log::error!("{:?}", error);
+            } else {
+                eprintln!("{:?}", error);
+            }
             std::process::exit(1);
         }
     }

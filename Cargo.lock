@@ -163,6 +163,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b602bfe940d21c130f3895acd65221e8a61270debe89d628b9cb4e3ccb8569b"
+
+[[package]]
 name = "apple-crash-report-parser"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3143,6 +3149,7 @@ version = "0.2.0"
 dependencies = [
  "actix",
  "actix-web",
+ "anyhow",
  "apple-crash-report-parser",
  "base64 0.11.0",
  "bytes 0.4.12",

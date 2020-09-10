@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use actix_web::App;
-use failure::{Fail, ResultExt};
+use anyhow::{Context, Result};
 
 use crate::actors::{
     cficaches::CfiCacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
@@ -13,21 +13,6 @@ use crate::config::Config;
 use crate::services::download::DownloadService;
 use crate::utils::futures::{RemoteThread, ThreadPool};
 use crate::utils::http;
-
-/// Variants of [ServiceStateError].
-#[derive(Clone, Copy, Debug, Fail)]
-pub enum ServiceStateErrorKind {
-    #[fail(display = "failed to create process pool")]
-    Spawn,
-    #[fail(display = "failed to create local caches")]
-    Cache,
-}
-
-symbolic::common::derive_failure!(
-    ServiceStateError,
-    ServiceStateErrorKind,
-    doc = "Error constructing the service state."
-);
 
 /// The shared state for the service.
 #[derive(Clone, Debug)]
@@ -47,7 +32,7 @@ pub struct ServiceState {
 }
 
 impl ServiceState {
-    pub fn create(config: Config) -> Result<Self, ServiceStateError> {
+    pub fn create(config: Config) -> Result<Self> {
         let config = Arc::new(config);
 
         if !config.connect_to_reserved_ips {
@@ -60,7 +45,7 @@ impl ServiceState {
 
         let download_svc = Arc::new(DownloadService::new(io_thread, config.clone()));
 
-        let caches = Caches::from_config(&config).context(ServiceStateErrorKind::Cache)?;
+        let caches = Caches::from_config(&config).context("Failed to create local caches")?;
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
@@ -72,7 +57,7 @@ impl ServiceState {
         let cficaches =
             CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
         let spawnpool =
-            procspawn::Pool::new(num_cpus::get()).context(ServiceStateErrorKind::Spawn)?;
+            procspawn::Pool::new(num_cpus::get()).context("Failed to create process pool")?;
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),

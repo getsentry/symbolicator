@@ -1,30 +1,14 @@
 //! Exposes the command line application.
 use std::path::{Path, PathBuf};
 
-use failure::Fail;
+use anyhow::{Context, Result};
 use structopt::StructOpt;
 
-use crate::cache::{self, CleanupError};
-use crate::config::{Config, ConfigError};
+use crate::cache;
+use crate::config::Config;
 use crate::logging;
 use crate::metrics;
-use crate::server::{self, ServerError};
-
-/// An enum representing a CLI error.
-#[derive(Fail, Debug, derive_more::From)]
-pub enum CliError {
-    /// Indicates a config parsing error.
-    #[fail(display = "Failed loading config")]
-    Config(#[fail(cause)] ConfigError),
-
-    /// Indicates an error starting the server.
-    #[fail(display = "Failed start the server")]
-    Server(#[fail(cause)] ServerError),
-
-    /// Indicates an error while cleaning up caches.
-    #[fail(display = "Failed to clean up caches")]
-    Cleanup(#[fail(cause)] CleanupError),
-}
+use crate::server;
 
 fn get_crate_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -75,9 +59,9 @@ impl Cli {
 }
 
 /// Runs the main application.
-pub fn execute() -> Result<(), CliError> {
+pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
-    let config = Config::get(cli.config())?;
+    let config = Config::get(cli.config()).context("Failed loading config")?;
 
     let _sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
@@ -98,8 +82,8 @@ pub fn execute() -> Result<(), CliError> {
         .init();
 
     match cli.command {
-        Command::Run => server::run(config)?,
-        Command::Cleanup => cache::cleanup(config)?,
+        Command::Run => server::run(config).context("Failed to start the server")?,
+        Command::Cleanup => cache::cleanup(config).context("Failed to clean up caches")?,
     }
 
     Ok(())
