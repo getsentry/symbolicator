@@ -184,3 +184,12 @@ impl<'a, E: AsFail> fmt::Display for LogError<'a, E> {
         Ok(())
     }
 }
+
+/// Logs an error to the configured logger or `stderr` if not yet configured.
+pub fn ensure_log_error(error: &anyhow::Error) {
+    if log::log_enabled!(log::Level::Error) {
+        log::error!("{:?}", error);
+    } else {
+        eprintln!("{:?}", error);
+    }
+}
