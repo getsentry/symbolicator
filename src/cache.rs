@@ -7,12 +7,11 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use failure::Fail;
+use anyhow::{anyhow, Result};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
-use crate::logging::LogError;
 use crate::types::Scope;
 
 /// Content of cache items whose writing failed.
@@ -77,18 +76,6 @@ impl CacheStatus {
     }
 }
 
-#[derive(Debug, Fail, derive_more::From)]
-pub enum CleanupError {
-    #[fail(display = "No caching configured! Did you provide a path to your config file?")]
-    NoCachingConfigured,
-
-    #[fail(display = "Not a file")]
-    NotAFile,
-
-    #[fail(display = "Failed to access filesystem")]
-    Io(#[fail(cause)] io::Error),
-}
-
 /// Utilities for a sym/cfi or object cache.
 #[derive(Debug, Clone)]
 pub struct Cache {
@@ -130,12 +117,11 @@ impl Cache {
         self.cache_dir.as_deref()
     }
 
-    pub fn cleanup(&self) -> Result<(), CleanupError> {
+    pub fn cleanup(&self) -> Result<()> {
         log::info!("Cleaning up cache: {}", self.name);
-        let cache_dir = match self.cache_dir {
-            Some(ref x) => x.clone(),
-            None => return Err(CleanupError::NoCachingConfigured),
-        };
+        let cache_dir = self.cache_dir.clone().ok_or_else(|| {
+            anyhow!("No caching configured! Did you provide a path to your config file?")
+        })?;
 
         let mut directories = vec![cache_dir];
         while !directories.is_empty() {
@@ -157,7 +143,7 @@ impl Cache {
                 } else if let Err(e) = self.try_cleanup_path(&path) {
                     sentry::with_scope(
                         |scope| scope.set_extra("path", path.display().to_string().into()),
-                        || log::error!("Failed to clean cache file: {}", LogError(&e)),
+                        || log::error!("Failed to clean cache file: {:?}", e),
                     );
                 }
             }
@@ -166,18 +152,15 @@ impl Cache {
         Ok(())
     }
 
-    fn try_cleanup_path(&self, path: &Path) -> Result<(), CleanupError> {
+    fn try_cleanup_path(&self, path: &Path) -> Result<()> {
         log::trace!("Checking {}", path.display());
-        if path.is_file() {
-            if catch_not_found(|| self.check_expiry(path))?.is_none() {
-                log::debug!("Removing {}", path.display());
-                catch_not_found(|| remove_file(path))?;
-            }
-
-            Ok(())
-        } else {
-            Err(CleanupError::NotAFile)
+        anyhow::ensure!(path.is_file(), "Not a file");
+        if catch_not_found(|| self.check_expiry(path))?.is_none() {
+            log::debug!("Removing {}", path.display());
+            catch_not_found(|| remove_file(path))?;
         }
+
+        Ok(())
     }
 
     /// Validate cache expiration of path. If cache should not be used,
@@ -347,7 +330,7 @@ impl Caches {
         })
     }
 
-    pub fn cleanup(&self) -> Result<(), CleanupError> {
+    pub fn cleanup(&self) -> Result<()> {
         self.objects.cleanup()?;
         self.object_meta.cleanup()?;
         self.symcaches.cleanup()?;
@@ -359,7 +342,7 @@ impl Caches {
 /// Entry function for the cleanup command.
 ///
 /// This will clean up all caches based on configured cache retention.
-pub fn cleanup(config: Config) -> Result<(), CleanupError> {
+pub fn cleanup(config: Config) -> Result<()> {
     Caches::from_config(&config)?.cleanup()
 }
 
@@ -391,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn test_max_unused_for() -> Result<(), CleanupError> {
+    fn test_max_unused_for() -> Result<()> {
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
@@ -423,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn test_retry_misses_after() -> Result<(), CleanupError> {
+    fn test_retry_misses_after() -> Result<()> {
         use std::fs::create_dir_all;
         use std::io::Write;
         use std::thread::sleep;
@@ -459,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cleanup_malformed() -> Result<(), CleanupError> {
+    fn test_cleanup_malformed() -> Result<()> {
         use std::fs::create_dir_all;
         use std::io::Write;
         use std::thread::sleep;
