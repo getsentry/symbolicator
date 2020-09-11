@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use failure::Error;
+use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use symbolic::common::ByteView;
@@ -54,21 +54,22 @@ pub fn get_target_filename(obj: &Object) -> Option<PathBuf> {
 }
 
 /// Creates a source bundle from a path.
-pub fn create_source_bundle(
-    path: &Path,
-    unified_id: &str,
-) -> Result<Option<ByteView<'static>>, Error> {
+pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<ByteView<'static>>> {
     let bv = ByteView::open(path)?;
-    let archive = Archive::parse(&bv)?;
+    let archive = Archive::parse(&bv).map_err(|e| anyhow!(e))?;
     for obj in archive.objects() {
-        let obj = obj?;
+        let obj = obj.map_err(|e| anyhow!(e))?;
         if get_unified_id(&obj) == unified_id {
             let mut out = Vec::<u8>::new();
-            let writer = SourceBundleWriter::start(Cursor::new(&mut out))?;
-            if writer.write_object(
-                &obj,
-                &path.file_name().unwrap().to_string_lossy().to_string(),
-            )? {
+            let writer =
+                SourceBundleWriter::start(Cursor::new(&mut out)).map_err(|e| anyhow!(e))?;
+            if writer
+                .write_object(
+                    &obj,
+                    &path.file_name().unwrap().to_string_lossy().to_string(),
+                )
+                .map_err(|e| anyhow!(e))?
+            {
                 return Ok(Some(ByteView::from_vec(out)));
             }
         }
