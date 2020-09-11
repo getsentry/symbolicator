@@ -11,7 +11,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, FilesystemSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
 
@@ -28,7 +28,7 @@ pub fn download_source(
         Ok(_) => Ok(DownloadStatus::Completed),
         Err(e) => match e.kind() {
             io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
-            _ => Err(DownloadError::from(DownloadErrorKind::Io)),
+            _ => Err(DownloadError::Io(e)),
         },
     }
 }

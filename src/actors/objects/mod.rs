@@ -19,7 +19,7 @@ use tempfile::{tempfile_in, NamedTempFile};
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
-use crate::services::download::{DownloadService, DownloadStatus};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
 use crate::types::{ArcFail, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
@@ -59,12 +59,10 @@ impl From<io::Error> for ObjectError {
     }
 }
 
-impl From<crate::services::download::DownloadError> for ObjectError {
-    fn from(source: crate::services::download::DownloadError) -> Self {
-        match source.kind() {
-            crate::services::download::DownloadErrorKind::Canceled => {
-                source.context(ObjectErrorKind::Canceled).into()
-            }
+impl From<DownloadError> for ObjectError {
+    fn from(source: DownloadError) -> Self {
+        match source {
+            DownloadError::Canceled => source.context(ObjectErrorKind::Canceled).into(),
             _ => source.context(ObjectErrorKind::Io).into(),
         }
     }
