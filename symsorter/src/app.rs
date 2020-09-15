@@ -332,9 +332,9 @@ pub fn main() -> ! {
         Ok(()) => std::process::exit(0),
         Err(error) => {
             eprintln!("{}: {}", style("error").red().bold(), error);
-            error.chain().skip(1).for_each(|cause| {
+            for cause in error.chain().skip(1) {
                 eprintln!("{}", style(format!("  caused by {}", cause)).dim());
-            });
+            }
 
             eprintln!();
             eprintln!("To skip this error, use --ignore-errors.");

@@ -63,13 +63,8 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
             let mut out = Vec::<u8>::new();
             let writer =
                 SourceBundleWriter::start(Cursor::new(&mut out)).map_err(|e| anyhow!(e))?;
-            if writer
-                .write_object(
-                    &obj,
-                    &path.file_name().unwrap().to_string_lossy().to_string(),
-                )
-                .map_err(|e| anyhow!(e))?
-            {
+            let name = path.file_name().unwrap().to_string_lossy();
+            if writer.write_object(&obj, &name).map_err(|e| anyhow!(e))? {
                 return Ok(Some(ByteView::from_vec(out)));
             }
         }
