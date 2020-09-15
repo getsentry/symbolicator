@@ -26,6 +26,9 @@ targets:
       - path: /symbolicator/latest/
         metadata:
           cacheControl: "public, max-age=600"
+  - name: docker
+    source: us.gcr.io/sentryio/symbolicator
+    target: getsentry/symbolicator
 
 requireNames:
   - /^gh-pages.zip$/
