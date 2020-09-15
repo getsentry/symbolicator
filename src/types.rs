@@ -4,9 +4,7 @@ use std::convert::Infallible;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
-use std::sync::Arc;
 
-use failure::{Backtrace, Fail};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::minidump::processor::FrameTrust;
@@ -521,28 +519,6 @@ pub struct SystemInfo {
 
     /// Device model name
     pub device_model: String,
-}
-
-/// This type only exists to have a working impl of `Fail` for `Arc<T> where T: Fail`. We cannot
-/// contribute a blanket impl upstream because it would conflict with at least this blanket impl
-/// from failure: `impl<E: StdError + Send + Sync + 'static> Fail for E`
-#[derive(Debug, Clone)]
-pub struct ArcFail<T>(pub Arc<T>);
-
-impl<T: Fail> Fail for ArcFail<T> {
-    fn cause(&self) -> Option<&dyn Fail> {
-        self.0.cause()
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.0.backtrace()
-    }
-}
-
-impl<T: fmt::Display> fmt::Display for ArcFail<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        self.0.fmt(f)
-    }
 }
 
 /// Information to find a Object in external sources and also internal cache.
