@@ -34,6 +34,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b602bfe940d21c130f3895acd65221e8a61270debe89d628b9cb4e3ccb8569b"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -828,9 +834,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "7.3.2"
+version = "7.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b697590c027c7cb05abfd40aebb91cc6b9458d2d79bb875f02204cc0d92bfc2e"
+checksum = "80c1372a324a0765d0193d79eed3a76689023c5639ab5753f81ebcc05a246b98"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -838,9 +844,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "7.3.2"
+version = "7.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58b4a469c3cfae500c30dfb6ba7b378e52911d3110b87e57cb297545c5b0c74e"
+checksum = "c97c98b6026c932123a976d0cd35f59256424507e3dec9d032f30828765f1bf2"
 dependencies = [
  "debugid",
  "failure",
@@ -852,9 +858,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "7.3.2"
+version = "7.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9a1113ac26949f949c77b9405037dadf7f850a7f0c75f8023779dc80f758a24"
+checksum = "da05d4245f95dc3b263f76bb5ac6d2eb41caa4df90d9223f8a9e74398da758cb"
 dependencies = [
  "dmsort",
  "failure",
@@ -878,12 +884,12 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "clap",
  "console",
- "failure",
  "itertools",
  "lazy_static",
  "parking_lot 0.9.0",
