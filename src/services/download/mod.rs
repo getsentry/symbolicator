@@ -9,14 +9,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::sentry::Hub;
+use ::sentry::{Hub, SentryFutureExt};
 use bytes::Bytes;
 use failure::{Fail, ResultExt};
 use futures::prelude::*;
 
 use crate::utils::futures::RemoteThread;
 use crate::utils::paths::get_directory_paths;
-use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
 mod gcs;
