@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::sentry::Hub;
+use ::sentry::{Hub, SentryFutureExt};
 use actix_web::error::PayloadError;
 use bytes::Bytes;
 use failure::Fail;
@@ -18,7 +18,6 @@ use thiserror::Error;
 
 use crate::utils::futures::RemoteThread;
 use crate::utils::paths::get_directory_paths;
-use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
 mod gcs;
