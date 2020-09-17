@@ -120,7 +120,7 @@ impl Cache {
     pub fn cleanup(&self) -> Result<()> {
         log::info!("Cleaning up cache: {}", self.name);
         let cache_dir = self.cache_dir.clone().ok_or_else(|| {
-            anyhow!("No caching configured! Did you provide a path to your config file?")
+            anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
 
         let mut directories = vec![cache_dir];
@@ -154,7 +154,7 @@ impl Cache {
 
     fn try_cleanup_path(&self, path: &Path) -> Result<()> {
         log::trace!("Checking {}", path.display());
-        anyhow::ensure!(path.is_file(), "Not a file");
+        anyhow::ensure!(path.is_file(), "not a file");
         if catch_not_found(|| self.check_expiry(path))?.is_none() {
             log::debug!("Removing {}", path.display());
             catch_not_found(|| remove_file(path))?;

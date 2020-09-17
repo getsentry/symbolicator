@@ -38,19 +38,19 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 /// Errors happening while downloading from sources.
 #[derive(Debug, Error)]
 pub enum DownloadError {
-    #[error("Failed to download")]
+    #[error("failed to download")]
     Io(#[source] std::io::Error),
-    #[error("Failed to download stream")]
+    #[error("failed to download stream")]
     Stream(#[source] failure::Compat<PayloadError>),
-    #[error("Bad file destination")]
+    #[error("bad file destination")]
     BadDestination(#[source] std::io::Error),
-    #[error("Failed writing the downloaded file")]
+    #[error("failed writing the downloaded file")]
     Write(#[source] std::io::Error),
-    #[error("Download was cancelled")]
+    #[error("download was cancelled")]
     Canceled,
-    #[error("Failed to fetch data from GCS")]
+    #[error("failed to fetch data from GCS")]
     Gcs(#[from] gcs::GcsError),
-    #[error("Failed to fetch data from Sentry")]
+    #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
 }
 

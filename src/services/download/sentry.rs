@@ -103,13 +103,13 @@ struct SearchQuery {
 /// Errors happening while fetching data from Sentry.
 #[derive(Debug, Error)]
 pub enum SentryError {
-    #[error("Failed parsing JSON response from Sentry")]
+    #[error("failed parsing JSON response from Sentry")]
     Parsing(#[from] failure::Compat<JsonPayloadError>),
 
-    #[error("Failed sending request to Sentry")]
+    #[error("failed sending request to Sentry")]
     SendRequest(#[from] failure::Compat<SendRequestError>),
 
-    #[error("Bad status code from Sentry: {0}")]
+    #[error("bad status code from Sentry: {0}")]
     BadStatusCode(StatusCode),
 }
 

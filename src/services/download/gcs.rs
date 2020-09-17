@@ -62,13 +62,13 @@ struct GcsToken {
 
 #[derive(Debug, Error)]
 pub enum GcsError {
-    #[error("Failed decoding key")]
+    #[error("failed decoding key")]
     Base64(#[from] base64::DecodeError),
-    #[error("Failed encoding JWT")]
+    #[error("failed encoding JWT")]
     Jwt(#[from] jsonwebtoken::errors::Error),
-    #[error("Failed to parse JSON response")]
+    #[error("failed to parse JSON response")]
     Json(#[from] failure::Compat<JsonPayloadError>),
-    #[error("Failed to send authentication request")]
+    #[error("failed to send authentication request")]
     Auth(#[from] failure::Compat<SendRequestError>),
 }
 

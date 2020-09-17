@@ -61,7 +61,7 @@ impl Cli {
 /// Runs the main application.
 pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
-    let config = Config::get(cli.config()).context("Failed loading config")?;
+    let config = Config::get(cli.config()).context("failed loading config")?;
 
     let _sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
@@ -82,8 +82,8 @@ pub fn execute() -> Result<()> {
         .init();
 
     match cli.command {
-        Command::Run => server::run(config).context("Failed to start the server")?,
-        Command::Cleanup => cache::cleanup(config).context("Failed to clean up caches")?,
+        Command::Run => server::run(config).context("failed to start the server")?,
+        Command::Cleanup => cache::cleanup(config).context("failed to clean up caches")?,
     }
 
     Ok(())

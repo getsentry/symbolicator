@@ -45,7 +45,7 @@ impl ServiceState {
 
         let download_svc = Arc::new(DownloadService::new(io_thread, config.clone()));
 
-        let caches = Caches::from_config(&config).context("Failed to create local caches")?;
+        let caches = Caches::from_config(&config).context("failed to create local caches")?;
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
@@ -57,7 +57,7 @@ impl ServiceState {
         let cficaches =
             CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
         let spawnpool =
-            procspawn::Pool::new(num_cpus::get()).context("Failed to create process pool")?;
+            procspawn::Pool::new(num_cpus::get()).context("failed to create process pool")?;
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),

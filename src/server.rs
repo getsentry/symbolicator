@@ -26,12 +26,12 @@ pub fn run(config: Config) -> Result<()> {
     metric!(counter("server.starting") += 1);
 
     let bind = config.bind.clone();
-    let service = ServiceState::create(config).context("Failed to create service state")?;
+    let service = ServiceState::create(config).context("failed to create service state")?;
 
     log::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))
         .bind(&bind)
-        .context("Failed to bind to the port")?
+        .context("failed to bind to the port")?
         .start();
 
     log::info!("Starting system");
