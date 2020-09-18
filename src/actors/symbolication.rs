@@ -9,13 +9,12 @@ use std::time::{Duration, Instant};
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
-use failure::{Fail, ResultExt};
+use failure::Fail;
 use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
 use futures01::future::{self, join_all, Future, IntoFuture, Shared};
 use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use regex::Regex;
-use sentry::integrations::failure::capture_fail;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{
@@ -27,20 +26,17 @@ use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
+use thiserror::Error;
 use tokio::timer::Delay;
 
-use crate::actors::cficaches::{
-    CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
-};
-use crate::actors::objects::{FindObject, ObjectPurpose, ObjectsActor};
-use crate::actors::symcaches::{
-    FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
-};
+use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
+use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{
-    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
+    CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
     RequestId, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
@@ -62,60 +58,41 @@ lazy_static::lazy_static! {
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
 
-/// Variants of `SymbolicationError`.
-#[derive(Debug, Fail)]
-pub enum SymbolicationErrorKind {
-    #[fail(display = "symbolication took too long")]
+/// Errors during symbolication.
+#[derive(Debug, Error)]
+pub enum SymbolicationError {
+    #[error("symbolication took too long")]
     Timeout,
 
-    #[fail(display = "internal IO failed")]
-    Io,
+    #[error("internal IO failed")]
+    Io(#[from] std::io::Error),
 
-    #[fail(display = "computation was canceled internally")]
+    #[error("computation was canceled internally")]
     Canceled,
 
-    #[fail(display = "failed to process minidump")]
-    InvalidMinidump,
+    #[error("failed to process minidump")]
+    InvalidMinidump(#[source] failure::Compat<ProcessMinidumpError>),
 
-    #[fail(display = "failed to parse apple crash report")]
-    InvalidAppleCrashReport,
-}
-
-symbolic::common::derive_failure!(
-    SymbolicationError,
-    SymbolicationErrorKind,
-    doc = "Errors during symbolication."
-);
-
-impl From<std::io::Error> for SymbolicationError {
-    fn from(err: std::io::Error) -> Self {
-        err.context(SymbolicationErrorKind::Io).into()
-    }
+    #[error("failed to parse apple crash report")]
+    InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
 }
 
 impl From<ProcessMinidumpError> for SymbolicationError {
     fn from(err: ProcessMinidumpError) -> Self {
-        err.context(SymbolicationErrorKind::InvalidMinidump).into()
-    }
-}
-
-impl From<apple_crash_report_parser::ParseError> for SymbolicationError {
-    fn from(err: apple_crash_report_parser::ParseError) -> Self {
-        err.context(SymbolicationErrorKind::InvalidAppleCrashReport)
-            .into()
+        SymbolicationError::InvalidMinidump(err.compat())
     }
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match err.kind() {
-            SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
-            SymbolicationErrorKind::Canceled => SymbolicationResponse::InternalError,
-            SymbolicationErrorKind::InvalidMinidump => SymbolicationResponse::Failed {
+        match err {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Canceled => SymbolicationResponse::InternalError,
+            SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
-            SymbolicationErrorKind::InvalidAppleCrashReport => SymbolicationResponse::Failed {
+            SymbolicationError::InvalidAppleCrashReport(_) => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
         }
@@ -245,7 +222,7 @@ impl SymbolicationActor {
     ) -> ResponseFuture<SymbolicationResponse, SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_| SymbolicationErrorKind::Canceled.into());
+            .map_err(|_| SymbolicationError::Canceled);
 
         if let Some(timeout) = timeout.map(Duration::from_secs) {
             Box::new(tokio::timer::Timeout::new(rv, timeout).then(move |result| {
@@ -296,7 +273,7 @@ impl SymbolicationActor {
                 let response = match result {
                     Ok(response) => SymbolicationResponse::Completed(Box::new(response)),
                     Err(ref error) => {
-                        capture_fail(error);
+                        sentry::capture_error(error);
                         error.into()
                     }
                 };
@@ -931,10 +908,7 @@ impl SymbolicationActor {
 
         Box::new(future_metrics!(
             "symbolicate",
-            Some((
-                Duration::from_secs(3600),
-                SymbolicationErrorKind::Timeout.into()
-            )),
+            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
             result
         ))
     }
@@ -992,7 +966,7 @@ impl SymbolicationActor {
             .threadpool
             .spawn_handle(future.sentry_hub_current().compat())
             .await
-            .map_err(|_| SymbolicationErrorKind::Canceled)??;
+            .map_err(|_| SymbolicationError::Canceled)??;
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
@@ -1030,7 +1004,7 @@ impl SymbolicationActor {
             .threadpool
             .spawn_handle(future.sentry_hub_current().compat())
             .await
-            .map_err(|_| SymbolicationErrorKind::Canceled)??;
+            .map_err(|_| SymbolicationError::Canceled)??;
 
         Ok(result)
     }
@@ -1151,7 +1125,7 @@ impl SymbolicationActor {
             .spawn_handle(lazy.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .map_err(|_| SymbolicationError::Canceled)
             .flatten();
 
         Box::new(future)
@@ -1189,14 +1163,14 @@ impl SymbolicationActor {
                     "unknown"
                 };
                 let kind = if perr.is_timeout() {
-                    SymbolicationErrorKind::Timeout
+                    SymbolicationError::Timeout
                 } else {
-                    SymbolicationErrorKind::Canceled
+                    SymbolicationError::Canceled
                 };
                 metric!(counter(metric) += 1, "reason" => reason);
-                if let SymbolicationErrorKind::Canceled = kind {
+                if let SymbolicationError::Canceled = kind {
                     Self::save_minidump(minidump, minidump_cache)
-                        .map_err(|e| log::error!("Failed to save minidump {}", LogError(&e)))
+                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
                         .map(|r| {
                             if let Some(path) = r {
                                 sentry::configure_scope(|scope| {
@@ -1211,7 +1185,7 @@ impl SymbolicationActor {
                         })
                         .ok();
                 }
-                Err(SymbolicationError::from(kind))
+                Err(kind)
             }
         }
     }
@@ -1220,7 +1194,7 @@ impl SymbolicationActor {
     fn save_minidump(
         minidump: Bytes,
         failed_cache: crate::cache::Cache,
-    ) -> failure::Fallible<Option<PathBuf>> {
+    ) -> anyhow::Result<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
             std::fs::create_dir_all(dir)?;
             let tmp = tempfile::NamedTempFile::new_in(dir)?;
@@ -1274,10 +1248,7 @@ impl SymbolicationActor {
             let cache_file = match result {
                 Ok(x) => x,
                 Err(e) => {
-                    log::debug!(
-                        "Error while fetching cficache: {}",
-                        LogError(&ArcFail(e.clone()))
-                    );
+                    log::debug!("Error while fetching cficache: {}", LogError(e.as_ref()));
                     unwind_statuses.insert(*code_module_id, (&**e).into());
                     continue;
                 }
@@ -1293,7 +1264,7 @@ impl SymbolicationActor {
                     unwind_statuses.insert(*code_module_id, ObjectFileStatus::Missing);
                 }
                 CacheStatus::Malformed => {
-                    let e = CfiCacheError::from(CfiCacheErrorKind::ObjectParsing);
+                    let e = CfiCacheError::ObjectParsing(ObjectError::Malformed);
                     log::warn!("Error while parsing cficache: {}", LogError(&e));
                     unwind_statuses.insert(*code_module_id, (&e).into());
                 }
@@ -1330,11 +1301,11 @@ impl SymbolicationActor {
                         let mut cfi = BTreeMap::new();
                         for (code_module_id, cfi_path) in frame_info_map {
                             let result = ByteView::open(cfi_path)
-                                .context(CfiCacheErrorKind::Parsing)
+                                .map_err(CfiCacheError::Io)
                                 .and_then(|bytes| {
-                                    CfiCache::from_bytes(bytes).context(CfiCacheErrorKind::Parsing)
-                                })
-                                .map_err(CfiCacheError::from);
+                                    CfiCache::from_bytes(bytes)
+                                        .map_err(|e| CfiCacheError::Parsing(e.compat()))
+                                });
 
                             match result {
                                 Ok(cache) => {
@@ -1489,7 +1460,7 @@ impl SymbolicationActor {
             .spawn_handle(lazy.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .map_err(|_| SymbolicationError::Canceled)
             .flatten()
             .then(move |x| {
                 // keep the results until symbolication has finished to ensure we don't drop
@@ -1510,10 +1481,7 @@ impl SymbolicationActor {
     {
         future_metrics!(
             "minidump_stackwalk",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into()
-            )),
+            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             async move {
                 let sources = Arc::new(sources);
 
@@ -1718,15 +1686,12 @@ impl SymbolicationActor {
             .spawn_handle(parse_future.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .map_err(|_| SymbolicationError::Canceled)
             .flatten();
 
         Box::new(future_metrics!(
             "parse_apple_crash_report",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into()
-            )),
+            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             request_future,
         ))
     }
@@ -1778,19 +1743,19 @@ fn map_symbolic_registers(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<String, HexV
 
 impl From<&CfiCacheError> for ObjectFileStatus {
     fn from(e: &CfiCacheError) -> ObjectFileStatus {
-        match e.kind() {
-            CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+        match e {
+            CfiCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
             // nb: Timeouts during download are also caught by Fetching
-            CfiCacheErrorKind::Timeout => ObjectFileStatus::Timeout,
-            CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
+            CfiCacheError::Timeout => ObjectFileStatus::Timeout,
+            CfiCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
 
             _ => {
                 // Just in case we didn't handle an error properly,
                 // capture it here. If an error was captured with
-                // `capture_fail` further down in the callstack, it
+                // `capture_error` further down in the callstack, it
                 // should be explicitly handled here as a
-                // SymCacheErrorKind variant.
-                capture_fail(e);
+                // SymCacheError variant.
+                sentry::capture_error(e);
                 ObjectFileStatus::Other
             }
         }
@@ -1799,18 +1764,19 @@ impl From<&CfiCacheError> for ObjectFileStatus {
 
 impl From<&SymCacheError> for ObjectFileStatus {
     fn from(e: &SymCacheError) -> ObjectFileStatus {
-        match e.kind() {
-            SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+        match e {
+            SymCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
             // nb: Timeouts during download are also caught by Fetching
-            SymCacheErrorKind::Timeout => ObjectFileStatus::Timeout,
-            SymCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
+            SymCacheError::Timeout => ObjectFileStatus::Timeout,
+            SymCacheError::Malformed => ObjectFileStatus::Malformed,
+            SymCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
             _ => {
                 // Just in case we didn't handle an error properly,
                 // capture it here. If an error was captured with
-                // `capture_fail` further down in the callstack, it
+                // `capture_error` further down in the callstack, it
                 // should be explicitly handled here as a
-                // SymCacheErrorKind variant.
-                capture_fail(e);
+                // SymCacheError variant.
+                sentry::capture_error(e);
                 ObjectFileStatus::Other
             }
         }
@@ -1822,8 +1788,6 @@ mod tests {
     use super::*;
 
     use std::fs;
-
-    use failure::Error;
 
     use crate::app::ServiceState;
     use crate::config::Config;
@@ -1875,7 +1839,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_bucket() -> Result<(), Error> {
+    fn test_remove_bucket() -> Result<(), SymbolicationError> {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
@@ -1902,7 +1866,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_bucket() -> Result<(), Error> {
+    fn test_add_bucket() -> Result<(), SymbolicationError> {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
@@ -1928,7 +1892,7 @@ mod tests {
         Ok(())
     }
 
-    fn stackwalk_minidump(path: &str) -> Result<(), Error> {
+    fn stackwalk_minidump(path: &str) -> Result<(), SymbolicationError> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
@@ -1953,22 +1917,22 @@ mod tests {
     }
 
     #[test]
-    fn test_minidump_windows() -> Result<(), Error> {
+    fn test_minidump_windows() -> Result<(), SymbolicationError> {
         stackwalk_minidump("./tests/fixtures/windows.dmp")
     }
 
     #[test]
-    fn test_minidump_macos() -> Result<(), Error> {
+    fn test_minidump_macos() -> Result<(), SymbolicationError> {
         stackwalk_minidump("./tests/fixtures/macos.dmp")
     }
 
     #[test]
-    fn test_minidump_linux() -> Result<(), Error> {
+    fn test_minidump_linux() -> Result<(), SymbolicationError> {
         stackwalk_minidump("./tests/fixtures/linux.dmp")
     }
 
     #[test]
-    fn test_apple_crash_report() -> Result<(), Error> {
+    fn test_apple_crash_report() -> Result<(), SymbolicationError> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
