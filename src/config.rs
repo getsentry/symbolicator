@@ -301,14 +301,14 @@ impl Config {
     pub fn get(path: Option<&Path>) -> Result<Self> {
         match path {
             Some(path) => Self::from_reader(
-                fs::File::open(path).context("Failed to open configuration file")?,
+                fs::File::open(path).context("failed to open configuration file")?,
             ),
             None => Ok(Config::default()),
         }
     }
 
     fn from_reader(reader: impl std::io::Read) -> Result<Self> {
-        serde_yaml::from_reader(reader).context("Failed to parse YAML")
+        serde_yaml::from_reader(reader).context("failed to parse YAML")
     }
 }
 

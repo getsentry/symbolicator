@@ -3201,6 +3201,7 @@ dependencies = [
  "structopt",
  "symbolic",
  "tempfile",
+ "thiserror",
  "tokio 0.1.22",
  "tokio-retry",
  "url 1.7.2",

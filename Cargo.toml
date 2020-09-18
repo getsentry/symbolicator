@@ -13,6 +13,7 @@ actix = "0.7.9"
 anyhow = "1.0.32"
 apple-crash-report-parser = "0.4.2"
 failure = "0.1.6"
+thiserror = "1.0.20"
 serde = { version = "1.0.101", features = ["derive", "rc"] }
 futures = { version = "0.3", features = ["compat"] }
 futures01 = { version = "0.1.29", package = "futures" }
