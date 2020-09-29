@@ -56,8 +56,8 @@ impl ServiceState {
             SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
         let cficaches =
             CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
-        let spawnpool =
-            procspawn::Pool::new(num_cpus::get()).context("failed to create process pool")?;
+        let spawnpool = procspawn::Pool::new(config.processing_pool_size)
+            .context("failed to create process pool")?;
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),
