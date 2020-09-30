@@ -236,7 +236,7 @@ pub struct Config {
     /// Allow reserved IP addresses for requests to sources.
     pub connect_to_reserved_ips: bool,
 
-    /// Size of internal processing pool.
+    /// Number of subprocesses in the internal processing pool.
     pub processing_pool_size: usize,
 }
 
