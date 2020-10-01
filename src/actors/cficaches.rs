@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::Fail;
 use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
 use futures01::future::{Either, Future, IntoFuture};
 use sentry::configure_scope;
@@ -34,7 +33,7 @@ pub enum CfiCacheError {
     Fetching(#[source] ObjectError),
 
     #[error("failed to parse cficache")]
-    Parsing(#[source] failure::Compat<cfi::CfiError>),
+    Parsing(#[from] cfi::CfiError),
 
     #[error("failed to parse object")]
     ObjectParsing(#[source] ObjectError),
@@ -253,9 +252,7 @@ fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheE
 
     log::debug!("Converting cficache for {}", object_file.cache_key());
 
-    CfiCache::from_object(&object)
-        .map_err(|e| CfiCacheError::Parsing(e.compat()))?
-        .write_to(writer)?;
+    CfiCache::from_object(&object)?.write_to(writer)?;
 
     Ok(())
 }

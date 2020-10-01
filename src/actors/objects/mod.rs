@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::{configure_scope, Hub};
-use failure::Fail;
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, Future};
 use symbolic::common::ByteView;
@@ -44,7 +43,7 @@ pub enum ObjectError {
     Malformed,
 
     #[error("failed to parse object")]
-    Parsing(#[source] failure::Compat<debuginfo::ObjectError>),
+    Parsing(#[from] debuginfo::ObjectError),
 
     #[error("failed to look into cache")]
     Caching(#[source] Arc<ObjectError>),
@@ -332,9 +331,7 @@ impl ObjectFile {
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         match self.status {
-            CacheStatus::Positive => Ok(Some(
-                Object::parse(&self.data).map_err(|e| ObjectError::Parsing(e.compat()))?,
-            )),
+            CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectError::Malformed),
         }
