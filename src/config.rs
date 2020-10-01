@@ -235,6 +235,9 @@ pub struct Config {
 
     /// Allow reserved IP addresses for requests to sources.
     pub connect_to_reserved_ips: bool,
+
+    /// Number of subprocesses in the internal processing pool.
+    pub processing_pool_size: usize,
 }
 
 impl Config {
@@ -293,6 +296,7 @@ impl Default for Config {
             symstore_proxy: true,
             sources: Arc::new(vec![]),
             connect_to_reserved_ips: false,
+            processing_pool_size: num_cpus::get(),
         }
     }
 }
