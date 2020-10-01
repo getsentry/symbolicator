@@ -1,24 +1,14 @@
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::Fail;
+use anyhow::{Context, Result};
 use log::LevelFilter;
 use sentry::internals::Dsn;
 use serde::Deserialize;
 
 use crate::sources::SourceConfig;
-
-#[derive(Debug, Fail, derive_more::From)]
-pub enum ConfigError {
-    #[fail(display = "Failed to open file")]
-    Io(#[fail(cause)] io::Error),
-
-    #[fail(display = "Failed to parse YAML")]
-    Parsing(#[fail(cause)] serde_yaml::Error),
-}
 
 /// Controls the log format
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
@@ -245,6 +235,9 @@ pub struct Config {
 
     /// Allow reserved IP addresses for requests to sources.
     pub connect_to_reserved_ips: bool,
+
+    /// Number of subprocesses in the internal processing pool.
+    pub processing_pool_size: usize,
 }
 
 impl Config {
@@ -303,21 +296,23 @@ impl Default for Config {
             symstore_proxy: true,
             sources: Arc::new(vec![]),
             connect_to_reserved_ips: false,
+            processing_pool_size: num_cpus::get(),
         }
     }
 }
 
 impl Config {
-    pub fn get(path: Option<&Path>) -> Result<Self, ConfigError> {
+    pub fn get(path: Option<&Path>) -> Result<Self> {
         match path {
-            Some(path) => Self::from_reader(fs::File::open(path)?),
+            Some(path) => Self::from_reader(
+                fs::File::open(path).context("failed to open configuration file")?,
+            ),
             None => Ok(Config::default()),
         }
     }
 
-    fn from_reader(reader: impl std::io::Read) -> Result<Self, ConfigError> {
-        let cfg: Config = serde_yaml::from_reader(reader)?;
-        Ok(cfg)
+    fn from_reader(reader: impl std::io::Read) -> Result<Self> {
+        serde_yaml::from_reader(reader).context("failed to parse YAML")
     }
 }
 

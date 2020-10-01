@@ -4,53 +4,50 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::{Fail, ResultExt};
+use failure::Fail;
 use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
 use futures01::future::{Either, Future, IntoFuture};
 use sentry::configure_scope;
-use sentry::integrations::failure::capture_fail;
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
+use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
-use crate::actors::objects::{FindObject, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor};
+use crate::actors::objects::{
+    FindObject, ObjectError, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
+};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
-#[derive(Fail, Debug, Clone, Copy)]
-pub enum SymCacheErrorKind {
-    #[fail(display = "failed to write symcache")]
-    Io,
+/// Errors happening while generating a symcache.
+#[derive(Debug, Error)]
+pub enum SymCacheError {
+    #[error("failed to write symcache")]
+    Io(#[from] io::Error),
 
-    #[fail(display = "failed to download object")]
-    Fetching,
+    #[error("failed to download object")]
+    Fetching(#[source] ObjectError),
 
-    #[fail(display = "failed to parse symcache")]
-    Parsing,
+    #[error("failed to parse symcache")]
+    Parsing(#[source] failure::Compat<symcache::SymCacheError>),
 
-    #[fail(display = "failed to parse object")]
-    ObjectParsing,
+    #[error("failed to write symcache")]
+    Writing(#[source] failure::Compat<symcache::SymCacheError>),
 
-    #[fail(display = "symcache building took too long")]
+    #[error("malformed symcache file")]
+    Malformed,
+
+    #[error("failed to parse object")]
+    ObjectParsing(#[source] ObjectError),
+
+    #[error("symcache building took too long")]
     Timeout,
 
-    #[fail(display = "computation was canceled internally")]
+    #[error("computation was canceled internally")]
     Canceled,
-}
-
-symbolic::common::derive_failure!(
-    SymCacheError,
-    SymCacheErrorKind,
-    doc = "Errors happening while generating a symcache"
-);
-
-impl From<io::Error> for SymCacheError {
-    fn from(e: io::Error) -> Self {
-        e.context(SymCacheErrorKind::Io).into()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -84,11 +81,11 @@ pub struct SymCacheFile {
 impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
         match self.status {
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(SymCacheErrorKind::ObjectParsing.into()),
             CacheStatus::Positive => Ok(Some(
-                SymCache::parse(&self.data).context(SymCacheErrorKind::Parsing)?,
+                SymCache::parse(&self.data).map_err(|e| SymCacheError::Parsing(e.compat()))?,
             )),
+            CacheStatus::Negative => Ok(None),
+            CacheStatus::Malformed => Err(SymCacheError::Malformed),
         }
     }
 
@@ -124,7 +121,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
-            .map_err(|e| SymCacheError::from(e.context(SymCacheErrorKind::Fetching)));
+            .map_err(SymCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
@@ -135,7 +132,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
                 let status = if let Err(e) = write_symcache(&path, &*object) {
                     log::warn!("Failed to write symcache: {}", e);
-                    capture_fail(e.cause().unwrap_or(&e));
+                    sentry::capture_error(&e);
 
                     CacheStatus::Malformed
                 } else {
@@ -149,7 +146,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 .spawn_handle(future.sentry_hub_current().compat())
                 .boxed_local()
                 .compat()
-                .map_err(|_| SymCacheError::from(SymCacheErrorKind::Canceled))
+                .map_err(|_| SymCacheError::Canceled)
                 .flatten()
         });
 
@@ -157,7 +154,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         Box::new(future_metrics!(
             "symcaches",
-            Some((Duration::from_secs(1200), SymCacheErrorKind::Timeout.into())),
+            Some((Duration::from_secs(1200), SymCacheError::Timeout)),
             result,
             "num_sources" => &num_sources.to_string()
         ))
@@ -216,7 +213,7 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .map_err(|e| Arc::new(SymCacheError::from(e.context(SymCacheErrorKind::Fetching))));
+            .map_err(|e| Arc::new(SymCacheError::Fetching(e)));
 
         let symcaches = self.symcaches.clone();
         let threadpool = self.threadpool.clone();
@@ -262,25 +259,19 @@ fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError>
 
     let symbolic_object = object
         .parse()
-        .context(SymCacheErrorKind::ObjectParsing)?
+        .map_err(SymCacheError::ObjectParsing)?
         .unwrap();
 
-    let file = File::create(&path).context(SymCacheErrorKind::Io)?;
+    let file = File::create(&path)?;
     let mut writer = BufWriter::new(file);
 
     log::debug!("Converting symcache for {}", object.cache_key());
 
-    if let Err(e) = SymCacheWriter::write_object(&symbolic_object, &mut writer) {
-        match e.kind() {
-            symcache::SymCacheErrorKind::WriteFailed => {
-                return Err(e.context(SymCacheErrorKind::Io).into())
-            }
-            _ => return Err(e.context(SymCacheErrorKind::ObjectParsing).into()),
-        }
-    }
+    SymCacheWriter::write_object(&symbolic_object, &mut writer)
+        .map_err(|e| SymCacheError::Writing(e.compat()))?;
 
-    let file = writer.into_inner().context(SymCacheErrorKind::Io)?;
-    file.sync_all().context(SymCacheErrorKind::Io)?;
+    let file = writer.into_inner().map_err(io::Error::from)?;
+    file.sync_all()?;
 
     Ok(())
 }

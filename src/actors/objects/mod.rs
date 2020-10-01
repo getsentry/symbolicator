@@ -6,68 +6,51 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::sentry::integrations::failure::capture_fail;
 use ::sentry::{configure_scope, Hub};
-
-use failure::{Fail, ResultExt};
+use failure::Fail;
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, Future};
 use symbolic::common::ByteView;
-use symbolic::debuginfo::{Archive, Object};
+use symbolic::debuginfo::{self, Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
+use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
-use crate::services::download::{DownloadService, DownloadStatus};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
-use crate::types::{ArcFail, ObjectFeatures, ObjectId, Scope};
+use crate::types::{ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
-#[derive(Debug, Fail, Clone, Copy)]
-pub enum ObjectErrorKind {
-    #[fail(display = "failed to download")]
-    Io,
+/// Errors happening while fetching objects.
+#[derive(Debug, Error)]
+pub enum ObjectError {
+    #[error("failed to download")]
+    Io(#[from] io::Error),
 
-    #[fail(display = "unable to get directory for tempfiles")]
+    #[error("failed to download")]
+    Download(#[from] DownloadError),
+
+    #[error("failed persisting metadata")]
+    Persisting(#[from] serde_json::Error),
+
+    #[error("unable to get directory for tempfiles")]
     NoTempDir,
 
-    #[fail(display = "failed to parse object")]
-    Parsing,
+    #[error("malformed object file")]
+    Malformed,
 
-    #[fail(display = "failed to look into cache")]
-    Caching,
+    #[error("failed to parse object")]
+    Parsing(#[source] failure::Compat<debuginfo::ObjectError>),
 
-    #[fail(display = "object download took too long")]
+    #[error("failed to look into cache")]
+    Caching(#[source] Arc<ObjectError>),
+
+    #[error("object download took too long")]
     Timeout,
-
-    #[fail(display = "download was canceled internally")]
-    Canceled,
-}
-
-symbolic::common::derive_failure!(
-    ObjectError,
-    ObjectErrorKind,
-    doc = "Errors happening while fetching objects"
-);
-
-impl From<io::Error> for ObjectError {
-    fn from(e: io::Error) -> Self {
-        e.context(ObjectErrorKind::Io).into()
-    }
-}
-
-impl From<crate::services::download::DownloadError> for ObjectError {
-    fn from(source: crate::services::download::DownloadError) -> Self {
-        match source.kind() {
-            crate::services::download::DownloadErrorKind::Canceled => {
-                source.context(ObjectErrorKind::Canceled).into()
-            }
-            _ => source.context(ObjectErrorKind::Io).into(),
-        }
-    }
 }
 
 /// This requests metadata of a single file at a specific path/url.
@@ -111,11 +94,11 @@ impl CacheItemRequest for FetchFileMetaRequest {
         let result = self
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
-            .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
+            .map_err(ObjectError::Caching)
             .and_then(move |data| {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
-                        let mut f = fs::File::create(path).context(ObjectErrorKind::Io)?;
+                        let mut f = fs::File::create(path)?;
 
                         let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
@@ -125,7 +108,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         };
 
                         log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                        serde_json::to_writer(&mut f, &meta).context(ObjectErrorKind::Io)?;
+                        serde_json::to_writer(&mut f, &meta)?;
                     }
                 }
 
@@ -177,9 +160,8 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.write_sentry_scope(scope);
         });
 
-        let download_dir = tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
-        let download_file =
-            tryf!(NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io));
+        let download_dir = tryf!(path.parent().ok_or(ObjectError::NoTempDir)).to_owned();
+        let download_file = tryf!(NamedTempFile::new_in(&download_dir));
         let request = self
             .0
             .download_svc
@@ -194,8 +176,8 @@ impl CacheItemRequest for FetchFileDataRequest {
                     let decompress_result = decompress_object_file(
                         &cache_key,
                         download_file.path(),
-                        download_file.reopen().context(ObjectErrorKind::Io)?,
-                        tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
+                        download_file.reopen()?,
+                        tempfile_in(download_dir)?,
                     );
 
                     // Treat decompression errors as malformed files. It is more likely that
@@ -209,9 +191,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                     // Since objects in Sentry (and potentially also other sources) might be
                     // multi-arch files (e.g. FatMach), we parse as Archive and try to
                     // extract the wanted file.
-                    decompressed
-                        .seek(SeekFrom::Start(0))
-                        .context(ObjectErrorKind::Io)?;
+                    decompressed.seek(SeekFrom::Start(0))?;
                     let view = ByteView::map_file(decompressed)?;
                     let archive = match Archive::parse(&view) {
                         Ok(archive) => archive,
@@ -219,7 +199,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                             return Ok(CacheStatus::Malformed);
                         }
                     };
-                    let mut persist_file = fs::File::create(&path).context(ObjectErrorKind::Io)?;
+                    let mut persist_file = fs::File::create(&path)?;
                     if archive.is_multi() {
                         let object_opt = archive
                             .objects()
@@ -235,8 +215,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                             None => return Ok(CacheStatus::Negative),
                         };
 
-                        io::copy(&mut object.data(), &mut persist_file)
-                            .context(ObjectErrorKind::Io)?;
+                        io::copy(&mut object.data(), &mut persist_file)?;
                     } else {
                         // Attempt to parse the object to capture errors. The result can be
                         // discarded as the object's data is the entire ByteView.
@@ -244,8 +223,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                             return Ok(CacheStatus::Malformed);
                         }
 
-                        io::copy(&mut view.as_ref(), &mut persist_file)
-                            .context(ObjectErrorKind::Io)?;
+                        io::copy(&mut view.as_ref(), &mut persist_file)?;
                     }
 
                     Ok(CacheStatus::Positive)
@@ -259,7 +237,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let result = result
             .map_err(|e| {
-                capture_fail(e.cause().unwrap_or(&e));
+                sentry::capture_error(&e);
                 e
             })
             .sentry_hub_current();
@@ -268,7 +246,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         Box::new(future_metrics!(
             "objects",
-            Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
+            Some((Duration::from_secs(600), ObjectError::Timeout)),
             result,
             "source_type" => type_name,
         ))
@@ -355,10 +333,10 @@ impl ObjectFile {
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         match self.status {
             CacheStatus::Positive => Ok(Some(
-                Object::parse(&self.data).context(ObjectErrorKind::Parsing)?,
+                Object::parse(&self.data).map_err(|e| ObjectError::Parsing(e.compat()))?,
             )),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
+            CacheStatus::Malformed => Err(ObjectError::Malformed),
         }
     }
 
@@ -441,7 +419,7 @@ impl ObjectsActor {
     ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
-            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+            .map_err(ObjectError::Caching)
     }
 
     pub fn find(
@@ -504,7 +482,7 @@ impl ObjectsActor {
 
                 meta_cache
                     .compute_memoized(request)
-                    .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
+                    .map_err(ObjectError::Caching)
                     // Errors from a file download should not make the entire join_all fail. We
                     // collect a Vec<Result> and surface the original error to the user only when
                     // we have no successful downloads.

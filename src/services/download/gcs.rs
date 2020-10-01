@@ -7,17 +7,20 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use actix_web::error::JsonPayloadError;
 use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
-use failure::{Fail, ResultExt};
+use client::SendRequestError;
+use failure::Fail;
 use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
 use crate::utils::futures::delay;
@@ -57,7 +60,19 @@ struct GcsToken {
     expires_at: DateTime<Utc>,
 }
 
-fn key_from_string(mut s: &str) -> Result<Vec<u8>, DownloadError> {
+#[derive(Debug, Error)]
+pub enum GcsError {
+    #[error("failed decoding key")]
+    Base64(#[from] base64::DecodeError),
+    #[error("failed encoding JWT")]
+    Jwt(#[from] jsonwebtoken::errors::Error),
+    #[error("failed to parse JSON response")]
+    Json(#[from] failure::Compat<JsonPayloadError>),
+    #[error("failed to send authentication request")]
+    Auth(#[from] failure::Compat<SendRequestError>),
+}
+
+fn key_from_string(mut s: &str) -> Result<Vec<u8>, GcsError> {
     if s.starts_with("-----BEGIN PRIVATE KEY-----") {
         s = s.splitn(5, "-----").nth(2).unwrap();
     }
@@ -69,10 +84,10 @@ fn key_from_string(mut s: &str) -> Result<Vec<u8>, DownloadError> {
         .filter(|b| !b.is_ascii_whitespace())
         .collect::<Vec<u8>>();
 
-    Ok(base64::decode(bytes).context(DownloadErrorKind::Io)?)
+    Ok(base64::decode(bytes)?)
 }
 
-fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, DownloadError> {
+fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
 
     let jwt_claims = JwtClaims {
@@ -86,10 +101,10 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Do
     let key = key_from_string(&source_key.private_key)?;
     let pkcs8 = jsonwebtoken::Key::Pkcs8(&key);
 
-    Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8).context(DownloadErrorKind::Io)?)
+    Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8)?)
 }
 
-async fn request_new_token(source_key: &GcsSourceKey) -> Result<GcsToken, DownloadError> {
+async fn request_new_token(source_key: &GcsSourceKey) -> Result<GcsToken, GcsError> {
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
 
@@ -107,20 +122,20 @@ async fn request_new_token(source_key: &GcsSourceKey) -> Result<GcsToken, Downlo
 
     let response = response.compat().await.map_err(|err| {
         log::debug!("Failed to authenticate against gcs: {}", err);
-        DownloadError::from(DownloadErrorKind::Io)
+        err.compat()
     })?;
     let token = response
         .json::<GcsTokenResponse>()
         .compat()
         .await
-        .map_err(|e| e.context(DownloadErrorKind::Io))?;
+        .map_err(Fail::compat)?;
     Ok(GcsToken {
         access_token: token.access_token,
         expires_at,
     })
 }
 
-async fn get_token(source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, DownloadError> {
+async fn get_token(source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, GcsError> {
     if let Some(token) = GCS_TOKENS.lock().get(source_key) {
         if token.expires_at >= Utc::now() {
             metric!(counter("source.gcs.token.cached") += 1);
@@ -177,7 +192,7 @@ pub async fn download_source(
                 let stream = response
                     .payload()
                     .compat()
-                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
+                    .map(|i| i.map_err(DownloadError::stream));
                 super::download_stream(
                     SourceFileId::Gcs(source, download_path),
                     stream,

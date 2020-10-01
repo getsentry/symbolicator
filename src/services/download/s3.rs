@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use super::{DownloadError, DownloadErrorKind, DownloadStatus};
+use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
 
@@ -88,7 +88,7 @@ pub async fn download_source(
 
             let stream = FramedRead::new(body_read, BytesCodec::new())
                 .map(BytesMut::freeze)
-                .map_err(|_err| DownloadError::from(DownloadErrorKind::Io))
+                .map_err(DownloadError::Io)
                 .compat();
 
             super::download_stream(SourceFileId::S3(source, download_path), stream, destination)

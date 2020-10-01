@@ -3,7 +3,6 @@ use std::fmt;
 use std::io::{self, Write};
 
 use chrono::{DateTime, Utc};
-use failure::AsFail;
 use log::{Level, LevelFilter};
 use sentry::integrations::log::{breadcrumb_from_record, event_from_record};
 use serde::{Deserialize, Serialize};
@@ -155,30 +154,16 @@ pub fn init_logging(config: &Config) {
     log::set_boxed_logger(breadcrumb_logger).unwrap();
 }
 
-/// Returns whether backtrace printing is enabled.
-pub fn backtrace_enabled() -> bool {
-    match std::env::var("RUST_BACKTRACE").as_ref().map(String::as_str) {
-        Ok("1") | Ok("full") => true,
-        _ => false,
-    }
-}
-
 /// A wrapper around a `Fail` that prints its causes.
-pub struct LogError<'a, E: AsFail>(pub &'a E);
+pub struct LogError<'a>(pub &'a dyn std::error::Error);
 
-impl<'a, E: AsFail> fmt::Display for LogError<'a, E> {
+impl<'a> fmt::Display for LogError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let fail = self.0.as_fail();
-
-        write!(f, "{}", fail)?;
-        for cause in fail.iter_causes() {
+        let mut error = self.0;
+        write!(f, "{}", error)?;
+        while let Some(cause) = error.source() {
             write!(f, "\n  caused by: {}", cause)?;
-        }
-
-        if backtrace_enabled() {
-            if let Some(backtrace) = fail.backtrace() {
-                write!(f, "\n\n{:?}", backtrace)?;
-            }
+            error = cause;
         }
 
         Ok(())
@@ -186,10 +171,10 @@ impl<'a, E: AsFail> fmt::Display for LogError<'a, E> {
 }
 
 /// Logs an error to the configured logger or `stderr` if not yet configured.
-pub fn ensure_log_error<E: failure::AsFail>(error: &E) {
+pub fn ensure_log_error(error: &anyhow::Error) {
     if log::log_enabled!(log::Level::Error) {
-        log::error!("{}", LogError(error));
+        log::error!("{:?}", error);
     } else {
-        eprintln!("error: {}", LogError(error));
+        eprintln!("{:?}", error);
     }
 }
