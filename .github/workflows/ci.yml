@@ -158,3 +158,35 @@ jobs:
 
       - name: Build Docs
         run: make docs
+
+  upload-docs:
+    name: Upload Docs
+    runs-on: ubuntu-latest
+    if: "contains(github.ref, 'release/')"
+    needs: docs
+    steps:
+
+      - uses: actions/setup-node@v1
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ${{ github.workspace }}/node_modules
+            ${{ github.workspace }}/packages/**/node_modules
+            ${{ github.workspace }}/packages/**/build
+            ${{ github.workspace }}/packages/**/dist
+            ${{ github.workspace }}/packages/**/esm
+          key: ${{ runner.os }}-${{ github.sha }}
+
+      - name: Install Zeus
+        run: |
+          yarn global add @zeus-ci/cli
+          echo "::add-path::$(yarn global bin)"
+
+      - name: Upload docs
+        env:
+          ZEUS_API_TOKEN: ${{ secrets.ZEUS_API_TOKEN }}
+          ZEUS_HOOK_BASE: ${{ secrets.ZEUS_HOOK_BASE }}
+        run: |
+          cd site && zip -r gh-pages .
+          zeus upload -t "application/zip+docs" site/gh-pages.zip
