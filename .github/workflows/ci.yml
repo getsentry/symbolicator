@@ -39,9 +39,9 @@ jobs:
           override: true
 
       - name: Cache rust cargo artifacts
-        uses: Swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v1
         with:
-          key: lints
+          key: {{ github.job }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
@@ -70,9 +70,9 @@ jobs:
           override: true
 
       - name: Cache rust cargo artifacts
-        uses: Swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v1
         with:
-          key: unit-test
+          key: {{ github.job }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -95,9 +95,9 @@ jobs:
           override: true
 
       - name: Cache rust cargo artifacts
-        uses: Swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v1
         with:
-          key: integration-test
+          key: {{ github.job }}
 
       - name: Build rust
         run: cargo build --locked
