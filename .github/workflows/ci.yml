@@ -38,7 +38,7 @@ jobs:
           components: rustfmt, clippy
           override: true
 
-      - name: Chache rust cargo artifacts
+      - name: Cache rust cargo artifacts
         uses: Swatinem/rust-cache@v1
         with:
           key: lints
