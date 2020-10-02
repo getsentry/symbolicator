@@ -26,7 +26,9 @@ jobs:
         run: pip install virtualenv
 
       - name: Build Docs
-        run: make docs
+        run: |
+          make docs
+          cd site && zip -r gh-pages .
 
       - name: Setup node
         uses: actions/setup-node@v1
