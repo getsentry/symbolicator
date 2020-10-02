@@ -41,7 +41,7 @@ jobs:
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
         with:
-          key: {{ github.job }}
+          key: ${{ github.job }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
@@ -72,7 +72,7 @@ jobs:
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
         with:
-          key: {{ github.job }}
+          key: ${{ github.job }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -97,7 +97,7 @@ jobs:
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
         with:
-          key: {{ github.job }}
+          key: ${{ github.job }}
 
       - name: Build rust
         run: cargo build --locked
