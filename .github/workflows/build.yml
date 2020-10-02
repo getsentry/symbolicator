@@ -35,7 +35,7 @@ jobs:
         env:
           ZEUS_HOOK_BASE: ${{ secrets.ZEUS_HOOK_BASE }}
         run: |
-          yarn global add @zeus-ci/cli
-          zeus job update -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
-          zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip+docs" -n site/gh-pages.zip
-          zeus job update --status=passed -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
+          npm install -D @zeus-ci/cli
+          npx zeus job update -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
+          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip+docs" -n site/gh-pages.zip
+          npx zeus job update --status=passed -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
