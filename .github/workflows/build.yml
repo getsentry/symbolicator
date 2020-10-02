@@ -6,8 +6,8 @@ on:
       - release/**
 
 jobs:
-  linux:
-    name: Linux
+  docs:
+    name: Upload docs
     runs-on: ubuntu-latest
 
     steps:
