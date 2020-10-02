@@ -162,7 +162,7 @@ jobs:
   upload-docs:
     name: Upload Docs
     runs-on: ubuntu-latest
-    if: "contains(github.ref, 'release/')"
+    if: "startsWith(github.ref, 'release/')"
     needs: docs
     steps:
 
