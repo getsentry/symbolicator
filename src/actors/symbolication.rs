@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
-use failure::Fail;
 use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
 use futures01::future::{self, join_all, Future, IntoFuture, Shared};
 use futures01::sync::oneshot;
@@ -71,16 +70,10 @@ pub enum SymbolicationError {
     Canceled,
 
     #[error("failed to process minidump")]
-    InvalidMinidump(#[source] failure::Compat<ProcessMinidumpError>),
+    InvalidMinidump(#[from] ProcessMinidumpError),
 
     #[error("failed to parse apple crash report")]
     InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
-}
-
-impl From<ProcessMinidumpError> for SymbolicationError {
-    fn from(err: ProcessMinidumpError) -> Self {
-        SymbolicationError::InvalidMinidump(err.compat())
-    }
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
@@ -693,8 +686,8 @@ fn symbolicate_frame(
 
     let caller_address = InstructionInfo::new(symcache.arch(), frame.instruction_addr.0)
         .is_crashing_frame(is_crashing_frame)
-        .signal(signal.map(|signal| signal.0).unwrap_or(0))
-        .ip_register_value(ip_register_value.unwrap_or(0))
+        .signal(signal.map(|signal| signal.0))
+        .ip_register_value(ip_register_value)
         .caller_address();
 
     let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
@@ -1302,10 +1295,7 @@ impl SymbolicationActor {
                         for (code_module_id, cfi_path) in frame_info_map {
                             let result = ByteView::open(cfi_path)
                                 .map_err(CfiCacheError::Io)
-                                .and_then(|bytes| {
-                                    CfiCache::from_bytes(bytes)
-                                        .map_err(|e| CfiCacheError::Parsing(e.compat()))
-                                });
+                                .and_then(|bytes| Ok(CfiCache::from_bytes(bytes)?));
 
                             match result {
                                 Ok(cache) => {

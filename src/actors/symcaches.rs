@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use failure::Fail;
 use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
 use futures01::future::{Either, Future, IntoFuture};
 use sentry::configure_scope;
@@ -32,10 +31,10 @@ pub enum SymCacheError {
     Fetching(#[source] ObjectError),
 
     #[error("failed to parse symcache")]
-    Parsing(#[source] failure::Compat<symcache::SymCacheError>),
+    Parsing(#[source] symcache::SymCacheError),
 
     #[error("failed to write symcache")]
-    Writing(#[source] failure::Compat<symcache::SymCacheError>),
+    Writing(#[source] symcache::SymCacheError),
 
     #[error("malformed symcache file")]
     Malformed,
@@ -82,7 +81,7 @@ impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
         match self.status {
             CacheStatus::Positive => Ok(Some(
-                SymCache::parse(&self.data).map_err(|e| SymCacheError::Parsing(e.compat()))?,
+                SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(SymCacheError::Malformed),
@@ -267,8 +266,7 @@ fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError>
 
     log::debug!("Converting symcache for {}", object.cache_key());
 
-    SymCacheWriter::write_object(&symbolic_object, &mut writer)
-        .map_err(|e| SymCacheError::Writing(e.compat()))?;
+    SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
 
     let file = writer.into_inner().map_err(io::Error::from)?;
     file.sync_all()?;

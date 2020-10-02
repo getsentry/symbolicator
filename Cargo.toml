@@ -32,7 +32,7 @@ lazy_static = "1.4.0"
 parking_lot = "0.10.0"
 tokio = "0.1.22"
 uuid = { version = "0.8.1", features = ["v4", "serde"] }
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-recursion", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 sentry = { version = "0.20.1", features = ["debug-images", "log"] }
 sentry-actix = "0.20.1"
 # rusoto >= 0.43 supports async/await natively, with tokio 0.2 under the hood
