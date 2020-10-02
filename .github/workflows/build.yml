@@ -1,0 +1,41 @@
+name: Binary release build
+
+on:
+  push:
+    branches:
+      - release/**
+
+  # DO NOT MERGE WITH THIS IN IT
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Setup Virtualenv
+        run: pip install virtualenv
+
+      - name: Build Docs
+        run: make docs
+
+      - name: Setup node
+        uses: actions/setup-node@v1
+
+      - name: Upload to Zeus
+        env:
+          ZEUS_HOOK_BASE: ${{ secrets.ZEUS_HOOK_BASE }}
+        run: |
+          yarn global add @zeus-ci/cli
+          npx zeus job update -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
+          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip+docs" -n site/gh-pages.zip
+          npx zeus job update --status=passed -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
