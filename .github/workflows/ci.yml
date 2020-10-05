@@ -130,8 +130,8 @@ jobs:
         with:
           python-version: 3.8
 
-      - name: Setup Virtualenv
-        run: pip install virtualenv
+      - name: Setup python dependencies
+        run: pip install --upgrade mkdocs mkdocs-material pygments
 
       - name: Build Docs
-        run: make docs
+        run: mkdocs build
