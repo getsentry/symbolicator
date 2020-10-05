@@ -49,6 +49,6 @@ jobs:
           npm install -D @zeus-ci/cli
           npx zeus job update -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
           npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/octet-stream" -n symbolicator-Linux-x86_64 target/release/symbolicator
-          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip -n symbolicator-Linux-x86_64-debug.zip symbolicator-debug.zip
+          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip" -n symbolicator-Linux-x86_64-debug.zip symbolicator-debug.zip
           npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip+docs" site/gh-pages.zip
           npx zeus job update --status=passed -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
