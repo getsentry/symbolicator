@@ -5,14 +5,25 @@ on:
     branches:
       - release/**
 
+  # DO NOT MERGE LIKE THIS
+  pull_request:
+
 jobs:
   docs:
-    name: Upload docs
+    name: Build and upload Linux release and docs
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+
+      - name: Build symbolicator
+        run: |
+          cargo build --release
+          objcopy --only-keep-debug target/release/symbolicator{,.debug}
+          objcopy --strip-debug --strip-unneeded target/release/symbolicator
+          objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
+          zip symbolicator-debug.zip target/release/symbolicator.debug
 
       - name: Setup Python
         uses: actions/setup-python@v2
@@ -36,5 +47,7 @@ jobs:
         run: |
           npm install -D @zeus-ci/cli
           npx zeus job update -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
+          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/octet-stream" -n symbolicator-Linux-x86_64 target/x86_64-unknown-linux-gnu/release/symbolicator
+          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip -n symbolicator-Linux-x86_64-debug.zip symbolicator-debug.zip
           npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip+docs" site/gh-pages.zip
           npx zeus job update --status=passed -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}

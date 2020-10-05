@@ -32,3 +32,5 @@ targets:
 
 requireNames:
   - /^gh-pages.zip$/
+  - /^symbolicator-Linux-x86_64$/
+  - /^symbolicator-Linux-x86_64-debug.zip$/
