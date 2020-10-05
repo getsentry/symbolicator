@@ -26,6 +26,16 @@ session = requests.session()
 
 
 @pytest.hookimpl
+def pytest_addoption(parser):
+    parser.addoption(
+        "--ci",
+        action="store_true",
+        help="Indicate the tests are being run on CI, "
+        "this e.g. prefers to fail tests instead of skipping them.",
+    )
+
+
+@pytest.hookimpl
 def pytest_sessionstart(session):
     no_fds_soft, no_fds_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     if no_fds_soft < 2028:
@@ -271,9 +281,13 @@ def hitcounter(request):
 
 
 @pytest.fixture
-def s3():
+def s3(pytestconfig):
     if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-        pytest.skip("No AWS credentials")
+        msg = "No AWS credentials"
+        if pytestconfig.getoption("ci"):
+            pytest.fail(msg)
+        else:
+            pytest.skip(msg)
     return boto3.resource(
         "s3",
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -299,9 +313,13 @@ def s3_bucket_config(s3):
 
 
 @pytest.fixture
-def ios_bucket_config():
+def ios_bucket_config(pytestconfig):
     if not GCS_PRIVATE_KEY or not GCS_CLIENT_EMAIL:
-        pytest.skip("No GCS credentials")
+        msg = "No GCS credentials"
+        if pytestconfig.getoption("ci"):
+            pytest.fail(msg)
+        else:
+            pytest.skip(msg)
     yield {
         "id": "ios",
         "type": "gcs",

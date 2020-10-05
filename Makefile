@@ -31,13 +31,13 @@ test: test-rust test-integration
 .PHONY: test
 
 test-rust:
-	cargo test --all --all-features --locked
+	cargo test --workspace --all-features --locked
 .PHONY: test-rust
 
 test-integration: .venv/bin/python
 	.venv/bin/pip install -U pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
 	cargo build --locked
-	@.venv/bin/pytest tests -n12 -vv
+	@.venv/bin/pytest $(CI_ARGS) tests/integration -n12 -vv
 .PHONY: test-integration
 
 # Documentation
@@ -86,7 +86,7 @@ lint-python: .venv/bin/python
 
 lint-rust:
 	@rustup component add clippy --toolchain stable 2> /dev/null
-	cargo +stable clippy --all-features --all --tests --examples -- -D clippy::all
+	cargo +stable clippy --all-features --workspace --tests --examples -- -D clippy::all
 .PHONY: lint-rust
 
 # Formatting
