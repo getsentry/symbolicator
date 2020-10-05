@@ -5,9 +5,6 @@ on:
     branches:
       - release/**
 
-  # DO NOT MERGE WITH THIS
-  pull_request:
-
 jobs:
   docs:
     name: Build and upload Linux release and docs
