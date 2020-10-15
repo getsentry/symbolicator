@@ -9,14 +9,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::sentry::Hub;
+use ::sentry::{Hub, SentryFutureExt};
+use actix_web::error::PayloadError;
 use bytes::Bytes;
-use failure::{Fail, ResultExt};
+use failure::Fail;
 use futures::prelude::*;
+use thiserror::Error;
 
 use crate::utils::futures::RemoteThread;
 use crate::utils::paths::get_directory_paths;
-use crate::utils::sentry::SentryStdFutureExt;
 
 mod filesystem;
 mod gcs;
@@ -34,25 +35,30 @@ pub use crate::types::ObjectId;
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
-#[derive(Debug, Fail, Clone)]
-pub enum DownloadErrorKind {
-    #[fail(display = "failed to download")]
-    Io,
-    #[fail(display = "bad file destination")]
-    BadDestination,
-    #[fail(display = "failed writing the downloaded file")]
-    Write,
-    #[fail(display = "download was cancelled")]
+/// Errors happening while downloading from sources.
+#[derive(Debug, Error)]
+pub enum DownloadError {
+    #[error("failed to download")]
+    Io(#[source] std::io::Error),
+    #[error("failed to download stream")]
+    Stream(#[source] failure::Compat<PayloadError>),
+    #[error("bad file destination")]
+    BadDestination(#[source] std::io::Error),
+    #[error("failed writing the downloaded file")]
+    Write(#[source] std::io::Error),
+    #[error("download was cancelled")]
     Canceled,
-    #[fail(display = "failed to fetch data from Sentry")]
-    Sentry,
+    #[error("failed to fetch data from GCS")]
+    Gcs(#[from] gcs::GcsError),
+    #[error("failed to fetch data from Sentry")]
+    Sentry(#[from] sentry::SentryError),
 }
 
-symbolic::common::derive_failure!(
-    DownloadError,
-    DownloadErrorKind,
-    doc = "Errors happening while downloading from sources."
-);
+impl DownloadError {
+    pub fn stream(err: PayloadError) -> Self {
+        Self::Stream(err.compat())
+    }
+}
 
 /// Completion status of a successful download request.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -118,8 +124,8 @@ impl DownloadService {
             .spawn("service.download", Duration::from_secs(300), move || {
                 dispatch_download(source, destination).bind_hub(hub)
             })
-            // Map all SpawnError variants into DownloadErrorKind::Canceled.
-            .map(|o| o.unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into())))
+            // Map all SpawnError variants into DownloadError::Canceled.
+            .map(|o| o.unwrap_or_else(|_| Err(DownloadError::Canceled)))
     }
 
     pub fn list_files(
@@ -141,8 +147,8 @@ impl DownloadService {
                     worker
                         .spawn("service.download.list_files", Duration::from_secs(30), job)
                         .await
-                        // Map all SpawnError variants into DownloadErrorKind::Canceled
-                        .unwrap_or_else(|_| Err(DownloadErrorKind::Canceled.into()))
+                        // Map all SpawnError variants into DownloadError::Canceled
+                        .unwrap_or_else(|_| Err(DownloadError::Canceled))
                 }
                 SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
                 SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
@@ -165,13 +171,13 @@ async fn download_stream(
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
     log::trace!("Downloading from {}", source);
-    let mut file = File::create(&destination).context(DownloadErrorKind::BadDestination)?;
+    let mut file = File::create(&destination).map_err(DownloadError::BadDestination)?;
     futures::pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         file.write_all(chunk.as_ref())
-            .context(DownloadErrorKind::Write)?;
+            .map_err(DownloadError::Write)?;
     }
     Ok(DownloadStatus::Completed)
 }

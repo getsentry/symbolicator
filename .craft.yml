@@ -1,11 +1,36 @@
 ---
-minVersion: '0.5.1'
+minVersion: "0.11.0"
 github:
   owner: getsentry
   repo: symbolicator
-targets: 
+changelogPolicy: auto
+statusProvider:
+  name: github
+
+targets:
   - name: github
   - name: gh-pages
+  - name: registry
+    type: app
+    urlTemplate: "https://downloads.sentry-cdn.com/symbolicator/{{version}}/{{file}}"
+    includeNames: /^symbolicator-.*$/i
+    config:
+      canonical: "app:symbolicator"
+  - name: gcs
+    bucket: sentry-sdk-assets
+    includeNames: /^symbolicator-.*$/
+    paths:
+      - path: /symbolicator/{{version}}/
+        metadata:
+          cacheControl: "public, max-age=2592000"
+      - path: /symbolicator/latest/
+        metadata:
+          cacheControl: "public, max-age=600"
+  - name: docker
+    source: us.gcr.io/sentryio/symbolicator
+    target: getsentry/symbolicator
 
-changelog: CHANGELOG.md
-changelogPolicy: simple
+requireNames:
+  - /^gh-pages.zip$/
+  - /^symbolicator-Linux-x86_64$/
+  - /^symbolicator-Linux-x86_64-debug.zip$/

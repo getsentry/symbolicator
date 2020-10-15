@@ -4,9 +4,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use console::style;
-use failure::{err_msg, Error, Fail};
 use serde::Serialize;
 use serde_json;
 use structopt::StructOpt;
@@ -90,7 +90,7 @@ fn process_file(
     sort_config: &SortConfig,
     bv: ByteView<'static>,
     filename: String,
-) -> Result<Vec<(String, ObjectKind)>, Error> {
+) -> Result<Vec<(String, ObjectKind)>> {
     let mut rv = vec![];
 
     macro_rules! maybe_ignore_error {
@@ -107,10 +107,7 @@ fn process_file(
                         );
                         return Ok(rv);
                     } else {
-                        let error = err
-                            .context(failure::format_err!("failed to process file {}", filename))
-                            .into();
-                        return Err(error);
+                        return Err(err).context(format!("failed to process file {}", filename));
                     }
                 }
             }
@@ -124,13 +121,15 @@ fn process_file(
         3 => 19,
         _ => 22,
     };
-    let archive = maybe_ignore_error!(Archive::parse(&bv));
+    let archive = maybe_ignore_error!(
+        Archive::parse(&bv).map_err(|e| anyhow!("failed to parse archive {}", e))
+    );
     let root = &RunConfig::get().output;
 
     for obj in archive.objects() {
-        let obj = maybe_ignore_error!(obj);
+        let obj = maybe_ignore_error!(obj.map_err(|e| anyhow!(e)));
         let new_filename = root.join(maybe_ignore_error!(
-            get_target_filename(&obj).ok_or_else(|| err_msg("unsupported file"))
+            get_target_filename(&obj).ok_or_else(|| anyhow!("unsupported file"))
         ));
 
         fs::create_dir_all(new_filename.parent().unwrap())?;
@@ -173,7 +172,7 @@ fn process_file(
 fn sort_files<'a, I: Iterator<Item = &'a Path>>(
     sort_config: &SortConfig,
     paths: I,
-) -> Result<(usize, usize), Error> {
+) -> Result<(usize, usize)> {
     let mut source_bundles_created = 0;
     let mut source_candidates: HashMap<String, Option<PathBuf>> = HashMap::new();
     let mut bundle_meta = BundleMeta {
@@ -264,7 +263,7 @@ fn sort_files<'a, I: Iterator<Item = &'a Path>>(
     Ok((bundle_meta.debug_ids.len(), source_bundles_created))
 }
 
-fn execute() -> Result<(), Error> {
+fn execute() -> Result<()> {
     let cli = Cli::from_args();
     RunConfig::configure(|cfg| {
         cfg.ignore_errors = cli.ignore_errors;
@@ -307,9 +306,7 @@ fn execute() -> Result<(), Error> {
         }
     } else {
         let bundle_id = cli.bundle_id.unwrap();
-        if !is_bundle_id(&bundle_id) {
-            return Err(err_msg("Invalid bundle id"));
-        }
+        anyhow::ensure!(is_bundle_id(&bundle_id), "Invalid bundle id");
         sort_config.bundle_id = bundle_id;
         let (debug_files_sorted, source_bundles_created) =
             sort_files(&sort_config, cli.input.iter().map(|x| x.as_path()))?;
@@ -335,7 +332,7 @@ pub fn main() -> ! {
         Ok(()) => std::process::exit(0),
         Err(error) => {
             eprintln!("{}: {}", style("error").red().bold(), error);
-            for cause in error.iter_causes() {
+            for cause in error.chain().skip(1) {
                 eprintln!("{}", style(format!("  caused by {}", cause)).dim());
             }
 

@@ -163,6 +163,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b602bfe940d21c130f3895acd65221e8a61270debe89d628b9cb4e3ccb8569b"
+
+[[package]]
 name = "apple-crash-report-parser"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -253,6 +259,12 @@ name = "base64"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
+
+[[package]]
+name = "base64"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
 
 [[package]]
 name = "bincode"
@@ -542,7 +554,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 [[package]]
 name = "cpp_demangle"
 version = "0.3.0"
-source = "git+https://github.com/Swatinem/cpp_demangle?branch=fix/increase-recursions#a303bfe8b7f96d2c2c7549aa9f1ee892d46553f2"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#2d274c4865169e81cc84fc33c6227f61bceab1ae"
 dependencies = [
  "cfg-if",
  "glob",
@@ -1396,9 +1408,9 @@ dependencies = [
 
 [[package]]
 name = "im"
-version = "14.3.0"
+version = "15.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "696059c87b83c5a258817ecd67c3af915e3ed141891fc35a1e79908801cf0ce7"
+checksum = "111c1983f3c5bb72732df25cddacee9b546d08325fb584b5ebd38148be7b0246"
 dependencies = [
  "bitmaps",
  "rand_core 0.5.1",
@@ -1471,6 +1483,12 @@ dependencies = [
  "winapi 0.3.8",
  "winreg 0.5.1",
 ]
+
+[[package]]
+name = "ipnet"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47be2f14c678be2fdcab04ab1171db51b2762ce6f0a8ee87c8dd4a04ed216135"
 
 [[package]]
 name = "ipnetwork"
@@ -1753,8 +1771,7 @@ dependencies = [
 [[package]]
 name = "msvc-demangler"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6584cf122f02fc0396420a116cd395a9a776ec4347dffe1c5119c3fcc917c060"
+source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#47c1c61d28f5a226d7f59aeff94fc6e41f550e40"
 dependencies = [
  "bitflags",
 ]
@@ -2476,11 +2493,11 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.10.4"
+version = "0.10.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02b81e49ddec5109a9dcfc5f2a317ff53377c915e9ae9d4f2fb50914b85614e2"
+checksum = "e9eaa17ac5d7b838b7503d118fa16ad88f440498bf9ffe5424e621f93190d61e"
 dependencies = [
- "base64 0.11.0",
+ "base64 0.12.3",
  "bytes 0.5.4",
  "encoding_rs",
  "futures-core",
@@ -2489,6 +2506,7 @@ dependencies = [
  "http-body 0.3.1",
  "hyper 0.13.4",
  "hyper-tls 0.4.1",
+ "ipnet",
  "js-sys",
  "lazy_static",
  "log",
@@ -2500,14 +2518,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.6.1",
- "time",
  "tokio 0.2.16",
  "tokio-tls 0.3.0",
  "url 2.1.1",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "winreg 0.6.2",
+ "winreg 0.7.0",
 ]
 
 [[package]]
@@ -2716,9 +2733,9 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "sentry"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bf0d1227e6b2cf0a4787c6ba7deed5156ab19fba88e00ffc009bfca8f84812b"
+checksum = "144e85b28d129f056ef91664fe2b985eade906d2838752c2f61c9f233cd98e4a"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -2733,9 +2750,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-actix"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "343f9afc5361828a654bf843bc34cbee5640f8a315fbca03e5013416e3d5cfe0"
+checksum = "f534ff69609cdb84413cea364545d9318a02dccd629a5786cceff2604480f85f"
 dependencies = [
  "actix-web",
  "failure",
@@ -2746,9 +2763,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-backtrace"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d80067b3c23a24ea12696bb6abeb0ae1c107cbc711ccceb93b1157e4efc219e9"
+checksum = "92dabd890482f152fb6d261fe2034a193facc2c99c0c571bbf7687c356fcb2e8"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -2758,9 +2775,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-contexts"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50f4367379c4799edf477172cf0964274ae0bb5760ded72779503e64f7c54103"
+checksum = "039ac50d2d740d51c5d376c2e9e93725eea662fa3acdcbcfe1b8b93a3b30c478"
 dependencies = [
  "hostname",
  "lazy_static",
@@ -2773,21 +2790,23 @@ dependencies = [
 
 [[package]]
 name = "sentry-core"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44ecd107ce94c346da806dd5ec7afe4aa1b9ff60067b7ea63de499921c990b5d"
+checksum = "3fe4fe890b12416701f838c702898a9c5e574c333cfbbee9fb7855a14e6490a3"
 dependencies = [
  "im",
  "lazy_static",
  "rand 0.7.3",
  "sentry-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "sentry-debug-images"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b55addc7d5fa6a233601907530c6ca11c8358b788258082e342a980af279701b"
+checksum = "3f3d5f2b7822a6e54a7711cc49a92e2bab023198fb1a7342b8d1768d4987ec6a"
 dependencies = [
  "findshlibs 0.7.0",
  "lazy_static",
@@ -2796,9 +2815,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-failure"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fc8d591ebd58fff637fa7e8fdb308d22be3596cec02909233920c75333b8f8a"
+checksum = "ead35e7019f77a79ed0345b3f3c28427139100f87f318c1c3e2788db2cdea8b7"
 dependencies = [
  "failure",
  "sentry-backtrace",
@@ -2807,9 +2826,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-log"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "890923504bc1098d05744f8a335d4a52e56954b43d206eceae8fbcc51829dcfb"
+checksum = "6ecacbaff50702c1028124ac834a25040bf13b6fbd720156fb817eafaea2c0e9"
 dependencies = [
  "log",
  "sentry-backtrace",
@@ -2818,9 +2837,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-panic"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8ee9d1cbab974ec95ba450856115108ce3726ecbdc5316e17b165b527704d1b"
+checksum = "ab8a3ac989339a76efd6155f9d02675ce4b04419cd8083ca58d083c222554147"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2828,9 +2847,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-types"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "127fa240592798721c87d025ff7652101a492a38462f5a126f7fec43931aeeb1"
+checksum = "c8124f0e9bc1113ecbcc8c3746e0e590943cf23e7d09c70a088c116869bb12e3"
 dependencies = [
  "chrono",
  "debugid",
@@ -2956,9 +2975,9 @@ dependencies = [
 
 [[package]]
 name = "sized-chunks"
-version = "0.5.3"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d59044ea371ad781ff976f7b06480b9f0180e834eda94114f2afb4afc12b7718"
+checksum = "1ec31ceca5644fa6d444cc77548b88b67f46db6f7c71683b0f9336e671830d2f"
 dependencies = [
  "bitmaps",
  "typenum",
@@ -3051,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#737969f70053028932744b923837c54d27509cf7"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3063,10 +3082,9 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#737969f70053028932744b923837c54d27509cf7"
 dependencies = [
  "debugid",
- "failure",
  "memmap",
  "serde",
  "stable_deref_trait",
@@ -3076,10 +3094,9 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#737969f70053028932744b923837c54d27509cf7"
 dependencies = [
  "dmsort",
- "failure",
  "fallible-iterator",
  "flate2",
  "gimli",
@@ -3095,13 +3112,14 @@ dependencies = [
  "serde_json",
  "smallvec 1.2.0",
  "symbolic-common",
+ "thiserror",
  "zip",
 ]
 
 [[package]]
 name = "symbolic-demangle"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#737969f70053028932744b923837c54d27509cf7"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3113,28 +3131,28 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#737969f70053028932744b923837c54d27509cf7"
 dependencies = [
  "cc",
- "failure",
  "lazy_static",
  "regex",
  "serde",
  "symbolic-common",
  "symbolic-debuginfo",
+ "thiserror",
 ]
 
 [[package]]
 name = "symbolic-symcache"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-recursion#333d47d20ee0b12bdb4ba83dd9e91a273584b083"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#737969f70053028932744b923837c54d27509cf7"
 dependencies = [
  "dmsort",
- "failure",
  "fnv",
  "num",
  "symbolic-common",
  "symbolic-debuginfo",
+ "thiserror",
 ]
 
 [[package]]
@@ -3143,6 +3161,7 @@ version = "0.2.0"
 dependencies = [
  "actix",
  "actix-web",
+ "anyhow",
  "apple-crash-report-parser",
  "base64 0.11.0",
  "bytes 0.4.12",
@@ -3180,6 +3199,7 @@ dependencies = [
  "structopt",
  "symbolic",
  "tempfile",
+ "thiserror",
  "tokio 0.1.22",
  "tokio-retry",
  "url 1.7.2",
@@ -3697,9 +3717,9 @@ checksum = "e604eb7b43c06650e854be16a2a03155743d3752dd1c943f6829e26b7a36e382"
 
 [[package]]
 name = "typenum"
-version = "1.11.2"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d2783fe2d6b8c1101136184eb41be8b1ad379e4657050b8aaff0c79ee7575f9"
+checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
 
 [[package]]
 name = "ucd-trie"
@@ -4047,9 +4067,9 @@ dependencies = [
 
 [[package]]
 name = "winreg"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2986deb581c4fe11b621998a5e53361efe6b48a151178d0cd9eeffa4dc6acc9"
+checksum = "0120db82e8a1e0b9fb3345a539c478767c0048d842860994d96113d5b667bd69"
 dependencies = [
  "winapi 0.3.8",
 ]

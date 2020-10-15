@@ -11,14 +11,17 @@ use std::time::{Duration, Instant};
 
 use actix::{Actor, Addr};
 use actix_web::client::{ClientConnector, ClientResponse, SendRequestError};
+use actix_web::error::JsonPayloadError;
+use actix_web::http::StatusCode;
 use actix_web::{client, HttpMessage};
 use failure::Fail;
 use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
+use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use super::{DownloadError, DownloadStatus, USER_AGENT};
 use crate::config::Config;
 use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
 use crate::types::ObjectId;
@@ -66,7 +69,7 @@ pub async fn download_source(
                 let stream = response
                     .payload()
                     .compat()
-                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
+                    .map(|i| i.map_err(DownloadError::stream));
                 super::download_stream(SourceFileId::Sentry(source, file_id), stream, destination)
                     .await
             } else {
@@ -85,18 +88,6 @@ pub async fn download_source(
     }
 }
 
-#[derive(Debug, Fail, Clone, Copy)]
-pub enum SentryErrorKind {
-    #[fail(display = "failed parsing JSON response from Sentry")]
-    Parsing,
-
-    #[fail(display = "bad status code from Sentry")]
-    BadStatusCode,
-
-    #[fail(display = "failed sending request to Sentry")]
-    SendRequest,
-}
-
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
     id: String,
@@ -109,11 +100,18 @@ struct SearchQuery {
     token: String,
 }
 
-symbolic::common::derive_failure!(
-    SentryError,
-    SentryErrorKind,
-    doc = "Errors happening while fetching data from Sentry"
-);
+/// Errors happening while fetching data from Sentry.
+#[derive(Debug, Error)]
+pub enum SentryError {
+    #[error("failed parsing JSON response from Sentry")]
+    Parsing(#[from] failure::Compat<JsonPayloadError>),
+
+    #[error("failed sending request to Sentry")]
+    SendRequest(#[from] failure::Compat<SendRequestError>),
+
+    #[error("bad status code from Sentry: {0}")]
+    BadStatusCode(StatusCode),
+}
 
 /// Make a request to sentry, parse the result as a JSON SearchResult list.
 async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, SentryError> {
@@ -127,17 +125,17 @@ async fn fetch_sentry_json(query: &SearchQuery) -> Result<Vec<SearchResult>, Sen
         .send()
         .compat()
         .await
-        .map_err(|e| SentryError::from(e.context(SentryErrorKind::SendRequest)))?;
+        .map_err(Fail::compat)?;
     if response.status().is_success() {
         log::trace!("Success fetching index from Sentry");
         response
             .json()
             .compat()
             .await
-            .map_err(|e| e.context(SentryErrorKind::Parsing).into())
+            .map_err(|e| Fail::compat(e).into())
     } else {
         log::warn!("Sentry returned status code {}", response.status());
-        Err(SentryError::from(SentryErrorKind::BadStatusCode))
+        Err(SentryError::BadStatusCode(response.status()))
     }
 }
 
@@ -169,9 +167,7 @@ async fn cached_sentry_search(
         "Fetching list of Sentry debug files from {}",
         &query.index_url
     );
-    let entries = future_utils::retry(|| fetch_sentry_json(&query))
-        .await
-        .map_err(|e| DownloadError::from(e.context(DownloadErrorKind::Sentry)))?;
+    let entries = future_utils::retry(|| fetch_sentry_json(&query)).await?;
 
     if cache_duration > Duration::from_secs(0) {
         SENTRY_SEARCH_RESULTS

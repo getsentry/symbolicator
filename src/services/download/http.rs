@@ -10,12 +10,11 @@ use std::time::Duration;
 
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
-use failure::Fail;
 use futures::compat::Stream01CompatExt;
 use futures::prelude::*;
 use url::Url;
 
-use super::{DownloadError, DownloadErrorKind, DownloadStatus, USER_AGENT};
+use super::{DownloadError, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
@@ -90,7 +89,7 @@ pub async fn download_source(
                 let stream = response
                     .payload()
                     .compat()
-                    .map(|i| i.map_err(|e| e.context(DownloadErrorKind::Io).into()));
+                    .map(|i| i.map_err(DownloadError::stream));
                 super::download_stream(
                     SourceFileId::Http(source, download_path),
                     stream,
