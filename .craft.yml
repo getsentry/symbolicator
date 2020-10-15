@@ -26,9 +26,15 @@ targets:
       - path: /symbolicator/latest/
         metadata:
           cacheControl: "public, max-age=600"
-  - name: docker
+  - id: release
+    name: docker
     source: us.gcr.io/sentryio/symbolicator
     target: getsentry/symbolicator
+  - id: latest
+    name: docker
+    source: us.gcr.io/sentryio/symbolicator
+    target: getsentry/symbolicator
+    targetFormat: '{{{target}}}:latest'
 
 requireNames:
   - /^gh-pages.zip$/
