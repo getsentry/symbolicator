@@ -3163,6 +3163,7 @@ dependencies = [
  "actix-web",
  "anyhow",
  "apple-crash-report-parser",
+ "backtrace",
  "base64 0.11.0",
  "bytes 0.4.12",
  "cadence",

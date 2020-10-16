@@ -1,4 +1,6 @@
 use std::cmp;
+use std::error::Error;
+use std::fmt;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -7,12 +9,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::{configure_scope, Hub};
+use backtrace::Backtrace;
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, Future};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{self, Archive, Object};
 use tempfile::tempfile_in;
-use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -25,31 +27,96 @@ use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 /// Errors happening while fetching objects.
-#[derive(Debug, Error)]
 pub enum ObjectError {
-    #[error("failed to download")]
-    Io(#[from] io::Error),
-
-    #[error("failed to download")]
-    Download(#[from] DownloadError),
-
-    #[error("failed persisting metadata")]
-    Persisting(#[from] serde_json::Error),
-
-    #[error("unable to get directory for tempfiles")]
+    Io(io::Error, Backtrace),
+    Download(DownloadError),
+    Persisting(serde_json::Error),
     NoTempDir,
-
-    #[error("malformed object file")]
     Malformed,
-
-    #[error("failed to parse object")]
-    Parsing(#[from] debuginfo::ObjectError),
-
-    #[error("failed to look into cache")]
-    Caching(#[source] Arc<ObjectError>),
-
-    #[error("object download took too long")]
+    Parsing(debuginfo::ObjectError),
+    Caching(Arc<ObjectError>),
     Timeout,
+}
+
+impl fmt::Display for ObjectError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ObjectError: ")?;
+        match self {
+            ObjectError::Io(_, _) => write!(f, "failed to download (I/O error)")?,
+            ObjectError::Download(_) => write!(f, "failed to download")?,
+            ObjectError::Persisting(_) => write!(f, "failed persisting data")?,
+            ObjectError::NoTempDir => write!(f, "unable to get directory for tempfiles")?,
+            ObjectError::Malformed => write!(f, "malformed object file")?,
+            ObjectError::Parsing(_) => write!(f, "failed to parse object")?,
+            ObjectError::Caching(_) => write!(f, "failed to look into cache")?,
+            ObjectError::Timeout => write!(f, "object download took too long")?,
+        }
+        if f.alternate() {
+            if let Some(ref source) = self.source() {
+                write!(f, "\n  caused by: ")?;
+                fmt::Display::fmt(source, f)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for ObjectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)?;
+        match self {
+            ObjectError::Io(_, ref backtrace) => {
+                write!(f, "\n  backtrace:\n{:?}", backtrace)?;
+            }
+            _ => (),
+        }
+        if f.alternate() {
+            if let Some(ref source) = self.source() {
+                write!(f, "\n  caused by: ")?;
+                fmt::Debug::fmt(source, f)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ObjectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ObjectError::Io(ref source, _) => Some(source),
+            ObjectError::Download(ref source) => Some(source),
+            ObjectError::Persisting(ref source) => Some(source),
+            ObjectError::NoTempDir => None,
+            ObjectError::Malformed => None,
+            ObjectError::Parsing(ref source) => Some(source),
+            ObjectError::Caching(ref source) => Some(source.as_ref()),
+            ObjectError::Timeout => None,
+        }
+    }
+}
+
+impl From<io::Error> for ObjectError {
+    fn from(source: io::Error) -> Self {
+        Self::Io(source, Backtrace::new())
+    }
+}
+
+impl From<DownloadError> for ObjectError {
+    fn from(source: DownloadError) -> Self {
+        Self::Download(source)
+    }
+}
+
+impl From<serde_json::Error> for ObjectError {
+    fn from(source: serde_json::Error) -> Self {
+        Self::Persisting(source)
+    }
+}
+
+impl From<debuginfo::ObjectError> for ObjectError {
+    fn from(source: debuginfo::ObjectError) -> Self {
+        Self::Parsing(source)
+    }
 }
 
 /// This requests metadata of a single file at a specific path/url.
@@ -499,7 +566,7 @@ impl ObjectsActor {
                     let object = match response {
                         Ok(object) => object,
                         Err(e) => {
-                            log::debug!("Failed to download: {}", LogError(e));
+                            log::debug!("Failed to download: {:#?}", e);
                             return (3, *i);
                         }
                     };
