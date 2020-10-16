@@ -64,11 +64,8 @@ impl fmt::Display for ObjectError {
 impl fmt::Debug for ObjectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)?;
-        match self {
-            ObjectError::Io(_, ref backtrace) => {
-                write!(f, "\n  backtrace:\n{:?}", backtrace)?;
-            }
-            _ => (),
+        if let ObjectError::Io(_, ref backtrace) = self {
+            write!(f, "\n  backtrace:\n{:?}", backtrace)?;
         }
         if f.alternate() {
             if let Some(ref source) = self.source() {

@@ -63,7 +63,7 @@ impl CacheStatus {
             CacheStatus::Positive => {
                 let dir = path
                     .parent()
-                    .ok_or(io::Error::new(io::ErrorKind::Other, "no parent directory"))?;
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no parent directory"))?;
                 fs::create_dir_all(dir)?;
                 file.persist(path).map_err(|x| x.error)?;
             }
