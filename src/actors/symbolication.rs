@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
-use std::io::{self, Write};
+use std::io::Write;
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;

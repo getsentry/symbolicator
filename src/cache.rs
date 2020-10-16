@@ -2,7 +2,7 @@
 ///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
-use std::fs::{read_dir, remove_file, File, OpenOptions};
+use std::fs::{self, read_dir, remove_file, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -61,6 +61,10 @@ impl CacheStatus {
     pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
         match self {
             CacheStatus::Positive => {
+                let dir = path
+                    .parent()
+                    .ok_or(io::Error::new(io::ErrorKind::Other, "no parent directory"))?;
+                fs::create_dir_all(dir)?;
                 file.persist(path).map_err(|x| x.error)?;
             }
             CacheStatus::Negative => {
