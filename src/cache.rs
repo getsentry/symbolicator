@@ -59,12 +59,12 @@ impl CacheStatus {
     }
 
     pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
+        let dir = path.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
+        })?;
+        fs::create_dir_all(dir)?;
         match self {
             CacheStatus::Positive => {
-                let dir = path
-                    .parent()
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no parent directory"))?;
-                fs::create_dir_all(dir)?;
                 file.persist(path).map_err(|x| x.error)?;
             }
             CacheStatus::Negative => {
