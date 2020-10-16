@@ -159,12 +159,9 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.write_sentry_scope(scope);
         });
 
-        let download_file = tryf!(self.0.data_cache.tempfile().context(ObjectErrorKind::Io));
-        let download_dir = tryf!(download_file
-            .path()
-            .parent()
-            .ok_or(ObjectErrorKind::NoTempDir))
-        .to_owned();
+        let download_file = tryf!(self.0.data_cache.tempfile());
+        let download_dir =
+            tryf!(download_file.path().parent().ok_or(ObjectError::NoTempDir)).to_owned();
         let request = self
             .0
             .download_svc
