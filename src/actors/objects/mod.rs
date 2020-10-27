@@ -23,7 +23,6 @@ use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
 use crate::types::{ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
-use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
 /// Errors happening while fetching objects.
@@ -264,7 +263,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                         let object_opt = archive
                             .objects()
                             .filter_map(Result::ok)
-                            .find(|object| objects::match_id(&object, &object_id));
+                            .find(|object| object_id.match_object(object));
 
                         // If we do not find the desired object in this archive - either
                         // because we can't parse any of the objects within, or because none
