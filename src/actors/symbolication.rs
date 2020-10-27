@@ -1190,9 +1190,12 @@ impl SymbolicationActor {
     ) -> anyhow::Result<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
             std::fs::create_dir_all(dir)?;
-            let tmp = tempfile::NamedTempFile::new_in(dir)?;
+            let tmp = tempfile::Builder::new()
+                .prefix("minidump")
+                .suffix(".dmp")
+                .tempfile_in(dir)?;
             tmp.as_file().write_all(&*minidump)?;
-            let (_file, path) = tmp.keep()?;
+            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
             Ok(Some(path))
         } else {
             log::debug!("No diagnostics retention configured, not saving minidump");

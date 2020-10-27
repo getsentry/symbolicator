@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -58,6 +57,10 @@ impl<T: CacheItemRequest> Cacher<T> {
             config,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
+    }
+
+    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
+        self.config.tempfile()
     }
 }
 
@@ -202,13 +205,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        let temp_file = if let Some(ref path) = cache_path {
-            let dir = path.parent().unwrap();
-            tryf!(fs::create_dir_all(dir));
-            tryf!(NamedTempFile::new_in(dir))
-        } else {
-            tryf!(NamedTempFile::new())
-        };
+        let temp_file = tryf!(self.tempfile());
 
         let future = request.compute(temp_file.path()).and_then(move |status| {
             if let Some(ref cache_path) = cache_path {

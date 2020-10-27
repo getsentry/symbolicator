@@ -241,6 +241,10 @@ pub struct Config {
 }
 
 impl Config {
+    /// Return a cache directory `dir`, it is joined with the configured base cache directory.
+    ///
+    /// If there is no base cache directory configured this means no caching should happen
+    /// and this returns None.
     pub fn cache_dir<P>(&self, dir: P) -> Option<PathBuf>
     where
         P: AsRef<Path>,

@@ -46,6 +46,9 @@ impl ServiceState {
         let download_svc = Arc::new(DownloadService::new(io_thread, config.clone()));
 
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
+        caches
+            .clear_tmp(&config)
+            .context("failed to clear tmp caches")?;
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
