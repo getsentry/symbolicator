@@ -581,7 +581,7 @@ impl ObjectsActor {
     }
 }
 
-/// Decompresses and object file.
+/// Decompresses an object file.
 ///
 /// Some compression methods are implemented by spawning an external tool and can only
 /// process from a named pathname, hence we need a [NamedTemporaryFile] as source.
