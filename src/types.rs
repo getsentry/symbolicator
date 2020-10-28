@@ -7,6 +7,7 @@ use std::str::FromStr;
 
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
+use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
@@ -522,6 +523,8 @@ pub struct SystemInfo {
 }
 
 /// Information to find a Object in external sources and also internal cache.
+///
+/// See [ObjectId::match_object] for how these can be compared.
 #[derive(Debug, Clone, Default)]
 pub struct ObjectId {
     /// Identifier of the code file.
@@ -547,6 +550,33 @@ impl ObjectId {
 
     pub fn debug_file_basename(&self) -> Option<&str> {
         Some(split_path(self.debug_file.as_ref()?).1)
+    }
+
+    /// Validates that the object matches expected identifiers.
+    pub fn match_object(&self, object: &Object<'_>) -> bool {
+        if let Some(ref debug_id) = self.debug_id {
+            let parsed_id = object.debug_id();
+
+            // Microsoft symbol server sometimes stores updated files with a more recent
+            // (=higher) age, but resolves it for requests with lower ages as well. Thus, we
+            // need to check whether the parsed debug file fullfills the *miniumum* age bound.
+            // For example:
+            // `4A236F6A0B3941D1966B41A4FC77738C2` is reported as
+            // `4A236F6A0B3941D1966B41A4FC77738C4` from the server.
+            //                                  ^
+            return parsed_id.uuid() == debug_id.uuid()
+                && parsed_id.appendix() >= debug_id.appendix();
+        }
+
+        if let Some(ref code_id) = self.code_id {
+            if let Some(ref object_code_id) = object.code_id() {
+                if object_code_id != code_id {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 }
 
