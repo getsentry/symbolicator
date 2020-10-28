@@ -14,7 +14,7 @@ use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, Future};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{self, Archive, Object};
-use tempfile::tempfile_in;
+use tempfile::{tempfile_in, NamedTempFile};
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -237,12 +237,8 @@ impl CacheItemRequest for FetchFileDataRequest {
             match status {
                 DownloadStatus::Completed => {
                     log::trace!("Finished download of {}", cache_key);
-                    let decompress_result = decompress_object_file(
-                        &cache_key,
-                        download_file.path(),
-                        download_file.reopen()?,
-                        tempfile_in(download_dir)?,
-                    );
+                    let decompress_result =
+                        decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
                     // Treat decompression errors as malformed files. It is more likely that
                     // the error comes from a corrupt file than a local file system error.
@@ -585,23 +581,22 @@ impl ObjectsActor {
     }
 }
 
-fn decompress_object_file(
-    cache_key: &CacheKey,
-    download_file_path: &Path,
-    mut download_file: fs::File,
-    mut extract_file: fs::File,
-) -> io::Result<fs::File> {
+/// Decompresses an object file.
+///
+/// Some compression methods are implemented by spawning an external tool and can only
+/// process from a named pathname, hence we need a [NamedTemporaryFile] as source.
+fn decompress_object_file(src: &NamedTempFile, mut dst: fs::File) -> io::Result<fs::File> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
-    download_file.sync_all()?;
+    src.as_file().sync_all()?;
 
-    let metadata = download_file.metadata()?;
+    let metadata = src.as_file().metadata()?;
     metric!(time_raw("objects.size") = metadata.len());
 
-    download_file.seek(SeekFrom::Start(0))?;
+    src.as_file().seek(SeekFrom::Start(0))?;
     let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
-    download_file.read_exact(&mut magic_bytes)?;
-    download_file.seek(SeekFrom::Start(0))?;
+    src.as_file().read_exact(&mut magic_bytes)?;
+    src.as_file().seek(SeekFrom::Start(0))?;
 
     // For a comprehensive list also refer to
     // https://en.wikipedia.org/wiki/List_of_file_signatures
@@ -615,44 +610,37 @@ fn decompress_object_file(
         // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
         [0x28, 0xb5, 0x2f, 0xfd] => {
             metric!(counter("compression") += 1, "type" => "zstd");
-            log::trace!("Decompressing (zstd): {}", cache_key);
 
-            zstd::stream::copy_decode(download_file, &mut extract_file)?;
-
-            Ok(extract_file)
+            zstd::stream::copy_decode(src.as_file(), &mut dst)?;
+            Ok(dst)
         }
         // Magic bytes for gzip
         // https://tools.ietf.org/html/rfc1952#section-2.3.1
         [0x1f, 0x8b, _, _] => {
             metric!(counter("compression") += 1, "type" => "gz");
-            log::trace!("Decompressing (gz): {}", cache_key);
 
             // We assume MultiGzDecoder accepts a strict superset of input
             // values compared to GzDecoder.
-            let mut reader = flate2::read::MultiGzDecoder::new(download_file);
-            io::copy(&mut reader, &mut extract_file)?;
-
-            Ok(extract_file)
+            let mut reader = flate2::read::MultiGzDecoder::new(src.as_file());
+            io::copy(&mut reader, &mut dst)?;
+            Ok(dst)
         }
         // Magic bytes for zlib
         [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
             metric!(counter("compression") += 1, "type" => "zlib");
-            log::trace!("Decompressing (zlib): {}", cache_key);
 
-            let mut reader = flate2::read::ZlibDecoder::new(download_file);
-            io::copy(&mut reader, &mut extract_file)?;
-
-            Ok(extract_file)
+            let mut reader = flate2::read::ZlibDecoder::new(src.as_file());
+            io::copy(&mut reader, &mut dst)?;
+            Ok(dst)
         }
         // Magic bytes for CAB
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
-            log::trace!("Decompressing (cab): {}", cache_key);
 
             let status = process::Command::new("cabextract")
                 .arg("-sfqp")
-                .arg(&download_file_path)
-                .stdout(process::Stdio::from(extract_file.try_clone()?))
+                .arg(src.path())
+                .stdout(process::Stdio::from(dst.try_clone()?))
                 .stderr(process::Stdio::null())
                 .status()?;
 
@@ -663,13 +651,12 @@ fn decompress_object_file(
                 ));
             }
 
-            Ok(extract_file)
+            Ok(dst)
         }
         // Probably not compressed
         _ => {
             metric!(counter("compression") += 1, "type" => "none");
-            log::trace!("No compression detected: {}", cache_key);
-            Ok(download_file)
+            Ok(src.reopen()?)
         }
     }
 }
