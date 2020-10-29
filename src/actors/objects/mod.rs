@@ -148,6 +148,13 @@ impl CacheItemRequest for FetchFileMetaRequest {
         }
     }
 
+    /// Fetches object file and derives metadata from it, storing this in the cache.
+    ///
+    /// This uses the data cache to fetch the requested file before parsing it and writing
+    /// the object metadata into the cache at `path`.  Technically the data cache could
+    /// contain the object file already but this is unlikely as normally the data cache
+    /// expires before the metadata cache, so if the metadata needs to be re-computed then
+    /// the data cache has probably also expired.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -210,6 +217,12 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
+    /// Downloads the object file, processes it and returns whether the file is in the cache.
+    ///
+    /// If the object file was successfully downloaded it is first decompressed.  If it is
+    /// an archive containing multiple objects, then next the object matching the code or
+    /// debug ID of our request is extracted first.  Finally the object is parsed with
+    /// symbolic to ensure it is not malformed.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
@@ -246,7 +259,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                         Err(_) => return Ok(CacheStatus::Malformed),
                     };
 
-                    // Seek back to the start and parse this object to we can deal with it.
+                    // Seek back to the start and parse this object so we can deal with it.
                     // Since objects in Sentry (and potentially also other sources) might be
                     // multi-arch files (e.g. FatMach), we parse as Archive and try to
                     // extract the wanted file.
@@ -470,6 +483,10 @@ pub enum ObjectPurpose {
 }
 
 impl ObjectsActor {
+    /// Returns the requested object file.
+    ///
+    /// This fetches the requested object, re-downloading it from the source if it is no
+    /// longer in the cache.
     pub fn fetch(
         &self,
         shallow_file: Arc<ObjectFileMeta>,
@@ -479,6 +496,15 @@ impl ObjectsActor {
             .map_err(ObjectError::Caching)
     }
 
+    /// Fetches matching objects and returns the metadata of the most suitable object.
+    ///
+    /// This requests the available matching objects from the sources and then looks up the
+    /// object metadata of each matching object in the metadata cache.  These are then
+    /// ranked and the best matching object metadata is returned.
+    ///
+    /// Asking the objects metdata from the data cache also triggers a download of each
+    /// object, which will then be cached in the data cache.  The metadata itself is cached
+    /// in the meta cach which usually lives longer.
     pub fn find(
         &self,
         request: FindObject,
@@ -552,29 +578,36 @@ impl ObjectsActor {
         file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| {
             responses
                 .into_iter()
-                .enumerate()
-                .min_by_key(|(i, response)| {
+                .min_by_key(|response| {
                     // Prefer files that contain an object over unparseable files
                     let object = match response {
                         Ok(object) => object,
                         Err(e) => {
                             log::debug!("Failed to download: {:#?}", e);
-                            return (3, *i);
+                            return 3;
                         }
                     };
 
                     // Prefer object files with debug/unwind info over object files without
-                    let score = match purpose {
+                    match purpose {
                         ObjectPurpose::Unwind if object.features.has_unwind_info => 0,
                         ObjectPurpose::Debug if object.features.has_debug_info => 0,
                         ObjectPurpose::Debug if object.features.has_symbols => 1,
                         ObjectPurpose::Source if object.features.has_sources => 0,
                         _ => 2,
-                    };
-
-                    (score, *i)
+                    }
                 })
-                .map(|(_, response)| response)
+                .filter(|response| match &response {
+                    // Make sure we only return objects which provide the requested info
+                    Ok(ref object) => match purpose {
+                        ObjectPurpose::Unwind => object.features.has_unwind_info,
+                        ObjectPurpose::Debug => {
+                            object.features.has_debug_info || object.features.has_symbols
+                        }
+                        ObjectPurpose::Source => object.features.has_sources,
+                    },
+                    Err(_) => true,
+                })
                 .transpose()
         })
     }

@@ -188,8 +188,12 @@ impl<T: CacheItemRequest> Cacher<T> {
 
     /// Compute an item.
     ///
-    /// If the item is in the file system cache, it is returned immediately. Otherwise, it is
-    /// computed using `T::compute`, and then persisted to the cache.
+    /// If the item is in the file system cache, it is returned immediately. Otherwise, it
+    /// is computed using `T::compute` (CacheItemRequest::compute], and then persisted to
+    /// the cache.
+    ///
+    /// This method does not take care of ensuring the computation only happens once even
+    /// for concurrent requests, see the public [Cacher::compute_memoized] for this.
     fn compute(&self, request: T, key: CacheKey) -> ResponseFuture<T::Item, T::Error> {
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
@@ -276,6 +280,9 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// The actual computation is deduplicated between concurrent requests. Finally, the result is
     /// inserted into the cache and all subsequent calls fetch from the cache.
+    ///
+    /// The computation itself is done by the [CacheItemRequest::compute] (`T::compute` or
+    /// `request.compute`) function, but only if it was not already in the cache.
     pub fn compute_memoized(&self, request: T) -> ResponseFuture<Arc<T::Item>, Arc<T::Error>> {
         let key = request.get_cache_key();
         let name = self.config.name();
