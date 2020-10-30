@@ -1742,15 +1742,14 @@ impl From<&CfiCacheError> for ObjectFileStatus {
             CfiCacheError::Timeout => ObjectFileStatus::Timeout,
             CfiCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
 
-            _ => {
-                // Just in case we didn't handle an error properly,
-                // capture it here. If an error was captured with
-                // `capture_error` further down in the callstack, it
-                // should be explicitly handled here as a
-                // SymCacheError variant.
+            CfiCacheError::Io(_) | CfiCacheError::Parsing(_) | CfiCacheError::Canceled => {
+                // Just in case we didn't handle an error properly, capture it here. If an
+                // error was captured with `capture_error` further down in the callstack, it
+                // should be explicitly handled here as a SymCacheError variant.
                 sentry::capture_error(e);
                 ObjectFileStatus::Other
             }
+            CfiCacheError::NoCfi => ObjectFileStatus::Missing,
         }
     }
 }
@@ -1799,6 +1798,9 @@ mod tests {
 
         let cache_dir = test::tempdir();
 
+        // flub: This uses the default port to listen on.  We should start the service with
+        // a host/port combo that we know is free.  Ideally create the socket and pass it
+        // in, overriding the config.
         let mut config = Config::default();
         config.cache_dir = Some(cache_dir.path().to_owned());
         config.connect_to_reserved_ips = true;

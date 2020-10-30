@@ -41,8 +41,11 @@ pub enum CfiCacheError {
     #[error("cficache building took too long")]
     Timeout,
 
-    #[error("computation was canceled internally")]
+    #[error("cficache computation was canceled internally")]
     Canceled,
+
+    #[error("object file has no cfi")]
+    NoCfi,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +110,9 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     }
 
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+        if !self.object_meta.features().has_unwind_info {
+            return Box::new(futures01::future::err(CfiCacheError::NoCfi));
+        }
         let path = path.to_owned();
         let object = self
             .objects_actor
