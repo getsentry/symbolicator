@@ -293,13 +293,15 @@ impl CacheItemRequest for FetchFileDataRequest {
                             .filter_map(Result::ok)
                             .find(|object| object_id.match_object(object));
 
-                        // If we do not find the desired object in this archive - either
-                        // because we can't parse any of the objects within, or because none
-                        // of the objects match the identifier we're looking for - we return
-                        // early.
                         let object = match object_opt {
                             Some(object) => object,
-                            None => return Ok(CacheStatus::Negative),
+                            None => {
+                                if archive.objects().all(|r| r.is_err()) {
+                                    return Ok(CacheStatus::Malformed);
+                                } else {
+                                    return Ok(CacheStatus::Negative);
+                                }
+                            }
                         };
 
                         io::copy(&mut object.data(), &mut persist_file)?;
