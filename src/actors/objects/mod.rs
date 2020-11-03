@@ -155,6 +155,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// contain the object file already but this is unlikely as normally the data cache
     /// expires before the metadata cache, so if the metadata needs to be re-computed then
     /// the data cache has probably also expired.
+    ///
+    /// This returns an error if the download failed.  If the data cache has a
+    /// [CacheStatus::Negative] or [CacheStatus::Malformed] status the same status is
+    /// returned.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -167,7 +171,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .and_then(move |data| {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
-                        let mut f = fs::File::create(path)?;
+                        let mut new_cache = fs::File::create(path)?;
 
                         let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
@@ -177,7 +181,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         };
 
                         log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                        serde_json::to_writer(&mut f, &meta)?;
+                        serde_json::to_writer(&mut new_cache, &meta)?;
                     }
                 }
 
@@ -191,6 +195,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
         serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
+    /// Returns the [ObjectFileMeta] at the given cache key.
+    ///
+    /// If the `status` is [CacheStatus::Malformed] or [CacheStatus::Negative] the metadata
+    /// returned will contain the default [ObjectFileMeta::features].
     fn load(
         &self,
         scope: Scope,
@@ -223,6 +231,13 @@ impl CacheItemRequest for FetchFileDataRequest {
     /// an archive containing multiple objects, then next the object matching the code or
     /// debug ID of our request is extracted first.  Finally the object is parsed with
     /// symbolic to ensure it is not malformed.
+    ///
+    /// If there is an error with downloading or decompression then an `Err` of
+    /// [ObjectError] is returned.  However if only the final object file parsing failed
+    /// then an `Ok` with [CacheStatus::Malformed] is returned.
+    ///
+    /// If the object file did not exist on the source a [CacheStatus::Negative] will be
+    /// returned.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
@@ -517,6 +532,7 @@ impl ObjectsActor {
             purpose,
         } = request;
 
+        // Future which creates a vector with all object downloads to try.
         let file_ids = future::join_all(
             sources
                 .iter()
@@ -580,8 +596,8 @@ impl ObjectsActor {
                 .into_iter()
                 .min_by_key(|response| {
                     // Prefer files that contain an object over unparseable files
-                    let object = match response {
-                        Ok(object) => object,
+                    let object_meta = match response {
+                        Ok(object_meta) => object_meta,
                         Err(e) => {
                             log::debug!("Failed to download: {:#?}", e);
                             return 3;
@@ -590,10 +606,10 @@ impl ObjectsActor {
 
                     // Prefer object files with debug/unwind info over object files without
                     match purpose {
-                        ObjectPurpose::Unwind if object.features.has_unwind_info => 0,
-                        ObjectPurpose::Debug if object.features.has_debug_info => 0,
-                        ObjectPurpose::Debug if object.features.has_symbols => 1,
-                        ObjectPurpose::Source if object.features.has_sources => 0,
+                        ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
+                        ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
+                        ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
+                        ObjectPurpose::Source if object_meta.features.has_sources => 0,
                         _ => 2,
                     }
                 })
