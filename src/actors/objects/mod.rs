@@ -615,15 +615,23 @@ impl ObjectsActor {
                         _ => 2,
                     }
                 })
-                .filter(|response| match &response {
+                .filter(|response| match response {
                     // Make sure we only return objects which provide the requested info
-                    Ok(ref object) => match purpose {
-                        ObjectPurpose::Unwind => object.features.has_unwind_info,
-                        ObjectPurpose::Debug => {
-                            object.features.has_debug_info || object.features.has_symbols
+                    Ok(object_meta) => {
+                        if object_meta.status == CacheStatus::Positive {
+                            // object_meta.features is meaningless when CacheStatus != Positive
+                            match purpose {
+                                ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
+                                ObjectPurpose::Debug => {
+                                    object_meta.features.has_debug_info
+                                        || object_meta.features.has_symbols
+                                }
+                                ObjectPurpose::Source => object_meta.features.has_sources,
+                            }
+                        } else {
+                            true
                         }
-                        ObjectPurpose::Source => object.features.has_sources,
-                    },
+                    }
                     Err(_) => true,
                 })
                 .transpose()
