@@ -8,6 +8,9 @@ on:
 
   pull_request:
 
+env:
+  RUSTFLAGS: -Dwarnings
+
 jobs:
   lints:
     name: Lints
@@ -117,6 +120,32 @@ jobs:
           SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
         run: pytest --ci -n12 -vv tests/integration
+
+  doc-comments:
+    name: Rust doc comments
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install rust stable toolchain
+        with:
+          toolchain: nightly
+          profile: minimal
+          components: rust-docs
+          override: true
+
+      - name: Cache rust cargo artifacts
+        uses: swatinem/rust-cache@v1
+        with:
+          key: ${{ github.job }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --workspace --all-features --document-private-items --no-deps
 
   docs:
     name: Build docs

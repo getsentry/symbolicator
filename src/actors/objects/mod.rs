@@ -583,7 +583,7 @@ impl ObjectsActor {
 /// Decompresses an object file.
 ///
 /// Some compression methods are implemented by spawning an external tool and can only
-/// process from a named pathname, hence we need a [NamedTemporaryFile] as source.
+/// process from a named pathname, hence we need a [NamedTempFile] as source.
 fn decompress_object_file(src: &NamedTempFile, mut dst: fs::File) -> io::Result<fs::File> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
