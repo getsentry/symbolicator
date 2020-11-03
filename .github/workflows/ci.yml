@@ -131,6 +131,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           profile: minimal
