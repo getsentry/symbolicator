@@ -521,7 +521,7 @@ impl ObjectsActor {
     ///
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
-    /// in the meta cach which usually lives longer.
+    /// in the metadata cache which usually lives longer.
     pub fn find(
         &self,
         request: FindObject,
