@@ -8,7 +8,7 @@
 //! CPU-intensive workloads from those with IO-heavy workloads..
 //!
 //! In general services are created once in the
-//! [crate::app:ServiceState] and accessed via this state.
+//! [crate::app::ServiceState] and accessed via this state.
 //!
 //! [`ThreadPool`]: ../utils/futures/struct.ThreadPool.html
 
