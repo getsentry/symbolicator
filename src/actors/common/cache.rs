@@ -189,7 +189,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Compute an item.
     ///
     /// If the item is in the file system cache, it is returned immediately. Otherwise, it
-    /// is computed using `T::compute` (CacheItemRequest::compute], and then persisted to
+    /// is computed using `T::compute` ([CacheItemRequest::compute]), and then persisted to
     /// the cache.
     ///
     /// This method does not take care of ensuring the computation only happens once even
