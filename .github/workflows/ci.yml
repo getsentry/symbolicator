@@ -43,8 +43,6 @@ jobs:
 
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
@@ -74,8 +72,6 @@ jobs:
 
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -99,8 +95,6 @@ jobs:
 
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
 
       - name: Build rust
         run: cargo build --locked
@@ -120,7 +114,6 @@ jobs:
           SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
         run: pytest --ci -n12 -vv tests/integration
-
 
   doc-comments:
     name: Rust doc comments
