@@ -519,7 +519,7 @@ impl ObjectsActor {
     /// object metadata of each matching object in the metadata cache.  These are then
     /// ranked and the best matching object metadata is returned.
     ///
-    /// Asking the objects metdata from the data cache also triggers a download of each
+    /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the meta cach which usually lives longer.
     pub fn find(
