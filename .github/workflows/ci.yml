@@ -140,8 +140,6 @@ jobs:
 
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
 
       - uses: actions-rs/cargo@v1
         with:
