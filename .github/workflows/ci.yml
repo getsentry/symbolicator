@@ -121,6 +121,7 @@ jobs:
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
         run: pytest --ci -n12 -vv tests/integration
 
+
   doc-comments:
     name: Rust doc comments
     runs-on: ubuntu-latest
