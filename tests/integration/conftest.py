@@ -1,7 +1,6 @@
 import collections
 import json
 import os
-import resource
 import socket
 import subprocess
 import threading
@@ -23,45 +22,6 @@ GCS_PRIVATE_KEY = os.environ.get("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY")
 GCS_CLIENT_EMAIL = os.environ.get("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL")
 
 session = requests.session()
-
-
-@pytest.hookimpl
-def pytest_addoption(parser):
-    parser.addoption(
-        "--ci",
-        action="store_true",
-        help="Indicate the tests are being run on CI, "
-        "this e.g. prefers to fail tests instead of skipping them.",
-    )
-
-
-@pytest.hookimpl
-def pytest_sessionstart(session):
-    no_fds_soft, no_fds_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    if no_fds_soft < 2028:
-        session.warn(
-            pytest.PytestWarning(
-                f"Too low open filedescriptor limit: {no_fds_soft} (try `ulimit -n 4096`)"
-            )
-        )
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_call(item):
-    """This handles the extra_failure_checks mark to perform further assertions.
-
-    The mark can be added e.g. by a fixture that wants to run
-    something that can raise pytest.fail.Exception after the test has
-    completed.
-
-    Such checks will not be run when the test already failed, just
-    like multiple assertions within a test will stop the test
-    execution at the first failure.
-    """
-    yield
-    for marker in item.iter_markers("extra_failure_checks"):
-        for check_func in marker.kwargs.get("checks", []):
-            check_func()
 
 
 @pytest.fixture
