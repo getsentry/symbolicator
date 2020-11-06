@@ -1,3 +1,11 @@
+//! Types for the Symbolicator API.
+//!
+//! This module contains all the types which (de)serialise to/from JSON to make up the
+//! public HTTP API.
+//!
+//! Or at least it strives to.  Currently it also contains some extra common types as well
+//! some types for the public API exist in other places.  Feel free to fix this up.
+
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::convert::Infallible;
@@ -5,6 +13,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::debuginfo::Object;
@@ -395,9 +404,9 @@ impl ObjectFeatures {
     }
 }
 
-/// Normalized RawObjectInfo with status attached.
+/// Normalized [RawObjectInfo] with status attached.
 ///
-/// RawObjectInfo is what the user sends and CompleteObjectInfo is what the user gets.
+/// [RawObjectInfo] is what the user sends and [CompleteObjectInfo] is what the user gets.
 #[derive(Debug, Clone, Serialize, Eq, PartialEq, Deserialize)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
@@ -461,11 +470,24 @@ pub enum SymbolicationResponse {
     InternalError,
 }
 
+/// The symbolicated crash data.
+///
+/// It contains the symbolicated stack frames, module information as well as other
+/// meta-information about the crash.
+///
+/// This object is the main type containing the symblicated crash as returned by the
+/// `/minidump`, `/symbolicate` and `/applecrashreport` endpoints.  It is publicly
+/// documented at https://getsentry.github.io/symbolicator/api/response/.  For the actual
+/// HTTP response this is further wrapped in [SymbolicationResponse] which can also return a
+/// pending or failed state etc instead of a result.
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        with = "chrono::serde::ts_seconds_option"
+    )]
+    pub timestamp: Option<DateTime<Utc>>,
 
     /// The signal that caused this crash.
     #[serde(skip_serializing_if = "Option::is_none")]
