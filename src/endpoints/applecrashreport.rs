@@ -6,7 +6,6 @@ use actix_web::{
 use bytes::Bytes;
 use futures01::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
-use sentry_actix::ActixWebHubExt;
 
 use crate::actors::symbolication::SymbolicationActor;
 use crate::app::{ServiceApp, ServiceState};
@@ -15,7 +14,7 @@ use crate::sources::SourceConfig;
 use crate::types::{RequestId, Scope, SymbolicationResponse};
 use crate::utils::futures::ThreadPool;
 use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
-use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {

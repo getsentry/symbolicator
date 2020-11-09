@@ -108,7 +108,7 @@ where
     fn log(&self, record: &log::Record<'_>) {
         if self.inner.enabled(record.metadata()) {
             if record.level() == log::Level::Error {
-                sentry::capture_event(event_from_record(record, false));
+                sentry::capture_event(event_from_record(record));
             }
 
             sentry::add_breadcrumb(|| breadcrumb_from_record(record));
@@ -154,7 +154,7 @@ pub fn init_logging(config: &Config) {
     log::set_boxed_logger(breadcrumb_logger).unwrap();
 }
 
-/// A wrapper around a `Fail` that prints its causes.
+/// A wrapper around a `std::error::Error` that prints its causes.
 pub struct LogError<'a>(pub &'a dyn std::error::Error);
 
 impl<'a> fmt::Display for LogError<'a> {
