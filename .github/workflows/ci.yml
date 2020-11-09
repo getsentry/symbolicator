@@ -124,7 +124,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
+      - name: Install rust nightly toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
