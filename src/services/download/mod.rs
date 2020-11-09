@@ -1,7 +1,7 @@
 //! Service which handles all downloading from multiple kinds of sources.
 //!
 //! The sources are described on
-//! [https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/](https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/)
+//! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::fs::File;
 use std::io::Write;

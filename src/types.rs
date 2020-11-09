@@ -477,7 +477,7 @@ pub enum SymbolicationResponse {
 ///
 /// This object is the main type containing the symblicated crash as returned by the
 /// `/minidump`, `/symbolicate` and `/applecrashreport` endpoints.  It is publicly
-/// documented at https://getsentry.github.io/symbolicator/api/response/.  For the actual
+/// documented at <https://getsentry.github.io/symbolicator/api/response/>.  For the actual
 /// HTTP response this is further wrapped in [SymbolicationResponse] which can also return a
 /// pending or failed state etc instead of a result.
 #[derive(Debug, Default, Clone, Serialize)]
