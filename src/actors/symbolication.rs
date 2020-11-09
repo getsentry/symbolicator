@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
+use chrono::{DateTime, TimeZone, Utc};
 use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
 use futures01::future::{self, join_all, Future, IntoFuture, Shared};
 use futures01::sync::oneshot;
@@ -1035,7 +1036,7 @@ type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError
 
 #[derive(Debug, Serialize, Deserialize)]
 struct MinidumpState {
-    timestamp: u64,
+    timestamp: DateTime<Utc>,
     system_info: SystemInfo,
     crashed: bool,
     crash_reason: String,
@@ -1372,7 +1373,10 @@ impl SymbolicationActor {
                             .collect::<CodeModulesBuilder>();
 
                         let minidump_state = MinidumpState {
-                            timestamp: process_state.timestamp(),
+                            timestamp: Utc.timestamp(
+                                process_state.timestamp().try_into().unwrap_or_default(),
+                                0,
+                            ),
                             system_info: SystemInfo {
                                 os_name: normalize_minidump_os_name(&os_name).to_owned(),
                                 os_version,
@@ -1532,7 +1536,7 @@ impl SymbolicationActor {
 
 #[derive(Debug)]
 struct AppleCrashReportState {
-    timestamp: Option<u64>,
+    timestamp: Option<DateTime<Utc>>,
     system_info: SystemInfo,
     crash_reason: Option<String>,
     crash_details: Option<String>,
@@ -1665,7 +1669,7 @@ impl SymbolicationActor {
                 .or_else(|| metadata.remove("Exception Codes"));
 
             let state = AppleCrashReportState {
-                timestamp: report.timestamp.map(|t| t.timestamp() as u64),
+                timestamp: report.timestamp,
                 system_info,
                 crash_reason,
                 crash_details,
