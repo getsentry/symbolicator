@@ -1373,8 +1373,10 @@ impl SymbolicationActor {
                             .collect::<CodeModulesBuilder>();
 
                         let minidump_state = MinidumpState {
-                            timestamp: Utc
-                                .timestamp(process_state.timestamp().try_into().unwrap(), 0),
+                            timestamp: Utc.timestamp(
+                                process_state.timestamp().try_into().unwrap_or_default(),
+                                0,
+                            ),
                             system_info: SystemInfo {
                                 os_name: normalize_minidump_os_name(&os_name).to_owned(),
                                 os_version,
