@@ -6,6 +6,7 @@ use crate::app::{ServiceApp, ServiceState};
 use crate::config::Config;
 use crate::endpoints;
 use crate::middlewares;
+use crate::utils::sentry::SentryMiddleware;
 
 /// Creates the Actix web application with all middlewares.
 #[inline]
@@ -13,7 +14,7 @@ fn create_app(state: ServiceState) -> ServiceApp {
     App::with_state(state)
         .middleware(middlewares::Metrics)
         .middleware(middlewares::ErrorHandlers)
-        .middleware(sentry_actix::SentryMiddleware::new())
+        .middleware(SentryMiddleware::new())
         .configure(endpoints::configure)
 }
 

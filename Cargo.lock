@@ -956,9 +956,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fragile"
-version = "0.3.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f8140122fa0d5dcb9fc8627cfce2b37cc1500f752636d46ea28bc26785c2f9"
+checksum = "69a039c3498dc930fe810151a34ba0c1c70b02b8625035592e74432f678591f2"
 
 [[package]]
 name = "fuchsia-cprng"
@@ -2765,8 +2765,7 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "sentry"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "144e85b28d129f056ef91664fe2b985eade906d2838752c2f61c9f233cd98e4a"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -2780,23 +2779,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "sentry-actix"
-version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f534ff69609cdb84413cea364545d9318a02dccd629a5786cceff2604480f85f"
-dependencies = [
- "actix-web",
- "failure",
- "fragile",
- "sentry",
- "sentry-failure",
-]
-
-[[package]]
 name = "sentry-backtrace"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92dabd890482f152fb6d261fe2034a193facc2c99c0c571bbf7687c356fcb2e8"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -2807,8 +2792,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "039ac50d2d740d51c5d376c2e9e93725eea662fa3acdcbcfe1b8b93a3b30c478"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "hostname",
  "lazy_static",
@@ -2822,8 +2806,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fe4fe890b12416701f838c702898a9c5e574c333cfbbee9fb7855a14e6490a3"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "im",
  "lazy_static",
@@ -2836,8 +2819,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f3d5f2b7822a6e54a7711cc49a92e2bab023198fb1a7342b8d1768d4987ec6a"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "findshlibs 0.7.0",
  "lazy_static",
@@ -2847,8 +2829,7 @@ dependencies = [
 [[package]]
 name = "sentry-failure"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ead35e7019f77a79ed0345b3f3c28427139100f87f318c1c3e2788db2cdea8b7"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "failure",
  "sentry-backtrace",
@@ -2858,19 +2839,16 @@ dependencies = [
 [[package]]
 name = "sentry-log"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ecacbaff50702c1028124ac834a25040bf13b6fbd720156fb817eafaea2c0e9"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "log",
- "sentry-backtrace",
  "sentry-core",
 ]
 
 [[package]]
 name = "sentry-panic"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab8a3ac989339a76efd6155f9d02675ce4b04419cd8083ca58d083c222554147"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2879,8 +2857,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8124f0e9bc1113ecbcc8c3746e0e590943cf23e7d09c70a088c116869bb12e3"
+source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "chrono",
  "debugid",
@@ -3205,6 +3182,7 @@ dependencies = [
  "env_logger",
  "failure",
  "flate2",
+ "fragile",
  "futures 0.1.29",
  "futures 0.3.4",
  "glob",
@@ -3224,7 +3202,6 @@ dependencies = [
  "rusoto_credential",
  "rusoto_s3",
  "sentry",
- "sentry-actix",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use log::LevelFilter;
-use sentry::internals::Dsn;
+use sentry::types::Dsn;
 use serde::Deserialize;
 
 use crate::sources::SourceConfig;

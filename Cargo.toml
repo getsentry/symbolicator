@@ -23,6 +23,7 @@ derive_more = "0.15.0"
 env_logger = "0.7.1"
 failure = "0.1.6"
 flate2 = "1.0.14"
+fragile = "1.0.0" # used for vendoring sentry-actix
 futures = { version = "0.3", features = ["compat"] }
 futures01 = { version = "0.1.29", package = "futures" }
 glob = "0.3.0"
@@ -43,8 +44,7 @@ regex = "1.3.3"
 rusoto_core = "0.40.0"
 rusoto_credential = "0.40.0"
 rusoto_s3 = "0.40.0"
-sentry = { version = "0.20.1", features = ["debug-images", "log"] }
-sentry-actix = "0.20.1"
+sentry = { git = "https://github.com/getsentry/sentry-rust", features = ["debug-images", "failure", "log"] }
 serde = { version = "1.0.101", features = ["derive", "rc"] }
 serde_json = "1.0.45"
 serde_yaml = "0.8.11"

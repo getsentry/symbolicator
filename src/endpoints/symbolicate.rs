@@ -5,14 +5,13 @@ use actix_web::{http::Method, HttpRequest, Json, Query, State};
 use failure::Error;
 use futures01::Future;
 use sentry::{configure_scope, Hub};
-use sentry_actix::ActixWebHubExt;
 use serde::Deserialize;
 
 use crate::actors::symbolication::SymbolicateStacktraces;
 use crate::app::{ServiceApp, ServiceState};
 use crate::sources::SourceConfig;
 use crate::types::{RawObjectInfo, RawStacktrace, Scope, Signal, SymbolicationResponse};
-use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
 /// Query parameters of the symbolication request.
 #[derive(Deserialize)]

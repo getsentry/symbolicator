@@ -6,14 +6,13 @@ use bytes::BytesMut;
 use failure::{Error, Fail};
 use futures01::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
-use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
-use crate::utils::sentry::SentryFutureExt;
+use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt};
 
 fn proxy_symstore_request(
     state: State<ServiceState>,
