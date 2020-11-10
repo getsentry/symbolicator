@@ -1,77 +1,117 @@
 use std::cmp;
+use std::error::Error;
+use std::fmt;
 use std::fs;
-use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[rustfmt::skip]
-use ::sentry::configure_scope;
-#[rustfmt::skip]
-use ::sentry::integrations::failure::capture_fail;
-
-use bytes::Bytes;
-use failure::{Fail, ResultExt};
-use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
-use futures01::{future, Future, IntoFuture, Stream};
+use ::sentry::{configure_scope, Hub};
+use backtrace::Backtrace;
+use futures::future::{FutureExt, TryFutureExt};
+use futures01::{future, Future};
 use symbolic::common::ByteView;
-use symbolic::debuginfo::{Archive, Object};
+use symbolic::debuginfo::{self, Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 
-use crate::actors::common::cache::{CacheItemRequest, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
-use crate::types::{
-    ArcFail, FileType, FilesystemSourceConfig, GcsSourceConfig, HttpSourceConfig, ObjectFeatures,
-    ObjectId, S3SourceConfig, Scope, SentrySourceConfig, SourceConfig,
-};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
+use crate::sources::{FileType, SourceConfig, SourceFileId};
+use crate::types::{ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
-use crate::utils::objects;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
-mod common;
-mod filesystem;
-mod gcs;
-mod http;
-mod s3;
-mod sentry;
-
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
-
-#[derive(Debug, Fail, Clone, Copy)]
-pub enum ObjectErrorKind {
-    #[fail(display = "failed to download")]
-    Io,
-
-    #[fail(display = "unable to get directory for tempfiles")]
+/// Errors happening while fetching objects.
+pub enum ObjectError {
+    Io(io::Error, Backtrace),
+    Download(DownloadError),
+    Persisting(serde_json::Error),
     NoTempDir,
-
-    #[fail(display = "failed to parse object")]
-    Parsing,
-
-    #[fail(display = "failed to look into cache")]
-    Caching,
-
-    #[fail(display = "object download took too long")]
+    Malformed,
+    Parsing(debuginfo::ObjectError),
+    Caching(Arc<ObjectError>),
     Timeout,
-
-    #[fail(display = "failed to fetch data from Sentry")]
-    Sentry,
-
-    #[fail(display = "download was canceled internally")]
-    Canceled,
 }
 
-symbolic::common::derive_failure!(
-    ObjectError,
-    ObjectErrorKind,
-    doc = "Errors happening while fetching objects"
-);
+impl fmt::Display for ObjectError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ObjectError: ")?;
+        match self {
+            ObjectError::Io(_, _) => write!(f, "failed to download (I/O error)")?,
+            ObjectError::Download(_) => write!(f, "failed to download")?,
+            ObjectError::Persisting(_) => write!(f, "failed persisting data")?,
+            ObjectError::NoTempDir => write!(f, "unable to get directory for tempfiles")?,
+            ObjectError::Malformed => write!(f, "malformed object file")?,
+            ObjectError::Parsing(_) => write!(f, "failed to parse object")?,
+            ObjectError::Caching(_) => write!(f, "failed to look into cache")?,
+            ObjectError::Timeout => write!(f, "object download took too long")?,
+        }
+        if f.alternate() {
+            if let Some(ref source) = self.source() {
+                write!(f, "\n  caused by: ")?;
+                fmt::Display::fmt(source, f)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for ObjectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)?;
+        if let ObjectError::Io(_, ref backtrace) = self {
+            write!(f, "\n  backtrace:\n{:?}", backtrace)?;
+        }
+        if f.alternate() {
+            if let Some(ref source) = self.source() {
+                write!(f, "\n  caused by: ")?;
+                fmt::Debug::fmt(source, f)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ObjectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ObjectError::Io(ref source, _) => Some(source),
+            ObjectError::Download(ref source) => Some(source),
+            ObjectError::Persisting(ref source) => Some(source),
+            ObjectError::NoTempDir => None,
+            ObjectError::Malformed => None,
+            ObjectError::Parsing(ref source) => Some(source),
+            ObjectError::Caching(ref source) => Some(source.as_ref()),
+            ObjectError::Timeout => None,
+        }
+    }
+}
 
 impl From<io::Error> for ObjectError {
-    fn from(e: io::Error) -> Self {
-        e.context(ObjectErrorKind::Io).into()
+    fn from(source: io::Error) -> Self {
+        Self::Io(source, Backtrace::new())
+    }
+}
+
+impl From<DownloadError> for ObjectError {
+    fn from(source: DownloadError) -> Self {
+        Self::Download(source)
+    }
+}
+
+impl From<serde_json::Error> for ObjectError {
+    fn from(source: serde_json::Error) -> Self {
+        Self::Persisting(source)
+    }
+}
+
+impl From<debuginfo::ObjectError> for ObjectError {
+    fn from(source: debuginfo::ObjectError) -> Self {
+        Self::Parsing(source)
     }
 }
 
@@ -81,7 +121,7 @@ struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     scope: Scope,
     /// Source-type specific attributes.
-    file_id: FileId,
+    file_id: SourceFileId,
     object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
@@ -89,57 +129,13 @@ struct FetchFileMetaRequest {
     // state for computing.
     threadpool: ThreadPool,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
+    download_svc: Arc<crate::services::download::DownloadService>,
 }
 
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
 #[derive(Clone, Debug)]
 struct FetchFileDataRequest(FetchFileMetaRequest);
-
-#[derive(Debug, Clone)]
-enum FileId {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId),
-    S3(Arc<S3SourceConfig>, DownloadPath),
-    Gcs(Arc<GcsSourceConfig>, DownloadPath),
-    Http(Arc<HttpSourceConfig>, DownloadPath),
-    Filesystem(Arc<FilesystemSourceConfig>, DownloadPath),
-}
-
-#[derive(Debug, Clone)]
-struct DownloadPath(String);
-
-#[derive(Debug, Clone)]
-struct SentryFileId(String);
-
-impl FileId {
-    fn source(&self) -> SourceConfig {
-        match *self {
-            FileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            FileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            FileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            FileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-            FileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
-        }
-    }
-
-    fn cache_key(&self) -> String {
-        match self {
-            FileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            FileId::Sentry(ref source, ref file_id) => {
-                format!("{}.{}.sentryinternal", source.id, file_id.0)
-            }
-            FileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
-        }
-    }
-}
-
-impl WriteSentryScope for FileId {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        self.source().write_sentry_scope(scope);
-    }
-}
 
 impl CacheItemRequest for FetchFileMetaRequest {
     type Item = ObjectFileMeta;
@@ -160,11 +156,11 @@ impl CacheItemRequest for FetchFileMetaRequest {
         let result = self
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
-            .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
+            .map_err(ObjectError::Caching)
             .and_then(move |data| {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
-                        let mut f = fs::File::create(path).context(ObjectErrorKind::Io)?;
+                        let mut f = fs::File::create(path)?;
 
                         let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
@@ -174,7 +170,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         };
 
                         log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                        serde_json::to_writer(&mut f, &meta).context(ObjectErrorKind::Io)?;
+                        serde_json::to_writer(&mut f, &meta)?;
                     }
                 }
 
@@ -188,7 +184,13 @@ impl CacheItemRequest for FetchFileMetaRequest {
         serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        _: CachePath,
+    ) -> Self::Item {
         let features = serde_json::from_slice(&data).unwrap_or_default();
 
         ObjectFileMeta {
@@ -196,35 +198,6 @@ impl CacheItemRequest for FetchFileMetaRequest {
             scope,
             features,
             status,
-        }
-    }
-}
-
-/// The result of a remote file download operation.
-enum DownloadedFile {
-    /// A locally stored file.
-    Local(PathBuf, fs::File),
-    /// A downloaded file stored in a temp location.
-    Temp(NamedTempFile),
-}
-
-impl DownloadedFile {
-    /// Gets the file system path of the downloaded file.
-    ///
-    /// Note that the path is only guaranteed to be valid until this instance of `DownloadedFile` is
-    /// dropped. After that, a temporary file may get deleted in the file system.
-    fn path(&self) -> &Path {
-        match self {
-            DownloadedFile::Local(path, _) => &path,
-            DownloadedFile::Temp(named) => named.path(),
-        }
-    }
-
-    /// Gets a file handle to the downloaded file.
-    fn reopen(&self) -> io::Result<fs::File> {
-        match self {
-            DownloadedFile::Local(_, file) => file.try_clone(),
-            DownloadedFile::Temp(named) => named.reopen(),
         }
     }
 }
@@ -241,9 +214,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
-        let request = download_from_source(&self.0.file_id);
         let path = path.to_owned();
-        let threadpool = self.0.threadpool.clone();
         let object_id = self.0.object_id.clone();
 
         configure_scope(|scope| {
@@ -251,137 +222,81 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.write_sentry_scope(scope);
         });
 
-        let result = request.and_then(move |payload| {
-            if let Some(payload) = payload {
-                let download_dir =
-                    tryf!(path.parent().ok_or(ObjectErrorKind::NoTempDir)).to_owned();
+        let download_file = tryf!(self.0.data_cache.tempfile());
+        let download_dir =
+            tryf!(download_file.path().parent().ok_or(ObjectError::NoTempDir)).to_owned();
+        let request = self
+            .0
+            .download_svc
+            .download(self.0.file_id.clone(), download_file.path().to_owned())
+            .compat()
+            .map_err(Into::into);
 
-                let download_file = match payload {
-                    DownloadStream::FutureStream(stream) => {
-                        log::trace!("Downloading file for {}", cache_key);
-
-                        let named_download_file = tryf!(
-                            NamedTempFile::new_in(&download_dir).context(ObjectErrorKind::Io)
-                        );
-
-                        let file = tryf!(named_download_file.reopen().context(ObjectErrorKind::Io));
-
-                        let future = stream
-                            .fold(
-                                file,
-                                clone!(threadpool, |mut file, chunk| {
-                                    threadpool
-                                        .spawn_handle(async move {
-                                            file.write_all(&chunk).map(|_| file)
-                                        })
-                                        .boxed_local()
-                                        .compat()
-                                        .map_err(|_| io::Error::from(io::ErrorKind::Other))
-                                        .flatten()
-                                }),
-                            )
-                            .map(move |_| DownloadedFile::Temp(named_download_file));
-
-                        future::Either::A(future)
-                    }
-                    DownloadStream::File(path) => {
-                        log::trace!("Importing downloaded file for {}", cache_key);
-
-                        let future = fs::File::open(&path)
-                            .map(|file| DownloadedFile::Local(path.clone(), file))
-                            .context(ObjectErrorKind::Io)
-                            .map_err(ObjectError::from)
-                            .into_future();
-
-                        future::Either::B(future)
-                    }
-                };
-
-                let future = download_file.and_then(clone!(threadpool, |download_file| {
+        let result = request.and_then(move |status| -> Result<CacheStatus, ObjectError> {
+            match status {
+                DownloadStatus::Completed => {
                     log::trace!("Finished download of {}", cache_key);
-                    let future = future::lazy(move || {
-                        let decompress_result = decompress_object_file(
-                            &cache_key,
-                            download_file.path(),
-                            download_file.reopen().context(ObjectErrorKind::Io)?,
-                            tempfile_in(download_dir).context(ObjectErrorKind::Io)?,
-                        );
+                    let decompress_result =
+                        decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
-                        // Treat decompression errors as malformed files. It is more likely that
-                        // the error comes from a corrupt file than a local file system error.
-                        let mut decompressed = match decompress_result {
-                            Ok(decompressed) => decompressed,
-                            Err(_) => return Ok(CacheStatus::Malformed),
+                    // Treat decompression errors as malformed files. It is more likely that
+                    // the error comes from a corrupt file than a local file system error.
+                    let mut decompressed = match decompress_result {
+                        Ok(decompressed) => decompressed,
+                        Err(_) => return Ok(CacheStatus::Malformed),
+                    };
+
+                    // Seek back to the start and parse this object to we can deal with it.
+                    // Since objects in Sentry (and potentially also other sources) might be
+                    // multi-arch files (e.g. FatMach), we parse as Archive and try to
+                    // extract the wanted file.
+                    decompressed.seek(SeekFrom::Start(0))?;
+                    let view = ByteView::map_file(decompressed)?;
+                    let archive = match Archive::parse(&view) {
+                        Ok(archive) => archive,
+                        Err(_) => {
+                            return Ok(CacheStatus::Malformed);
+                        }
+                    };
+                    let mut persist_file = fs::File::create(&path)?;
+                    if archive.is_multi() {
+                        let object_opt = archive
+                            .objects()
+                            .filter_map(Result::ok)
+                            .find(|object| object_id.match_object(object));
+
+                        // If we do not find the desired object in this archive - either
+                        // because we can't parse any of the objects within, or because none
+                        // of the objects match the identifier we're looking for - we return
+                        // early.
+                        let object = match object_opt {
+                            Some(object) => object,
+                            None => return Ok(CacheStatus::Negative),
                         };
 
-                        // Seek back to the start and parse this object to we can deal with it.
-                        // Since objects in Sentry (and potentially also other sources) might be
-                        // multi-arch files (e.g. FatMach), we parse as Archive and try to
-                        // extract the wanted file.
-                        decompressed
-                            .seek(SeekFrom::Start(0))
-                            .context(ObjectErrorKind::Io)?;
-                        let view = ByteView::map_file(decompressed)?;
-                        let archive = match Archive::parse(&view) {
-                            Ok(archive) => archive,
-                            Err(_) => {
-                                return Ok(CacheStatus::Malformed);
-                            }
-                        };
-
-                        let mut persist_file =
-                            fs::File::create(&path).context(ObjectErrorKind::Io)?;
-
-                        if archive.is_multi() {
-                            let object_opt = archive
-                                .objects()
-                                .filter_map(Result::ok)
-                                .find(|object| objects::match_id(&object, &object_id));
-
-                            // If we do not find the desired object in this archive - either
-                            // because we can't parse any of the objects within, or because none
-                            // of the objects match the identifier we're looking for - we return
-                            // early.
-                            let object = match object_opt {
-                                Some(object) => object,
-                                None => return Ok(CacheStatus::Negative),
-                            };
-
-                            io::copy(&mut object.data(), &mut persist_file)
-                                .context(ObjectErrorKind::Io)?;
-                        } else {
-                            // Attempt to parse the object to capture errors. The result can be
-                            // discarded as the object's data is the entire ByteView.
-                            if archive.object_by_index(0).is_err() {
-                                return Ok(CacheStatus::Malformed);
-                            }
-
-                            io::copy(&mut view.as_ref(), &mut persist_file)
-                                .context(ObjectErrorKind::Io)?;
+                        io::copy(&mut object.data(), &mut persist_file)?;
+                    } else {
+                        // Attempt to parse the object to capture errors. The result can be
+                        // discarded as the object's data is the entire ByteView.
+                        if archive.object_by_index(0).is_err() {
+                            return Ok(CacheStatus::Malformed);
                         }
 
-                        Ok(CacheStatus::Positive)
-                    });
+                        io::copy(&mut view.as_ref(), &mut persist_file)?;
+                    }
 
-                    threadpool
-                        .spawn_handle(future.sentry_hub_current().compat())
-                        .boxed_local()
-                        .compat()
-                        .map_err(|_| ObjectError::from(ObjectErrorKind::Canceled))
-                        .flatten()
-                }));
-
-                Box::new(future) as Box<dyn Future<Item = _, Error = _>>
-            } else {
-                log::debug!("No debug file found for {}", cache_key);
-                Box::new(Ok(CacheStatus::Negative).into_future())
-                    as Box<dyn Future<Item = _, Error = _>>
+                    Ok(CacheStatus::Positive)
+                }
+                DownloadStatus::NotFound => {
+                    log::debug!("No debug file found for {}", cache_key);
+                    Ok(CacheStatus::Negative)
+                }
             }
         });
 
         let result = result
             .map_err(|e| {
-                capture_fail(e.cause().unwrap_or(&e));
+                sentry::capture_error(&e);
                 e
             })
             .sentry_hub_current();
@@ -390,13 +305,19 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         Box::new(future_metrics!(
             "objects",
-            Some((Duration::from_secs(600), ObjectErrorKind::Timeout.into())),
+            Some((Duration::from_secs(600), ObjectError::Timeout)),
             result,
             "source_type" => type_name,
         ))
     }
 
-    fn load(&self, scope: Scope, status: CacheStatus, data: ByteView<'static>) -> Self::Item {
+    fn load(
+        &self,
+        scope: Scope,
+        status: CacheStatus,
+        data: ByteView<'static>,
+        _: CachePath,
+    ) -> Self::Item {
         let object = ObjectFile {
             object_id: self.0.object_id.clone(),
             scope,
@@ -451,7 +372,7 @@ pub struct ObjectFile {
     object_id: ObjectId,
     scope: Scope,
 
-    file_id: FileId,
+    file_id: SourceFileId,
     cache_key: CacheKey,
 
     /// The mmapped object.
@@ -470,11 +391,9 @@ impl ObjectFile {
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         match self.status {
-            CacheStatus::Positive => Ok(Some(
-                Object::parse(&self.data).context(ObjectErrorKind::Parsing)?,
-            )),
+            CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(ObjectErrorKind::Parsing.into()),
+            CacheStatus::Malformed => Err(ObjectError::Malformed),
         }
     }
 
@@ -514,14 +433,21 @@ pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     threadpool: ThreadPool,
+    download_svc: Arc<DownloadService>,
 }
 
 impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, threadpool: ThreadPool) -> Self {
+    pub fn new(
+        meta_cache: Cache,
+        data_cache: Cache,
+        threadpool: ThreadPool,
+        download_svc: Arc<DownloadService>,
+    ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache)),
             data_cache: Arc::new(Cacher::new(data_cache)),
             threadpool,
+            download_svc,
         }
     }
 }
@@ -550,7 +476,7 @@ impl ObjectsActor {
     ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
-            .map_err(|e| ArcFail(e).context(ObjectErrorKind::Caching).into())
+            .map_err(ObjectError::Caching)
     }
 
     pub fn find(
@@ -570,29 +496,31 @@ impl ObjectsActor {
                 .iter()
                 .map(|source| {
                     let type_name = source.type_name();
-
-                    prepare_downloads(&source, filetypes, &identifier)
+                    let hub = Arc::new(Hub::new_from_top(Hub::current()));
+                    self.download_svc
+                        .list_files(source.clone(), filetypes, identifier.clone(), hub)
+                        .boxed_local()
+                        .compat()
                         .or_else(move |e| {
-                            // This basically only happens for the Sentry source type, when doing the
-                            // search by debug/code id. We do not surface those errors to the user
-                            // (instead we default to an empty search result) and only report them
-                            // internally.
+                            // This basically only happens for the Sentry source type, when doing
+                            // the search by debug/code id. We do not surface those errors to the
+                            // user (instead we default to an empty search result) and only report
+                            // them internally.
                             log::error!("Failed to download from {}: {}", type_name, LogError(&e));
                             Ok(Vec::new())
                         })
-                        // create a new hub for each prepare_downloads call
-                        .sentry_hub_new_from_current()
                 })
                 // collect into intermediate vector because of borrowing problems
                 .collect::<Vec<_>>(),
         )
-        .map(|file_ids: Vec<Vec<FileId>>| -> Vec<FileId> {
+        .map(|file_ids: Vec<Vec<SourceFileId>>| -> Vec<SourceFileId> {
             file_ids.into_iter().flatten().collect()
         });
 
         let meta_cache = self.meta_cache.clone();
         let threadpool = self.threadpool.clone();
         let data_cache = self.data_cache.clone();
+        let download_svc = self.download_svc.clone();
 
         let file_metas = file_ids.and_then(move |file_ids| {
             future::join_all(file_ids.into_iter().map(move |file_id| {
@@ -606,11 +534,12 @@ impl ObjectsActor {
                     object_id: identifier.clone(),
                     threadpool: threadpool.clone(),
                     data_cache: data_cache.clone(),
+                    download_svc: download_svc.clone(),
                 };
 
                 meta_cache
                     .compute_memoized(request)
-                    .map_err(|e| ObjectError::from(ArcFail(e).context(ObjectErrorKind::Caching)))
+                    .map_err(ObjectError::Caching)
                     // Errors from a file download should not make the entire join_all fail. We
                     // collect a Vec<Result> and surface the original error to the user only when
                     // we have no successful downloads.
@@ -629,7 +558,7 @@ impl ObjectsActor {
                     let object = match response {
                         Ok(object) => object,
                         Err(e) => {
-                            log::debug!("Failed to download: {}", LogError(e));
+                            log::debug!("Failed to download: {:#?}", e);
                             return (3, *i);
                         }
                     };
@@ -651,62 +580,22 @@ impl ObjectsActor {
     }
 }
 
-enum DownloadStream {
-    FutureStream(Box<dyn Stream<Item = Bytes, Error = ObjectError>>),
-    File(PathBuf),
-}
-
-fn prepare_downloads(
-    source: &SourceConfig,
-    filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
-    match *source {
-        SourceConfig::Sentry(ref source) => sentry::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Http(ref source) => http::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::S3(ref source) => s3::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Gcs(ref source) => gcs::prepare_downloads(source, filetypes, object_id),
-        SourceConfig::Filesystem(ref source) => {
-            filesystem::prepare_downloads(source, filetypes, object_id)
-        }
-    }
-}
-
-fn download_from_source(
-    file_id: &FileId,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    match *file_id {
-        FileId::Sentry(ref source, ref file_id) => {
-            sentry::download_from_source(source.clone(), file_id)
-        }
-        FileId::Http(ref source, ref file_id) => {
-            http::download_from_source(source.clone(), file_id)
-        }
-        FileId::S3(ref source, ref file_id) => s3::download_from_source(source.clone(), file_id),
-        FileId::Gcs(ref source, ref file_id) => gcs::download_from_source(source.clone(), file_id),
-        FileId::Filesystem(ref source, ref file_id) => {
-            filesystem::download_from_source(source.clone(), file_id)
-        }
-    }
-}
-
-fn decompress_object_file(
-    cache_key: &CacheKey,
-    download_file_path: &Path,
-    mut download_file: fs::File,
-    mut extract_file: fs::File,
-) -> io::Result<fs::File> {
+/// Decompresses an object file.
+///
+/// Some compression methods are implemented by spawning an external tool and can only
+/// process from a named pathname, hence we need a [NamedTempFile] as source.
+fn decompress_object_file(src: &NamedTempFile, mut dst: fs::File) -> io::Result<fs::File> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
-    download_file.sync_all()?;
+    src.as_file().sync_all()?;
 
-    let metadata = download_file.metadata()?;
+    let metadata = src.as_file().metadata()?;
     metric!(time_raw("objects.size") = metadata.len());
 
-    download_file.seek(SeekFrom::Start(0))?;
+    src.as_file().seek(SeekFrom::Start(0))?;
     let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
-    download_file.read_exact(&mut magic_bytes)?;
-    download_file.seek(SeekFrom::Start(0))?;
+    src.as_file().read_exact(&mut magic_bytes)?;
+    src.as_file().seek(SeekFrom::Start(0))?;
 
     // For a comprehensive list also refer to
     // https://en.wikipedia.org/wiki/List_of_file_signatures
@@ -720,44 +609,37 @@ fn decompress_object_file(
         // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
         [0x28, 0xb5, 0x2f, 0xfd] => {
             metric!(counter("compression") += 1, "type" => "zstd");
-            log::trace!("Decompressing (zstd): {}", cache_key);
 
-            zstd::stream::copy_decode(download_file, &mut extract_file)?;
-
-            Ok(extract_file)
+            zstd::stream::copy_decode(src.as_file(), &mut dst)?;
+            Ok(dst)
         }
         // Magic bytes for gzip
         // https://tools.ietf.org/html/rfc1952#section-2.3.1
         [0x1f, 0x8b, _, _] => {
             metric!(counter("compression") += 1, "type" => "gz");
-            log::trace!("Decompressing (gz): {}", cache_key);
 
             // We assume MultiGzDecoder accepts a strict superset of input
             // values compared to GzDecoder.
-            let mut reader = flate2::read::MultiGzDecoder::new(download_file);
-            io::copy(&mut reader, &mut extract_file)?;
-
-            Ok(extract_file)
+            let mut reader = flate2::read::MultiGzDecoder::new(src.as_file());
+            io::copy(&mut reader, &mut dst)?;
+            Ok(dst)
         }
         // Magic bytes for zlib
         [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
             metric!(counter("compression") += 1, "type" => "zlib");
-            log::trace!("Decompressing (zlib): {}", cache_key);
 
-            let mut reader = flate2::read::ZlibDecoder::new(download_file);
-            io::copy(&mut reader, &mut extract_file)?;
-
-            Ok(extract_file)
+            let mut reader = flate2::read::ZlibDecoder::new(src.as_file());
+            io::copy(&mut reader, &mut dst)?;
+            Ok(dst)
         }
         // Magic bytes for CAB
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
-            log::trace!("Decompressing (cab): {}", cache_key);
 
             let status = process::Command::new("cabextract")
                 .arg("-sfqp")
-                .arg(&download_file_path)
-                .stdout(process::Stdio::from(extract_file.try_clone()?))
+                .arg(src.path())
+                .stdout(process::Stdio::from(dst.try_clone()?))
                 .stderr(process::Stdio::null())
                 .status()?;
 
@@ -768,13 +650,12 @@ fn decompress_object_file(
                 ));
             }
 
-            Ok(extract_file)
+            Ok(dst)
         }
         // Probably not compressed
         _ => {
             metric!(counter("compression") += 1, "type" => "none");
-            log::trace!("No compression detected: {}", cache_key);
-            Ok(download_file)
+            Ok(src.reopen()?)
         }
     }
 }

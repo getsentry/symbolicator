@@ -5,9 +5,12 @@ use std::time::Duration;
 
 use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
 use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture, System};
-use actix_web::client::{ClientConnector, ClientRequest, ClientResponse, SendRequestError};
+use actix_web::client::{
+    ClientConnector, ClientConnectorError, ClientRequest, ClientResponse, SendRequestError,
+};
 use actix_web::{http::header, HttpMessage};
-use futures01::{future, future::Either, Async, Future, IntoFuture, Poll};
+use futures::compat::Future01CompatExt;
+use futures01::{future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
 use tokio::net::{tcp::ConnectFuture, TcpStream};
 use tokio::timer::Delay;
@@ -22,17 +25,22 @@ lazy_static::lazy_static! {
     ].into_iter().map(|x| x.parse().unwrap()).collect();
 }
 
-pub fn follow_redirects<F>(
-    initial_url: Url,
-    max_redirects: usize,
+pub async fn follow_redirects<F>(
+    mut url: Url,
+    mut max_redirects: usize,
     make_request: F,
-) -> ResponseFuture<ClientResponse, SendRequestError>
+) -> Result<ClientResponse, SendRequestError>
 where
-    F: Fn(&str) -> ClientRequest + Send + 'static,
+    F: Fn(&str) -> Result<ClientRequest, actix_web::error::Error> + Send,
 {
-    let state = (initial_url, max_redirects, true);
-    Box::new(future::loop_fn(state, move |(url, redirects, trusted)| {
-        let mut request = make_request(url.as_str());
+    let mut trusted = true;
+
+    loop {
+        let mut request = make_request(url.as_str()).map_err(|err| {
+            let message = format!("Failed creating request: {} (URI: {})", err, url);
+            sentry::capture_message(&message, sentry::Level::Error);
+            SendRequestError::Connector(ClientConnectorError::InvalidUrl)
+        })?;
 
         if !trusted {
             let headers = request.headers_mut();
@@ -40,33 +48,29 @@ where
             headers.remove(header::COOKIE);
         }
 
-        request.send().and_then(move |response| {
-            if response.status().is_redirection() && redirects > 0 {
-                let location = response
-                    .headers()
-                    .get(header::LOCATION)
-                    .and_then(|l| l.to_str().ok());
+        let response = request.send().compat().await?;
+        if response.status().is_redirection() && max_redirects > 0 {
+            let location = response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|l| l.to_str().ok());
 
-                if let Some(location) = location {
-                    let redirect_url = url.join(location).map_err(|e| {
-                        let message = format!("bad request uri: {}", e);
-                        SendRequestError::Io(io::Error::new(io::ErrorKind::InvalidData, message))
-                    })?;
+            if let Some(location) = location {
+                let redirect_url = url.join(location).map_err(|e| {
+                    let message = format!("bad request uri: {}", e);
+                    SendRequestError::Io(io::Error::new(io::ErrorKind::InvalidData, message))
+                })?;
 
-                    log::trace!("Following redirect: {:?}", &redirect_url);
-                    let is_same_origin = redirect_url.origin() == url.origin();
-
-                    return Ok(future::Loop::Continue((
-                        redirect_url,
-                        redirects - 1,
-                        trusted && is_same_origin,
-                    )));
-                }
+                log::trace!("Following redirect: {:?}", &redirect_url);
+                let is_same_origin = redirect_url.origin() == url.origin();
+                trusted = trusted && is_same_origin;
+                url = redirect_url;
+                max_redirects -= 1;
+                continue;
             }
-
-            Ok(future::Loop::Break(response))
-        })
-    }))
+        }
+        return Ok(response);
+    }
 }
 
 /// A Resolver-like actor for the actix-web http client that refuses to resolve to reserved IP addresses.
@@ -212,7 +216,7 @@ mod tests {
             app.resource("/", |resource| resource.f(|_| "OK"));
         });
 
-        let response = test::block_fn(|| server.get().finish().unwrap().send());
+        let response = test::block_fn01(|| server.get().finish().unwrap().send());
         assert!(response.is_err());
 
         Ok(())

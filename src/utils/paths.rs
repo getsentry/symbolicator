@@ -3,9 +3,8 @@ use std::fmt::Write;
 
 use symbolic::common::{CodeId, DebugId, Uuid};
 
-use crate::types::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing, Glob, ObjectId, ObjectType,
-};
+use crate::sources::{DirectoryLayout, DirectoryLayoutType, FileType, FilenameCasing};
+use crate::types::{Glob, ObjectId, ObjectType};
 
 const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
     case_sensitive: false,
@@ -99,56 +98,100 @@ fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Stri
     Some(format!("{}/{}/{}", code_file, code_id, code_file))
 }
 
-fn get_native_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
+fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
+    let debug_file = identifier.debug_file_basename()?;
+    let debug_id = identifier.debug_id.as_ref()?;
+
+    let new_debug_file = if debug_file.ends_with(".exe")
+        || debug_file.ends_with(".dll")
+        || debug_file.ends_with(".pdb")
+    {
+        &debug_file[..debug_file.len() - 4]
+    } else {
+        &debug_file[..]
+    };
+
+    Some(format!(
+        "{}/{}/{}.sym",
+        debug_file,
+        debug_id.breakpad(),
+        new_debug_file
+    ))
+}
+
+fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
     match filetype {
         // ELF follows GDB "Build ID Method" conventions.
         // See: https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
-        FileType::ElfCode => get_gdb_path(identifier),
+        FileType::ElfCode => get_gdb_path(identifier).into_iter().collect(),
         FileType::ElfDebug => {
-            let mut path = get_gdb_path(identifier)?;
-            path.push_str(".debug");
-            Some(path)
+            if let Some(mut path) = get_gdb_path(identifier) {
+                path.push_str(".debug");
+                vec![path]
+            } else {
+                vec![]
+            }
         }
 
         // MachO follows LLDB "File Mapped UUID Directories" conventions
         // See: http://lldb.llvm.org/symbols.html
         FileType::MachCode => {
-            let mut path = get_lldb_path(identifier)?;
-            path.push_str(".app");
-            Some(path)
+            if let Some(mut path) = get_lldb_path(identifier) {
+                path.push_str(".app");
+                vec![path]
+            } else {
+                vec![]
+            }
         }
-        FileType::MachDebug => get_lldb_path(identifier),
+        FileType::MachDebug => get_lldb_path(identifier).into_iter().collect(),
 
         // PDB and PE follows the "Symbol Server" protocol
         // See: https://docs.microsoft.com/en-us/windows/desktop/debug/using-symsrv
-        FileType::Pdb => get_pdb_symstore_path(identifier, false),
-        FileType::Pe => get_pe_symstore_path(identifier, false),
+        FileType::Pdb => get_pdb_symstore_path(identifier, false)
+            .into_iter()
+            .collect(),
+        FileType::Pe => get_pe_symstore_path(identifier, false)
+            .into_iter()
+            .collect(),
 
         // Breakpad has its own layout similar to Microsoft Symbol Server
         // See: https://github.com/google/breakpad/blob/79ba6a494fb2097b39f76fe6a4b4b4f407e32a02/src/processor/simple_symbol_supplier.cc
-        FileType::Breakpad => {
-            let debug_file = identifier.debug_file_basename()?;
-            let debug_id = identifier.debug_id.as_ref()?;
+        FileType::Breakpad => get_breakpad_path(identifier).into_iter().collect(),
 
-            let new_debug_file = if debug_file.ends_with(".exe")
-                || debug_file.ends_with(".dll")
-                || debug_file.ends_with(".pdb")
-            {
-                &debug_file[..debug_file.len() - 4]
-            } else {
-                &debug_file[..]
+        FileType::SourceBundle => {
+            let mut primary_path = match identifier.object_type {
+                ObjectType::Pe => {
+                    if let Some(mut base_path) = get_pdb_symstore_path(identifier, false) {
+                        if let Some(cutoff) = base_path.rfind('.') {
+                            base_path.truncate(cutoff);
+                        }
+                        base_path
+                    } else {
+                        return vec![];
+                    }
+                }
+                ObjectType::Macho => match get_lldb_path(identifier) {
+                    Some(path) => path,
+                    None => return vec![],
+                },
+                ObjectType::Elf => match get_gdb_path(identifier) {
+                    Some(path) => path,
+                    None => return vec![],
+                },
+                ObjectType::Unknown => return vec![],
             };
-
-            Some(format!(
-                "{}/{}/{}.sym",
-                debug_file,
-                debug_id.breakpad(),
-                new_debug_file
-            ))
+            primary_path.push_str(".src.zip");
+            let mut rv = vec![];
+            if let Some(mut breakpad_path) = get_breakpad_path(identifier) {
+                breakpad_path.truncate(breakpad_path.len() - 4);
+                breakpad_path.push_str(".src.zip");
+                if breakpad_path != primary_path {
+                    rv.push(breakpad_path);
+                }
+            }
+            rv.push(primary_path);
+            rv
         }
-
-        // not available
-        FileType::SourceBundle => None,
     }
 }
 
@@ -205,8 +248,19 @@ fn get_symstore_path(
         // Microsoft SymbolServer does not specify Breakpad.
         FileType::Breakpad => None,
 
-        // not available
-        FileType::SourceBundle => None,
+        // source bundles are available through an extension for PE/PDB only.
+        FileType::SourceBundle => {
+            let original_file_type = match identifier.object_type {
+                ObjectType::Pe => FileType::Pdb,
+                _ => return None,
+            };
+            let mut base_path = get_symstore_path(original_file_type, identifier, ssqp_casing)?;
+            if let Some(cutoff) = base_path.rfind('.') {
+                base_path.truncate(cutoff);
+            }
+            base_path.push_str(".src.zip");
+            Some(base_path)
+        }
     }
 }
 
@@ -247,6 +301,20 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
     }
 }
 
+/// determine object type for search.
+///
+/// We prefer to use the file type as indicator for going back to the object
+/// type. If that is not possible, we use the object type that is stored on the
+/// identifier which might be unreliable.
+fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> ObjectType {
+    match filetype {
+        FileType::Pe | FileType::Pdb => ObjectType::Pe,
+        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
+        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
+        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
+    }
+}
+
 fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
     // determine the suffix and object type
     let suffix = match filetype {
@@ -256,18 +324,8 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
     };
 
-    // determine object type.  We prefer to use the file type as indicator for going
-    // back to the object type.  If that is not possible, we use the object type
-    // that is stored on the identifier which might be unreliable.
-    let object_type = match filetype {
-        FileType::Pe | FileType::Pdb => ObjectType::Pe,
-        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
-        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
-        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
-    };
-
     // determine the ID we use for the path
-    let id = match object_type {
+    let id = match get_search_target_object_type(filetype, identifier) {
         // PEs and PDBs are indexed by the debug id in lowercase breakpad format
         // always.  This is done because code IDs by themselves are not reliable
         // enough for PEs and are only useful together with the file name which
@@ -293,28 +351,56 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
 }
 
-/// Determines the path for an object file in the given layout.
-pub fn get_directory_path(
+/// Determines the paths for an object file in the given layout.
+///
+/// The vector is ordered from lower priority to highest priority.
+pub fn get_directory_paths(
     directory_layout: DirectoryLayout,
     filetype: FileType,
     identifier: &ObjectId,
-) -> Option<String> {
-    let mut path = match directory_layout.ty {
-        DirectoryLayoutType::Native => get_native_path(filetype, identifier)?,
-        DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier, false)?,
-        DirectoryLayoutType::SymstoreIndex2 => get_symstore_index2_path(filetype, identifier)?,
-        DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)?,
-        DirectoryLayoutType::Debuginfod => get_debuginfod_path(filetype, identifier)?,
-        DirectoryLayoutType::Unified => get_unified_path(filetype, identifier)?,
+) -> Vec<String> {
+    let mut paths: Vec<String> = match directory_layout.ty {
+        DirectoryLayoutType::Native => get_native_paths(filetype, identifier),
+        DirectoryLayoutType::Symstore => get_symstore_path(filetype, identifier, false)
+            .into_iter()
+            .collect(),
+        DirectoryLayoutType::SymstoreIndex2 => get_symstore_index2_path(filetype, identifier)
+            .into_iter()
+            .collect(),
+        DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)
+            .into_iter()
+            .collect(),
+        DirectoryLayoutType::Debuginfod => get_debuginfod_path(filetype, identifier)
+            .into_iter()
+            .collect(),
+        DirectoryLayoutType::Unified => {
+            get_unified_path(filetype, identifier).into_iter().collect()
+        }
     };
 
-    match directory_layout.casing {
-        FilenameCasing::Lowercase => path.make_ascii_lowercase(),
-        FilenameCasing::Uppercase => path.make_ascii_uppercase(),
-        FilenameCasing::Default => (),
+    for path in paths.iter_mut() {
+        match directory_layout.casing {
+            FilenameCasing::Lowercase => path.make_ascii_lowercase(),
+            FilenameCasing::Uppercase => path.make_ascii_uppercase(),
+            FilenameCasing::Default => (),
+        }
+    }
+
+    // when fetching PE and PDB files we generally allow the also the
+    // compressed matches (last char subtituted with an underscore)
+    if filetype == FileType::Pdb || filetype == FileType::Pe {
+        paths = paths
+            .into_iter()
+            .flat_map(|path| {
+                let mut compressed_path = path.clone();
+                compressed_path.pop();
+                compressed_path.push('_');
+                Some(compressed_path).into_iter().chain(Some(path))
+            })
+            .collect();
     };
 
-    Some(path)
+    paths
 }
 
 pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
@@ -425,8 +511,128 @@ pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
 mod tests {
     use super::*;
 
+    lazy_static::lazy_static! {
+        static ref PE_OBJECT_ID: ObjectId = ObjectId {
+            code_id: Some("5ab380779000".parse().unwrap()),
+            code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
+            debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
+            debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+            object_type: ObjectType::Pe,
+        };
+        static ref MACHO_OBJECT_ID: ObjectId = ObjectId {
+            code_id: None,
+            code_file: Some("/Users/travis/build/getsentry/breakpad-tools/macos/build/./crash".into()),
+            debug_id: Some("67e9247c-814e-392b-a027-dbde6748fcbf".parse().unwrap()),
+            debug_file: Some("crash".into()),
+            object_type: ObjectType::Macho,
+        };
+        static ref ELF_OBJECT_ID: ObjectId = ObjectId {
+            code_id: Some("dfb85de42daffd09640c8fe377d572de3e168920".parse().unwrap()),
+            code_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
+            debug_id: Some("e45db8df-af2d-09fd-640c-8fe377d572de".parse().unwrap()),
+            debug_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
+            object_type: ObjectType::Elf,
+        };
+    }
+
     fn pattern(x: &str) -> Glob {
         Glob(x.parse().unwrap())
+    }
+
+    #[test]
+    fn test_get_native_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_native_paths($filetype, &$obj).join("\n"), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::Breakpad, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF.app");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67E9/247C/814E/392B/A027/DBDE6748FCBF");
+        path_test!(FileType::Breakpad, MACHO_OBJECT_ID, @"crash/67E9247C814E392BA027DBDE6748FCBF0/crash.sym");
+        path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @r###"
+        crash/67E9247C814E392BA027DBDE6748FCBF0/crash.src.zip
+        67E9/247C/814E/392B/A027/DBDE6748FCBF.src.zip
+        "###);
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.debug");
+        path_test!(FileType::Breakpad, ELF_OBJECT_ID, @"libm-2.23.so/E45DB8DFAF2D09FD640C8FE377D572DE0/libm-2.23.so.sym");
+        path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @r###"
+        libm-2.23.so/E45DB8DFAF2D09FD640C8FE377D572DE0/libm-2.23.so.src.zip
+        df/b85de42daffd09640c8fe377d572de3e168920.src.zip
+        "###);
+    }
+
+    #[test]
+    fn test_get_unified_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_unified_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/debuginfo");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/executable");
+        path_test!(FileType::Breakpad, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/breakpad");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/sourcebundle");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
+        path_test!(FileType::Breakpad, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/breakpad");
+        path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/sourcebundle");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/executable");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/debuginfo");
+        path_test!(FileType::Breakpad, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/breakpad");
+        path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/sourcebundle");
+    }
+
+    #[test]
+    fn test_get_debuginfod_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_debuginfod_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"dfb85de42daffd09640c8fe377d572de3e168920/executable");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"dfb85de42daffd09640c8fe377d572de3e168920/debuginfo");
+    }
+
+    #[test]
+    fn test_get_symstore_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_symstore_path($filetype, &$obj, false).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"crash/mach-uuid-67e9247c814e392ba027dbde6748fcbf/crash");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"_.dwarf/mach-uuid-sym-67e9247c814e392ba027dbde6748fcbf/_.dwarf");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"libm-2.23.so/elf-buildid-dfb85de42daffd09640c8fe377d572de3e168920/libm-2.23.so");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"_.debug/elf-buildid-sym-dfb85de42daffd09640c8fe377d572de3e168920/_.debug");
+    }
+
+    #[test]
+    fn test_get_symstore_index2_path() {
+        macro_rules! path_test {
+            ($filetype:expr, $obj:expr, @$output:literal) => {
+                insta::assert_snapshot!(get_symstore_index2_path($filetype, &$obj).unwrap(), @$output);
+            };
+        }
+
+        path_test!(FileType::Pdb, PE_OBJECT_ID, @"cr/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb");
+        path_test!(FileType::Pe, PE_OBJECT_ID, @"cr/crash.exe/5AB380779000/crash.exe");
+        path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"cr/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip");
+        path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"cr/crash/mach-uuid-67e9247c814e392ba027dbde6748fcbf/crash");
+        path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"_/_.dwarf/mach-uuid-sym-67e9247c814e392ba027dbde6748fcbf/_.dwarf");
+        path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"li/libm-2.23.so/elf-buildid-dfb85de42daffd09640c8fe377d572de3e168920/libm-2.23.so");
+        path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"_/_.debug/elf-buildid-sym-dfb85de42daffd09640c8fe377d572de3e168920/_.debug");
     }
 
     #[test]

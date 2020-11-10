@@ -1,0 +1,15 @@
+name: "Danger"
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  build:
+    name: Changelogs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+      - run: npx danger@9.1.8 ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

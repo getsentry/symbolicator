@@ -1,129 +1,189 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
+use std::io::Write;
 use std::iter::FromIterator;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
-use failure::Fail;
+use chrono::{DateTime, TimeZone, Utc};
 use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
-use futures01::future::{self, join_all, Either, Future, IntoFuture, Shared};
+use futures01::future::{self, join_all, Future, IntoFuture, Shared};
 use futures01::sync::oneshot;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use regex::Regex;
-use sentry::integrations::failure::capture_fail;
-use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, SelfCell};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use symbolic::common::{
+    Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name, SelfCell,
+};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
+use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
-    CodeModule, CodeModuleId, FrameInfoMap, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
+    CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
-use tokio::prelude::FutureExt;
-use uuid;
+use thiserror::Error;
+use tokio::timer::Delay;
 
-use crate::actors::cficaches::{
-    CfiCacheActor, CfiCacheError, CfiCacheErrorKind, CfiCacheFile, FetchCfiCache,
-};
-use crate::actors::objects::{FindObject, ObjectPurpose, ObjectsActor};
-use crate::actors::symcaches::{
-    FetchSymCache, SymCacheActor, SymCacheError, SymCacheErrorKind, SymCacheFile,
-};
+use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
+use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
+use crate::cache::CacheStatus;
 use crate::logging::LogError;
+use crate::sources::{FileType, SourceConfig};
 use crate::types::{
-    ArcFail, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FileType,
-    FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
-    Registers, RequestId, Scope, Signal, SourceConfig, SymbolicatedFrame, SymbolicationResponse,
-    SystemInfo,
+    CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
+    ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
+    RequestId, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::{CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt;
 
+/// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
     with_arguments: true,
     format: DemangleFormat::Short,
 };
+
+/// The maximum delay we allow for polling a finished request before dropping it.
+const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
 
 lazy_static::lazy_static! {
     /// Format sent by Unreal Engine on macOS
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
 
-/// Variants of `SymbolicationError`.
-#[derive(Debug, Fail)]
-pub enum SymbolicationErrorKind {
-    #[fail(display = "symbolication took too long")]
+/// Errors during symbolication.
+#[derive(Debug, Error)]
+pub enum SymbolicationError {
+    #[error("symbolication took too long")]
     Timeout,
 
-    #[fail(display = "internal IO failed")]
-    Io,
+    #[error("internal IO failed")]
+    Io(#[from] std::io::Error),
 
-    #[fail(display = "computation was canceled internally")]
+    #[error("computation was canceled internally")]
     Canceled,
 
-    #[fail(display = "failed to process minidump")]
-    InvalidMinidump,
+    #[error("failed to process minidump")]
+    InvalidMinidump(#[from] ProcessMinidumpError),
 
-    #[fail(display = "failed to parse apple crash report")]
-    InvalidAppleCrashReport,
-}
-
-symbolic::common::derive_failure!(
-    SymbolicationError,
-    SymbolicationErrorKind,
-    doc = "Errors during symbolication."
-);
-
-impl From<std::io::Error> for SymbolicationError {
-    fn from(err: std::io::Error) -> Self {
-        err.context(SymbolicationErrorKind::Io).into()
-    }
-}
-
-impl From<ProcessMinidumpError> for SymbolicationError {
-    fn from(err: ProcessMinidumpError) -> Self {
-        err.context(SymbolicationErrorKind::InvalidMinidump).into()
-    }
-}
-
-impl From<apple_crash_report_parser::ParseError> for SymbolicationError {
-    fn from(err: apple_crash_report_parser::ParseError) -> Self {
-        err.context(SymbolicationErrorKind::InvalidAppleCrashReport)
-            .into()
-    }
+    #[error("failed to parse apple crash report")]
+    InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match err.kind() {
-            SymbolicationErrorKind::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationErrorKind::Io => SymbolicationResponse::InternalError,
-            SymbolicationErrorKind::Canceled => SymbolicationResponse::InternalError,
-            SymbolicationErrorKind::InvalidMinidump => SymbolicationResponse::Failed {
+        match err {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Canceled => SymbolicationResponse::InternalError,
+            SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
-            SymbolicationErrorKind::InvalidAppleCrashReport => SymbolicationResponse::Failed {
+            SymbolicationError::InvalidAppleCrashReport(_) => SymbolicationResponse::Failed {
                 message: err.to_string(),
             },
         }
     }
 }
 
-// We probably want a shared future here because otherwise polling for a response would acquire the
-// global write lock.
+// We want a shared future here because otherwise polling for a response would hold the global lock.
 type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
-type ComputationMap = Arc<RwLock<BTreeMap<RequestId, ComputationChannel>>>;
+type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
+
+/// A builder for a clean set of code modules.
+///
+/// On several platforms, the list of code modules can include shared memory regions or memory
+/// mapped fonts. These are not valid code modules and should be excluded from the list. In some
+/// cases, however, actual modules end up being mapped from shared memory. In such a case, stack
+/// frames reference code moduels without a provided code identifier.
+///
+/// This type exposes `build`, which returns all modules that either have a valid identifier,
+/// or that are referenced from a stack trace. Use `mark_referenced` to indicate that a frame
+/// references a module.
+struct CodeModulesBuilder {
+    inner: Vec<(CompleteObjectInfo, bool)>,
+}
+
+impl CodeModulesBuilder {
+    /// Creates a new `CodeModulesBuilder` from a list of code modules.
+    pub fn new<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = CompleteObjectInfo>,
+    {
+        let mut inner = iter
+            .into_iter()
+            .map(|info| (info, false))
+            .collect::<Vec<_>>();
+
+        // Sort by image address for binary search in `mark`.
+        inner.sort_by_key(|(info, _)| info.raw.image_addr);
+        Self { inner }
+    }
+
+    /// Records a module covering the given address as referenced.
+    ///
+    /// The respective module will always be included in the final list of modules.
+    pub fn mark_referenced(&mut self, addr: u64) {
+        let search_index = self
+            .inner
+            .binary_search_by_key(&addr, |(info, _)| info.raw.image_addr.0);
+
+        let info_index = match search_index {
+            Ok(index) => index,
+            Err(0) => return,
+            Err(index) => index - 1,
+        };
+
+        let (info, marked) = &mut self.inner[info_index];
+        let HexValue(image_addr) = info.raw.image_addr;
+        let should_mark = match info.raw.image_size {
+            Some(size) => addr < image_addr + size,
+            // If there is no image size, the image implicitly counts up to the next image. Because
+            // we know that the search address is somewhere in this range, we can mark it.
+            None => true,
+        };
+
+        if should_mark {
+            *marked = true;
+        }
+    }
+
+    /// Returns the final clean set of code modules.
+    pub fn build(self) -> Vec<CompleteObjectInfo> {
+        self.inner
+            .into_iter()
+            .filter(|(info, marked)| *marked || info.raw.debug_id.is_some())
+            .map(|(info, _)| info)
+            .collect()
+    }
+}
+
+impl FromIterator<CompleteObjectInfo> for CodeModulesBuilder {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = CompleteObjectInfo>,
+    {
+        Self::new(iter)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
+    diagnostics_cache: crate::cache::Cache,
     threadpool: ThreadPool,
     requests: ComputationMap,
+    spawnpool: Arc<procspawn::Pool>,
 }
 
 impl SymbolicationActor {
@@ -131,16 +191,20 @@ impl SymbolicationActor {
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
+        diagnostics_cache: crate::cache::Cache,
         threadpool: ThreadPool,
+        spawnpool: procspawn::Pool,
     ) -> Self {
-        let requests = Arc::new(RwLock::new(BTreeMap::new()));
+        let requests = Arc::new(Mutex::new(BTreeMap::new()));
 
         SymbolicationActor {
             objects,
             symcaches,
             cficaches,
+            diagnostics_cache,
             threadpool,
             requests,
+            spawnpool: Arc::new(spawnpool),
         }
     }
 
@@ -149,90 +213,97 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
         channel: ComputationChannel,
-    ) -> impl Future<Item = SymbolicationResponse, Error = SymbolicationError> {
+    ) -> ResponseFuture<SymbolicationResponse, SymbolicationError> {
         let rv = channel
             .map(|item| (*item).clone())
-            .map_err(|_| SymbolicationErrorKind::Canceled.into());
+            .map_err(|_| SymbolicationError::Canceled);
 
-        let requests = &self.requests;
-
-        if let Some(timeout) = timeout {
-            Either::A(
-                rv.timeout(Duration::from_secs(timeout))
-                    .then(clone!(requests, |result| {
-                        match result {
-                            Ok((finished_at, x)) => {
-                                requests.write().remove(&request_id);
-                                metric!(timer("requests.response_idling") = finished_at.elapsed());
-                                Ok(x)
-                            }
-                            Err(e) => {
-                                if let Some(inner) = e.into_inner() {
-                                    Err(inner)
-                                } else {
-                                    Ok(SymbolicationResponse::Pending {
-                                        request_id,
-                                        // XXX(markus): Probably need a better estimation at some
-                                        // point.
-                                        retry_after: 30,
-                                    })
-                                }
-                            }
-                        }
-                    })),
-            )
+        if let Some(timeout) = timeout.map(Duration::from_secs) {
+            Box::new(tokio::timer::Timeout::new(rv, timeout).then(move |result| {
+                match result {
+                    Ok((finished_at, response)) => {
+                        metric!(timer("requests.response_idling") = finished_at.elapsed());
+                        Ok(response)
+                    }
+                    Err(timeout_error) => match timeout_error.into_inner() {
+                        Some(error) => Err(error),
+                        None => Ok(SymbolicationResponse::Pending {
+                            request_id,
+                            // XXX(markus): Probably need a better estimation at some
+                            // point.
+                            retry_after: 30,
+                        }),
+                    },
+                }
+            }))
         } else {
-            Either::B(rv.then(clone!(requests, |result| {
-                requests.write().remove(&request_id);
-                let (finished_at, x) = result?;
+            Box::new(rv.then(move |result| {
+                let (finished_at, response) = result?;
                 metric!(timer("requests.response_idling") = finished_at.elapsed());
-                Ok(x)
-            })))
+                Ok(response)
+            }))
         }
     }
 
-    fn create_symbolication_request<F, R>(&self, f: F) -> Result<RequestId, SymbolicationError>
+    fn create_symbolication_request<F, R>(&self, f: F) -> RequestId
     where
         F: FnOnce() -> R,
         R: Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> + 'static,
     {
-        let request_id = loop {
-            let request_id = RequestId::new(uuid::Uuid::new_v4());
-            if !self.requests.read().contains_key(&request_id) {
-                break request_id;
-            }
-        };
+        let (sender, receiver) = oneshot::channel();
 
-        let (tx, rx) = oneshot::channel();
+        // Assume that there are no UUID4 collisions in practice.
+        let requests = self.requests.clone();
+        let request_id = RequestId::new(uuid::Uuid::new_v4());
+        requests.lock().insert(request_id, receiver.shared());
+        let token = CallOnDrop::new(move || {
+            requests.lock().remove(&request_id);
+        });
 
-        self.requests.write().insert(request_id, rx.shared());
+        // TODO: This executes the factory synchronously, instead of spawning it into the arbiter.
+        // This directly blocks the web request thread. Use `future::lazy` to defer execution.
+        let request_future = f()
+            .then(move |result| {
+                let response = match result {
+                    Ok(response) => SymbolicationResponse::Completed(Box::new(response)),
+                    Err(ref error) => {
+                        sentry::capture_error(error);
+                        error.into()
+                    }
+                };
 
-        actix::spawn(
-            f().then(move |result| {
-                tx.send((
-                    Instant::now(),
-                    match result {
-                        Ok(x) => SymbolicationResponse::Completed(Box::new(x)),
-                        Err(ref e) => {
-                            capture_fail(e);
-                            e.into()
-                        }
-                    },
-                ))
-                .map_err(|_| ())
+                sender.send((Instant::now(), response)).ok();
+
+                // Wait before removing the channel from the computation map to allow clients to
+                // poll the status.
+                Delay::new(Instant::now() + MAX_POLL_DELAY)
             })
-            // Clone hub because of `actix::spawn`
-            .sentry_hub_new_from_current(),
-        );
+            .then(move |_| {
+                drop(token);
+                Ok(())
+            })
+            .sentry_hub_new_from_current();
 
-        Ok(request_id)
+        // TODO: This spawns into the arbiter of the caller, which usually is the web handler. This
+        // doesn't block the web request, but it congests the threads that should only do web I/O.
+        // Instead, this should spawn into a dedicated resource (e.g. a threadpool) to keep web
+        // requests flowing while symbolication tasks may backlog.
+        actix::spawn(request_future);
+
+        request_id
     }
 }
 
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
-        debug_id: object_info.debug_id.as_ref().and_then(|x| x.parse().ok()),
-        code_id: object_info.code_id.as_ref().and_then(|x| x.parse().ok()),
+        debug_id: match object_info.debug_id.as_deref() {
+            None | Some("") => None,
+            Some(string) => string.parse().ok(),
+        },
+        code_id: match object_info.code_id.as_deref() {
+            None | Some("") => None,
+            Some(string) => string.parse().ok(),
+        },
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
         object_type: object_info.ty,
@@ -257,9 +328,17 @@ fn normalize_minidump_os_name(minidump_os_name: &str) -> &str {
 }
 
 fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawObjectInfo {
+    let mut code_id = module.code_identifier();
+
+    // The processor reports an empty string as code id for MachO files
+    if ty == ObjectType::Macho && code_id.is_empty() {
+        code_id = module.debug_identifier();
+        code_id.truncate(code_id.len().max(1) - 1);
+    }
+
     RawObjectInfo {
         ty,
-        code_id: Some(module.code_identifier()),
+        code_id: Some(code_id),
         code_file: Some(module.code_file()),
         debug_id: Some(module.debug_identifier()),
         debug_file: Some(module.debug_file()),
@@ -594,11 +673,11 @@ fn symbolicate_frame(
         Err(_) => return Err(FrameStatus::Malformed),
     };
 
-    let crashing_frame = index == 0;
-
-    let ip_reg = if crashing_frame {
+    let is_crashing_frame = index == 0;
+    let ip_register_value = if is_crashing_frame {
         symcache
             .arch()
+            .cpu_family()
             .ip_register_name()
             .and_then(|ip_reg_name| registers.get(ip_reg_name))
             .map(|x| x.0)
@@ -606,14 +685,11 @@ fn symbolicate_frame(
         None
     };
 
-    let instruction_info = InstructionInfo {
-        addr: frame.instruction_addr.0,
-        arch: symcache.arch(),
-        signal: signal.map(|x| x.0),
-        crashing_frame,
-        ip_reg,
-    };
-    let caller_address = instruction_info.caller_address();
+    let caller_address = InstructionInfo::new(symcache.arch(), frame.instruction_addr.0)
+        .is_crashing_frame(is_crashing_frame)
+        .signal(signal.map(|signal| signal.0))
+        .ip_register_value(ip_register_value)
+        .caller_address();
 
     let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
         Some(x) => x,
@@ -655,7 +731,30 @@ fn symbolicate_frame(
             }
         };
 
-        let lang = line_info.language();
+        let name = line_info.function_name();
+
+        // Detect the language from the bare name, ignoring any pre-set language. There are a few
+        // languages that we should always be able to demangle. Only complain about those that we
+        // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
+        // reported as C++, which are expected not to demangle.
+        let detected_language = Name::new(name.as_str()).detect_language();
+        let should_demangle = match (line_info.language(), detected_language) {
+            (_, Language::Unknown) => false, // can't demangle what we cannot detect
+            (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
+            (Language::Unknown, _) => true,  // if there was no language, then rely on detection
+            (lang, detected) => lang == detected, // avoid false-positive detections
+        };
+
+        let demangled_opt = name.demangle(DEMANGLE_OPTIONS);
+        if should_demangle && demangled_opt.is_none() {
+            sentry::with_scope(
+                |scope| scope.set_extra("identifier", name.to_string().into()),
+                || {
+                    let message = format!("Failed to demangle {} identifier", line_info.language());
+                    sentry::capture_message(&message, sentry::Level::Error);
+                },
+            );
+        }
 
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
@@ -671,12 +770,10 @@ fn symbolicate_frame(
                 } else {
                     frame.abs_path.clone()
                 },
-                function: Some(
-                    line_info
-                        .function_name()
-                        .try_demangle(DEMANGLE_OPTIONS)
-                        .into_owned(),
-                ),
+                function: Some(match demangled_opt {
+                    Some(demangled) => demangled,
+                    None => name.into_cow().into_owned(),
+                }),
                 filename: if !filename.is_empty() {
                     Some(filename)
                 } else {
@@ -689,10 +786,9 @@ fn symbolicate_frame(
                 sym_addr: Some(HexValue(
                     object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
-                lang: if lang != Language::Unknown {
-                    Some(lang)
-                } else {
-                    frame.lang
+                lang: match line_info.language() {
+                    Language::Unknown => None,
+                    language => Some(language),
                 },
                 trust: frame.trust,
             },
@@ -722,6 +818,17 @@ fn symbolicate_stacktrace(
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
+                // Since symbolication failed, the function name was not demangled. In case there is
+                // either one of `function` or `symbol`, treat that as mangled name and try to
+                // demangle it. If that succeeds, write the demangled name back.
+                let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
+                let demangled = mangled.and_then(|m| Name::new(m).demangle(DEMANGLE_OPTIONS));
+                if let Some(demangled) = demangled {
+                    if let Some(old_mangled) = frame.function.replace(demangled) {
+                        frame.symbol = Some(old_mangled);
+                    }
+                }
+
                 // Temporary workaround: Skip false-positive frames from stack scanning after the
                 // fact.
                 //
@@ -756,7 +863,7 @@ fn symbolicate_stacktrace(
     stacktrace
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 /// A request for symbolication of multiple stack traces.
 pub struct SymbolicateStacktraces {
     /// The scope of this request which determines access to cached files.
@@ -786,20 +893,18 @@ impl SymbolicationActor {
     fn do_symbolicate(
         &self,
         request: SymbolicateStacktraces,
-    ) -> impl Future<Item = CompletedSymbolicationResponse, Error = SymbolicationError> {
+    ) -> ResponseFuture<CompletedSymbolicationResponse, SymbolicationError> {
         let result = self
             .clone()
             .do_symbolicate_impl(request)
             .boxed_local()
             .compat();
-        future_metrics!(
+
+        Box::new(future_metrics!(
             "symbolicate",
-            Some((
-                Duration::from_secs(3600),
-                SymbolicationErrorKind::Timeout.into()
-            )),
+            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
             result
-        )
+        ))
     }
 
     async fn do_symbolicate_impl(
@@ -855,7 +960,7 @@ impl SymbolicationActor {
             .threadpool
             .spawn_handle(future.sentry_hub_current().compat())
             .await
-            .map_err(|_| SymbolicationErrorKind::Canceled)??;
+            .map_err(|_| SymbolicationError::Canceled)??;
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
@@ -893,59 +998,45 @@ impl SymbolicationActor {
             .threadpool
             .spawn_handle(future.sentry_hub_current().compat())
             .await
-            .map_err(|_| SymbolicationErrorKind::Canceled)??;
+            .map_err(|_| SymbolicationError::Canceled)??;
 
         Ok(result)
     }
 
-    pub fn symbolicate_stacktraces(
-        &self,
-        request: SymbolicateStacktraces,
-    ) -> Result<RequestId, SymbolicationError> {
+    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
         self.create_symbolication_request(|| self.do_symbolicate(request))
     }
-}
 
-/// Status poll request.
-#[derive(Clone, Debug)]
-pub struct GetSymbolicationStatus {
-    /// The identifier of the symbolication task.
-    pub request_id: RequestId,
-    /// An optional timeout, after which the request will yield a result.
+    /// Polls the status for a started symbolication task.
     ///
-    /// If this timeout is not set, symbolication will continue until a result is ready (which is
-    /// either an error or success). If this timeout is set and no result is ready, a `pending`
-    /// status is returned.
-    pub timeout: Option<u64>,
-}
-
-impl SymbolicationActor {
-    pub fn get_symbolication_status(
+    /// If the timeout is set and no result is ready within the given time, a `pending` status is
+    pub fn get_response(
         &self,
-        request: GetSymbolicationStatus,
-    ) -> impl Future<Item = Option<SymbolicationResponse>, Error = SymbolicationError> {
-        let request_id = request.request_id;
-
-        if let Some(channel) = self.requests.read().get(&request_id) {
-            Either::A(
-                self.wrap_response_channel(request_id, request.timeout, channel.clone())
+        request_id: RequestId,
+        timeout: Option<u64>,
+    ) -> ResponseFuture<Option<SymbolicationResponse>, SymbolicationError> {
+        let channel_opt = self.requests.lock().get(&request_id).cloned();
+        match channel_opt {
+            Some(channel) => Box::new(
+                self.wrap_response_channel(request_id, timeout, channel)
                     .map(Some),
-            )
-        } else {
-            // This is okay to occur during deploys, but if it happens all the time we have a state
-            // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
-            // scopes).
-            metric!(counter("symbolication.request_id_unknown") += 1);
-            Either::B(Ok(None).into_future())
+            ),
+            None => {
+                // This is okay to occur during deploys, but if it happens all the time we have a state
+                // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
+                // scopes).
+                metric!(counter("symbolication.request_id_unknown") += 1);
+                Box::new(future::ok(None))
+            }
         }
     }
 }
 
 type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct MinidumpState {
-    timestamp: u64,
+    timestamp: DateTime<Utc>,
     system_info: SystemInfo,
     crashed: bool,
     crash_reason: String,
@@ -972,30 +1063,55 @@ impl MinidumpState {
 }
 
 impl SymbolicationActor {
+    /// Extract the modules from a minidump.
+    ///
+    /// The modules are needed before we know which DIFs are needed to stackwalk this
+    /// minidump.  The minidumps are processed in a subprocess to avoid crashes from the
+    /// native library bringing down symbolicator.
     fn get_referenced_modules_from_minidump(
         &self,
         minidump: Bytes,
     ) -> ResponseFuture<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
+        let pool = self.spawnpool.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = future::lazy(move || {
-            log::debug!("Processing minidump ({} bytes)", minidump.len());
-            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-            let state = ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
+            let spawn_time = std::time::SystemTime::now();
+            let spawn_result = pool.spawn(
+                (minidump.clone(), spawn_time),
+                |(minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                    if let Ok(duration) = spawn_time.elapsed() {
+                        metric!(timer("minidump.modules.spawn.duration") = duration);
+                    }
+                    log::debug!("Processing minidump ({} bytes)", minidump.len());
+                    metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
+                    let state =
+                        ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
-            let os_name = state.system_info().os_name();
-            let object_type = get_object_type_from_minidump(&os_name).to_owned();
+                    let os_name = state.system_info().os_name();
+                    let object_type = get_object_type_from_minidump(&os_name).to_owned();
 
-            let cfi_modules = state
-                .referenced_modules()
-                .into_iter()
-                .filter_map(|code_module| {
-                    Some((
-                        code_module.id()?,
-                        object_info_from_minidump_module(object_type, code_module),
-                    ))
-                })
-                .collect();
+                    let cfi_modules = state
+                        .referenced_modules()
+                        .into_iter()
+                        .filter_map(|code_module| {
+                            Some((
+                                code_module.id()?,
+                                object_info_from_minidump_module(object_type, code_module),
+                            ))
+                        })
+                        .collect();
 
-            Ok(cfi_modules)
+                    Ok(procspawn::serde::Json(cfi_modules))
+                },
+            );
+
+            Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(20),
+                "minidump.modules.spawn.error",
+                minidump,
+                diagnostics_cache,
+            )
         });
 
         let future = self
@@ -1003,10 +1119,89 @@ impl SymbolicationActor {
             .spawn_handle(lazy.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .map_err(|_| SymbolicationError::Canceled)
             .flatten();
 
         Box::new(future)
+    }
+
+    /// Join a procspawn handle with a timeout.
+    ///
+    /// This handles the procspawn result, makes sure to appropriately log any failures and
+    /// save the minidump for debugging.  Returns a simple result converted to the
+    /// `SymbolicationError`.
+    fn join_procspawn<T, E>(
+        handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
+        timeout: Duration,
+        metric: &str,
+        minidump: Bytes,
+        minidump_cache: crate::cache::Cache,
+    ) -> Result<T, SymbolicationError>
+    where
+        T: Serialize + DeserializeOwned,
+        E: Into<SymbolicationError> + Serialize + DeserializeOwned,
+    {
+        match handle.join_timeout(timeout) {
+            Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
+            Ok(Err(err)) => Err(err.into()),
+            Err(perr) => {
+                let reason = if perr.is_timeout() {
+                    "timeout"
+                } else if perr.is_panic() {
+                    "panic"
+                } else if perr.is_remote_close() {
+                    "remote-close"
+                } else if perr.is_cancellation() {
+                    "canceled"
+                } else {
+                    "unknown"
+                };
+                let kind = if perr.is_timeout() {
+                    SymbolicationError::Timeout
+                } else {
+                    SymbolicationError::Canceled
+                };
+                metric!(counter(metric) += 1, "reason" => reason);
+                if let SymbolicationError::Canceled = kind {
+                    Self::save_minidump(minidump, minidump_cache)
+                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
+                        .map(|r| {
+                            if let Some(path) = r {
+                                sentry::configure_scope(|scope| {
+                                    scope.set_extra(
+                                        "crashed_minidump",
+                                        sentry::protocol::Value::String(
+                                            path.to_string_lossy().to_string(),
+                                        ),
+                                    );
+                                });
+                            }
+                        })
+                        .ok();
+                }
+                Err(kind)
+            }
+        }
+    }
+
+    /// Save a minidump to temporary location.
+    fn save_minidump(
+        minidump: Bytes,
+        failed_cache: crate::cache::Cache,
+    ) -> anyhow::Result<Option<PathBuf>> {
+        if let Some(dir) = failed_cache.cache_dir() {
+            std::fs::create_dir_all(dir)?;
+            let tmp = tempfile::Builder::new()
+                .prefix("minidump")
+                .suffix(".dmp")
+                .tempfile_in(dir)?;
+            tmp.as_file().write_all(&*minidump)?;
+            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
+            Ok(Some(path))
+        } else {
+            log::debug!("No diagnostics retention configured, not saving minidump");
+            Ok(None)
+        }
     }
 
     fn load_cfi_caches(
@@ -1042,148 +1237,209 @@ impl SymbolicationActor {
         sources: Arc<Vec<SourceConfig>>,
         cfi_results: Vec<CfiCacheResult>,
     ) -> ResponseFuture<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
-        let stackwalk_future = future::lazy(move || {
-            let mut frame_info_map = FrameInfoMap::new();
-            let mut unwind_statuses = BTreeMap::new();
-            let mut object_features = BTreeMap::new();
+        let mut unwind_statuses = BTreeMap::new();
+        let mut object_features = BTreeMap::new();
+        let mut frame_info_map = BTreeMap::new();
 
-            for (code_module_id, result) in &cfi_results {
-                let cache_file = match result {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::info!(
-                            "Error while fetching cficache: {}",
-                            LogError(&ArcFail(e.clone()))
-                        );
-                        unwind_statuses.insert(code_module_id, (&**e).into());
-                        continue;
-                    }
-                };
-
-                // NB: Always collect features, regardless of whether we fail to parse them or not.
-                // This gives users the feedback that information is there but potentially not
-                // processable by symbolicator.
-                object_features.insert(code_module_id, cache_file.features());
-
-                log::trace!("Loading cficache");
-                let cfi_cache = match cache_file.parse() {
-                    Ok(Some(x)) => x,
-                    Ok(None) => {
-                        unwind_statuses.insert(code_module_id, ObjectFileStatus::Missing);
-                        continue;
-                    }
-                    Err(e) => {
-                        log::warn!("Error while parsing cficache: {}", LogError(&e));
-                        unwind_statuses.insert(code_module_id, (&e).into());
-                        continue;
-                    }
-                };
-
-                unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
-                frame_info_map.insert(code_module_id.clone(), cfi_cache);
-            }
-
-            let process_state = ProcessState::from_minidump(
-                &ByteView::from_slice(&minidump),
-                Some(&frame_info_map),
-            )?;
-
-            let minidump_system_info = process_state.system_info();
-            let os_name = minidump_system_info.os_name();
-            let os_version = minidump_system_info.os_version();
-            let os_build = minidump_system_info.os_build();
-            let cpu_family = minidump_system_info.cpu_family();
-            let cpu_arch = match cpu_family.parse() {
-                Ok(arch) => arch,
-                Err(_) => {
-                    if !cpu_family.is_empty() {
-                        let msg = format!("Unknown minidump arch: {}", cpu_family);
-                        sentry::capture_message(&msg, sentry::Level::Error);
-                    }
-
-                    Default::default()
+        for (code_module_id, result) in &cfi_results {
+            let cache_file = match result {
+                Ok(x) => x,
+                Err(e) => {
+                    log::debug!("Error while fetching cficache: {}", LogError(e.as_ref()));
+                    unwind_statuses.insert(*code_module_id, (&**e).into());
+                    continue;
                 }
             };
 
-            let object_type = get_object_type_from_minidump(&os_name).to_owned();
+            // NB: Always collect features, regardless of whether we fail to parse them or not.
+            // This gives users the feedback that information is there but potentially not
+            // processable by symbolicator.
+            object_features.insert(*code_module_id, cache_file.features());
 
-            let modules = process_state
-                .modules()
-                .into_iter()
-                .filter_map(|code_module| {
-                    let mut info: CompleteObjectInfo =
-                        object_info_from_minidump_module(object_type, code_module).into();
-
-                    let status = unwind_statuses
-                        .get(&code_module.id()?)
-                        .cloned()
-                        .unwrap_or(ObjectFileStatus::Unused);
-
-                    metric!(
-                        counter("symbolication.unwind_status") += 1,
-                        "status" => status.name()
-                    );
-                    info.unwind_status = Some(status);
-
-                    let features = object_features
-                        .get(&code_module.id()?)
-                        .copied()
-                        .unwrap_or_default();
-
-                    info.features.merge(features);
-
-                    Some(info)
-                })
-                .collect();
-
-            let minidump_state = MinidumpState {
-                timestamp: process_state.timestamp(),
-                system_info: SystemInfo {
-                    os_name: normalize_minidump_os_name(&os_name).to_owned(),
-                    os_version,
-                    os_build,
-                    cpu_arch,
-                    device_model: String::default(),
-                },
-                crashed: process_state.crashed(),
-                crash_reason: process_state.crash_reason(),
-                assertion: process_state.assertion(),
-            };
-
-            let requesting_thread_index: Option<usize> =
-                process_state.requesting_thread().try_into().ok();
-
-            let threads = process_state.threads();
-            let mut stacktraces = Vec::with_capacity(threads.len());
-            for (index, thread) in threads.iter().enumerate() {
-                let registers = match thread.frames().get(0) {
-                    Some(frame) => map_symbolic_registers(frame.registers(cpu_arch)),
-                    None => Registers::new(),
-                };
-
-                let frames = thread
-                    .frames()
-                    .iter()
-                    .map(|frame| RawFrame {
-                        instruction_addr: HexValue(frame.return_address(cpu_arch)),
-                        package: frame.module().map(CodeModule::code_file),
-                        trust: frame.trust(),
-                        ..RawFrame::default()
-                    })
-                    // Trim infinite recursions explicitly because those do not
-                    // correlate to minidump size. Every other kind of bloated
-                    // input data we know is already trimmed/rejected by raw
-                    // byte size alone.
-                    .take(20000)
-                    .collect();
-
-                stacktraces.push(RawStacktrace {
-                    is_requesting: requesting_thread_index.map(|r| r == index),
-                    thread_id: Some(thread.thread_id().into()),
-                    registers,
-                    frames,
-                });
+            match cache_file.status() {
+                CacheStatus::Negative => {
+                    unwind_statuses.insert(*code_module_id, ObjectFileStatus::Missing);
+                }
+                CacheStatus::Malformed => {
+                    let e = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                    log::warn!("Error while parsing cficache: {}", LogError(&e));
+                    unwind_statuses.insert(*code_module_id, (&e).into());
+                }
+                CacheStatus::Positive => {
+                    frame_info_map.insert(*code_module_id, cache_file.path().to_owned());
+                }
             }
+        }
+
+        let pool = self.spawnpool.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
+        let lazy = future::lazy(move || {
+            let spawn_time = std::time::SystemTime::now();
+            let spawn_result =
+                pool.spawn(
+                    (
+                        frame_info_map,
+                        object_features,
+                        unwind_statuses,
+                        minidump.clone(),
+                        spawn_time,
+                    ),
+                    |(
+                        frame_info_map,
+                        object_features,
+                        mut unwind_statuses,
+                        minidump,
+                        spawn_time,
+                    )|
+                     -> Result<_, ProcessMinidumpError> {
+                        if let Ok(duration) = spawn_time.elapsed() {
+                            metric!(timer("minidump.stackwalk.spawn.duration") = duration);
+                        }
+                        let mut cfi = BTreeMap::new();
+                        for (code_module_id, cfi_path) in frame_info_map {
+                            let result = ByteView::open(cfi_path)
+                                .map_err(CfiCacheError::Io)
+                                .and_then(|bytes| Ok(CfiCache::from_bytes(bytes)?));
+
+                            match result {
+                                Ok(cache) => {
+                                    unwind_statuses.insert(code_module_id, ObjectFileStatus::Found);
+                                    cfi.insert(code_module_id, cache);
+                                }
+                                Err(e) => {
+                                    log::warn!("Error while parsing cficache: {}", LogError(&e));
+                                    unwind_statuses.insert(code_module_id, (&e).into());
+                                }
+                            }
+                        }
+
+                        let minidump = ByteView::from_slice(&minidump);
+                        let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+
+                        let minidump_system_info = process_state.system_info();
+                        let os_name = minidump_system_info.os_name();
+                        let os_version = minidump_system_info.os_version();
+                        let os_build = minidump_system_info.os_build();
+                        let cpu_family = minidump_system_info.cpu_family();
+                        let cpu_arch = match cpu_family.parse() {
+                            Ok(arch) => arch,
+                            Err(_) => {
+                                if !cpu_family.is_empty() {
+                                    let msg = format!("Unknown minidump arch: {}", cpu_family);
+                                    sentry::capture_message(&msg, sentry::Level::Error);
+                                }
+
+                                Default::default()
+                            }
+                        };
+
+                        let object_type = get_object_type_from_minidump(&os_name).to_owned();
+
+                        let mut module_builder = process_state
+                            .modules()
+                            .into_iter()
+                            .map(|code_module| {
+                                let mut info: CompleteObjectInfo =
+                                    object_info_from_minidump_module(object_type, code_module)
+                                        .into();
+
+                                let module_id = code_module.id();
+
+                                let status = match module_id {
+                                    Some(id) => {
+                                        unwind_statuses.get(&id).copied().unwrap_or_default()
+                                    }
+                                    // TODO: Emit a custom status for code modules without debug_id
+                                    None => ObjectFileStatus::Missing,
+                                };
+
+                                metric!(
+                                    counter("symbolication.unwind_status") += 1,
+                                    "status" => status.name()
+                                );
+                                info.unwind_status = Some(status);
+
+                                let features = match module_id {
+                                    Some(id) => {
+                                        object_features.get(&id).copied().unwrap_or_default()
+                                    }
+                                    None => Default::default(),
+                                };
+
+                                info.features.merge(features);
+
+                                info
+                            })
+                            .collect::<CodeModulesBuilder>();
+
+                        let minidump_state = MinidumpState {
+                            timestamp: Utc.timestamp(
+                                process_state.timestamp().try_into().unwrap_or_default(),
+                                0,
+                            ),
+                            system_info: SystemInfo {
+                                os_name: normalize_minidump_os_name(&os_name).to_owned(),
+                                os_version,
+                                os_build,
+                                cpu_arch,
+                                device_model: String::default(),
+                            },
+                            crashed: process_state.crashed(),
+                            crash_reason: process_state.crash_reason(),
+                            assertion: process_state.assertion(),
+                        };
+
+                        let requesting_thread_index: Option<usize> =
+                            process_state.requesting_thread().try_into().ok();
+                        let threads = process_state.threads();
+                        let mut stacktraces = Vec::with_capacity(threads.len());
+                        for (index, thread) in threads.iter().enumerate() {
+                            let registers = match thread.frames().get(0) {
+                                Some(frame) => map_symbolic_registers(frame.registers(cpu_arch)),
+                                None => Registers::new(),
+                            };
+
+                            // Trim infinite recursions explicitly because those do not
+                            // correlate to minidump size. Every other kind of bloated
+                            // input data we know is already trimmed/rejected by raw
+                            // byte size alone.
+                            let frame_count = thread.frames().len().min(20000);
+                            let mut frames = Vec::with_capacity(frame_count);
+                            for frame in thread.frames().iter().take(frame_count) {
+                                let return_address = frame.return_address(cpu_arch);
+                                module_builder.mark_referenced(return_address);
+
+                                frames.push(RawFrame {
+                                    instruction_addr: HexValue(return_address),
+                                    package: frame.module().map(CodeModule::code_file),
+                                    trust: frame.trust(),
+                                    ..RawFrame::default()
+                                });
+                            }
+
+                            stacktraces.push(RawStacktrace {
+                                is_requesting: requesting_thread_index.map(|r| r == index),
+                                thread_id: Some(thread.thread_id().into()),
+                                registers,
+                                frames,
+                            });
+                        }
+
+                        Ok(procspawn::serde::Json((
+                            module_builder.build(),
+                            stacktraces,
+                            minidump_state,
+                        )))
+                    },
+                );
+
+            let (modules, stacktraces, minidump_state) = Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(60),
+                "minidump.stackwalk.spawn.error",
+                minidump,
+                diagnostics_cache,
+            )?;
 
             let request = SymbolicateStacktraces {
                 modules,
@@ -1198,11 +1454,17 @@ impl SymbolicationActor {
 
         let future = self
             .threadpool
-            .spawn_handle(stackwalk_future.sentry_hub_current().compat())
+            .spawn_handle(lazy.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
-            .flatten();
+            .map_err(|_| SymbolicationError::Canceled)
+            .flatten()
+            .then(move |x| {
+                // keep the results until symbolication has finished to ensure we don't drop
+                // temporary files prematurely.
+                drop(cfi_results);
+                x
+            });
 
         Box::new(future)
     }
@@ -1216,10 +1478,7 @@ impl SymbolicationActor {
     {
         future_metrics!(
             "minidump_stackwalk",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into()
-            )),
+            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             async move {
                 let sources = Arc::new(sources);
 
@@ -1265,7 +1524,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> Result<RequestId, SymbolicationError> {
+    ) -> RequestId {
         self.create_symbolication_request(|| {
             self.clone()
                 .do_process_minidump(scope, minidump, sources)
@@ -1277,7 +1536,7 @@ impl SymbolicationActor {
 
 #[derive(Debug)]
 struct AppleCrashReportState {
-    timestamp: Option<u64>,
+    timestamp: Option<DateTime<Utc>>,
     system_info: SystemInfo,
     crash_reason: Option<String>,
     crash_details: Option<String>,
@@ -1410,7 +1669,7 @@ impl SymbolicationActor {
                 .or_else(|| metadata.remove("Exception Codes"));
 
             let state = AppleCrashReportState {
-                timestamp: report.timestamp.map(|t| t.timestamp() as u64),
+                timestamp: report.timestamp,
                 system_info,
                 crash_reason,
                 crash_details,
@@ -1424,15 +1683,12 @@ impl SymbolicationActor {
             .spawn_handle(parse_future.sentry_hub_current().compat())
             .boxed_local()
             .compat()
-            .map_err(|_| SymbolicationError::from(SymbolicationErrorKind::Canceled))
+            .map_err(|_| SymbolicationError::Canceled)
             .flatten();
 
         Box::new(future_metrics!(
-            "minidump_stackwalk",
-            Some((
-                Duration::from_secs(1200),
-                SymbolicationErrorKind::Timeout.into()
-            )),
+            "parse_apple_crash_report",
+            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             request_future,
         ))
     }
@@ -1458,7 +1714,7 @@ impl SymbolicationActor {
         scope: Scope,
         apple_crash_report: Bytes,
         sources: Vec<SourceConfig>,
-    ) -> Result<RequestId, SymbolicationError> {
+    ) -> RequestId {
         self.create_symbolication_request(|| {
             self.clone()
                 .do_process_apple_crash_report(scope, apple_crash_report, sources)
@@ -1484,19 +1740,19 @@ fn map_symbolic_registers(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<String, HexV
 
 impl From<&CfiCacheError> for ObjectFileStatus {
     fn from(e: &CfiCacheError) -> ObjectFileStatus {
-        match e.kind() {
-            CfiCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+        match e {
+            CfiCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
             // nb: Timeouts during download are also caught by Fetching
-            CfiCacheErrorKind::Timeout => ObjectFileStatus::Timeout,
-            CfiCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
+            CfiCacheError::Timeout => ObjectFileStatus::Timeout,
+            CfiCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
 
             _ => {
                 // Just in case we didn't handle an error properly,
                 // capture it here. If an error was captured with
-                // `capture_fail` further down in the callstack, it
+                // `capture_error` further down in the callstack, it
                 // should be explicitly handled here as a
-                // SymCacheErrorKind variant.
-                capture_fail(e);
+                // SymCacheError variant.
+                sentry::capture_error(e);
                 ObjectFileStatus::Other
             }
         }
@@ -1505,18 +1761,19 @@ impl From<&CfiCacheError> for ObjectFileStatus {
 
 impl From<&SymCacheError> for ObjectFileStatus {
     fn from(e: &SymCacheError) -> ObjectFileStatus {
-        match e.kind() {
-            SymCacheErrorKind::Fetching => ObjectFileStatus::FetchingFailed,
+        match e {
+            SymCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
             // nb: Timeouts during download are also caught by Fetching
-            SymCacheErrorKind::Timeout => ObjectFileStatus::Timeout,
-            SymCacheErrorKind::ObjectParsing => ObjectFileStatus::Malformed,
+            SymCacheError::Timeout => ObjectFileStatus::Timeout,
+            SymCacheError::Malformed => ObjectFileStatus::Malformed,
+            SymCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
             _ => {
                 // Just in case we didn't handle an error properly,
                 // capture it here. If an error was captured with
-                // `capture_fail` further down in the callstack, it
+                // `capture_error` further down in the callstack, it
                 // should be explicitly handled here as a
-                // SymCacheErrorKind variant.
-                capture_fail(e);
+                // SymCacheError variant.
+                sentry::capture_error(e);
                 ObjectFileStatus::Other
             }
         }
@@ -1528,8 +1785,6 @@ mod tests {
     use super::*;
 
     use std::fs;
-
-    use failure::Error;
 
     use crate::app::ServiceState;
     use crate::config::Config;
@@ -1551,7 +1806,7 @@ mod tests {
         let mut config = Config::default();
         config.cache_dir = Some(cache_dir.path().to_owned());
         config.connect_to_reserved_ips = true;
-        let service = ServiceState::create(config);
+        let service = ServiceState::create(config).unwrap();
 
         (service, cache_dir)
     }
@@ -1580,75 +1835,71 @@ mod tests {
         }
     }
 
-    fn get_symbolication_response(
-        service: &ServiceState,
-        request_id: RequestId,
-    ) -> Result<SymbolicationResponse, Error> {
-        let response_opt = test::block_fn(|| {
-            service
-                .symbolication()
-                .get_symbolication_status(GetSymbolicationStatus {
-                    request_id,
-                    timeout: None,
-                })
-        })?;
-
-        response_opt.ok_or_else(|| failure::err_msg("missing response"))
-    }
-
     #[test]
-    fn test_remove_bucket() -> Result<(), Error> {
+    fn test_remove_bucket() -> Result<(), SymbolicationError> {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request = get_symbolication_request(vec![source]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
+        let response = test::block_fn01(|| {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot!(response);
 
-        let request = get_symbolication_request(vec![]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
+        let response = test::block_fn01(|| {
+            let request = get_symbolication_request(vec![]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot!(response);
 
         Ok(())
     }
 
     #[test]
-    fn test_add_bucket() -> Result<(), Error> {
+    fn test_add_bucket() -> Result<(), SymbolicationError> {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request = get_symbolication_request(vec![]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
+        let response = test::block_fn01(|| {
+            let request = get_symbolication_request(vec![]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot!(response);
 
-        let request = get_symbolication_request(vec![source]);
-        let request_id = service.symbolication().symbolicate_stacktraces(request)?;
-        let response = get_symbolication_response(&service, request_id)?;
+        let response = test::block_fn01(|| {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot!(response);
 
         Ok(())
     }
 
-    fn stackwalk_minidump(path: &str) -> Result<(), Error> {
+    fn stackwalk_minidump(path: &str) -> Result<(), SymbolicationError> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let request_id = service.symbolication().process_minidump(
-            Scope::Global,
-            Bytes::from(fs::read(path)?),
-            vec![source],
-        )?;
+        let minidump = Bytes::from(fs::read(path)?);
+        let response = test::block_fn01(|| {
+            let symbolication = service.symbolication();
+            let request_id = symbolication.process_minidump(Scope::Global, minidump, vec![source]);
+            service.symbolication().get_response(request_id, None)
+        })?;
 
-        let response = get_symbolication_response(&service, request_id)?;
         insta::assert_yaml_snapshot!(response);
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
@@ -1663,35 +1914,37 @@ mod tests {
     }
 
     #[test]
-    fn test_minidump_windows() -> Result<(), Error> {
+    fn test_minidump_windows() -> Result<(), SymbolicationError> {
         stackwalk_minidump("./tests/fixtures/windows.dmp")
     }
 
     #[test]
-    fn test_minidump_macos() -> Result<(), Error> {
+    fn test_minidump_macos() -> Result<(), SymbolicationError> {
         stackwalk_minidump("./tests/fixtures/macos.dmp")
     }
 
     #[test]
-    fn test_minidump_linux() -> Result<(), Error> {
+    fn test_minidump_linux() -> Result<(), SymbolicationError> {
         stackwalk_minidump("./tests/fixtures/linux.dmp")
     }
 
     #[test]
-    fn test_apple_crash_report() -> Result<(), Error> {
+    fn test_apple_crash_report() -> Result<(), SymbolicationError> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
-        let request_id = service.symbolication().process_apple_crash_report(
-            Scope::Global,
-            report_file,
-            vec![source],
-        )?;
+        let response = test::block_fn01(|| {
+            let request_id = service.symbolication().process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                vec![source],
+            );
 
-        let response = get_symbolication_response(&service, request_id)?;
+            service.symbolication().get_response(request_id, None)
+        })?;
+
         insta::assert_yaml_snapshot!(response);
-
         Ok(())
     }
 
@@ -1717,5 +1970,102 @@ mod tests {
         assert_eq!(a, 0);
         assert_eq!(b, &info);
         assert!(c.is_none());
+    }
+
+    fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {
+        RawObjectInfo {
+            ty: ObjectType::Elf,
+            code_id: None,
+            code_file: None,
+            debug_id: Some(uuid::Uuid::new_v4().to_string()).filter(|_| has_id),
+            debug_file: None,
+            image_addr: HexValue(addr),
+            image_size: size,
+        }
+        .into()
+    }
+
+    #[test]
+    fn test_code_module_builder_empty() {
+        let modules = vec![];
+
+        let valid = CodeModulesBuilder::new(modules.clone()).build();
+        assert_eq!(valid, modules);
+    }
+
+    #[test]
+    fn test_code_module_builder_valid() {
+        let modules = vec![
+            create_object_info(true, 0x1000, Some(0x1000)),
+            create_object_info(true, 0x3000, Some(0x1000)),
+        ];
+
+        let valid = CodeModulesBuilder::new(modules.clone()).build();
+        assert_eq!(valid, modules);
+    }
+
+    #[test]
+    fn test_code_module_builder_unreferenced() {
+        let valid_object = create_object_info(true, 0x1000, Some(0x1000));
+        let modules = vec![
+            valid_object.clone(),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let valid = CodeModulesBuilder::new(modules).build();
+        assert_eq!(valid, vec![valid_object]);
+    }
+
+    #[test]
+    fn test_code_module_builder_referenced() {
+        let modules = vec![
+            create_object_info(true, 0x1000, Some(0x1000)),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules.clone());
+        builder.mark_referenced(0x3500);
+        let valid = builder.build();
+        assert_eq!(valid, modules);
+    }
+
+    #[test]
+    fn test_code_module_builder_miss_first() {
+        let modules = vec![
+            create_object_info(false, 0x1000, Some(0x1000)),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules);
+        builder.mark_referenced(0xfff);
+        let valid = builder.build();
+        assert_eq!(valid, vec![]);
+    }
+
+    #[test]
+    fn test_code_module_builder_gap() {
+        let modules = vec![
+            create_object_info(false, 0x1000, Some(0x1000)),
+            create_object_info(false, 0x3000, Some(0x1000)),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules);
+        builder.mark_referenced(0x2800); // in the gap between both modules
+        let valid = builder.build();
+        assert_eq!(valid, vec![]);
+    }
+
+    #[test]
+    fn test_code_module_builder_implicit_size() {
+        let valid_object = create_object_info(false, 0x1000, None);
+        let modules = vec![
+            valid_object.clone(),
+            create_object_info(false, 0x3000, None),
+        ];
+
+        let mut builder = CodeModulesBuilder::new(modules);
+        builder.mark_referenced(0x2800); // in the gap between both modules
+        let valid = builder.build();
+        assert_eq!(valid, vec![valid_object]);
     }
 }

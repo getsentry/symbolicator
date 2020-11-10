@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use actix_web::App;
+use anyhow::{Context, Result};
 
 use crate::actors::{
     cficaches::CfiCacheActor, objects::ObjectsActor, symbolication::SymbolicationActor,
@@ -9,7 +10,8 @@ use crate::actors::{
 };
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::utils::futures::ThreadPool;
+use crate::services::download::DownloadService;
+use crate::utils::futures::{RemoteThread, ThreadPool};
 use crate::utils::http;
 
 /// The shared state for the service.
@@ -25,10 +27,12 @@ pub struct ServiceState {
     objects: ObjectsActor,
     /// The config object.
     config: Arc<Config>,
+    /// The download service.
+    download_svc: Arc<DownloadService>,
 }
 
 impl ServiceState {
-    pub fn create(config: Config) -> Self {
+    pub fn create(config: Config) -> Result<Self> {
         let config = Arc::new(config);
 
         if !config.connect_to_reserved_ips {
@@ -37,28 +41,44 @@ impl ServiceState {
 
         let cpu_threadpool = ThreadPool::new();
         let io_threadpool = ThreadPool::new();
+        let io_thread = RemoteThread::new();
 
-        let caches = Caches::new(&config);
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, io_threadpool.clone());
+        let download_svc = Arc::new(DownloadService::new(io_thread, config.clone()));
+
+        let caches = Caches::from_config(&config).context("failed to create local caches")?;
+        caches
+            .clear_tmp(&config)
+            .context("failed to clear tmp caches")?;
+        let objects = ObjectsActor::new(
+            caches.object_meta,
+            caches.objects,
+            io_threadpool.clone(),
+            download_svc.clone(),
+        );
         let symcaches =
             SymCacheActor::new(caches.symcaches, objects.clone(), cpu_threadpool.clone());
         let cficaches =
             CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_threadpool.clone());
+        let spawnpool = procspawn::Pool::new(config.processing_pool_size)
+            .context("failed to create process pool")?;
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
+            caches.diagnostics,
             cpu_threadpool.clone(),
+            spawnpool,
         );
 
-        Self {
+        Ok(Self {
             cpu_threadpool,
             io_threadpool,
             symbolication,
             objects,
             config,
-        }
+            download_svc,
+        })
     }
 
     pub fn io_pool(&self) -> ThreadPool {

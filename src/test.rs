@@ -22,10 +22,11 @@ use std::sync::Arc;
 
 use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
+use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
-use crate::types::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
+use crate::sources::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
 
 pub use actix_web::test::*;
 pub use tempfile::TempDir;
@@ -104,9 +105,13 @@ pub(crate) fn tempdir() -> TempDir {
 /// error. The result of the future is then returned from this function
 /// call.
 ///
+/// This is provided rather than a `block_on()`-like interface to avoid accidentally calling
+/// a function which spawns before creating a future, which would attempt to spawn before
+/// actix is initialised.
+///
 /// Note that this function is intended to be used only for testing purpose.
 /// This function panics on nested call.
-pub fn block_fn<F, R>(f: F) -> Result<R::Item, R::Error>
+pub fn block_fn01<F, R>(f: F) -> Result<R::Item, R::Error>
 where
     F: FnOnce() -> R,
     R: IntoFuture,
@@ -115,6 +120,22 @@ where
         let mut inner = cell.borrow_mut();
         inner.set_current();
         inner.runner().block_on(future::lazy(f))
+    })
+}
+
+/// Version of `block_fn` which works with std::future aka futures03.
+pub fn block_fn<F, R, T>(f: F) -> T
+where
+    F: FnOnce() -> R,
+    R: std::future::Future<Output = T>,
+{
+    SYSTEM.with(|cell| {
+        let mut inner = cell.borrow_mut();
+        inner.set_current();
+        inner
+            .runner()
+            .block_on(async move { f().await }.unit_error().boxed_local().compat())
+            .unwrap()
     })
 }
 
@@ -159,3 +180,6 @@ pub(crate) fn symbol_server() -> (TestServer, SourceConfig) {
 
     (server, source)
 }
+
+// make sure procspawn works.
+procspawn::enable_test_support!();

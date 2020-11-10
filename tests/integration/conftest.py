@@ -1,14 +1,16 @@
-import subprocess
-import uuid
-import time
-import socket
-import os
+import collections
 import json
+import os
+import socket
+import subprocess
+import threading
+import time
+import traceback
+import uuid
+
+import boto3
 import pytest
 import requests
-import threading
-import boto3
-
 from pytest_localserver.http import WSGIServer
 
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
@@ -38,6 +40,14 @@ def random_port():
 
 @pytest.fixture
 def background_process(request):
+    """Function to run a process in the background.
+
+    All args and kwargs are passed to subprocess.Popen and the process is terminated in the
+    fixture finaliser.
+
+    The return value of the function is the subprocess.Popen object.
+    """
+
     def inner(*args, **kwargs):
         p = subprocess.Popen(*args, **kwargs)
         request.addfinalizer(p.kill)
@@ -73,9 +83,9 @@ class Service:
                 break
             except Exception:
                 time.sleep(backoff)
-                if backoff > 10:
+                if backoff > 100:  # 10s
                     raise
-                backoff *= 2
+                backoff += 0.1
 
     def wait_healthcheck(self):
         self.wait_http("/healthcheck")
@@ -87,6 +97,13 @@ class Symbolicator(Service):
 
 @pytest.fixture
 def symbolicator(tmpdir, request, random_port, background_process):
+    """Function to run a symbolicator instance.
+
+    All kwargs are written to the config file of the symbolicator instance.
+
+    The return value of the function is a :class:`Symbolicator` object.
+    """
+
     def inner(**config_data):
         config = tmpdir.join("config")
         port = random_port()
@@ -107,73 +124,130 @@ def symbolicator(tmpdir, request, random_port, background_process):
 
 
 class HitCounter:
-    def __init__(self, url, hits):
-        self.url = url
-        self.hits = hits
+    """A simple WSGI app which will count the number of times a URL path is served.
+
+    Several URL paths are recognised:
+
+    `/redirect/{tail}`: This redirects to `/{tail}`.
+
+    `/msdl/{tail}`: This proxies the request to
+       https://msdl.microsoft.com/download/symbols/{tail}.
+
+    `/respond_statuscode/{num}`: returns and empty response with the given status code.
+
+    `/garbage_data/{tail}`: returns 200 OK with some garbage data in the response body.
+
+    Any other request will return 500 Internal Server Error and will be stored in
+    self.errors.
+
+    This object itself is a context manager, when entered the WSGI server will start serving,
+    when exited it will stop serving.
+
+    Attributes:
+
+    :ivar url: The URL to reach the server, only available while the server is running.
+    :ivar hits: Dictionary of URL paths to hit counters.
+    :ivar before_request: Can be optionally set to execute a function before the request is
+       handled.
+    """
+
+    def __init__(self):
+        self.url = None
+        self.hits = collections.defaultdict(lambda: 0)
         self.before_request = None
+        self._lock = threading.Lock()
+        self.errors = []
+        self._server = WSGIServer(application=self._app, threaded=True)
 
+    def __enter__(self):
+        self._server.start()
+        self.url = self._server.url
 
-@pytest.fixture
-def hitcounter():
-    errors = []
-    hits = {}
-    hitlock = threading.Lock()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._server.stop()
+        self.url = None
 
-    rv = None
-
-    def app(environ, start_response):
-        if rv.before_request:
-            rv.before_request()
+    def _app(self, environ, start_response):
+        """The WSGI app."""
+        if self.before_request:
+            self.before_request()
 
         try:
             path = environ["PATH_INFO"]
-            with hitlock:
-                hits.setdefault(path, 0)
-                hits[path] += 1
-
-            if path.startswith("/redirect/"):
-                path = path[len("/redirect") :]
-                start_response("302 Found", [("Location", path)])
-                return [b""]
-            elif path.startswith("/msdl/"):
-                path = path[len("/msdl/") :]
-
-                with requests.get(
-                    f"https://msdl.microsoft.com/download/symbols/{path}",
-                    allow_redirects=False,  # test redirects with msdl
-                ) as r:
-                    start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
-                    return [r.content]
-            elif path.startswith("/respond_statuscode/"):
-                statuscode = int(path.split("/")[2])
-                start_response(f"{statuscode} BOGUS", [])
-                return [b""]
-
-            elif path.startswith("/garbage_data/"):
-                start_response("200 OK", [])
-                return [b"bogus"]
-            else:
-                raise AssertionError("Bad path: {}".format(path))
+            with self._lock:
+                self.hits[path] += 1
+            body = self._handle_path(path, start_response)
         except Exception as e:
-            errors.append(e)
+            self.errors.append(e)
             start_response("500 Internal Server Error", [])
             return [b"error"]
+        else:
+            return body
 
-    server = WSGIServer(application=app, threaded=True)
-    server.start()
+    @staticmethod
+    def _handle_path(path, start_response):
+        if path.startswith("/redirect/"):
+            path = path[len("/redirect") :]
+            start_response("302 Found", [("Location", path)])
+            return [b""]
+        elif path.startswith("/msdl/"):
+            print(f"got requested: {path}")
+            path = path[len("/msdl/") :]
+            print(f"proxying {path}")
+            with requests.get(
+                f"https://msdl.microsoft.com/download/symbols/{path}",
+                allow_redirects=False,  # test redirects with msdl
+            ) as r:
+                print(f"status code: {r.status_code}")
+                start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
+                return [r.content]
+        elif path.startswith("/respond_statuscode/"):
+            statuscode = int(path.split("/")[2])
+            start_response(f"{statuscode} BOGUS", [])
+            return [b""]
 
-    rv = HitCounter(url=server.url, hits=hits)
-    yield rv
-
-    server.stop()
-    for error in errors:
-        raise error
+        elif path.startswith("/garbage_data/"):
+            start_response("200 OK", [])
+            return [b"bogus"]
+        else:
+            raise AssertionError("Bad path: {}".format(path))
 
 
 @pytest.fixture
-def s3():
+def hitcounter(request):
+    """Running HitCounter server.
+
+    This fixture sets up a running hitcounter server and will fail the test if there was any
+    error in it's request handling.
+    """
+    app = HitCounter()
+
+    def fail_on_errors():
+        if app.errors:
+            tracebacks = [
+                "".join(traceback.format_exception(type(exc), exc, None))
+                for exc in app.errors
+            ]
+            pytest.fail(
+                "{n} errors in hitcounter server:\n\n{failures}".format(
+                    n=len(app.errors), failures="\n\n".join(tracebacks)
+                )
+            )
+
+    mark = pytest.mark.extra_failure_checks(checks=[fail_on_errors])
+    request.node.add_marker(mark)
+    with app:
+        yield app
+
+
+@pytest.fixture
+def s3(pytestconfig):
     if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-        pytest.skip("No AWS credentials")
+        msg = "No AWS credentials"
+        if pytestconfig.getoption("ci"):
+            pytest.fail(msg)
+        else:
+            pytest.skip(msg)
     return boto3.resource(
         "s3",
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -199,14 +273,19 @@ def s3_bucket_config(s3):
 
 
 @pytest.fixture
-def ios_bucket_config():
+def ios_bucket_config(pytestconfig):
     if not GCS_PRIVATE_KEY or not GCS_CLIENT_EMAIL:
-        pytest.skip("No GCS credentials")
+        msg = "No GCS credentials"
+        if pytestconfig.getoption("ci"):
+            pytest.fail(msg)
+        else:
+            pytest.skip(msg)
     yield {
         "id": "ios",
         "type": "gcs",
-        "bucket": "sentryio-system-symbols",
+        "bucket": "sentryio-system-symbols-0",
         "private_key": GCS_PRIVATE_KEY,
         "client_email": GCS_CLIENT_EMAIL,
+        "layout": {"type": "unified"},
         "prefix": "/ios",
     }

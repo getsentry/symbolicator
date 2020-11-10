@@ -12,6 +12,14 @@
       "args": ["run", "-c", "local.yml"],
       "cwd": "${workspaceFolder}",
       "preLaunchTask": "cargo build"
+    },
+    {
+      "type": "lldb",
+      "request": "attach",
+      "name": "Attach to running process",
+      "program": "${workspaceFolder}/target/debug/symbolicator",
+      "stopOnEntry": true,
+      "pid": "${command:pickMyProcess}"
     }
   ]
 }

@@ -2,18 +2,16 @@
 ///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
-use std::fs::{read_dir, remove_file, File, OpenOptions};
+use std::fs::{self, read_dir, remove_file, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use failure::Fail;
-use sentry::integrations::failure::capture_fail;
+use anyhow::{anyhow, Result};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
-use crate::logging::LogError;
 use crate::types::Scope;
 
 /// Content of cache items whose writing failed.
@@ -61,6 +59,10 @@ impl CacheStatus {
     }
 
     pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
+        let dir = path.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
+        })?;
+        fs::create_dir_all(dir)?;
         match self {
             CacheStatus::Positive => {
                 file.persist(path).map_err(|x| x.error)?;
@@ -78,18 +80,6 @@ impl CacheStatus {
     }
 }
 
-#[derive(Debug, Fail, derive_more::From)]
-pub enum CleanupError {
-    #[fail(display = "No caching configured! Did you provide a path to your config file?")]
-    NoCachingConfigured,
-
-    #[fail(display = "Not a file")]
-    NotAFile,
-
-    #[fail(display = "Failed to access filesystem")]
-    Io(#[fail(cause)] io::Error),
-}
-
 /// Utilities for a sym/cfi or object cache.
 #[derive(Debug, Clone)]
 pub struct Cache {
@@ -97,7 +87,18 @@ pub struct Cache {
     name: &'static str,
 
     /// Directory to use for storing cache items. Will be created if it does not exist.
+    ///
+    /// Leaving this as None will disable this cache.
     cache_dir: Option<PathBuf>,
+
+    /// Directory to use for temporary files.
+    ///
+    /// When writing a new file into the cache it is best to write it to a temporary file in
+    /// a sibling directory, once fully written it can then be atomically moved to the
+    /// actual location withing the `cache_dir`.
+    ///
+    /// Just like for `cache_dir` when this cache is disabled this will be `None`.
+    tmp_dir: Option<PathBuf>,
 
     /// Time when this process started.
     start_time: SystemTime,
@@ -107,17 +108,22 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn new<P: AsRef<Path>>(
+    pub fn from_config(
         name: &'static str,
-        cache_dir: Option<P>,
+        cache_dir: Option<PathBuf>,
+        tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
-    ) -> Self {
-        Cache {
+    ) -> io::Result<Self> {
+        if let Some(ref dir) = cache_dir {
+            std::fs::create_dir_all(dir)?;
+        }
+        Ok(Cache {
             name,
-            cache_dir: cache_dir.map(|x| x.as_ref().to_owned()),
+            cache_dir,
+            tmp_dir,
             start_time: SystemTime::now(),
             cache_config,
-        }
+        })
     }
 
     pub fn name(&self) -> &'static str {
@@ -125,15 +131,14 @@ impl Cache {
     }
 
     pub fn cache_dir(&self) -> Option<&Path> {
-        self.cache_dir.as_ref().map(|x| &**x)
+        self.cache_dir.as_deref()
     }
 
-    pub fn cleanup(&self) -> Result<(), CleanupError> {
+    pub fn cleanup(&self) -> Result<()> {
         log::info!("Cleaning up cache: {}", self.name);
-        let cache_dir = match self.cache_dir {
-            Some(ref x) => x.clone(),
-            None => return Err(CleanupError::NoCachingConfigured),
-        };
+        let cache_dir = self.cache_dir.clone().ok_or_else(|| {
+            anyhow!("no caching configured! Did you provide a path to your config file?")
+        })?;
 
         let mut directories = vec![cache_dir];
         while !directories.is_empty() {
@@ -153,8 +158,10 @@ impl Cache {
                 if path.is_dir() {
                     directories.push(path.to_owned());
                 } else if let Err(e) = self.try_cleanup_path(&path) {
-                    log::error!("Failed to clean up {}: {}", path.display(), LogError(&e));
-                    capture_fail(&e);
+                    sentry::with_scope(
+                        |scope| scope.set_extra("path", path.display().to_string().into()),
+                        || log::error!("Failed to clean cache file: {:?}", e),
+                    );
                 }
             }
         }
@@ -162,18 +169,15 @@ impl Cache {
         Ok(())
     }
 
-    fn try_cleanup_path(&self, path: &Path) -> Result<(), CleanupError> {
+    fn try_cleanup_path(&self, path: &Path) -> Result<()> {
         log::trace!("Checking {}", path.display());
-        if path.is_file() {
-            if catch_not_found(|| self.check_expiry(path))?.is_none() {
-                log::info!("Removing {}", path.display());
-                catch_not_found(|| remove_file(path))?;
-            }
-
-            Ok(())
-        } else {
-            Err(CleanupError::NotAFile)
+        anyhow::ensure!(path.is_file(), "not a file");
+        if catch_not_found(|| self.check_expiry(path))?.is_none() {
+            log::debug!("Removing {}", path.display());
+            catch_not_found(|| remove_file(path))?;
         }
+
+        Ok(())
     }
 
     /// Validate cache expiration of path. If cache should not be used,
@@ -219,7 +223,7 @@ impl Cache {
 
             let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
                 created_at.elapsed(),
-                self.cache_config.retry_malformed_after,
+                self.cache_config.retry_malformed_after(),
             ) {
                 elapsed > retry_malformed_after
             } else {
@@ -233,9 +237,9 @@ impl Cache {
         }
 
         let max_mtime = if is_negative {
-            self.cache_config.retry_misses_after
+            self.cache_config.retry_misses_after()
         } else {
-            self.cache_config.max_unused_for
+            self.cache_config.max_unused_for()
         };
 
         let mtime = if let Some(max_mtime) = max_mtime {
@@ -273,6 +277,17 @@ impl Cache {
 
             ByteView::open(path)
         })
+    }
+
+    /// Create a new temporary file to use in the cache.
+    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
+        match self.tmp_dir {
+            Some(ref path) => {
+                std::fs::create_dir_all(path)?;
+                Ok(tempfile::Builder::new().prefix("tmp").tempfile_in(path)?)
+            }
+            None => Ok(NamedTempFile::new()?),
+        }
     }
 }
 
@@ -314,31 +329,76 @@ pub struct Caches {
     pub object_meta: Cache,
     pub symcaches: Cache,
     pub cficaches: Cache,
+    pub diagnostics: Cache,
 }
 
 impl Caches {
-    pub fn new(config: &Config) -> Self {
-        Self {
+    pub fn from_config(config: &Config) -> io::Result<Self> {
+        let tmp_dir = config.cache_dir("tmp");
+        Ok(Self {
             objects: {
                 let path = config.cache_dir("objects");
-                Cache::new("objects", path, config.caches.downloaded)
+                Cache::from_config(
+                    "objects",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.downloaded.into(),
+                )?
             },
             object_meta: {
                 let path = config.cache_dir("object_meta");
-                Cache::new("object_meta", path, config.caches.derived)
+                Cache::from_config(
+                    "object_meta",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                )?
             },
             symcaches: {
                 let path = config.cache_dir("symcaches");
-                Cache::new("symcaches", path, config.caches.derived)
+                Cache::from_config(
+                    "symcaches",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                )?
             },
             cficaches: {
                 let path = config.cache_dir("cficaches");
-                Cache::new("cficaches", path, config.caches.derived)
+                Cache::from_config(
+                    "cficaches",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                )?
             },
-        }
+            diagnostics: {
+                let path = config.cache_dir("diagnostics");
+                Cache::from_config(
+                    "diagnostics",
+                    path,
+                    tmp_dir,
+                    config.caches.diagnostics.into(),
+                )?
+            },
+        })
     }
 
-    pub fn cleanup(&self) -> Result<(), CleanupError> {
+    /// Clear the temporary files.
+    ///
+    /// We need to do this on startup of the main symbolicator process to avoid accidentally
+    /// leaving temporary files which survive a hard crash.
+    pub fn clear_tmp(&self, config: &Config) -> io::Result<()> {
+        if let Some(ref tmp) = config.cache_dir("tmp") {
+            if tmp.exists() {
+                std::fs::remove_dir_all(tmp)?;
+            }
+            std::fs::create_dir_all(tmp)?;
+        }
+        Ok(())
+    }
+
+    pub fn cleanup(&self) -> Result<()> {
         self.objects.cleanup()?;
         self.object_meta.cleanup()?;
         self.symcaches.cleanup()?;
@@ -350,116 +410,183 @@ impl Caches {
 /// Entry function for the cleanup command.
 ///
 /// This will clean up all caches based on configured cache retention.
-pub fn cleanup(config: Config) -> Result<(), CleanupError> {
-    Caches::new(&config).cleanup()
+pub fn cleanup(config: Config) -> Result<()> {
+    Caches::from_config(&config)?.cleanup()
 }
 
 #[cfg(test)]
-fn tempdir() -> io::Result<tempfile::TempDir> {
-    tempfile::tempdir_in(".")
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn test_max_unused_for() -> Result<(), CleanupError> {
-    use std::fs::create_dir_all;
+    use std::fs::{self, create_dir_all};
     use std::io::Write;
     use std::thread::sleep;
 
-    let tempdir = tempdir()?;
-    create_dir_all(tempdir.path().join("foo"))?;
+    use crate::config::DerivedCacheConfig;
 
-    let cache = Cache::new(
-        "test",
-        Some(tempdir.path()),
-        CacheConfig {
-            max_unused_for: Some(Duration::from_millis(10)),
-            ..CacheConfig::default_derived()
-        },
-    );
+    fn tempdir() -> io::Result<tempfile::TempDir> {
+        tempfile::tempdir_in(".")
+    }
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(11));
+    #[test]
+    fn test_cache_dir_created() {
+        let basedir = tempdir().unwrap();
+        let cachedir = basedir.path().join("cache");
+        let _cache = Cache::from_config(
+            "test",
+            Some(cachedir.clone()),
+            None,
+            CacheConfig::Downloaded(Default::default()),
+        );
+        let fsinfo = fs::metadata(cachedir).unwrap();
+        assert!(fsinfo.is_dir());
+    }
 
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
-    cache.cleanup()?;
+    #[test]
+    fn test_caches_tmp_created() {
+        let basedir = tempdir().unwrap();
+        let cachedir = basedir.path().join("cache");
+        let tmpdir = cachedir.join("tmp");
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
+        let cfg = Config {
+            cache_dir: Some(cachedir),
+            ..Default::default()
+        };
+        let caches = Caches::from_config(&cfg).unwrap();
+        caches.clear_tmp(&cfg).unwrap();
 
-    basenames.sort();
+        let fsinfo = fs::metadata(tmpdir).unwrap();
+        assert!(fsinfo.is_dir());
+    }
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+    #[test]
+    fn test_caches_tmp_cleared() {
+        let basedir = tempdir().unwrap();
+        let cachedir = basedir.path().join("cache");
+        let tmpdir = cachedir.join("tmp");
 
-    Ok(())
-}
+        create_dir_all(&tmpdir).unwrap();
+        let spam = tmpdir.join("spam");
+        File::create(&spam).unwrap();
+        let fsinfo = fs::metadata(&spam).unwrap();
+        assert!(fsinfo.is_file());
 
-#[test]
-fn test_retry_misses_after() -> Result<(), CleanupError> {
-    use std::fs::create_dir_all;
-    use std::io::Write;
-    use std::thread::sleep;
+        let cfg = Config {
+            cache_dir: Some(cachedir),
+            ..Default::default()
+        };
+        let caches = Caches::from_config(&cfg).unwrap();
+        caches.clear_tmp(&cfg).unwrap();
 
-    let tempdir = tempdir()?;
-    create_dir_all(tempdir.path().join("foo"))?;
+        let fsinfo = fs::metadata(spam);
+        assert!(fsinfo.is_err());
+    }
 
-    let cache = Cache::new(
-        "test",
-        Some(tempdir.path()),
-        CacheConfig {
-            retry_misses_after: Some(Duration::from_millis(20)),
-            ..CacheConfig::default_derived()
-        },
-    );
+    #[test]
+    fn test_max_unused_for() -> Result<()> {
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
 
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(25));
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Derived(DerivedCacheConfig {
+                max_unused_for: Some(Duration::from_millis(10)),
+                ..Default::default()
+            }),
+        )?;
 
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
-    cache.cleanup()?;
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
+        sleep(Duration::from_millis(11));
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        cache.cleanup()?;
 
-    basenames.sort();
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+        basenames.sort();
 
-    Ok(())
-}
+        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
 
-#[test]
-fn test_cleanup_malformed() -> Result<(), CleanupError> {
-    use std::fs::create_dir_all;
-    use std::io::Write;
-    use std::thread::sleep;
+        Ok(())
+    }
 
-    let tempdir = tempdir()?;
-    create_dir_all(tempdir.path().join("foo"))?;
+    #[test]
+    fn test_retry_misses_after() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
 
-    // File has same amount of chars as "malformed", check that optimization works
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(20)),
+                ..Default::default()
+            }),
+        )?;
 
-    sleep(Duration::from_millis(10));
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
+        sleep(Duration::from_millis(25));
 
-    // Creation of this struct == "process startup"
-    let cache = Cache::new("test", Some(tempdir.path()), CacheConfig::default_derived());
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
+        cache.cleanup()?;
 
-    cache.cleanup()?;
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
 
-    let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
+        basenames.sort();
 
-    basenames.sort();
+        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+        Ok(())
+    }
 
-    Ok(())
+    #[test]
+    fn test_cleanup_malformed() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
+
+        // File has same amount of chars as "malformed", check that optimization works
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
+
+        sleep(Duration::from_millis(10));
+
+        // Creation of this struct == "process startup"
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Derived(Default::default()),
+        )?;
+
+        cache.cleanup()?;
+
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        basenames.sort();
+
+        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+        Ok(())
+    }
 }

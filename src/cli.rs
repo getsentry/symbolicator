@@ -1,29 +1,14 @@
 //! Exposes the command line application.
 use std::path::{Path, PathBuf};
 
-use failure::Fail;
+use anyhow::{Context, Result};
 use structopt::StructOpt;
 
-use crate::cache::{self, CleanupError};
-use crate::config::{Config, ConfigError};
+use crate::cache;
+use crate::config::Config;
 use crate::logging;
-use crate::server::{self, ServerError};
-
-/// An enum representing a CLI error.
-#[derive(Fail, Debug, derive_more::From)]
-pub enum CliError {
-    /// Indicates a config parsing error.
-    #[fail(display = "Failed loading config")]
-    Config(#[fail(cause)] ConfigError),
-
-    /// Indicates an error starting the server.
-    #[fail(display = "Failed start the server")]
-    Server(#[fail(cause)] ServerError),
-
-    /// Indicates an error while cleaning up caches.
-    #[fail(display = "Failed to clean up caches")]
-    Cleanup(#[fail(cause)] CleanupError),
-}
+use crate::metrics;
+use crate::server;
 
 fn get_crate_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -69,14 +54,14 @@ struct Cli {
 impl Cli {
     /// Returns the path to the configuration file.
     fn config(&self) -> Option<&Path> {
-        self.config.as_ref().map(PathBuf::as_path)
+        self.config.as_deref()
     }
 }
 
 /// Runs the main application.
-pub fn execute() -> Result<(), CliError> {
+pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
-    let config = Config::get(cli.config())?;
+    let config = Config::get(cli.config()).context("failed loading config")?;
 
     let _sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
@@ -85,11 +70,20 @@ pub fn execute() -> Result<(), CliError> {
     });
 
     logging::init_logging(&config);
-    sentry::integrations::panic::register_panic_handler();
+    if let Some(ref statsd) = config.metrics.statsd {
+        metrics::configure_statsd(&config.metrics.prefix, statsd);
+    }
+
+    procspawn::ProcConfig::new()
+        .config_callback(|| {
+            log::trace!("[procspawn] initializing in sub process");
+            metric!(counter("procspawn.init") += 1);
+        })
+        .init();
 
     match cli.command {
-        Command::Run => server::run(config)?,
-        Command::Cleanup => cache::cleanup(config)?,
+        Command::Run => server::run(config).context("failed to start the server")?,
+        Command::Cleanup => cache::cleanup(config).context("failed to clean up caches")?,
     }
 
     Ok(())

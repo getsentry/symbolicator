@@ -59,15 +59,11 @@ configurable:
 ```yml
 caches:
   downloaded:
-    max_unused_for:
-      days: 7 # unused DIFs, rule 1
-    retry_misses_after:
-      hours: 1 # absence of a DIF, rule 4
+    max_unused_for: 7d # unused DIFs, rule 1
+    retry_misses_after: 1h # absence of a DIF, rule 4
   derived:
-    max_unused_for:
-      days: 7 # unused caches, rule 2
-    retry_misses_after:
-      hours: 1 # also necessary for rule 4
+    max_unused_for: 7d # unused caches, rule 2
+    retry_misses_after: 1h # also necessary for rule 4
 ```
 
 ## Cache Enforcement

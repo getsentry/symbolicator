@@ -2,7 +2,7 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
     args:
-      ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:latest || true"]
+      ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:nightly || true"]
 
   # Pull the image with the first build stage
   - name: "gcr.io/cloud-builders/docker"
@@ -28,25 +28,25 @@ steps:
       [
         "build",
         "-t",
-        "us.gcr.io/$PROJECT_ID/symbolicator:latest",
+        "us.gcr.io/$PROJECT_ID/symbolicator:nightly",
         "-t",
         "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
         "--cache-from",
         "us.gcr.io/$PROJECT_ID/symbolicator:builder",
         "--cache-from",
-        "us.gcr.io/$PROJECT_ID/symbolicator:latest",
+        "us.gcr.io/$PROJECT_ID/symbolicator:nightly",
         ".",
       ]
 
-  - name: "us.gcr.io/$PROJECT_ID/symbolicator:latest"
+  - name: "us.gcr.io/$PROJECT_ID/symbolicator:nightly"
     args: ['--version']
     id: "smoke test 1"
 
-  - name: "us.gcr.io/$PROJECT_ID/symbolicator:latest"
+  - name: "us.gcr.io/$PROJECT_ID/symbolicator:nightly"
     args: ['--help']
     id: "smoke test 2"
 
-  # Only tag "latest" when on master
+  # Only tag "nightly" when on master
   - name: 'gcr.io/cloud-builders/docker'
     secretEnv: ['DOCKER_PASSWORD']
     entrypoint: 'bash'
@@ -56,14 +56,14 @@ steps:
     - |
       # Only push to Docker Hub from master
       [ "$BRANCH_NAME" != "master" ] && exit 0
-      docker push us.gcr.io/$PROJECT_ID/symbolicator:latest
+      docker push us.gcr.io/$PROJECT_ID/symbolicator:nightly
       echo "$$DOCKER_PASSWORD" | docker login --username=sentrybuilder --password-stdin
       docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$SHORT_SHA
       docker push getsentry/symbolicator:$SHORT_SHA
       docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$COMMIT_SHA
       docker push getsentry/symbolicator:$COMMIT_SHA
-      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:latest
-      docker push getsentry/symbolicator:latest
+      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:nightly
+      docker push getsentry/symbolicator:nightly
 
 images:
   [
