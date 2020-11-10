@@ -98,22 +98,22 @@ type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationRespon
 
 type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
 
-/// A builder for a clean set of code modules.
+/// A builder for the modules list of the symbolication response.
 ///
 /// On several platforms, the list of code modules can include shared memory regions or memory
 /// mapped fonts. These are not valid code modules and should be excluded from the list. In some
 /// cases, however, actual modules end up being mapped from shared memory. In such a case, stack
-/// frames reference code moduels without a provided code identifier.
+/// frames reference code modules without a provided code identifier.
 ///
-/// This type exposes `build`, which returns all modules that either have a valid identifier,
-/// or that are referenced from a stack trace. Use `mark_referenced` to indicate that a frame
-/// references a module.
+/// This type exposes [`CodeModulesBuilder::build`], which returns all modules that either
+/// have a valid identifier, or that are referenced from a stack trace. Use
+/// [`CodeModulesBuilder::mark_referenced`] to indicate that a frame references a module.
 struct CodeModulesBuilder {
     inner: Vec<(CompleteObjectInfo, bool)>,
 }
 
 impl CodeModulesBuilder {
-    /// Creates a new `CodeModulesBuilder` from a list of code modules.
+    /// Creates a new [`CodeModulesBuilder`] from a list of code modules.
     pub fn new<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = CompleteObjectInfo>,
@@ -156,7 +156,7 @@ impl CodeModulesBuilder {
         }
     }
 
-    /// Returns the final clean set of code modules.
+    /// Returns the modules list to be used in the symbolication response.
     pub fn build(self) -> Vec<CompleteObjectInfo> {
         self.inner
             .into_iter()
@@ -310,16 +310,8 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     }
 }
 
-fn get_object_type_from_minidump(minidump_os_name: &str) -> ObjectType {
-    match minidump_os_name {
-        "Windows" | "Windows NT" => ObjectType::Pe,
-        "iOS" | "Mac OS X" => ObjectType::Macho,
-        "Linux" | "Solaris" | "Android" => ObjectType::Elf,
-        _ => ObjectType::Unknown,
-    }
-}
-
 fn normalize_minidump_os_name(minidump_os_name: &str) -> &str {
+    // Be aware that MinidumpState::object_type matches on names produced here.
     match minidump_os_name {
         "Windows NT" => "Windows",
         "Mac OS X" => "macOS",
@@ -1034,6 +1026,13 @@ impl SymbolicationActor {
 
 type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 
+/// Contains some meta-data about a minidump.
+///
+/// The minidump meta-data contained here is extracted in a [procspawn] subprocess so needs
+/// to be (de)serialisable to/from JSON.  It is only a way to get this metadata out of the
+/// subprocess and merged into the final symbolication result.
+///
+/// A few more convenience methods exist to help with building the symbolication results.
 #[derive(Debug, Serialize, Deserialize)]
 struct MinidumpState {
     timestamp: DateTime<Utc>,
@@ -1043,7 +1042,44 @@ struct MinidumpState {
     assertion: String,
 }
 
+impl From<&ProcessState<'_>> for MinidumpState {
+    fn from(process_state: &ProcessState<'_>) -> Self {
+        let minidump_system_info = process_state.system_info();
+        let os_name = minidump_system_info.os_name();
+        let os_version = minidump_system_info.os_version();
+        let os_build = minidump_system_info.os_build();
+        let cpu_family = minidump_system_info.cpu_family();
+        let cpu_arch = match cpu_family.parse() {
+            Ok(arch) => arch,
+            Err(_) => {
+                if !cpu_family.is_empty() {
+                    let msg = format!("Unknown minidump arch: {}", cpu_family);
+                    sentry::capture_message(&msg, sentry::Level::Error);
+                }
+
+                Default::default()
+            }
+        };
+        MinidumpState {
+            timestamp: Utc.timestamp(process_state.timestamp().try_into().unwrap_or_default(), 0),
+            system_info: SystemInfo {
+                os_name: normalize_minidump_os_name(&os_name).to_owned(),
+                os_version,
+                os_build,
+                cpu_arch,
+                device_model: String::default(),
+            },
+            crashed: process_state.crashed(),
+            crash_reason: process_state.crash_reason(),
+            assertion: process_state.assertion(),
+        }
+    }
+}
+
 impl MinidumpState {
+    /// Merges this meta-data into a symbolication result.
+    ///
+    /// This updates the `response` with the meta-data contained.
     fn merge_into(mut self, response: &mut CompletedSymbolicationResponse) {
         if self.system_info.cpu_arch == Arch::Unknown {
             self.system_info.cpu_arch = response
@@ -1059,6 +1095,17 @@ impl MinidumpState {
         response.crashed = Some(self.crashed);
         response.crash_reason = Some(self.crash_reason);
         response.assertion = Some(self.assertion);
+    }
+
+    /// Returns the type of executable object that produced this minidump.
+    fn object_type(&self) -> ObjectType {
+        // Note that the names matched here are normalised by normalize_minidump_os_name().
+        match self.system_info.os_name.as_str() {
+            "Windows" => ObjectType::Pe,
+            "iOS" | "macOS" => ObjectType::Macho,
+            "Linux" | "Solaris" | "Android" => ObjectType::Elf,
+            _ => ObjectType::Unknown,
+        }
     }
 }
 
@@ -1087,8 +1134,7 @@ impl SymbolicationActor {
                     let state =
                         ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
-                    let os_name = state.system_info().os_name();
-                    let object_type = get_object_type_from_minidump(&os_name).to_owned();
+                    let object_type = MinidumpState::from(&state).object_type();
 
                     let cfi_modules = state
                         .referenced_modules()
@@ -1230,6 +1276,24 @@ impl SymbolicationActor {
         Box::new(join_all(futures))
     }
 
+    /// Unwind the stack from a minidump.
+    ///
+    /// This processes the minidump to stackwalk all the threads found in the minidump.
+    ///
+    /// The `cfi_results` must contain all modules found in the minidump (extracted using
+    /// [SymbolicationActor::get_referenced_modules]) and the result of trying to fetch the
+    /// Call Frame Information (CFI) for them from the [CfiCacheActor].
+    ///
+    /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
+    /// Once it has stacktraces it creates the list of used modules and returns the
+    /// un-symbolicated stacktraces in a structure suitable for requesting symbolication.
+    ///
+    /// The module list returned is usable for symbolication itself and is also directly
+    /// used in the final symbolication response of the public API.  It will contain all
+    /// modules which either have been referenced by any of the frames in the stacktraces or
+    /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
+    /// similar which are mapped in the address space but do not actually contain executable
+    /// modules.
     fn stackwalk_minidump_with_cfi(
         &self,
         scope: Scope,
@@ -1241,6 +1305,10 @@ impl SymbolicationActor {
         let mut object_features = BTreeMap::new();
         let mut frame_info_map = BTreeMap::new();
 
+        // Go through all the modules in the minidump and build a map of the modules with
+        // missing or malformed CFI.  ObjectFileStatus::Found is only added when the file is
+        // loaded as it could still be corrupted when reading from the cache.  Usable CFI
+        // cache files are added to the frame_info_map.
         for (code_module_id, result) in &cfi_results {
             let cache_file = match result {
                 Ok(x) => x,
@@ -1295,6 +1363,8 @@ impl SymbolicationActor {
                         if let Ok(duration) = spawn_time.elapsed() {
                             metric!(timer("minidump.stackwalk.spawn.duration") = duration);
                         }
+
+                        // Load CFI caches from disk, updating unwind_statuses while doing so.
                         let mut cfi = BTreeMap::new();
                         for (code_module_id, cfi_path) in frame_info_map {
                             let result = ByteView::open(cfi_path)
@@ -1313,28 +1383,16 @@ impl SymbolicationActor {
                             }
                         }
 
+                        // Stackwalk the minidump.
                         let minidump = ByteView::from_slice(&minidump);
                         let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
 
-                        let minidump_system_info = process_state.system_info();
-                        let os_name = minidump_system_info.os_name();
-                        let os_version = minidump_system_info.os_version();
-                        let os_build = minidump_system_info.os_build();
-                        let cpu_family = minidump_system_info.cpu_family();
-                        let cpu_arch = match cpu_family.parse() {
-                            Ok(arch) => arch,
-                            Err(_) => {
-                                if !cpu_family.is_empty() {
-                                    let msg = format!("Unknown minidump arch: {}", cpu_family);
-                                    sentry::capture_message(&msg, sentry::Level::Error);
-                                }
+                        let minidump_state = MinidumpState::from(&process_state);
+                        let object_type = minidump_state.object_type();
 
-                                Default::default()
-                            }
-                        };
-
-                        let object_type = get_object_type_from_minidump(&os_name).to_owned();
-
+                        // Start building the module list to be returned in the
+                        // symbolication response.  For all modules in the minidump we
+                        // create the CompletedObjectInfo and start populating it.
                         let mut module_builder = process_state
                             .modules()
                             .into_iter()
@@ -1345,7 +1403,7 @@ impl SymbolicationActor {
 
                                 let module_id = code_module.id();
 
-                                let status = match module_id {
+                                let module_cfi_status = match module_id {
                                     Some(id) => {
                                         unwind_statuses.get(&id).copied().unwrap_or_default()
                                     }
@@ -1355,9 +1413,9 @@ impl SymbolicationActor {
 
                                 metric!(
                                     counter("symbolication.unwind_status") += 1,
-                                    "status" => status.name()
+                                    "status" => module_cfi_status.name()
                                 );
-                                info.unwind_status = Some(status);
+                                info.unwind_status = Some(module_cfi_status);
 
                                 let features = match module_id {
                                     Some(id) => {
@@ -1372,30 +1430,17 @@ impl SymbolicationActor {
                             })
                             .collect::<CodeModulesBuilder>();
 
-                        let minidump_state = MinidumpState {
-                            timestamp: Utc.timestamp(
-                                process_state.timestamp().try_into().unwrap_or_default(),
-                                0,
-                            ),
-                            system_info: SystemInfo {
-                                os_name: normalize_minidump_os_name(&os_name).to_owned(),
-                                os_version,
-                                os_build,
-                                cpu_arch,
-                                device_model: String::default(),
-                            },
-                            crashed: process_state.crashed(),
-                            crash_reason: process_state.crash_reason(),
-                            assertion: process_state.assertion(),
-                        };
-
+                        // Finally iterate through the threads and build the stacktraces to
+                        // return, marking used modules when they are referenced by a frame.
                         let requesting_thread_index: Option<usize> =
                             process_state.requesting_thread().try_into().ok();
                         let threads = process_state.threads();
                         let mut stacktraces = Vec::with_capacity(threads.len());
                         for (index, thread) in threads.iter().enumerate() {
                             let registers = match thread.frames().get(0) {
-                                Some(frame) => map_symbolic_registers(frame.registers(cpu_arch)),
+                                Some(frame) => map_symbolic_registers(
+                                    frame.registers(minidump_state.system_info.cpu_arch),
+                                ),
                                 None => Registers::new(),
                             };
 
@@ -1406,7 +1451,8 @@ impl SymbolicationActor {
                             let frame_count = thread.frames().len().min(20000);
                             let mut frames = Vec::with_capacity(frame_count);
                             for frame in thread.frames().iter().take(frame_count) {
-                                let return_address = frame.return_address(cpu_arch);
+                                let return_address =
+                                    frame.return_address(minidump_state.system_info.cpu_arch);
                                 module_builder.mark_referenced(return_address);
 
                                 frames.push(RawFrame {
