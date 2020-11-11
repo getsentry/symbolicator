@@ -242,9 +242,16 @@ def hitcounter(request):
 
 @pytest.fixture
 def s3(pytestconfig):
+    """AWS S3 credentials for testing S3 buckets.
+
+    This will skip if the secrets are not in the environment, unless we are running on CI in
+    the getsentry team, in which case it will fail.  When running CI not as part of the
+    getsentry team you do not automatically get access to the configured secrets so skipping
+    is allowed.
+    """
     if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
         msg = "No AWS credentials"
-        if pytestconfig.getoption("ci"):
+        if os.getenv("CI") and os.getenv("GITHUB_REPOSITORY").startswith("getsentry/"):
             pytest.fail(msg)
         else:
             pytest.skip(msg)
@@ -274,9 +281,16 @@ def s3_bucket_config(s3):
 
 @pytest.fixture
 def ios_bucket_config(pytestconfig):
+    """Google cloud storage bucket for ios symbols.
+
+    This will skip if the secrets are not in the environment, unless we are running on CI in
+    the getsentry team, in which case it will fail.  When running CI not as part of the
+    getsentry team you do not automatically get access to the configured secrets so skipping
+    is allowed.
+    """
     if not GCS_PRIVATE_KEY or not GCS_CLIENT_EMAIL:
         msg = "No GCS credentials"
-        if pytestconfig.getoption("ci"):
+        if os.getenv("CI") and os.getenv("GITHUB_REPOSITORY").startswith("getsentry/"):
             pytest.fail(msg)
         else:
             pytest.skip(msg)

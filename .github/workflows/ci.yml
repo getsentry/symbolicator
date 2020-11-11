@@ -113,7 +113,7 @@ jobs:
           SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY }}
           SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
-        run: pytest --ci -n12 -vv tests/integration
+        run: pytest -n12 -vv tests/integration
 
   doc-comments:
     name: Rust doc comments
