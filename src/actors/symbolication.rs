@@ -16,6 +16,7 @@ use futures01::future::{self, join_all, Future as _, IntoFuture, Shared};
 use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use regex::Regex;
+use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -283,19 +284,36 @@ impl SymbolicationActor {
     {
         let (sender, receiver) = oneshot::channel();
 
+        let hub = Arc::new(sentry::Hub::new_from_top(sentry::Hub::current()));
+
         // Assume that there are no UUID4 collisions in practice.
         let requests = self.requests.clone();
         let request_id = RequestId::new(uuid::Uuid::new_v4());
         requests.lock().insert(request_id, receiver.shared());
+        let drop_hub = hub.clone();
         let token = CallOnDrop::new(move || {
             requests.lock().remove(&request_id);
+            // we consider every premature drop of the future as fatal crash
+            drop_hub.end_session_with_status(SessionStatus::Crashed);
         });
 
         let request_future = async move {
             let response = match f.await {
-                Ok(response) => SymbolicationResponse::Completed(Box::new(response)),
+                Ok(response) => {
+                    sentry::end_session_with_status(SessionStatus::Exited);
+                    SymbolicationResponse::Completed(Box::new(response))
+                }
                 Err(ref error) => {
                     sentry::capture_error(error);
+
+                    // a timeout is an abnormal session exit, all other errors are considered "crashed"
+                    let status = if matches!(error, SymbolicationError::Timeout) {
+                        SessionStatus::Abnormal
+                    } else {
+                        SessionStatus::Crashed
+                    };
+                    sentry::end_session_with_status(status);
+
                     error.into()
                 }
             };
@@ -311,7 +329,7 @@ impl SymbolicationActor {
             drop(token);
             Ok(())
         }
-        .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()))
+        .bind_hub(hub)
         .boxed_local()
         .compat();
 

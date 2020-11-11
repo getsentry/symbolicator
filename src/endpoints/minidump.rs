@@ -103,6 +103,7 @@ fn handle_minidump_request(
     request: HttpRequest<ServiceState>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     let hub = Hub::from_request(&request);
+    hub.start_session();
 
     Hub::run(hub, || {
         let default_sources = state.config().default_sources();

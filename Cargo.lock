@@ -2819,8 +2819,9 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "sentry"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "933beb0343c84eefd69a368318e9291b179e09e51982d49c65d7b362b0e9466f"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -2835,8 +2836,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-backtrace"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38e528fb457baf53fcd6c90beb420705f35c12c3d8caed8817dcf7be00eff7c7"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -2846,8 +2848,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-contexts"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce3a560a34cffac347f0b588fc29b31db969e27bf57208f946d6a2d588668b0b"
 dependencies = [
  "hostname",
  "lazy_static",
@@ -2860,8 +2863,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-core"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17b8c235063c1007fd8e2fc7e35ce7eac09dd678d198ecc996daee33d46b3dcc"
 dependencies = [
  "im",
  "lazy_static",
@@ -2873,8 +2877,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-debug-images"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "632e47b19ff9712bd22424ccf57a21a0e5f3bf4a2e12baae447e01d81e8e2f22"
 dependencies = [
  "findshlibs 0.7.0",
  "lazy_static",
@@ -2883,8 +2888,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-failure"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50990857da645b6f3f6d97d94dc3a34295d40286961164572052bcf78c113021"
 dependencies = [
  "failure",
  "sentry-backtrace",
@@ -2893,8 +2899,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-log"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af91b9d4f34cc53ebd109cae92b0e1373df2524e915af95f212b9d0601bff241"
 dependencies = [
  "log",
  "sentry-core",
@@ -2902,8 +2909,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-panic"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04ee338d8292fcdcfb032929c9f53bc0dfac8e0b9d3096be79ceee96818851ed"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2911,8 +2919,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-types"
-version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fbbea6debac0a24880a38239d4c2fc3dbb0b1b398f621bea03ed761796b7dfb"
 dependencies = [
  "chrono",
  "debugid",
