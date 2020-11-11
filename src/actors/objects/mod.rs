@@ -596,25 +596,32 @@ impl ObjectsActor {
         file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| {
             responses
                 .into_iter()
-                .min_by_key(|response| {
+                .enumerate()
+                .min_by_key(|(i, response)| {
+                    // The sources are ordered in priority, so for the same quality of
+                    // object file prefer a file from an earlier source using the index `i`
+                    // provided by enumerate.
+
                     // Prefer files that contain an object over unparseable files
                     let object_meta = match response {
                         Ok(object_meta) => object_meta,
                         Err(e) => {
                             log::debug!("Failed to download: {:#?}", e);
-                            return 3;
+                            return (3, *i);
                         }
                     };
 
                     // Prefer object files with debug/unwind info over object files without
-                    match purpose {
+                    let score = match purpose {
                         ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
                         ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
                         ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
                         ObjectPurpose::Source if object_meta.features.has_sources => 0,
                         _ => 2,
-                    }
+                    };
+                    (score, *i)
                 })
+                .map(|(_i, response)| response)
                 .filter(|response| match response {
                     // Make sure we only return objects which provide the requested info
                     Ok(object_meta) => {
