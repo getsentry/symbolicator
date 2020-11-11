@@ -296,7 +296,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                         let object = match object_opt {
                             Some(object) => object,
                             None => {
-                                if archive.objects().all(|r| r.is_err()) {
+                                if archive.objects().any(|r| r.is_err()) {
                                     return Ok(CacheStatus::Malformed);
                                 } else {
                                     return Ok(CacheStatus::Negative);
