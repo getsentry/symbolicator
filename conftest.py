@@ -11,16 +11,6 @@ import pytest
 
 
 @pytest.hookimpl
-def pytest_addoption(parser):
-    parser.addoption(
-        "--ci",
-        action="store_true",
-        help="Indicate the tests are being run on CI, "
-        "this e.g. prefers to fail tests instead of skipping them.",
-    )
-
-
-@pytest.hookimpl
 def pytest_sessionstart(session):
     no_fds_soft, no_fds_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     if no_fds_soft < 2028:
