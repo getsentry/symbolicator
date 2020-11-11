@@ -1,15 +1,23 @@
+//! Support to download from S3 buckets.
+//!
+//! Specifically this supports the [`S3SourceConfig`] source.
+//!
+//! [`S3SourceConfig`]: ../../../sources/struct.S3SourceConfig.html
+
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use futures01::{future::IntoFuture, Future, Stream};
+use futures::compat::{Future01CompatExt, Stream01CompatExt};
+use futures01::Stream;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::common::prepare_download_paths;
-use crate::actors::objects::{DownloadPath, DownloadStream, FileId, ObjectError, ObjectErrorKind};
-use crate::types::{FileType, ObjectId, S3SourceConfig, S3SourceKey};
+use super::{DownloadError, DownloadStatus};
+use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
+use crate::types::ObjectId;
 
 lazy_static::lazy_static! {
     static ref AWS_HTTP_CLIENT: rusoto_core::HttpClient = rusoto_core::HttpClient::new().unwrap();
@@ -49,62 +57,42 @@ fn get_s3_client(key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
     }
 }
 
-pub(super) fn prepare_downloads(
-    source: &Arc<S3SourceConfig>,
-    filetypes: &'static [FileType],
-    object_id: &ObjectId,
-) -> Box<dyn Future<Item = Vec<FileId>, Error = ObjectError>> {
-    let ids = prepare_download_paths(
-        object_id,
-        filetypes,
-        &source.files.filters,
-        source.files.layout,
-    )
-    .map(|download_path| FileId::S3(source.clone(), download_path))
-    .collect();
-    Box::new(Ok(ids).into_future())
-}
-
-pub(super) fn download_from_source(
+pub async fn download_source(
     source: Arc<S3SourceConfig>,
-    download_path: &DownloadPath,
-) -> Box<dyn Future<Item = Option<DownloadStream>, Error = ObjectError>> {
-    let key = {
-        let prefix = source.prefix.trim_matches(&['/'][..]);
-        if prefix.is_empty() {
-            download_path.0.clone()
-        } else {
-            format!("{}/{}", prefix, download_path.0)
-        }
-    };
-
+    download_path: SourceLocation,
+    destination: PathBuf,
+) -> Result<DownloadStatus, DownloadError> {
+    let key = source.get_key(&download_path);
     log::debug!("Fetching from s3: {} (from {})", &key, source.bucket);
 
     let bucket = source.bucket.clone();
     let source_key = &source.source_key;
-    let response = get_s3_client(&source_key).get_object(rusoto_s3::GetObjectRequest {
-        key: key.clone(),
-        bucket: bucket.clone(),
-        ..Default::default()
-    });
+    let response = get_s3_client(&source_key)
+        .get_object(rusoto_s3::GetObjectRequest {
+            key: key.clone(),
+            bucket: bucket.clone(),
+            ..Default::default()
+        })
+        .compat()
+        .await;
 
-    let response = response.then(move |result| match result {
+    match response {
         Ok(mut result) => {
             let body_read = match result.body.take() {
                 Some(body) => body.into_async_read(),
                 None => {
                     log::debug!("Empty response from s3:{}{}", bucket, &key);
-                    return Ok(None);
+                    return Ok(DownloadStatus::NotFound);
                 }
             };
 
-            let bytes = FramedRead::new(body_read, BytesCodec::new())
+            let stream = FramedRead::new(body_read, BytesCodec::new())
                 .map(BytesMut::freeze)
-                .map_err(|_err| ObjectError::from(ObjectErrorKind::Io));
+                .map_err(DownloadError::Io)
+                .compat();
 
-            Ok(Some(DownloadStream::FutureStream(
-                Box::new(bytes) as Box<dyn Stream<Item = _, Error = _>>
-            )))
+            super::download_stream(SourceFileId::S3(source, download_path), stream, destination)
+                .await
         }
         Err(err) => {
             // For missing files, Amazon returns different status codes based on the given
@@ -112,10 +100,24 @@ pub(super) fn download_from_source(
             // - To fetch existing objects, `GetObject` is required.
             // - If `ListBucket` is premitted, a 404 is returned for missing objects.
             // - Otherwise, a 403 ("access denied") is returned.
-            log::debug!("Skipping response from s3:{}{}: {}", bucket, &key, err);
-            Ok(None)
+            log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
+            Ok(DownloadStatus::NotFound)
         }
-    });
+    }
+}
 
-    Box::new(response)
+pub fn list_files(
+    source: Arc<S3SourceConfig>,
+    filetypes: &'static [FileType],
+    object_id: ObjectId,
+) -> Vec<SourceFileId> {
+    super::SourceLocationIter {
+        filetypes: filetypes.iter(),
+        filters: &source.files.filters,
+        object_id: &object_id,
+        layout: source.files.layout,
+        next: Vec::new(),
+    }
+    .map(|loc| SourceFileId::S3(source.clone(), loc))
+    .collect()
 }

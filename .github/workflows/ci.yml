@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - release/**
+
+  pull_request:
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Install python dependencies
+        run: pip install --upgrade black flake8
+
+      - name: Run Black
+        run: black --check tests
+
+      - name: Run Flake8
+        run: flake8 tests
+
+      - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          components: rustfmt, clippy
+          override: true
+
+      - name: Cache rust cargo artifacts
+        uses: swatinem/rust-cache@v1
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: Run clipppy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --workspace --tests --examples -- -D clippy::all
+
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Cache rust cargo artifacts
+        uses: swatinem/rust-cache@v1
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --all-features --locked
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Cache rust cargo artifacts
+        uses: swatinem/rust-cache@v1
+
+      - name: Build rust
+        run: cargo build --locked
+
+      - name: Install python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Setup python environment
+        run: pip install --upgrade pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
+
+      - name: Integration tests
+        env:
+          SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL }}
+          SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY }}
+          SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
+          SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
+        run: pytest --ci -n12 -vv tests/integration
+
+  doc-comments:
+    name: Rust doc comments
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install rust nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          components: rust-docs
+          override: true
+
+      - name: Cache rust cargo artifacts
+        uses: swatinem/rust-cache@v1
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --workspace --all-features --document-private-items --no-deps
+
+  docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Setup python dependencies
+        run: pip install --upgrade mkdocs mkdocs-material pygments
+
+      - name: Build Docs
+        run: mkdocs build

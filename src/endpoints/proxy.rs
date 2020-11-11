@@ -6,29 +6,13 @@ use bytes::BytesMut;
 use failure::{Error, Fail};
 use futures01::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
-use sentry_actix::ActixWebHubExt;
 use tokio::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
-use crate::utils::sentry::SentryFutureExt;
-
-#[derive(Fail, Debug, Clone, Copy)]
-pub enum ProxyErrorKind {
-    #[fail(display = "failed to write object")]
-    Io,
-
-    #[fail(display = "failed to download object")]
-    Fetching,
-}
-
-symbolic::common::derive_failure!(
-    ProxyError,
-    ProxyErrorKind,
-    doc = "Errors happening while proxying to a symstore"
-);
+use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt};
 
 fn proxy_symstore_request(
     state: State<ServiceState>,
@@ -61,7 +45,7 @@ fn proxy_symstore_request(
                 scope: Scope::Global,
                 purpose: ObjectPurpose::Debug,
             })
-            .map_err(|e| e.context(ProxyErrorKind::Fetching).into());
+            .map_err(|e| e.context("failed to download object").into());
 
         let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
             if let Some(object_meta) = object_meta_opt {
@@ -69,7 +53,7 @@ fn proxy_symstore_request(
                     state
                         .objects()
                         .fetch(object_meta)
-                        .map_err(|e| e.context(ProxyErrorKind::Fetching).into())
+                        .map_err(|e| e.context("failed to download object").into())
                         .map(Some),
                 )
             } else {
@@ -101,8 +85,7 @@ fn proxy_symstore_request(
                         let bytes = Cursor::new(ObjectFileBytes(object_file));
                         let async_bytes = FramedRead::new(bytes, BytesCodec::new())
                             .map(BytesMut::freeze)
-                            .map_err(|_err| ProxyError::from(ProxyErrorKind::Io))
-                            .map_err(Error::from);
+                            .map_err(|e| Error::from(e.context("failed to write object")));
                         Ok(response.streaming(async_bytes))
                     }
                 })
