@@ -1042,8 +1042,9 @@ struct MinidumpState {
     assertion: String,
 }
 
-impl From<&ProcessState<'_>> for MinidumpState {
-    fn from(process_state: &ProcessState<'_>) -> Self {
+impl MinidumpState {
+    /// Creates a new [`MinidumpState`] from a breakpad symbolication result.
+    fn new(process_state: &ProcessState<'_>) -> Self {
         let minidump_system_info = process_state.system_info();
         let os_name = minidump_system_info.os_name();
         let os_version = minidump_system_info.os_version();
@@ -1074,9 +1075,7 @@ impl From<&ProcessState<'_>> for MinidumpState {
             assertion: process_state.assertion(),
         }
     }
-}
 
-impl MinidumpState {
     /// Merges this meta-data into a symbolication result.
     ///
     /// This updates the `response` with the meta-data contained.
@@ -1134,7 +1133,7 @@ impl SymbolicationActor {
                     let state =
                         ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
-                    let object_type = MinidumpState::from(&state).object_type();
+                    let object_type = MinidumpState::new(&state).object_type();
 
                     let cfi_modules = state
                         .referenced_modules()
@@ -1387,7 +1386,7 @@ impl SymbolicationActor {
                         let minidump = ByteView::from_slice(&minidump);
                         let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
 
-                        let minidump_state = MinidumpState::from(&process_state);
+                        let minidump_state = MinidumpState::new(&process_state);
                         let object_type = minidump_state.object_type();
 
                         // Start building the module list to be returned in the
