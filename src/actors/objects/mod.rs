@@ -593,9 +593,29 @@ impl ObjectsActor {
             }))
         });
 
-        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| {
+        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>|
+                                                 -> Result<Option<Arc<ObjectFileMeta>>, _> {
             responses
                 .into_iter()
+                .filter(|response| match response {
+                    // Make sure we only return objects which provide the requested info
+                    Ok(object_meta) => {
+                        if object_meta.status == CacheStatus::Positive {
+                            // object_meta.features is meaningless when CacheStatus != Positive
+                            match purpose {
+                                ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
+                                ObjectPurpose::Debug => {
+                                    object_meta.features.has_debug_info
+                                        || object_meta.features.has_symbols
+                                }
+                                ObjectPurpose::Source => object_meta.features.has_sources,
+                            }
+                        } else {
+                            true
+                        }
+                    }
+                    Err(_) => true,
+                })
                 .enumerate()
                 .min_by_key(|(i, response)| {
                     // The sources are ordered in priority, so for the same quality of
@@ -622,25 +642,6 @@ impl ObjectsActor {
                     (score, *i)
                 })
                 .map(|(_i, response)| response)
-                .filter(|response| match response {
-                    // Make sure we only return objects which provide the requested info
-                    Ok(object_meta) => {
-                        if object_meta.status == CacheStatus::Positive {
-                            // object_meta.features is meaningless when CacheStatus != Positive
-                            match purpose {
-                                ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
-                                ObjectPurpose::Debug => {
-                                    object_meta.features.has_debug_info
-                                        || object_meta.features.has_symbols
-                                }
-                                ObjectPurpose::Source => object_meta.features.has_sources,
-                            }
-                        } else {
-                            true
-                        }
-                    }
-                    Err(_) => true,
-                })
                 .transpose()
         })
     }
