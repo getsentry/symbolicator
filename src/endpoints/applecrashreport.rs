@@ -74,7 +74,7 @@ fn handle_multipart_stream(
     Box::new(future)
 }
 
-fn parse_apple_crash_report(
+fn process_apple_crash_report(
     symbolication: &SymbolicationActor,
     request: AppleCrashReportRequest,
     scope: Scope,
@@ -120,7 +120,7 @@ fn handle_apple_crash_report_request(
                     request.sources = Some((*default_sources).clone());
                 }
 
-                parse_apple_crash_report(&symbolication, request, scope)
+                process_apple_crash_report(&symbolication, request, scope)
             }))
             .and_then(move |request_id| {
                 symbolication
