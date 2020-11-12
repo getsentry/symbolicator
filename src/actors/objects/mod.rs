@@ -148,6 +148,17 @@ impl CacheItemRequest for FetchFileMetaRequest {
         }
     }
 
+    /// Fetches object file and derives metadata from it, storing this in the cache.
+    ///
+    /// This uses the data cache to fetch the requested file before parsing it and writing
+    /// the object metadata into the cache at `path`.  Technically the data cache could
+    /// contain the object file already but this is unlikely as normally the data cache
+    /// expires before the metadata cache, so if the metadata needs to be re-computed then
+    /// the data cache has probably also expired.
+    ///
+    /// This returns an error if the download failed.  If the data cache has a
+    /// [CacheStatus::Negative] or [CacheStatus::Malformed] status the same status is
+    /// returned.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -160,7 +171,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .and_then(move |data| {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
-                        let mut f = fs::File::create(path)?;
+                        let mut new_cache = fs::File::create(path)?;
 
                         let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
@@ -170,7 +181,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         };
 
                         log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                        serde_json::to_writer(&mut f, &meta)?;
+                        serde_json::to_writer(&mut new_cache, &meta)?;
                     }
                 }
 
@@ -184,6 +195,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
         serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
+    /// Returns the [ObjectFileMeta] at the given cache key.
+    ///
+    /// If the `status` is [CacheStatus::Malformed] or [CacheStatus::Negative] the metadata
+    /// returned will contain the default [ObjectFileMeta::features].
     fn load(
         &self,
         scope: Scope,
@@ -210,6 +225,19 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
+    /// Downloads the object file, processes it and returns whether the file is in the cache.
+    ///
+    /// If the object file was successfully downloaded it is first decompressed.  If it is
+    /// an archive containing multiple objects, then next the object matching the code or
+    /// debug ID of our request is extracted first.  Finally the object is parsed with
+    /// symbolic to ensure it is not malformed.
+    ///
+    /// If there is an error with downloading or decompression then an `Err` of
+    /// [ObjectError] is returned.  However if only the final object file parsing failed
+    /// then an `Ok` with [CacheStatus::Malformed] is returned.
+    ///
+    /// If the object file did not exist on the source a [CacheStatus::Negative] will be
+    /// returned.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
@@ -246,7 +274,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                         Err(_) => return Ok(CacheStatus::Malformed),
                     };
 
-                    // Seek back to the start and parse this object to we can deal with it.
+                    // Seek back to the start and parse this object so we can deal with it.
                     // Since objects in Sentry (and potentially also other sources) might be
                     // multi-arch files (e.g. FatMach), we parse as Archive and try to
                     // extract the wanted file.
@@ -265,13 +293,15 @@ impl CacheItemRequest for FetchFileDataRequest {
                             .filter_map(Result::ok)
                             .find(|object| object_id.match_object(object));
 
-                        // If we do not find the desired object in this archive - either
-                        // because we can't parse any of the objects within, or because none
-                        // of the objects match the identifier we're looking for - we return
-                        // early.
                         let object = match object_opt {
                             Some(object) => object,
-                            None => return Ok(CacheStatus::Negative),
+                            None => {
+                                if archive.objects().any(|r| r.is_err()) {
+                                    return Ok(CacheStatus::Malformed);
+                                } else {
+                                    return Ok(CacheStatus::Negative);
+                                }
+                            }
                         };
 
                         io::copy(&mut object.data(), &mut persist_file)?;
@@ -470,6 +500,10 @@ pub enum ObjectPurpose {
 }
 
 impl ObjectsActor {
+    /// Returns the requested object file.
+    ///
+    /// This fetches the requested object, re-downloading it from the source if it is no
+    /// longer in the cache.
     pub fn fetch(
         &self,
         shallow_file: Arc<ObjectFileMeta>,
@@ -479,6 +513,15 @@ impl ObjectsActor {
             .map_err(ObjectError::Caching)
     }
 
+    /// Fetches matching objects and returns the metadata of the most suitable object.
+    ///
+    /// This requests the available matching objects from the sources and then looks up the
+    /// object metadata of each matching object in the metadata cache.  These are then
+    /// ranked and the best matching object metadata is returned.
+    ///
+    /// Asking for the objects metadata from the data cache also triggers a download of each
+    /// object, which will then be cached in the data cache.  The metadata itself is cached
+    /// in the metadata cache which usually lives longer.
     pub fn find(
         &self,
         request: FindObject,
@@ -491,6 +534,7 @@ impl ObjectsActor {
             purpose,
         } = request;
 
+        // Future which creates a vector with all object downloads to try.
         let file_ids = future::join_all(
             sources
                 .iter()
@@ -549,14 +593,38 @@ impl ObjectsActor {
             }))
         });
 
-        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| {
+        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>|
+                                                 -> Result<Option<Arc<ObjectFileMeta>>, _> {
             responses
                 .into_iter()
+                .filter(|response| match response {
+                    // Make sure we only return objects which provide the requested info
+                    Ok(object_meta) => {
+                        if object_meta.status == CacheStatus::Positive {
+                            // object_meta.features is meaningless when CacheStatus != Positive
+                            match purpose {
+                                ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
+                                ObjectPurpose::Debug => {
+                                    object_meta.features.has_debug_info
+                                        || object_meta.features.has_symbols
+                                }
+                                ObjectPurpose::Source => object_meta.features.has_sources,
+                            }
+                        } else {
+                            true
+                        }
+                    }
+                    Err(_) => true,
+                })
                 .enumerate()
                 .min_by_key(|(i, response)| {
+                    // The sources are ordered in priority, so for the same quality of
+                    // object file prefer a file from an earlier source using the index `i`
+                    // provided by enumerate.
+
                     // Prefer files that contain an object over unparseable files
-                    let object = match response {
-                        Ok(object) => object,
+                    let object_meta = match response {
+                        Ok(object_meta) => object_meta,
                         Err(e) => {
                             log::debug!("Failed to download: {:#?}", e);
                             return (3, *i);
@@ -565,16 +633,15 @@ impl ObjectsActor {
 
                     // Prefer object files with debug/unwind info over object files without
                     let score = match purpose {
-                        ObjectPurpose::Unwind if object.features.has_unwind_info => 0,
-                        ObjectPurpose::Debug if object.features.has_debug_info => 0,
-                        ObjectPurpose::Debug if object.features.has_symbols => 1,
-                        ObjectPurpose::Source if object.features.has_sources => 0,
+                        ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
+                        ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
+                        ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
+                        ObjectPurpose::Source if object_meta.features.has_sources => 0,
                         _ => 2,
                     };
-
                     (score, *i)
                 })
-                .map(|(_, response)| response)
+                .map(|(_i, response)| response)
                 .transpose()
         })
     }

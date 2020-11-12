@@ -1376,7 +1376,10 @@ impl SymbolicationActor {
                                     cfi.insert(code_module_id, cache);
                                 }
                                 Err(e) => {
-                                    log::warn!("Error while parsing cficache: {}", LogError(&e));
+                                    // This mostly never happens since we already checked
+                                    // the files after downloading and they would have been
+                                    // with tagged CacheStatus::Malformed.
+                                    log::warn!("Error while reading cficache: {}", LogError(&e));
                                     unwind_statuses.insert(code_module_id, (&e).into());
                                 }
                             }

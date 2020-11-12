@@ -188,9 +188,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 
     /// Compute an item.
     ///
-    /// If the item is in the file system cache, it is returned immediately. Otherwise, it is
-    /// computed using `T::compute`, and then persisted to the cache.
+    /// If the item is in the file system cache, it is returned immediately. Otherwise, it
+    /// is computed using `T::compute` ([CacheItemRequest::compute]), and then persisted to
+    /// the cache.
+    ///
+    /// This method does not take care of ensuring the computation only happens once even
+    /// for concurrent requests, see the public [Cacher::compute_memoized] for this.
     fn compute(&self, request: T, key: CacheKey) -> ResponseFuture<T::Item, T::Error> {
+        // cache_path is None when caching is disabled.
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
             if let Some(item) = tryf!(self.lookup_cache(&request, &key, &path)) {
@@ -207,39 +212,41 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let temp_file = tryf!(self.tempfile());
 
-        let future = request.compute(temp_file.path()).and_then(move |status| {
-            if let Some(ref cache_path) = cache_path {
-                sentry::configure_scope(|scope| {
-                    scope.set_extra(
-                        &format!("cache.{}.cache_path", name),
-                        cache_path.to_string_lossy().into(),
-                    );
-                });
+        let future = request
+            .compute(temp_file.path())
+            .and_then(move |status: CacheStatus| {
+                if let Some(ref cache_path) = cache_path {
+                    sentry::configure_scope(|scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            cache_path.to_string_lossy().into(),
+                        );
+                    });
 
-                log::trace!("Creating {} at path {:?}", name, cache_path);
-            }
-
-            let byteview = ByteView::open(temp_file.path())?;
-
-            metric!(
-                counter(&format!("caches.{}.file.write", name)) += 1,
-                "status" => status.as_ref(),
-            );
-            metric!(
-                time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                "hit" => "false"
-            );
-
-            let path = match cache_path {
-                Some(ref cache_path) => {
-                    status.persist_item(cache_path, temp_file)?;
-                    CachePath::Cached(cache_path.to_path_buf())
+                    log::trace!("Creating {} at path {:?}", name, cache_path);
                 }
-                None => CachePath::Temp(temp_file.into_temp_path()),
-            };
 
-            Ok(request.load(key.scope.clone(), status, byteview, path))
-        });
+                let byteview = ByteView::open(temp_file.path())?;
+
+                metric!(
+                    counter(&format!("caches.{}.file.write", name)) += 1,
+                    "status" => status.as_ref(),
+                );
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                    "hit" => "false"
+                );
+
+                let path = match cache_path {
+                    Some(ref cache_path) => {
+                        status.persist_item(cache_path, temp_file)?;
+                        CachePath::Cached(cache_path.to_path_buf())
+                    }
+                    None => CachePath::Temp(temp_file.into_temp_path()),
+                };
+
+                Ok(request.load(key.scope.clone(), status, byteview, path))
+            });
 
         Box::new(future)
     }
@@ -276,6 +283,9 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// The actual computation is deduplicated between concurrent requests. Finally, the result is
     /// inserted into the cache and all subsequent calls fetch from the cache.
+    ///
+    /// The computation itself is done by the [CacheItemRequest::compute] (`T::compute` or
+    /// `request.compute`) function, but only if it was not already in the cache.
     pub fn compute_memoized(&self, request: T) -> ResponseFuture<Arc<T::Item>, Arc<T::Error>> {
         let key = request.get_cache_key();
         let name = self.config.name();

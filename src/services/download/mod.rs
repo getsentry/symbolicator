@@ -128,6 +128,13 @@ impl DownloadService {
             .map(|o| o.unwrap_or_else(|_| Err(DownloadError::Canceled)))
     }
 
+    /// Returns all objects matching the [ObjectId] at the source.
+    ///
+    /// Some sources, namely all the symbol servers, simply return the locations at which a
+    /// download attempt should be made without any guarantee the object is actually there.
+    ///
+    /// If the source needs to be contacted to get matching objects this may fail and
+    /// returns a [DownloadError].
     pub fn list_files(
         &self,
         source: SourceConfig,

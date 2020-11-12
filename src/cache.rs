@@ -58,6 +58,11 @@ impl CacheStatus {
         }
     }
 
+    /// Persist the operation in the cache.
+    ///
+    /// If the status was [CacheStatus::Positive] this copies the data from the temporary
+    /// file to the final cache location.  Otherwise it writes corresponding marker in the
+    /// cache location.
     pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
         let dir = path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")

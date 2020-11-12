@@ -106,6 +106,10 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.object_meta.cache_key()
     }
 
+    /// Extracts the Call Frame Information (CFI) from an object file.
+    ///
+    /// The extracted CFI is written to `path` in symbolic's
+    /// [symbolic::minidump::cfi::CfiCache] format.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self
@@ -185,6 +189,12 @@ pub struct FetchCfiCache {
 }
 
 impl CfiCacheActor {
+    /// Fetches the CFI cache file for a given code module.
+    ///
+    /// The code object can be identified by a combination of the code-id, debug-id and
+    /// debug filename (the basename).  To do this it looks in the existing cache with the
+    /// given scope and if it does not yet exist in cached form will fetch the required DIFs
+    /// and compute the required CFI cache file.
     pub fn fetch(
         &self,
         request: FetchCfiCache,
@@ -236,6 +246,10 @@ impl CfiCacheActor {
     }
 }
 
+/// Extracts the CFI from an object file, writing it to a CFI file.
+///
+/// The source file is probably an executable or so, the resulting file is in the format of
+/// [symbolic::minidump::cfi::CfiCache].
 fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
