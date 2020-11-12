@@ -55,8 +55,9 @@ metrics:
       causes a slight performance hit but improves debuggability. Defaults to
       `true`.
 - `metrics`: Configure a statsd server to send metrics to.
-    - `statsd`: The host and port to send metrics to. Defaults to `null`, which
-      disables metric submission.
+    - `statsd`: The host and port to send metrics to. Defaults to STATSD_SERVER
+      environment variable or in case it is not defined, then it defaults to `null`,
+      which disables metric submission.
     - `prefix`: A prefix for every metric, defaults to `symbolicator`.
 - `sentry_dsn`: DSN to a Sentry project for internal error reporting. Defaults
   to `null`, which disables reporting to Sentry.
