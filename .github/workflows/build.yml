@@ -6,21 +6,47 @@ on:
       - release/**
 
 jobs:
-  docs:
-    name: Build and upload Linux release and docs
+  binary:
+    name: Build Binary
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Build symbolicator
+      - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --locked
+
+      - name: Split and archive debug info
         run: |
-          cargo build --release
           objcopy --only-keep-debug target/release/symbolicator{,.debug}
           objcopy --strip-debug --strip-unneeded target/release/symbolicator
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
-          zip symbolicator-debug.zip target/release/symbolicator.debug
+          zip -j symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
+          mv target/release/symbolicator symbolicator-Linux-x86_64
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          path: symbolicator-Linux-*
+
+  docs:
+    name: Build Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
 
       - name: Setup Python
         uses: actions/setup-python@v2
@@ -36,16 +62,7 @@ jobs:
           touch site/.nojekyll
           cd site && zip -r gh-pages .
 
-      - name: Setup node
-        uses: actions/setup-node@v1
-
-      - name: Upload to Zeus
-        env:
-          ZEUS_HOOK_BASE: ${{ secrets.ZEUS_HOOK_BASE }}
-        run: |
-          npm install -D @zeus-ci/cli
-          npx zeus job update -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
-          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/octet-stream" -n symbolicator-Linux-x86_64 target/release/symbolicator
-          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip" -n symbolicator-Linux-x86_64-debug.zip symbolicator-debug.zip
-          npx zeus upload -b ${{ github.run_id }} -j ${{ github.job }} -t "application/zip+docs" site/gh-pages.zip
-          npx zeus job update --status=passed -b ${{ github.run_id }} -j ${{ github.job }} -r ${{ github.sha }}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          path: site/gh-pages.zip
