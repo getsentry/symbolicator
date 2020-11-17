@@ -1428,6 +1428,7 @@ impl SymbolicationActor {
                                         // The code module was not in the original set of referenced
                                         // modules, but was now required for stack walking.
                                         None if scanned_modules.contains(&id) => {
+                                            sentry::capture_message("Referenced module not found during initial stack scan", sentry::Level::Error);
                                             ObjectFileStatus::Missing
                                         }
                                         // This code module was not referenced and therefore unused.
