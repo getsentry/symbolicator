@@ -251,7 +251,7 @@ def fail_missing_secrets(msg):
     e.g. we're on a developer's machine or on a forked repository.  If running on CI in the
     main repository this will call `pytest.fail`.
     """
-    if os.getenv("CI") and os.getenv("GITHUB_BASE_REF"):
+    if os.getenv("CI") and os.getenv("GITHUB_BASE_REF") is None:
         pytest.fail(msg)
     else:
         pytest.skip(msg)
