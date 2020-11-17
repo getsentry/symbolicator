@@ -36,12 +36,12 @@ jobs:
           objcopy --strip-debug --strip-unneeded target/release/symbolicator
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
           zip symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
-          mv target/release/{symbolicator,symbolicator-Linux-x86_64}
+          mv target/release/symbolicator symbolicator-Linux-x86_64
 
       - uses: actions/upload-artifact@v2
         with:
           name: ${{ github.sha }}
-          path: target/release/symbolicator-Linux-*
+          path: symbolicator-Linux-*
 
   docs:
     name: Build Docs
