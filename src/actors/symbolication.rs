@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
+use std::future::Future;
 use std::io::Write;
 use std::iter::FromIterator;
 use std::path::PathBuf;
@@ -10,8 +11,8 @@ use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
-use futures::{compat::Future01CompatExt, FutureExt as _, TryFutureExt};
-use futures01::future::{self, join_all, Future, IntoFuture, Shared};
+use futures::{compat::Future01CompatExt, select, FutureExt as _, TryFutureExt};
+use futures01::future::{self, join_all, Future as _, IntoFuture, Shared};
 use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use regex::Regex;
@@ -43,7 +44,7 @@ use crate::types::{
 };
 use crate::utils::futures::{CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
-use crate::utils::sentry::SentryFutureExt as SentryLegacyFutureExt;
+use crate::utils::sentry::SentryFutureExt as _;
 
 /// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
@@ -248,8 +249,7 @@ impl SymbolicationActor {
 
     fn create_symbolication_request<F>(&self, f: F) -> RequestId
     where
-        F: std::future::Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
-            + 'static,
+        F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
@@ -882,19 +882,40 @@ pub struct SymbolicateStacktraces {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
+async fn measure_task_timeout<T, F>(task_name: &str, future: F, duration: Duration) -> F::Output
+where
+    F: Future<Output = Result<T, SymbolicationError>>,
+{
+    let start_time = Instant::now();
+    let delay = Delay::new(start_time + duration);
+
+    let res = select! {
+        output = future.fuse() => output,
+        _ = delay.compat().fuse() => Err(SymbolicationError::Timeout),
+    };
+    let status = match res {
+        Ok(_) => "ok",
+        Err(SymbolicationError::Timeout) => "timeout",
+        Err(_) => "err",
+    };
+    metric!(
+        timer("futures.done") = start_time.elapsed(),
+        "task_name" => task_name,
+        "status" => status,
+    );
+    res
+}
+
 impl SymbolicationActor {
     async fn do_symbolicate(
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let result = self.do_symbolicate_impl(request).boxed_local().compat();
-
-        future_metrics!(
+        measure_task_timeout(
             "symbolicate",
-            Some((Duration::from_secs(3600), SymbolicationError::Timeout)),
-            result
+            self.do_symbolicate_impl(request),
+            Duration::from_secs(3600),
         )
-        .compat()
         .await
     }
 
@@ -1520,17 +1541,9 @@ impl SymbolicationActor {
 
             self.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
                 .await
-        }
-        .boxed_local()
-        .compat();
+        };
 
-        future_metrics!(
-            "minidump_stackwalk",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
-            future,
-        )
-        .compat()
-        .await
+        measure_task_timeout("minidump_stackwalk", future, Duration::from_secs(1200)).await
     }
 
     async fn do_process_minidump(
@@ -1706,20 +1719,18 @@ impl SymbolicationActor {
             Ok((request, state))
         };
 
-        let request_future = self
-            .threadpool
-            .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
-            .boxed_local()
-            .compat()
-            .map_err(|_| SymbolicationError::Canceled)
-            .flatten();
+        let request_future = async move {
+            self.threadpool
+                .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
+                .await
+                .map_err(|_| SymbolicationError::Canceled)?
+        };
 
-        future_metrics!(
+        measure_task_timeout(
             "parse_apple_crash_report",
-            Some((Duration::from_secs(1200), SymbolicationError::Timeout)),
             request_future,
+            Duration::from_secs(1200),
         )
-        .compat()
         .await
     }
 
