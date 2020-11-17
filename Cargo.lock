@@ -2765,7 +2765,7 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "sentry"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -2781,7 +2781,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -2792,7 +2792,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "hostname",
  "lazy_static",
@@ -2806,7 +2806,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "im",
  "lazy_static",
@@ -2819,7 +2819,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "findshlibs 0.7.0",
  "lazy_static",
@@ -2829,7 +2829,7 @@ dependencies = [
 [[package]]
 name = "sentry-failure"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "failure",
  "sentry-backtrace",
@@ -2839,7 +2839,7 @@ dependencies = [
 [[package]]
 name = "sentry-log"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "log",
  "sentry-core",
@@ -2848,7 +2848,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2857,7 +2857,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.20.1"
-source = "git+https://github.com/getsentry/sentry-rust#bb3b777251ae53c7d413306334703c14dc7de51b"
+source = "git+https://github.com/getsentry/sentry-rust?rev=bb3b777251ae53c7d413306334703c14dc7de51b#bb3b777251ae53c7d413306334703c14dc7de51b"
 dependencies = [
  "chrono",
  "debugid",
