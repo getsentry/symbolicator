@@ -332,7 +332,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawO
         ty,
         code_id: Some(code_id),
         code_file: Some(module.code_file()),
-        debug_id: Some(module.debug_identifier()),
+        debug_id: Some(module.debug_identifier()), // TODO: This should use module.id().map(_)
         debug_file: Some(module.debug_file()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -1388,6 +1388,24 @@ impl SymbolicationActor {
                         // Stackwalk the minidump.
                         let minidump = ByteView::from_slice(&minidump);
                         let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+                        let threads = process_state.threads();
+
+                        // Compute a list of all modules that result a scanned frame. Stack scanning
+                        // walk from frame to frame, so missing unwind information results in the
+                        // NEXT frame being scanned.
+                        let mut scanned_modules = BTreeSet::new();
+                        for thread in threads {
+                            for window in thread.frames().windows(2) {
+                                if let [prev, next] = window {
+                                    if let Some(code_id) = prev.module().and_then(|m| m.id()) {
+                                        let trust = next.trust();
+                                        if matches!(trust, FrameTrust::Scan | FrameTrust::CFIScan) {
+                                            scanned_modules.insert(code_id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         let minidump_state = MinidumpState::new(&process_state);
                         let object_type = minidump_state.object_type();
@@ -1405,19 +1423,35 @@ impl SymbolicationActor {
 
                                 let module_id = code_module.id();
 
-                                let module_cfi_status = match module_id {
-                                    Some(id) => {
-                                        unwind_statuses.get(&id).copied().unwrap_or_default()
-                                    }
+                                let unwind_status = match module_id {
+                                    Some(id) => match unwind_statuses.get(&id) {
+                                        // The code module was not in the original set of referenced
+                                        // modules, but was now required for stack walking.
+                                        None if scanned_modules.contains(&id) => {
+                                            sentry::capture_message("Referenced module not found during initial stack scan", sentry::Level::Error);
+                                            ObjectFileStatus::Missing
+                                        }
+                                        // This code module was not referenced and therefore unused.
+                                        None => ObjectFileStatus::Unused,
+                                        // The unwind object was missing, but was not needed since
+                                        // frames were not scanned. Assume it was unused.
+                                        Some(ObjectFileStatus::Missing)
+                                            if !scanned_modules.contains(&id) =>
+                                        {
+                                            ObjectFileStatus::Unused
+                                        }
+                                        // All other statuses like errors or OK are reported.
+                                        Some(status) => *status,
+                                    },
                                     // TODO: Emit a custom status for code modules without debug_id
                                     None => ObjectFileStatus::Missing,
                                 };
 
                                 metric!(
                                     counter("symbolication.unwind_status") += 1,
-                                    "status" => module_cfi_status.name()
+                                    "status" => unwind_status.name()
                                 );
-                                info.unwind_status = Some(module_cfi_status);
+                                info.unwind_status = Some(unwind_status);
 
                                 let features = match module_id {
                                     Some(id) => {
@@ -1436,7 +1470,6 @@ impl SymbolicationActor {
                         // return, marking used modules when they are referenced by a frame.
                         let requesting_thread_index: Option<usize> =
                             process_state.requesting_thread().try_into().ok();
-                        let threads = process_state.threads();
                         let mut stacktraces = Vec::with_capacity(threads.len());
                         for (index, thread) in threads.iter().enumerate() {
                             let registers = match thread.frames().get(0) {
