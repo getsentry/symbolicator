@@ -3,10 +3,7 @@ name: Release build
 on:
   push:
     branches:
-      - master
       - release/**
-
-  pull_request:
 
 jobs:
   binary:
@@ -30,7 +27,7 @@ jobs:
           command: build
           args: --release --locked
 
-      - name: Build symbolicator
+      - name: Split and archive debug info
         run: |
           objcopy --only-keep-debug target/release/symbolicator{,.debug}
           objcopy --strip-debug --strip-unneeded target/release/symbolicator
