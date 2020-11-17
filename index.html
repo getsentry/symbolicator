@@ -1,6 +1,4 @@
 
-
-
 <!doctype html>
 <html lang="en" class="no-js">
   <head>
@@ -10,10 +8,11 @@
       
       
       
+      
         <meta name="author" content="Sentry">
       
       <link rel="shortcut icon" href="assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-5.5.9">
+      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-6.1.5">
     
     
       
@@ -21,13 +20,17 @@
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.36ee6aaa.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.21aed14c.min.css">
       
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.196e0c26.min.css">
+        
       
     
     
     
       
+        
         <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&display=fallback">
         <style>body,input{font-family:"Roboto",-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif}code,kbd,pre{font-family:"Roboto Mono",SFMono-Regular,Consolas,Menlo,monospace}</style>
@@ -44,9 +47,14 @@
   </head>
   
   
-    <body dir="ltr">
-  
     
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="" data-md-color-primary="none" data-md-color-accent="none">
+      
+  
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" for="__drawer"></label>
@@ -62,7 +70,9 @@
       
     </div>
     
-      <header class="md-header" data-md-component="header">
+      
+
+<header class="md-header" data-md-component="header">
   <nav class="md-header-nav md-grid" aria-label="Header">
     <a href="." title="Sentry Symbolicator" class="md-header-nav__button md-logo" aria-label="Sentry Symbolicator">
       
@@ -95,7 +105,7 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" data-md-state="active">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" data-md-state="active" required>
       <label class="md-search__icon md-icon" for="__search">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0116 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 019.5 16 6.5 6.5 0 013 9.5 6.5 6.5 0 019.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"/></svg>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
@@ -136,8 +146,6 @@
     
     <div class="md-container" data-md-component="container">
       
-        
-      
       
         
       
@@ -148,7 +156,9 @@
               <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
-                    <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+                    
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href="." title="Sentry Symbolicator" class="md-nav__button md-logo" aria-label="Sentry Symbolicator">
       
@@ -187,12 +197,10 @@
     
       <label class="md-nav__link md-nav__link--active" for="__toc">
         Introduction
-        <span class="md-nav__icon md-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9h14V7H3v2m0 4h14v-2H3v2m0 4h14v-2H3v2m16 0h2v-2h-2v2m0-10v2h2V7h-2m0 6h2v-2h-2v2z"/></svg>
-        </span>
+        <span class="md-nav__icon md-icon"></span>
       </label>
     
-    <a href="." title="Introduction" class="md-nav__link md-nav__link--active">
+    <a href="." class="md-nav__link md-nav__link--active">
       Introduction
     </a>
     
@@ -202,9 +210,7 @@
   
   
     <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-scrollfix>
@@ -244,19 +250,14 @@
 
   <li class="md-nav__item md-nav__item--nested">
     
-      <input class="md-nav__toggle md-toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2">
-    
+    <input class="md-nav__toggle md-toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2" >
     <label class="md-nav__link" for="nav-2">
       Advanced
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.59 16.58L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.42z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
     </label>
     <nav class="md-nav" aria-label="Advanced" data-md-level="1">
       <label class="md-nav__title" for="nav-2">
-        <span class="md-nav__icon md-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-        </span>
+        <span class="md-nav__icon md-icon"></span>
         Advanced
       </label>
       <ul class="md-nav__list" data-md-scrollfix>
@@ -268,7 +269,7 @@
 
 
   <li class="md-nav__item">
-    <a href="advanced/background-and-principles/" title="Background and Principles" class="md-nav__link">
+    <a href="advanced/background-and-principles/" class="md-nav__link">
       Background and Principles
     </a>
   </li>
@@ -280,7 +281,7 @@
 
 
   <li class="md-nav__item">
-    <a href="advanced/system-architecture/" title="System Architecture" class="md-nav__link">
+    <a href="advanced/system-architecture/" class="md-nav__link">
       System Architecture
     </a>
   </li>
@@ -292,7 +293,7 @@
 
 
   <li class="md-nav__item">
-    <a href="advanced/caching/" title="Caching" class="md-nav__link">
+    <a href="advanced/caching/" class="md-nav__link">
       Caching
     </a>
   </li>
@@ -304,7 +305,7 @@
 
 
   <li class="md-nav__item">
-    <a href="advanced/symbol-lookup/" title="Lookup Strategy" class="md-nav__link">
+    <a href="advanced/symbol-lookup/" class="md-nav__link">
       Lookup Strategy
     </a>
   </li>
@@ -316,7 +317,7 @@
 
 
   <li class="md-nav__item">
-    <a href="advanced/symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-nav__link">
+    <a href="advanced/symbol-server-compatibility/" class="md-nav__link">
       Symbol Server Compatibility
     </a>
   </li>
@@ -328,7 +329,7 @@
 
 
   <li class="md-nav__item">
-    <a href="advanced/source-bundles/" title="Source Bundles" class="md-nav__link">
+    <a href="advanced/source-bundles/" class="md-nav__link">
       Source Bundles
     </a>
   </li>
@@ -346,19 +347,14 @@
 
   <li class="md-nav__item md-nav__item--nested">
     
-      <input class="md-nav__toggle md-toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3">
-    
+    <input class="md-nav__toggle md-toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3" >
     <label class="md-nav__link" for="nav-3">
       API
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.59 16.58L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.42z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
     </label>
     <nav class="md-nav" aria-label="API" data-md-level="1">
       <label class="md-nav__title" for="nav-3">
-        <span class="md-nav__icon md-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-        </span>
+        <span class="md-nav__icon md-icon"></span>
         API
       </label>
       <ul class="md-nav__list" data-md-scrollfix>
@@ -370,7 +366,7 @@
 
 
   <li class="md-nav__item">
-    <a href="api/" title="Overview" class="md-nav__link">
+    <a href="api/" class="md-nav__link">
       Overview
     </a>
   </li>
@@ -382,7 +378,7 @@
 
 
   <li class="md-nav__item">
-    <a href="api/minidump/" title="POST /minidump" class="md-nav__link">
+    <a href="api/minidump/" class="md-nav__link">
       POST /minidump
     </a>
   </li>
@@ -394,7 +390,7 @@
 
 
   <li class="md-nav__item">
-    <a href="api/symbolication/" title="POST /symbolicate" class="md-nav__link">
+    <a href="api/symbolication/" class="md-nav__link">
       POST /symbolicate
     </a>
   </li>
@@ -406,7 +402,7 @@
 
 
   <li class="md-nav__item">
-    <a href="api/applecrashreport/" title="POST /applecrashreport" class="md-nav__link">
+    <a href="api/applecrashreport/" class="md-nav__link">
       POST /applecrashreport
     </a>
   </li>
@@ -418,7 +414,7 @@
 
 
   <li class="md-nav__item">
-    <a href="api/response/" title="Symbolication Response" class="md-nav__link">
+    <a href="api/response/" class="md-nav__link">
       Symbolication Response
     </a>
   </li>
@@ -430,7 +426,7 @@
 
 
   <li class="md-nav__item">
-    <a href="api/proxy/" title="Symbol Server Proxy" class="md-nav__link">
+    <a href="api/proxy/" class="md-nav__link">
       Symbol Server Proxy
     </a>
   </li>
@@ -457,9 +453,7 @@
   
   
     <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-scrollfix>
@@ -502,9 +496,6 @@
                   </a>
                 
                 
-                  
-                
-                
                   <h1>Introduction</h1>
                 
                 <p align="center">
@@ -522,7 +513,6 @@ symbol repositories.</p>
 <div class="codehilite"><pre><span></span><code>$ symbolicator run -c config.yml
 </code></pre></div>
 
-
 <p>The configuration file can be omitted. Symbolicator will run with default
 settings in this case.</p>
 <h2 id="configuration">Configuration</h2>
@@ -537,7 +527,6 @@ settings in this case.</p>
   <span class="nt">statsd</span><span class="p">:</span> <span class="s">&quot;127.0.0.1:8125&quot;</span>
   <span class="nt">prefix</span><span class="p">:</span> <span class="s">&quot;symbolicator&quot;</span>
 </code></pre></div>
-
 
 <ul>
 <li><code>cache_dir</code>: Path to a directory to cache downloaded files and symbolication
@@ -557,8 +546,9 @@ settings in this case.</p>
 </ul>
 </li>
 <li><code>metrics</code>: Configure a statsd server to send metrics to.<ul>
-<li><code>statsd</code>: The host and port to send metrics to. Defaults to <code>null</code>, which
-  disables metric submission.</li>
+<li><code>statsd</code>: The host and port to send metrics to. Defaults to STATSD_SERVER
+  environment variable or in case it is not defined, then it defaults to <code>null</code>,
+  which disables metric submission.</li>
 <li><code>prefix</code>: A prefix for every metric, defaults to <code>symbolicator</code>.</li>
 </ul>
 </li>
@@ -574,32 +564,40 @@ settings in this case.</p>
   <code>true</code>.</li>
 <li><code>connect_to_reserved_ips</code>: Allow reserved IP addresses for requests to
   sources. See <a href="#security">Security</a>. Defaults to <code>false</code>.</li>
-<li><code>caches</code>: Fine-tune cache expiry.</li>
-</ul>
-<p>All time units can be either a time expression like <code>1s</code>.  Units
-   can be <code>s</code>, <code>seconds</code>, <code>m</code>, <code>minutes</code>, <code>h</code>, <code>hours</code>, <code>d</code>, <code>days</code>,
-   <code>w</code>, <code>weeks</code>, <code>M</code>, <code>months</code>, <code>y</code>, <code>years</code>.  Or they can be <code>null</code>
-   in which case the cache will never expire.</p>
+<li><code>processing_pool_size</code>: The number of subprocesses in Symbolicator's internal
+  processing pool. Defaults to the total number of logical CPUs on the machine.</li>
+<li>
+<p><code>caches</code>: Fine-tune cache expiry.
+  All time units can be either a time expression like <code>1s</code>.  Units
+  can be <code>s</code>, <code>seconds</code>, <code>m</code>, <code>minutes</code>, <code>h</code>, <code>hours</code>, <code>d</code>, <code>days</code>,
+  <code>w</code>, <code>weeks</code>, <code>M</code>, <code>months</code>, <code>y</code>, <code>years</code>.  Or they can be <code>null</code>
+  in which case the cache will never expire.</p>
+</li>
+<li>
+<p><code>downloaded</code>: Fine-tune caches for downloaded files.</p>
 <ul>
-<li><code>downloaded</code>: Fine-tune caches for downloaded files.<ul>
 <li><code>max_unused_for</code>: Maximum duration to keep a file since last
-    use of it.</li>
+   use of it.</li>
 <li><code>retry_misses_after</code>: Duration to wait before re-trying to
-    download a file which was not found.</li>
+   download a file which was not found.</li>
 <li><code>retry_malformed_after</code>: Duration to wait before re-trying to
-    download a file which was malformed.</li>
+   download a file which was malformed.</li>
+</ul>
+</li>
 <li><code>derived</code>: Fine-tune caches for files which are derived from
-  downloaded files.  These files are usually versions of the
-  downloaded files optimised for fast lookups.</li>
+    downloaded files.  These files are usually versions of the
+    downloaded files optimised for fast lookups.<ul>
 <li><code>max_unused_for</code>: Maximum duration to keep a file since last
-     use of it.</li>
+  use of it.</li>
 <li><code>retry_misses_after</code>: Duration to wait before re-trying to
-     download a file which was not found.</li>
+  download a file which was not found.</li>
 <li><code>retry_malformed_after</code>: Duration to wait before re-trying to
-     download a file which was malformed.</li>
+  download a file which was malformed.</li>
+</ul>
+</li>
 <li><code>diagnostics</code>: This configures the duration diagnostics data
-  will be stored in cache.  E.g. minidumps which failed to be
-  processed correctly will be stored in this cache.</li>
+    will be stored in cache.  E.g. minidumps which failed to be
+    processed correctly will be stored in this cache.<ul>
 <li><code>retention</code>: Duration a file will be kept in this cache.</li>
 </ul>
 </li>
@@ -634,7 +632,7 @@ default.</p>
       <nav class="md-footer-nav__inner md-grid" aria-label="Footer">
         
         
-          <a href="advanced/background-and-principles/" title="Background and Principles" class="md-footer-nav__link md-footer-nav__link--next" rel="next">
+          <a href="advanced/background-and-principles/" class="md-footer-nav__link md-footer-nav__link--next" rel="next">
             <div class="md-footer-nav__title">
               <div class="md-ellipsis">
                 <span class="md-footer-nav__direction">
@@ -667,15 +665,15 @@ default.</p>
       
     </div>
     
-      <script src="assets/javascripts/vendor.df0def68.min.js"></script>
-      <script src="assets/javascripts/bundle.ba57d267.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents"}</script>
+      <script src="assets/javascripts/vendor.7e0ee788.min.js"></script>
+      <script src="assets/javascripts/bundle.b3a72adc.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}</script>
       
       <script>
         app = initialize({
           base: ".",
           features: [],
           search: Object.assign({
-            worker: "assets/javascripts/worker/search.5eca75d3.min.js"
+            worker: "assets/javascripts/worker/search.4ac00218.min.js"
           }, typeof search !== "undefined" && search)
         })
       </script>

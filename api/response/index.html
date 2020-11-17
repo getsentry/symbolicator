@@ -1,6 +1,4 @@
 
-
-
 <!doctype html>
 <html lang="en" class="no-js">
   <head>
@@ -10,10 +8,11 @@
       
       
       
+      
         <meta name="author" content="Sentry">
       
       <link rel="shortcut icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-5.5.9">
+      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-6.1.5">
     
     
       
@@ -21,13 +20,17 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.36ee6aaa.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.21aed14c.min.css">
       
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.196e0c26.min.css">
+        
       
     
     
     
       
+        
         <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&display=fallback">
         <style>body,input{font-family:"Roboto",-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif}code,kbd,pre{font-family:"Roboto Mono",SFMono-Regular,Consolas,Menlo,monospace}</style>
@@ -44,9 +47,14 @@
   </head>
   
   
-    <body dir="ltr">
-  
     
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="" data-md-color-primary="none" data-md-color-accent="none">
+      
+  
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" for="__drawer"></label>
@@ -62,7 +70,9 @@
       
     </div>
     
-      <header class="md-header" data-md-component="header">
+      
+
+<header class="md-header" data-md-component="header">
   <nav class="md-header-nav md-grid" aria-label="Header">
     <a href="../.." title="Sentry Symbolicator" class="md-header-nav__button md-logo" aria-label="Sentry Symbolicator">
       
@@ -95,7 +105,7 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" data-md-state="active">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" data-md-state="active" required>
       <label class="md-search__icon md-icon" for="__search">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0116 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 019.5 16 6.5 6.5 0 013 9.5 6.5 6.5 0 019.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"/></svg>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
@@ -136,8 +146,6 @@
     
     <div class="md-container" data-md-component="container">
       
-        
-      
       
         
       
@@ -148,7 +156,9 @@
               <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
-                    <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+                    
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href="../.." title="Sentry Symbolicator" class="md-nav__button md-logo" aria-label="Sentry Symbolicator">
       
@@ -179,7 +189,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../.." title="Introduction" class="md-nav__link">
+    <a href="../.." class="md-nav__link">
       Introduction
     </a>
   </li>
@@ -192,19 +202,14 @@
 
   <li class="md-nav__item md-nav__item--nested">
     
-      <input class="md-nav__toggle md-toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2">
-    
+    <input class="md-nav__toggle md-toggle" data-md-toggle="nav-2" type="checkbox" id="nav-2" >
     <label class="md-nav__link" for="nav-2">
       Advanced
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.59 16.58L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.42z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
     </label>
     <nav class="md-nav" aria-label="Advanced" data-md-level="1">
       <label class="md-nav__title" for="nav-2">
-        <span class="md-nav__icon md-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-        </span>
+        <span class="md-nav__icon md-icon"></span>
         Advanced
       </label>
       <ul class="md-nav__list" data-md-scrollfix>
@@ -216,7 +221,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/background-and-principles/" title="Background and Principles" class="md-nav__link">
+    <a href="../../advanced/background-and-principles/" class="md-nav__link">
       Background and Principles
     </a>
   </li>
@@ -228,7 +233,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/system-architecture/" title="System Architecture" class="md-nav__link">
+    <a href="../../advanced/system-architecture/" class="md-nav__link">
       System Architecture
     </a>
   </li>
@@ -240,7 +245,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/caching/" title="Caching" class="md-nav__link">
+    <a href="../../advanced/caching/" class="md-nav__link">
       Caching
     </a>
   </li>
@@ -252,7 +257,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/symbol-lookup/" title="Lookup Strategy" class="md-nav__link">
+    <a href="../../advanced/symbol-lookup/" class="md-nav__link">
       Lookup Strategy
     </a>
   </li>
@@ -264,7 +269,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/symbol-server-compatibility/" title="Symbol Server Compatibility" class="md-nav__link">
+    <a href="../../advanced/symbol-server-compatibility/" class="md-nav__link">
       Symbol Server Compatibility
     </a>
   </li>
@@ -276,7 +281,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../../advanced/source-bundles/" title="Source Bundles" class="md-nav__link">
+    <a href="../../advanced/source-bundles/" class="md-nav__link">
       Source Bundles
     </a>
   </li>
@@ -296,19 +301,14 @@
 
   <li class="md-nav__item md-nav__item--active md-nav__item--nested">
     
-      <input class="md-nav__toggle md-toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3" checked>
-    
+    <input class="md-nav__toggle md-toggle" data-md-toggle="nav-3" type="checkbox" id="nav-3" checked>
     <label class="md-nav__link" for="nav-3">
       API
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.59 16.58L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.42z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
     </label>
     <nav class="md-nav" aria-label="API" data-md-level="1">
       <label class="md-nav__title" for="nav-3">
-        <span class="md-nav__icon md-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-        </span>
+        <span class="md-nav__icon md-icon"></span>
         API
       </label>
       <ul class="md-nav__list" data-md-scrollfix>
@@ -320,7 +320,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../" title="Overview" class="md-nav__link">
+    <a href="../" class="md-nav__link">
       Overview
     </a>
   </li>
@@ -332,7 +332,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../minidump/" title="POST /minidump" class="md-nav__link">
+    <a href="../minidump/" class="md-nav__link">
       POST /minidump
     </a>
   </li>
@@ -344,7 +344,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../symbolication/" title="POST /symbolicate" class="md-nav__link">
+    <a href="../symbolication/" class="md-nav__link">
       POST /symbolicate
     </a>
   </li>
@@ -356,7 +356,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../applecrashreport/" title="POST /applecrashreport" class="md-nav__link">
+    <a href="../applecrashreport/" class="md-nav__link">
       POST /applecrashreport
     </a>
   </li>
@@ -378,12 +378,10 @@
     
       <label class="md-nav__link md-nav__link--active" for="__toc">
         Symbolication Response
-        <span class="md-nav__icon md-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9h14V7H3v2m0 4h14v-2H3v2m0 4h14v-2H3v2m16 0h2v-2h-2v2m0-10v2h2V7h-2m0 6h2v-2h-2v2z"/></svg>
-        </span>
+        <span class="md-nav__icon md-icon"></span>
       </label>
     
-    <a href="./" title="Symbolication Response" class="md-nav__link md-nav__link--active">
+    <a href="./" class="md-nav__link md-nav__link--active">
       Symbolication Response
     </a>
     
@@ -395,9 +393,7 @@
   
   
     <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-scrollfix>
@@ -436,7 +432,7 @@
 
 
   <li class="md-nav__item">
-    <a href="../proxy/" title="Symbol Server Proxy" class="md-nav__link">
+    <a href="../proxy/" class="md-nav__link">
       Symbol Server Proxy
     </a>
   </li>
@@ -465,9 +461,7 @@
   
   
     <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-      </span>
+      <span class="md-nav__icon md-icon"></span>
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-scrollfix>
@@ -510,9 +504,6 @@
                   </a>
                 
                 
-                  
-                
-                
                 <h1 id="symbolication-response">Symbolication Response</h1>
 <p>The response to a symbolication request is a JSON object which contains
 different data depending on the status of the symbolication job:</p>
@@ -537,7 +528,7 @@ symbolication succeeds within a configured timeframe (around 20 seconds):</p>
         <span class="p">{</span>
           <span class="c1">// Symbolication meta data</span>
           <span class="s2">&quot;status&quot;</span><span class="o">:</span> <span class="s2">&quot;symbolicated&quot;</span><span class="p">,</span>
-          <span class="s2">&quot;original_index&quot;</span><span class="o">:</span> <span class="mi">0</span><span class="p">,</span>
+          <span class="s2">&quot;original_index&quot;</span><span class="o">:</span> <span class="mf">0</span><span class="p">,</span>
 
           <span class="c1">// Frame information</span>
           <span class="s2">&quot;instruction_addr&quot;</span><span class="o">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>  <span class="c1">// actual address of the frame</span>
@@ -549,7 +540,7 @@ symbolication succeeds within a configured timeframe (around 20 seconds):</p>
           <span class="s2">&quot;lang&quot;</span><span class="o">:</span> <span class="s2">&quot;cpp&quot;</span><span class="p">,</span>
           <span class="s2">&quot;abs_path&quot;</span><span class="o">:</span> <span class="s2">&quot;/path/to/src/file.c&quot;</span><span class="p">,</span> <span class="c1">// normalized absolute path</span>
           <span class="s2">&quot;filename&quot;</span><span class="o">:</span> <span class="s2">&quot;../src/file.c&quot;</span><span class="p">,</span>       <span class="c1">// path relative to compilation dir</span>
-          <span class="s2">&quot;lineno&quot;</span><span class="o">:</span> <span class="mi">22</span><span class="p">,</span>
+          <span class="s2">&quot;lineno&quot;</span><span class="o">:</span> <span class="mf">22</span><span class="p">,</span>
         <span class="p">},</span>
         <span class="p">...</span>
       <span class="p">],</span>
@@ -566,14 +557,13 @@ symbolication succeeds within a configured timeframe (around 20 seconds):</p>
   <span class="p">],</span>
   <span class="c1">// Additional information read from crash report</span>
   <span class="s2">&quot;arch&quot;</span><span class="o">:</span> <span class="s2">&quot;x86_64&quot;</span><span class="p">,</span>
-  <span class="s2">&quot;signal&quot;</span><span class="o">:</span> <span class="mi">11</span><span class="p">,</span>
+  <span class="s2">&quot;signal&quot;</span><span class="o">:</span> <span class="mf">11</span><span class="p">,</span>
   <span class="s2">&quot;os&quot;</span><span class="o">:</span> <span class="p">{</span>
     <span class="s2">&quot;name&quot;</span><span class="o">:</span> <span class="s2">&quot;Windows NT&quot;</span><span class="p">,</span>
     <span class="s2">&quot;version&quot;</span><span class="o">:</span> <span class="s2">&quot;8.1.2700&quot;</span>
   <span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-
 
 <p>The symbolicated frames are returned in the same order as provided in the
 request. Additional properties passed in the request are discarded. Errors that
@@ -588,10 +578,9 @@ after which the symbolication request can be expected to succeed:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
   <span class="s2">&quot;status&quot;</span><span class="o">:</span> <span class="s2">&quot;pending&quot;</span><span class="p">,</span>
   <span class="s2">&quot;request_id&quot;</span><span class="o">:</span> <span class="s2">&quot;deadbeef&quot;</span><span class="p">,</span>
-  <span class="s2">&quot;retry_after&quot;</span><span class="o">:</span> <span class="mi">300</span> <span class="c1">// 5 minutes</span>
+  <span class="s2">&quot;retry_after&quot;</span><span class="o">:</span> <span class="mf">300</span> <span class="c1">// 5 minutes</span>
 <span class="p">}</span>
 </code></pre></div>
-
 
 <p>The symbolication server must not send a backoff response if no timeout was sent
 by the client.</p>
@@ -599,7 +588,6 @@ by the client.</p>
 guarantee. The request may be repeated at any time:</p>
 <div class="codehilite"><pre><span></span><code><span class="err">GET /requests/deadbeef?timeout=123</span>
 </code></pre></div>
-
 
 <h2 id="invalid-request-response">Invalid Request Response</h2>
 <p>If the user provided a non-existent request ID, the server responds with <em>404
@@ -628,7 +616,7 @@ then re-schedule symbolication</p>
     <div class="md-footer-nav">
       <nav class="md-footer-nav__inner md-grid" aria-label="Footer">
         
-          <a href="../applecrashreport/" title="POST /applecrashreport" class="md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+          <a href="../applecrashreport/" class="md-footer-nav__link md-footer-nav__link--prev" rel="prev">
             <div class="md-footer-nav__button md-icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
             </div>
@@ -643,7 +631,7 @@ then re-schedule symbolication</p>
           </a>
         
         
-          <a href="../proxy/" title="Symbol Server Proxy" class="md-footer-nav__link md-footer-nav__link--next" rel="next">
+          <a href="../proxy/" class="md-footer-nav__link md-footer-nav__link--next" rel="next">
             <div class="md-footer-nav__title">
               <div class="md-ellipsis">
                 <span class="md-footer-nav__direction">
@@ -676,15 +664,15 @@ then re-schedule symbolication</p>
       
     </div>
     
-      <script src="../../assets/javascripts/vendor.df0def68.min.js"></script>
-      <script src="../../assets/javascripts/bundle.ba57d267.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents"}</script>
+      <script src="../../assets/javascripts/vendor.7e0ee788.min.js"></script>
+      <script src="../../assets/javascripts/bundle.b3a72adc.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}</script>
       
       <script>
         app = initialize({
           base: "../..",
           features: [],
           search: Object.assign({
-            worker: "../../assets/javascripts/worker/search.5eca75d3.min.js"
+            worker: "../../assets/javascripts/worker/search.4ac00218.min.js"
           }, typeof search !== "undefined" && search)
         })
       </script>
