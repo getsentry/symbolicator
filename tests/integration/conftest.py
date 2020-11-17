@@ -247,9 +247,9 @@ def fail_missing_secrets(msg):
     committed to the main getsentry repository.  Especially for forks they are hidden to
     stop external contributors from stealing the secrets.
 
-    This will call `pytest.skip` of the secrets are missing but this is acceptable because
+    This will call `pytest.skip` if the secrets are missing but this is acceptable because
     e.g. we're on a developer's machine or on a forked repository.  If running on CI in the
-    main repository this will call `pytest.skip`.
+    main repository this will call `pytest.fail`.
     """
     if os.getenv("CI") and os.getenv("GITHUB_BASE_REF"):
         pytest.fail(msg)
