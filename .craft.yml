@@ -1,10 +1,13 @@
 ---
-minVersion: "0.11.0"
+minVersion: "0.13.2"
 github:
   owner: getsentry
   repo: symbolicator
 changelogPolicy: auto
+
 statusProvider:
+  name: github
+artifactProvider:
   name: github
 
 targets:
@@ -34,7 +37,7 @@ targets:
     name: docker
     source: us.gcr.io/sentryio/symbolicator
     target: getsentry/symbolicator
-    targetFormat: '{{{target}}}:latest'
+    targetFormat: "{{{target}}}:latest"
 
 requireNames:
   - /^gh-pages.zip$/
