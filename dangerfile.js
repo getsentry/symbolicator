@@ -50,10 +50,7 @@ function getSnapshotDetails() {
 <details>
 <summary><b>Instructions for snapshot changes</b></summary>
 
-Sentry contains a separate symbolicator integration test suite located at
-[\`tests/symbolicator/\`](https://github.com/getsentry/sentry/tree/master/tests/symbolicator).
-Changes in this PR will likely result in snapshot diffs in Sentry, which will break the master
-branch and in-progress PRs.
+Sentry runs a symbolicator integration test suite located at [\`tests/symbolicator/\`](https://github.com/getsentry/sentry/tree/master/tests/symbolicator). Changes in this PR will likely result in snapshot diffs in Sentry, which will break the master branch and in-progress PRs.
 
 Follow these steps to update snapshots in Sentry:
 
