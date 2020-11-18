@@ -8,7 +8,7 @@ async function checkChangelog(path) {
   return contents.includes(prLink);
 }
 
-function getChangelogMessage() {
+function getChangelogDetails() {
   const prNumber = danger.github.pr.number;
   const prUrl = danger.github.pr.html_url;
   const prLink = `[#${prNumber}](${prUrl})`;
@@ -41,8 +41,31 @@ function checkChangelog() {
 
   if (!skipChangelog && !hasChangelog) {
     fail("Please consider adding a changelog entry for the next release.");
-    markdown(getChangelogMessage());
+    markdown(getChangelogDetails());
   }
+}
+
+function getSnapshotDetails() {
+  return `
+<details>
+<summary><b>Instructions for snapshot changes</b></summary>
+
+Sentry contains a separate symbolicator integration test suite located at
+[\`tests/symbolicator/\`](https://github.com/getsentry/sentry/tree/master/tests/symbolicator).
+Changes in this PR will likely result in snapshot diffs in Sentry, which will break the master
+branch and in-progress PRs.
+
+Follow these steps to update snapshots in Sentry:
+
+1. Check out latest Sentry \`master\` and enable the virtualenv.
+2. Stop the symbolicator devservice using \`sentry devservices down symbolicator\`.
+3. Run your development symbolicator on port ``3021``.
+4. Export \`SENTRY_SNAPSHOTS_WRITEBACK=1\` and run symbolicator tests with pytest.
+5. Review snapshot changes locally, then create a PR to Sentry.
+6. Merge the Symbolicator PR, then merge the Sentry PR.
+
+</details>
+  `;
 }
 
 function checkSnapshots() {
@@ -55,6 +78,7 @@ function checkSnapshots() {
       "Snapshot changes likely affect Sentry tests. Please check the symbolicator test suite in " +
         "Sentry and update snapshots as needed."
     );
+    markdown(getSnapshotDetails());
   }
 }
 
