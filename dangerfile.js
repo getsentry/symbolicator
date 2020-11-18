@@ -14,6 +14,9 @@ function getChangelogMessage() {
   const prLink = `[#${prNumber}](${prUrl})`;
 
   return `
+<details>
+<summary>Instructions and example for changelog.</summary>
+
 Please add an entry to \`CHANGELOG.md\` to the "Unreleased" section under the following heading:
  1. **Features**: For new user-visible functionality.
  2. **Bug Fixes**: For user-visible bug fixes.
@@ -26,6 +29,8 @@ To the changelog entry, please add a link to this PR (consider a more descriptiv
 \`\`\`
 
 If none of the above apply, you can opt out by adding _#skip-changelog_ to the PR description.
+
+</details>
 `;
 }
 
