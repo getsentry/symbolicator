@@ -70,8 +70,9 @@ Follow these steps to update snapshots in Sentry:
 
 function checkSnapshots() {
   const SNAPSHOT_LOCATION = "src/actors/snapshots/";
-  const changesSnapshots =
-    danger.git.modified_files.indexOf(SNAPSHOT_LOCATION) !== -1;
+  const changesSnapshots = danger.git.modified_files.some((f) =>
+    f.startsWith(SNAPSHOT_LOCATION)
+  );
 
   if (changesSnapshots) {
     warn(
