@@ -15,7 +15,7 @@ function getChangelogMessage() {
 
   return `
 <details>
-<summary>Instructions and example for changelog.</summary>
+<summary><b>Instructions and example for changelog</b></summary>
 
 Please add an entry to \`CHANGELOG.md\` to the "Unreleased" section under the following heading:
  1. **Features**: For new user-visible functionality.
