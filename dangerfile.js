@@ -59,7 +59,7 @@ Follow these steps to update snapshots in Sentry:
 
 1. Check out latest Sentry \`master\` and enable the virtualenv.
 2. Stop the symbolicator devservice using \`sentry devservices down symbolicator\`.
-3. Run your development symbolicator on port ``3021``.
+3. Run your development symbolicator on port \`3021\`.
 4. Export \`SENTRY_SNAPSHOTS_WRITEBACK=1\` and run symbolicator tests with pytest.
 5. Review snapshot changes locally, then create a PR to Sentry.
 6. Merge the Symbolicator PR, then merge the Sentry PR.
