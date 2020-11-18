@@ -240,6 +240,23 @@ def hitcounter(request):
         yield app
 
 
+def fail_missing_secrets(msg):
+    """Fail or skip the test because of missing secrets.
+
+    Secrets are only guaranteed to be available on CI when the branch being tested is
+    committed to the main getsentry repository.  Especially for forks they are hidden to
+    stop external contributors from stealing the secrets.
+
+    This will call `pytest.skip` if the secrets are missing but this is acceptable because
+    e.g. we're on a developer's machine or on a forked repository.  If running on CI in the
+    main repository this will call `pytest.fail`.
+    """
+    if os.getenv("CI") and os.getenv("GITHUB_BASE_REF") is None:
+        pytest.fail(msg)
+    else:
+        pytest.skip(msg)
+
+
 @pytest.fixture
 def s3(pytestconfig):
     """AWS S3 credentials for testing S3 buckets.
@@ -250,11 +267,7 @@ def s3(pytestconfig):
     is allowed.
     """
     if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-        msg = "No AWS credentials"
-        if os.getenv("CI") and os.getenv("GITHUB_REPOSITORY").startswith("getsentry/"):
-            pytest.fail(msg)
-        else:
-            pytest.skip(msg)
+        fail_missing_secrets("No AWS credentials")
     return boto3.resource(
         "s3",
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -289,11 +302,7 @@ def ios_bucket_config(pytestconfig):
     is allowed.
     """
     if not GCS_PRIVATE_KEY or not GCS_CLIENT_EMAIL:
-        msg = "No GCS credentials"
-        if os.getenv("CI") and os.getenv("GITHUB_REPOSITORY").startswith("getsentry/"):
-            pytest.fail(msg)
-        else:
-            pytest.skip(msg)
+        fail_missing_secrets("No GCS credentials")
     yield {
         "id": "ios",
         "type": "gcs",
