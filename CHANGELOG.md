@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- WROOOOOOOONG. ([#99999](https://github.com/getsentry/symbolicator/pull/99999))
+
 ## 0.3.0
 
 - No documented changes.
