@@ -1,5 +1,3 @@
-import { fail, warn, markdown, danger, schedule, GitHubDSL } from "danger";
-
 const PR_NUMBER = danger.github.pr.number;
 const PR_URL = danger.github.pr.html_url;
 const PR_LINK = `[#${PR_NUMBER}](${PR_URL})`;
@@ -31,7 +29,7 @@ If none of the above apply, you can opt out by adding _#skip-changelog_ to the P
 `;
 }
 
-async function containsChangelog(path: string) {
+async function containsChangelog(path) {
   const contents = await danger.github.utils.fileContents(path);
   return contents.includes(PR_LINK);
 }
@@ -89,9 +87,7 @@ async function checkSnapshots() {
 
 async function checkAll() {
   // See: https://spectrum.chat/danger/javascript/support-for-github-draft-prs~82948576-ce84-40e7-a043-7675e5bf5690
-  type ExtendedGHDSL = GitHubDSL & { mergeable_state: string };
-  const pr = danger.github.pr as any as ExtendedGHDSL;
-  const isDraft = pr.mergeable_state === "draft";
+  const isDraft = danger.github.pr.mergeable_state === "draft";
 
   if (isDraft) {
     return;
