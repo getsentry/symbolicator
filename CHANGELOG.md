@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- WROOOOOOOONG. ([#99999](https://github.com/getsentry/symbolicator/pull/99999))
+- Check for changelog entries correctly. ([#296](https://github.com/getsentry/symbolicator/pull/296))
 
 ## 0.3.0
 
