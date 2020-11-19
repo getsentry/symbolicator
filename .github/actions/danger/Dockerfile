@@ -5,4 +5,4 @@ WORKDIR /action
 
 RUN npm install --production
 
-ENTRYPOINT ["npx", "danger", "ci", "-d" "/action/dangerfile.ts"]
+ENTRYPOINT ["/action/entrypoint.sh"]
