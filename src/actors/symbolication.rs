@@ -882,6 +882,11 @@ pub struct SymbolicateStacktraces {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
+/// Run future with a timeout, instrumented with metrics.
+///
+/// This runs the future `future` and exports the duration as the `futures.done` metric
+/// using `task_name` as metric field.  The future will be cancelled if it runs for longer
+/// than `duration` with this status also being represented in the metric.
 async fn measure_task_timeout<T, F>(task_name: &str, future: F, duration: Duration) -> F::Output
 where
     F: Future<Output = Result<T, SymbolicationError>>,
