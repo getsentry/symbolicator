@@ -1,9 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Check for changelog entries correctly. ([#296](https://github.com/getsentry/symbolicator/pull/296))
-
 ## 0.3.0
 
 - No documented changes.
