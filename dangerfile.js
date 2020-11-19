@@ -1,18 +1,13 @@
+const PR_NUMBER = danger.github.pr.number;
+const PR_URL = danger.github.pr.html_url;
+const PR_LINK = `[#${PR_NUMBER}](${PR_URL})`;
+
 function getCleanTitle() {
   const title = danger.github.pr.title;
   return title.split(": ").slice(-1)[0].trim().replace(/\.+$/, "");
 }
 
-async function checkChangelog(path) {
-  const contents = await danger.github.utils.fileContents(path);
-  return contents.includes(prLink);
-}
-
 function getChangelogDetails() {
-  const prNumber = danger.github.pr.number;
-  const prUrl = danger.github.pr.html_url;
-  const prLink = `[#${prNumber}](${prUrl})`;
-
   return `
 <details>
 <summary><b>Instructions and example for changelog</b></summary>
@@ -25,7 +20,7 @@ Please add an entry to \`CHANGELOG.md\` to the "Unreleased" section under the fo
 To the changelog entry, please add a link to this PR (consider a more descriptive message):
 
 \`\`\`md
-- ${getCleanTitle()}. (${prLink})
+- ${getCleanTitle()}. (${PR_LINK})
 \`\`\`
 
 If none of the above apply, you can opt out by adding _#skip-changelog_ to the PR description.
@@ -34,12 +29,22 @@ If none of the above apply, you can opt out by adding _#skip-changelog_ to the P
 `;
 }
 
-function checkChangelog() {
-  const hasChangelog = danger.git.modified_files.indexOf("CHANGELOG.md") !== -1;
+async function containsChangelog(path) {
+  const contents = await danger.github.utils.fileContents(path);
+  return contents.includes(PR_LINK);
+}
+
+async function checkChangelog() {
   const skipChangelog =
     danger.github && (danger.github.pr.body + "").includes("#skip-changelog");
 
-  if (!skipChangelog && !hasChangelog) {
+  if (skipChangelog) {
+    return;
+  }
+
+  const hasChangelog = await containsChangelog("CHANGELOG.md");
+
+  if (!hasChangelog) {
     fail("Please consider adding a changelog entry for the next release.");
     markdown(getChangelogDetails());
   }
@@ -65,7 +70,7 @@ Follow these steps to update snapshots in Sentry:
   `;
 }
 
-function checkSnapshots() {
+async function checkSnapshots() {
   const SNAPSHOT_LOCATION = "src/actors/snapshots/";
   const changesSnapshots = danger.git.modified_files.some((f) =>
     f.startsWith(SNAPSHOT_LOCATION)
@@ -80,13 +85,16 @@ function checkSnapshots() {
   }
 }
 
-function checkAll() {
-  const isDraft = danger.github && danger.github.pr.mergeable_state === "draft";
+async function checkAll() {
+  // See: https://spectrum.chat/danger/javascript/support-for-github-draft-prs~82948576-ce84-40e7-a043-7675e5bf5690
+  const isDraft = danger.github.pr.mergeable_state === "draft";
 
-  if (!isDraft) {
-    checkChangelog();
-    checkSnapshots();
+  if (isDraft) {
+    return;
   }
+
+  await checkChangelog();
+  await checkSnapshots();
 }
 
-checkAll();
+schedule(checkAll);
