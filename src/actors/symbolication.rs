@@ -47,7 +47,7 @@ use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt as _;
 
 /// Options for demangling all symbols.
-const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete();
+const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
 
 /// The maximum delay we allow for polling a finished request before dropping it.
 const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
