@@ -7,6 +7,7 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
+#![allow(clippy::rc_buffer)]
 
 #[macro_use]
 mod macros;
