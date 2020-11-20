@@ -354,7 +354,7 @@ impl SourceLookup {
         self,
         objects: ObjectsActor,
         scope: Scope,
-        sources: Arc<Vec<SourceConfig>>,
+        sources: Arc<[SourceConfig]>,
         response: &CompletedSymbolicationResponse,
     ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
@@ -869,7 +869,7 @@ pub struct SymbolicateStacktraces {
     pub signal: Option<Signal>,
 
     /// A list of external sources to load debug files.
-    pub sources: Arc<Vec<SourceConfig>>,
+    pub sources: Arc<[SourceConfig]>,
 
     /// A list of threads containing stack traces.
     pub stacktraces: Vec<RawStacktrace>,
@@ -1271,7 +1271,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
-        sources: Arc<Vec<SourceConfig>>,
+        sources: Arc<[SourceConfig]>,
     ) -> Result<Vec<CfiCacheResult>, SymbolicationError> {
         let cficaches = self.cficaches.clone();
 
@@ -1315,7 +1315,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         minidump: Bytes,
-        sources: Arc<Vec<SourceConfig>>,
+        sources: Arc<[SourceConfig]>,
         cfi_results: Vec<CfiCacheResult>,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let mut unwind_statuses = BTreeMap::new();
@@ -1570,7 +1570,7 @@ impl SymbolicationActor {
         sources: Vec<SourceConfig>,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
-            let sources = Arc::new(sources);
+            let sources: Arc<[SourceConfig]> = Arc::from(sources);
 
             let referenced_modules = self
                 .get_referenced_modules_from_minidump(minidump.clone())
@@ -1718,7 +1718,7 @@ impl SymbolicationActor {
             let request = SymbolicateStacktraces {
                 modules,
                 scope,
-                sources: Arc::new(sources),
+                sources: Arc::from(sources),
                 signal: None,
                 stacktraces,
             };
