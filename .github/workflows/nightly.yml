@@ -14,13 +14,14 @@ jobs:
       matrix:
         rust: [nightly, beta]
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ matrix.rust }}
           profile: minimal
           override: true
+          components: clippy
 
       - name: Run clipppy
         uses: actions-rs/clippy-check@v1
