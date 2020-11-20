@@ -1895,7 +1895,7 @@ mod tests {
         SymbolicateStacktraces {
             scope: Scope::Global,
             signal: None,
-            sources: Arc::new(sources),
+            sources: Arc::from(sources),
             stacktraces: vec![RawStacktrace {
                 frames: vec![RawFrame {
                     instruction_addr: HexValue(0x1_0000_0fa0),
