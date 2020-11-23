@@ -23,7 +23,7 @@ use symbolic::common::{
     Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name, SelfCell,
 };
 use symbolic::debuginfo::{Object, ObjectDebugSession};
-use symbolic::demangle::{Demangle, DemangleFormat, DemangleOptions};
+use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
@@ -47,10 +47,7 @@ use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt as _;
 
 /// Options for demangling all symbols.
-const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions {
-    with_arguments: true,
-    format: DemangleFormat::Short,
-};
+const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
 
 /// The maximum delay we allow for polling a finished request before dropping it.
 const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
@@ -354,7 +351,7 @@ impl SourceLookup {
         self,
         objects: ObjectsActor,
         scope: Scope,
-        sources: Arc<Vec<SourceConfig>>,
+        sources: Arc<[SourceConfig]>,
         response: &CompletedSymbolicationResponse,
     ) -> Result<Self, SymbolicationError> {
         let mut referenced_objects = BTreeSet::new();
@@ -730,7 +727,7 @@ fn symbolicate_frame(
         // languages that we should always be able to demangle. Only complain about those that we
         // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
         // reported as C++, which are expected not to demangle.
-        let detected_language = Name::new(name.as_str()).detect_language();
+        let detected_language = Name::from(name.as_str()).detect_language();
         let should_demangle = match (line_info.language(), detected_language) {
             (_, Language::Unknown) => false, // can't demangle what we cannot detect
             (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
@@ -815,7 +812,7 @@ fn symbolicate_stacktrace(
                 // either one of `function` or `symbol`, treat that as mangled name and try to
                 // demangle it. If that succeeds, write the demangled name back.
                 let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
-                let demangled = mangled.and_then(|m| Name::new(m).demangle(DEMANGLE_OPTIONS));
+                let demangled = mangled.and_then(|m| Name::from(m).demangle(DEMANGLE_OPTIONS));
                 if let Some(demangled) = demangled {
                     if let Some(old_mangled) = frame.function.replace(demangled) {
                         frame.symbol = Some(old_mangled);
@@ -869,7 +866,7 @@ pub struct SymbolicateStacktraces {
     pub signal: Option<Signal>,
 
     /// A list of external sources to load debug files.
-    pub sources: Arc<Vec<SourceConfig>>,
+    pub sources: Arc<[SourceConfig]>,
 
     /// A list of threads containing stack traces.
     pub stacktraces: Vec<RawStacktrace>,
@@ -1271,7 +1268,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
-        sources: Arc<Vec<SourceConfig>>,
+        sources: Arc<[SourceConfig]>,
     ) -> Result<Vec<CfiCacheResult>, SymbolicationError> {
         let cficaches = self.cficaches.clone();
 
@@ -1315,7 +1312,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         minidump: Bytes,
-        sources: Arc<Vec<SourceConfig>>,
+        sources: Arc<[SourceConfig]>,
         cfi_results: Vec<CfiCacheResult>,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let mut unwind_statuses = BTreeMap::new();
@@ -1570,7 +1567,7 @@ impl SymbolicationActor {
         sources: Vec<SourceConfig>,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
-            let sources = Arc::new(sources);
+            let sources: Arc<[SourceConfig]> = Arc::from(sources);
 
             let referenced_modules = self
                 .get_referenced_modules_from_minidump(minidump.clone())
@@ -1718,7 +1715,7 @@ impl SymbolicationActor {
             let request = SymbolicateStacktraces {
                 modules,
                 scope,
-                sources: Arc::new(sources),
+                sources: Arc::from(sources),
                 signal: None,
                 stacktraces,
             };
@@ -1895,7 +1892,7 @@ mod tests {
         SymbolicateStacktraces {
             scope: Scope::Global,
             signal: None,
-            sources: Arc::new(sources),
+            sources: Arc::from(sources),
             stacktraces: vec![RawStacktrace {
                 frames: vec![RawFrame {
                     instruction_addr: HexValue(0x1_0000_0fa0),

@@ -194,7 +194,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 pub struct FetchSymCache {
     pub object_type: ObjectType,
     pub identifier: ObjectId,
-    pub sources: Arc<Vec<SourceConfig>>,
+    pub sources: Arc<[SourceConfig]>,
     pub scope: Scope,
 }
 

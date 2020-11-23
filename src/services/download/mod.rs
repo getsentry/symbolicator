@@ -125,7 +125,7 @@ impl DownloadService {
                 dispatch_download(source, destination).bind_hub(hub)
             })
             // Map all SpawnError variants into DownloadError::Canceled.
-            .map(|o| o.unwrap_or_else(|_| Err(DownloadError::Canceled)))
+            .map(|o| o.unwrap_or(Err(DownloadError::Canceled)))
     }
 
     /// Returns all objects matching the [ObjectId] at the source.
@@ -155,7 +155,7 @@ impl DownloadService {
                         .spawn("service.download.list_files", Duration::from_secs(30), job)
                         .await
                         // Map all SpawnError variants into DownloadError::Canceled
-                        .unwrap_or_else(|_| Err(DownloadError::Canceled))
+                        .unwrap_or(Err(DownloadError::Canceled))
                 }
                 SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
                 SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),

@@ -235,7 +235,7 @@ pub struct Config {
     pub symstore_proxy: bool,
 
     /// Default list of sources and the sources used for proxy mode.
-    pub sources: Arc<Vec<SourceConfig>>,
+    pub sources: Arc<[SourceConfig]>,
 
     /// Allow reserved IP addresses for requests to sources.
     pub connect_to_reserved_ips: bool,
@@ -256,7 +256,7 @@ impl Config {
         self.cache_dir.as_ref().map(|base| base.join(dir))
     }
 
-    pub fn default_sources(&self) -> Arc<Vec<SourceConfig>> {
+    pub fn default_sources(&self) -> Arc<[SourceConfig]> {
         self.sources.clone()
     }
 }
@@ -302,7 +302,7 @@ impl Default for Config {
             sentry_dsn: None,
             caches: CacheConfigs::default(),
             symstore_proxy: true,
-            sources: Arc::new(vec![]),
+            sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
         }

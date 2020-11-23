@@ -117,7 +117,7 @@ fn handle_apple_crash_report_request(
         let response_future = request_future
             .and_then(clone!(symbolication, |mut request| {
                 if request.sources.is_none() {
-                    request.sources = Some((*default_sources).clone());
+                    request.sources = Some(default_sources.to_vec());
                 }
 
                 process_apple_crash_report(&symbolication, request, scope)

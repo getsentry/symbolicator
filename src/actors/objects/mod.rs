@@ -489,7 +489,7 @@ pub struct FindObject {
     pub purpose: ObjectPurpose,
     pub scope: Scope,
     pub identifier: ObjectId,
-    pub sources: Arc<Vec<SourceConfig>>,
+    pub sources: Arc<[SourceConfig]>,
 }
 
 #[derive(Debug, Copy, Clone)]
