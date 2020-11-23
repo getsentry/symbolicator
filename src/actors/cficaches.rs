@@ -184,7 +184,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 pub struct FetchCfiCache {
     pub object_type: ObjectType,
     pub identifier: ObjectId,
-    pub sources: Arc<Vec<SourceConfig>>,
+    pub sources: Arc<[SourceConfig]>,
     pub scope: Scope,
 }
 

@@ -58,7 +58,7 @@ fn symbolicate_frames(
         let params = params.into_inner();
         let body = body.into_inner();
         let sources = match body.sources {
-            Some(sources) => Arc::new(sources),
+            Some(sources) => Arc::from(sources),
             None => state.config().default_sources(),
         };
 
