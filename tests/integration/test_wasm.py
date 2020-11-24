@@ -1,6 +1,3 @@
-import pytest
-
-
 WASM_DATA = {
     "stacktraces": [
         {
@@ -65,8 +62,6 @@ SUCCESS_WASM = {
 
 def test_basic_wasm(symbolicator, hitcounter):
     scope = "myscope"
-
-    import json
 
     input = dict(
         **WASM_DATA,
