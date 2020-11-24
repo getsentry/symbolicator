@@ -550,7 +550,9 @@ impl SymCacheLookup {
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
-                if let Some((i, ..)) = self.lookup_symcache(frame.instruction_addr.0) {
+                if let Some((i, ..)) =
+                    self.lookup_symcache(frame.instruction_addr.0, frame.in_module)
+                {
                     referenced_objects.insert(i);
                 }
             }
@@ -608,8 +610,16 @@ impl SymCacheLookup {
     fn lookup_symcache(
         &self,
         addr: u64,
+        in_module: Option<usize>,
     ) -> Option<(usize, &CompleteObjectInfo, Option<&SymCacheFile>)> {
         for (i, (info, cache)) in self.inner.iter().enumerate() {
+            // if `in_module` is defined we pick up the module directly
+            // by the index.
+            if Some(i) == in_module {
+                return Some((i, info, cache.as_ref().map(|x| &**x)));
+            }
+
+            // lookup by address
             let start_addr = info.raw.image_addr.0;
 
             if start_addr > addr {
@@ -640,21 +650,22 @@ fn symbolicate_frame(
     frame: &mut RawFrame,
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-    let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
-        Some((_, info, Some(symcache))) => {
-            frame.package = info.raw.code_file.clone();
-            (info, symcache)
-        }
-        Some((_, info, None)) => {
-            frame.package = info.raw.code_file.clone();
-            if info.debug_status == ObjectFileStatus::Malformed {
-                return Err(FrameStatus::Malformed);
-            } else {
-                return Err(FrameStatus::Missing);
+    let (object_info, symcache) =
+        match caches.lookup_symcache(frame.instruction_addr.0, frame.in_module) {
+            Some((_, info, Some(symcache))) => {
+                frame.package = info.raw.code_file.clone();
+                (info, symcache)
             }
-        }
-        None => return Err(FrameStatus::UnknownImage),
-    };
+            Some((_, info, None)) => {
+                frame.package = info.raw.code_file.clone();
+                if info.debug_status == ObjectFileStatus::Malformed {
+                    return Err(FrameStatus::Malformed);
+                } else {
+                    return Err(FrameStatus::Missing);
+                }
+            }
+            None => return Err(FrameStatus::UnknownImage),
+        };
 
     log::trace!("Loading symcache");
     let symcache = match symcache.parse() {
@@ -681,12 +692,21 @@ fn symbolicate_frame(
         .ip_register_value(ip_register_value)
         .caller_address();
 
-    let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
-        Some(x) => x,
-        None => {
-            log::warn!("Underflow when trying to subtract image start addr from caller address");
-            metric!(counter("relative_addr.underflow") += 1);
-            return Err(FrameStatus::MissingSymbol);
+    // if `in_module` is provided the relative address is the caller address,
+    // otherwise we have to subtarct the image address to make it relative
+    // within the module.
+    let relative_addr = if frame.in_module.is_some() {
+        caller_address
+    } else {
+        match caller_address.checked_sub(object_info.raw.image_addr.0) {
+            Some(x) => x,
+            None => {
+                log::warn!(
+                    "Underflow when trying to subtract image start addr from caller address"
+                );
+                metric!(counter("relative_addr.underflow") += 1);
+                return Err(FrameStatus::MissingSymbol);
+            }
         }
     };
 
@@ -754,6 +774,7 @@ fn symbolicate_frame(
                 instruction_addr: HexValue(
                     object_info.raw.image_addr.0 + line_info.instruction_address(),
                 ),
+                in_module: None,
                 symbol: Some(line_info.symbol().to_string()),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
@@ -2043,7 +2064,7 @@ mod tests {
 
         let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
 
-        let (a, b, c) = lookup.lookup_symcache(43).unwrap();
+        let (a, b, c) = lookup.lookup_symcache(43, None).unwrap();
         assert_eq!(a, 0);
         assert_eq!(b, &info);
         assert!(c.is_none());

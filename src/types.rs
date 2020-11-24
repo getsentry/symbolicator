@@ -127,6 +127,11 @@ pub struct RawFrame {
     /// The absolute instruction address of this frame.
     pub instruction_addr: HexValue,
 
+    /// Switches the address to be interpreted to be within
+    /// a module.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_module: Option<usize>,
+
     /// The path to the image this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
@@ -214,6 +219,12 @@ pub struct RawObjectInfo {
     pub debug_file: Option<String>,
 
     /// Absolute address at which the image was mounted into virtual memory.
+    ///
+    /// We do allow the image addr to be skipped if it's zero.  This is
+    /// because for instance systems like WASM do not actually require an
+    /// image to be mounted at a specific address.  This makes sense mostly
+    /// when using `in_module` lookups.
+    #[serde(default)]
     pub image_addr: HexValue,
 
     /// Size of the image in virtual memory.
@@ -228,6 +239,7 @@ pub enum ObjectType {
     Elf,
     Macho,
     Pe,
+    Wasm,
     Unknown,
 }
 
@@ -239,6 +251,7 @@ impl FromStr for ObjectType {
             "elf" => ObjectType::Elf,
             "macho" => ObjectType::Macho,
             "pe" => ObjectType::Pe,
+            "wasm" => ObjectType::Wasm,
             _ => ObjectType::Unknown,
         })
     }
@@ -260,6 +273,7 @@ impl fmt::Display for ObjectType {
             ObjectType::Elf => write!(f, "elf"),
             ObjectType::Macho => write!(f, "macho"),
             ObjectType::Pe => write!(f, "pe"),
+            ObjectType::Wasm => write!(f, "wasm"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
     }

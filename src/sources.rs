@@ -481,6 +481,8 @@ pub enum FileType {
     ElfDebug,
     /// Linux/ELF code files
     ElfCode,
+    /// A WASM debug file
+    WasmDebug,
     /// Breakpad files (this is the reason we have a flat enum for what at first sight could've
     /// been two enums)
     Breakpad,
@@ -501,6 +503,7 @@ impl FileType {
             Pe,
             MachCode,
             ElfCode,
+            WasmDebug,
             Breakpad,
             SourceBundle,
         ]
@@ -519,6 +522,7 @@ impl FileType {
             ObjectType::Macho => &[FileType::MachDebug, FileType::MachCode, FileType::Breakpad],
             ObjectType::Pe => &[FileType::Pdb, FileType::Pe, FileType::Breakpad],
             ObjectType::Elf => &[FileType::ElfDebug, FileType::ElfCode, FileType::Breakpad],
+            ObjectType::Wasm => &[FileType::WasmDebug],
             _ => Self::all(),
         }
     }
@@ -533,6 +537,7 @@ impl AsRef<str> for FileType {
             FileType::MachCode => "mach_code",
             FileType::ElfDebug => "elf_debug",
             FileType::ElfCode => "elf_code",
+            FileType::WasmDebug => "wasm_debug",
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
         }

@@ -49,7 +49,7 @@ serde = { version = "1.0.101", features = ["derive", "rc"] }
 serde_json = "1.0.45"
 serde_yaml = "0.8.11"
 structopt = "0.3.2"
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", branch = "master", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.1.0"
 thiserror = "1.0.20"
 tokio = "0.1.22"
