@@ -576,8 +576,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 [[package]]
 name = "cpp_demangle"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6656dbc7c586cf2965887c3d066d9b983b20400bc2d52ed4cc5e33d0ceb2c602"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#479281f0c8c2630c5a5a1aeec2ea74ce233d8cc6"
 dependencies = [
  "cfg-if 1.0.0",
  "glob",
@@ -1833,8 +1832,7 @@ dependencies = [
 [[package]]
 name = "msvc-demangler"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6584cf122f02fc0396420a116cd395a9a776ec4347dffe1c5119c3fcc917c060"
+source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#075432259fe0eaac2f3fc225550a4db479bf3c81"
 dependencies = [
  "bitflags",
 ]
@@ -3135,7 +3133,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=master#5d007d7c6605df7fa683749ef0f1b9380571fa05"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#2ad654f6921509e3567575394e831931ee267158"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3147,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=master#5d007d7c6605df7fa683749ef0f1b9380571fa05"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#2ad654f6921509e3567575394e831931ee267158"
 dependencies = [
  "debugid",
  "memmap",
@@ -3159,7 +3157,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=master#5d007d7c6605df7fa683749ef0f1b9380571fa05"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#2ad654f6921509e3567575394e831931ee267158"
 dependencies = [
  "dmsort",
  "fallible-iterator",
@@ -3186,7 +3184,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=master#5d007d7c6605df7fa683749ef0f1b9380571fa05"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#2ad654f6921509e3567575394e831931ee267158"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3198,7 +3196,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=master#5d007d7c6605df7fa683749ef0f1b9380571fa05"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#2ad654f6921509e3567575394e831931ee267158"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3212,7 +3210,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=master#5d007d7c6605df7fa683749ef0f1b9380571fa05"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#2ad654f6921509e3567575394e831931ee267158"
 dependencies = [
  "dmsort",
  "fnv",
