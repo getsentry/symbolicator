@@ -35,10 +35,10 @@ SUCCESS_WASM = {
                 "has_debug_info": True,
                 "has_sources": False,
                 "has_symbols": True,
-                "has_unwind_info": False
+                "has_unwind_info": False,
             },
             "image_addr": "0x0",
-            "type": "wasm"
+            "type": "wasm",
         }
     ],
     "stacktraces": [
@@ -54,12 +54,12 @@ SUCCESS_WASM = {
                     "original_index": 0,
                     "status": "symbolicated",
                     "sym_addr": "0x8b",
-                    "symbol": "internal_func"
+                    "symbol": "internal_func",
                 }
             ]
         }
     ],
-    "status": "completed"
+    "status": "completed",
 }
 
 
@@ -67,6 +67,7 @@ def test_basic_wasm(symbolicator, hitcounter):
     scope = "myscope"
 
     import json
+
     input = dict(
         **WASM_DATA,
         sources=[
@@ -78,7 +79,7 @@ def test_basic_wasm(symbolicator, hitcounter):
                 "url": f"{hitcounter.url}/symbols/",
                 "is_public": False,
             }
-        ]
+        ],
     )
 
     service = symbolicator()

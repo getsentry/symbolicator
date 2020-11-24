@@ -205,7 +205,12 @@ class HitCounter:
             print(f"got requested: {path}")
             path = path[len("/symbols/") :]
             try:
-                with open(os.path.join(os.path.dirname(__file__), "..", "fixtures", "symbols", path), "rb") as f:
+                with open(
+                    os.path.join(
+                        os.path.dirname(__file__), "..", "fixtures", "symbols", path
+                    ),
+                    "rb",
+                ) as f:
                     d = f.read()
                     start_response("200 OK", [("Content-Length", str(len(d)))])
                     return [d]
