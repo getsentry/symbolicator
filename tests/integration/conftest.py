@@ -201,6 +201,17 @@ class HitCounter:
                 print(f"status code: {r.status_code}")
                 start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
                 return [r.content]
+        elif path.startswith("/symbols/"):
+            print(f"got requested: {path}")
+            path = path[len("/symbols/") :]
+            try:
+                with open(os.path.join(os.path.dirname(__file__), "..", "fixtures", "symbols", path), "rb") as f:
+                    d = f.read()
+                    start_response("200 OK", [("Content-Length", str(len(d)))])
+                    return [d]
+            except IOError:
+                start_response("404 NOT FOUND", [])
+                return [b""]
         elif path.startswith("/respond_statuscode/"):
             statuscode = int(path.split("/")[2])
             start_response(f"{statuscode} BOGUS", [])
