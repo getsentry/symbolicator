@@ -693,7 +693,7 @@ fn symbolicate_frame(
         .caller_address();
 
     // if `in_module` is provided the relative address is the caller address,
-    // otherwise we have to subtarct the image address to make it relative
+    // otherwise we have to subtract the image address to make it relative
     // within the module.
     let relative_addr = if frame.in_module.is_some() {
         caller_address
