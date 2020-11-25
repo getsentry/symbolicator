@@ -124,14 +124,21 @@ fn is_default_frame_trust(trust: &FrameTrust) -> bool {
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
-    /// The absolute instruction address of this frame.
-    pub instruction_addr: HexValue,
-
     /// Switches the address to be interpreted to be within
     /// a module of the specified index.  For instance sending `0` here
     /// would use the first module.
+    ///
+    /// This applies to `instruction_addr` and `sym_addr`.  When the
+    /// `addr_base_module` is set then both `instruction_addr` and `sym_addr`
+    /// are relative within that module.  If it's not set or `null` then
+    /// the adresses are absolute within a unified address space.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub in_module: Option<usize>,
+    pub addr_base_module: Option<usize>,
+
+    /// The instruction address of this frame.
+    ///
+    /// See `addr_base_module` for the exact behavior of addresses.
+    pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -146,6 +153,8 @@ pub struct RawFrame {
     pub symbol: Option<String>,
 
     /// Start address of the function this frame is located in (lower or equal to instruction_addr).
+    ///
+    /// See `addr_base_module` for the exact behavior of addresses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sym_addr: Option<HexValue>,
 
@@ -224,7 +233,7 @@ pub struct RawObjectInfo {
     /// We do allow the image addr to be skipped if it's zero.  This is
     /// because for instance systems like WASM do not actually require an
     /// image to be mounted at a specific address.  This makes sense mostly
-    /// when using `in_module` lookups.
+    /// when using `addr_base_module`.
     #[serde(default)]
     pub image_addr: HexValue,
 

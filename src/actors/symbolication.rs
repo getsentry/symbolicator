@@ -551,7 +551,7 @@ impl SymCacheLookup {
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
                 if let Some((i, ..)) =
-                    self.lookup_symcache(frame.instruction_addr.0, frame.in_module)
+                    self.lookup_symcache(frame.instruction_addr.0, frame.addr_base_module)
                 {
                     referenced_objects.insert(i);
                 }
@@ -610,12 +610,12 @@ impl SymCacheLookup {
     fn lookup_symcache(
         &self,
         addr: u64,
-        in_module: Option<usize>,
+        addr_base_module: Option<usize>,
     ) -> Option<(usize, &CompleteObjectInfo, Option<&SymCacheFile>)> {
         for (i, (info, cache)) in self.inner.iter().enumerate() {
-            // if `in_module` is defined we pick up the module directly
+            // if `addr_base_module` is defined we pick up the module directly
             // by the index.
-            if Some(i) == in_module {
+            if Some(i) == addr_base_module {
                 return Some((i, info, cache.as_ref().map(|x| &**x)));
             }
 
@@ -651,7 +651,7 @@ fn symbolicate_frame(
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let (object_info, symcache) =
-        match caches.lookup_symcache(frame.instruction_addr.0, frame.in_module) {
+        match caches.lookup_symcache(frame.instruction_addr.0, frame.addr_base_module) {
             Some((_, info, Some(symcache))) => {
                 frame.package = info.raw.code_file.clone();
                 (info, symcache)
@@ -692,10 +692,10 @@ fn symbolicate_frame(
         .ip_register_value(ip_register_value)
         .caller_address();
 
-    // if `in_module` is provided the relative address is the caller address,
+    // if `addr_base_module` is provided the relative address is the caller address,
     // otherwise we have to subtract the image address to make it relative
     // within the module.
-    let relative_addr = if frame.in_module.is_some() {
+    let relative_addr = if frame.addr_base_module.is_some() {
         caller_address
     } else {
         match caller_address.checked_sub(object_info.raw.image_addr.0) {
@@ -771,10 +771,19 @@ fn symbolicate_frame(
             original_index: Some(index),
             raw: RawFrame {
                 package: object_info.raw.code_file.clone(),
+                // for the symbolicated frame we generally switch to absolute reporting of
+                // addresses.  This is not done for images mounted at `0x0`.  This is done
+                // because for instance WASM does not have a unified address space and so
+                // it's not possible for us to absolutize addresses.
+                addr_base_module: if object_info.raw.image_addr.0 > 0 {
+                    None
+                } else {
+                    frame.addr_base_module
+                },
+                // make absolute.  This is a noop for images mounted at 0x0
                 instruction_addr: HexValue(
                     object_info.raw.image_addr.0 + line_info.instruction_address(),
                 ),
-                in_module: None,
                 symbol: Some(line_info.symbol().to_string()),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
@@ -794,6 +803,7 @@ fn symbolicate_frame(
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
+                // make absolute.  This is a noop for images mounted at 0x0
                 sym_addr: Some(HexValue(
                     object_info.raw.image_addr.0 + line_info.function_address(),
                 )),
