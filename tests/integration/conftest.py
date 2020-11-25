@@ -205,10 +205,11 @@ class HitCounter:
             print(f"got requested: {path}")
             path = path[len("/symbols/") :]
             try:
+                filename = os.path.join(
+                    os.path.dirname(__file__), "..", "fixtures", "symbols", path
+                )
                 with open(
-                    os.path.join(
-                        os.path.dirname(__file__), "..", "fixtures", "symbols", path
-                    ),
+                    filename,
                     "rb",
                 ) as f:
                     d = f.read()

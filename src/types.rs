@@ -128,7 +128,8 @@ pub struct RawFrame {
     pub instruction_addr: HexValue,
 
     /// Switches the address to be interpreted to be within
-    /// a module.
+    /// a module of the specified index.  For instance sending `0` here
+    /// would use the first module.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_module: Option<usize>,
 
