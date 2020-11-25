@@ -47,7 +47,7 @@ SUCCESS_WASM = {
                     "function": "internal_func",
                     "instruction_addr": "0x8c",
                     "lang": "rust",
-                    "lineno": 4,
+                    "lineno": 19,
                     "original_index": 0,
                     "status": "symbolicated",
                     "sym_addr": "0x8b",
