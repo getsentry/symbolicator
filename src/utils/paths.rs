@@ -129,7 +129,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         // ELF follows GDB "Build ID Method" conventions.
         // See: https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
         // We apply the same rule for WASM.
-        FileType::ElfCode => get_gdb_path(identifier).into_iter().collect(),
+        FileType::ElfCode | FileType::WasmCode => get_gdb_path(identifier).into_iter().collect(),
         FileType::ElfDebug | FileType::WasmDebug => {
             if let Some(mut path) = get_gdb_path(identifier) {
                 path.push_str(".debug");
@@ -255,7 +255,7 @@ fn get_symstore_path(
         FileType::Breakpad => None,
 
         // Microsoft SymbolServer does not specify WASM.
-        FileType::WasmDebug => None,
+        FileType::WasmDebug | FileType::WasmCode => None,
 
         // source bundles are available through an extension for PE/PDB only.
         FileType::SourceBundle => {
@@ -303,7 +303,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::Pdb | FileType::Pe => None,
 
         // WASM is not supported
-        FileType::WasmDebug => None,
+        FileType::WasmDebug | FileType::WasmCode => None,
 
         // Breakpad is not supported
         FileType::Breakpad => None,
@@ -323,7 +323,7 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
         FileType::Pe | FileType::Pdb => ObjectType::Pe,
         FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
-        FileType::WasmDebug => ObjectType::Wasm,
+        FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
         FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
     }
 }
@@ -331,7 +331,7 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
 fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
     // determine the suffix and object type
     let suffix = match filetype {
-        FileType::ElfCode | FileType::MachCode | FileType::Pe => "executable",
+        FileType::ElfCode | FileType::MachCode | FileType::Pe | FileType::WasmCode => "executable",
         FileType::ElfDebug | FileType::MachDebug | FileType::Pdb | FileType::WasmDebug => {
             "debuginfo"
         }
@@ -582,6 +582,7 @@ mod tests {
         67E9/247C/814E/392B/A027/DBDE6748FCBF.src.zip
         "###);
         path_test!(FileType::WasmDebug, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf.debug");
+        path_test!(FileType::WasmCode, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf");
         path_test!(FileType::SourceBundle, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf.src.zip");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.debug");
@@ -607,6 +608,7 @@ mod tests {
         path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
         path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
         path_test!(FileType::WasmDebug, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
+        path_test!(FileType::WasmCode, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
         path_test!(FileType::Breakpad, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/breakpad");
         path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/sourcebundle");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/executable");
