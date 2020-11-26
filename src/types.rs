@@ -117,9 +117,8 @@ impl fmt::Display for Scope {
 /// A map of register values.
 pub type Registers = BTreeMap<String, HexValue>;
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_frame_trust(trust: &FrameTrust) -> bool {
-    *trust == FrameTrust::None
+fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
 
 /// An unsymbolicated frame from a symbolication request.
@@ -129,7 +128,7 @@ pub struct RawFrame {
     /// `sym_addr`.  If not defined it defaults to "abs".  Can be
     /// set to `"rel:INDEX"` to make the address relative to the
     /// module at the given index.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default_value")]
     pub addr_mode: AddrMode,
 
     /// The instruction address of this frame.
@@ -184,7 +183,7 @@ pub struct RawFrame {
     pub post_context: Vec<String>,
 
     /// Information about how the raw frame was created.
-    #[serde(default, skip_serializing_if = "is_default_frame_trust")]
+    #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
 }
 

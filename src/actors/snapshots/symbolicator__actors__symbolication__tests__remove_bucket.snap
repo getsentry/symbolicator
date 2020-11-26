@@ -7,7 +7,6 @@ stacktraces:
   - frames:
       - status: symbolicated
         original_index: 0
-        addr_mode: abs
         instruction_addr: 0x100000fa0
         lang: c
         symbol: main

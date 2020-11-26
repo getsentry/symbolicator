@@ -22,7 +22,6 @@ MINIDUMP_SUCCESS = {
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a2a3d",
                     "trust": "context",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "missing",
@@ -30,7 +29,6 @@ MINIDUMP_SUCCESS = {
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "instruction_addr": "0x2a28d0",
                     "trust": "fp",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -42,7 +40,6 @@ MINIDUMP_SUCCESS = {
                     "function": "FreeWrapper(void *)",
                     "lineno": 0,
                     "trust": "scan",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -54,7 +51,6 @@ MINIDUMP_SUCCESS = {
                     "function": "DetermineOutputProvider(class MiniDumpAllocationProvider *,void *,struct _MINIDUMP_CALLBACK_INFORMATION * const,class MiniDumpOutputProvider * *)",
                     "lineno": 0,
                     "trust": "scan",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -66,7 +62,6 @@ MINIDUMP_SUCCESS = {
                     "function": "FreeWrapper(void *)",
                     "lineno": 0,
                     "trust": "scan",
-                    "addr_mode": "abs",
                 },
                 {
                     "instruction_addr": "0x2a3435",
@@ -74,7 +69,6 @@ MINIDUMP_SUCCESS = {
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "status": "missing",
                     "trust": "scan",
-                    "addr_mode": "abs",
                 },
                 {
                     "instruction_addr": "0x2a2d97",
@@ -82,7 +76,6 @@ MINIDUMP_SUCCESS = {
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "status": "missing",
                     "trust": "scan",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -94,7 +87,6 @@ MINIDUMP_SUCCESS = {
                     "function": "@BaseThreadInitThunk@12",
                     "lineno": 0,
                     "trust": "fp",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -106,7 +98,6 @@ MINIDUMP_SUCCESS = {
                     "function": "__RtlUserThreadStart@8",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -118,7 +109,6 @@ MINIDUMP_SUCCESS = {
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
             ],
             "is_requesting": True,
@@ -148,7 +138,6 @@ MINIDUMP_SUCCESS = {
                     "function": "ZwWaitForWorkViaWorkerFactory@20",
                     "lineno": 0,
                     "trust": "context",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -160,7 +149,6 @@ MINIDUMP_SUCCESS = {
                     "function": "TppWorkerThread@4",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -172,7 +160,6 @@ MINIDUMP_SUCCESS = {
                     "function": "@BaseThreadInitThunk@12",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -184,7 +171,6 @@ MINIDUMP_SUCCESS = {
                     "function": "__RtlUserThreadStart@8",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -196,7 +182,6 @@ MINIDUMP_SUCCESS = {
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
             ],
             "is_requesting": False,
@@ -226,7 +211,6 @@ MINIDUMP_SUCCESS = {
                     "function": "ZwWaitForWorkViaWorkerFactory@20",
                     "lineno": 0,
                     "trust": "context",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -238,7 +222,6 @@ MINIDUMP_SUCCESS = {
                     "function": "TppWorkerThread@4",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -250,7 +233,6 @@ MINIDUMP_SUCCESS = {
                     "function": "@BaseThreadInitThunk@12",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -262,7 +244,6 @@ MINIDUMP_SUCCESS = {
                     "function": "__RtlUserThreadStart@8",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -274,7 +255,6 @@ MINIDUMP_SUCCESS = {
                     "function": "_RtlUserThreadStart@8",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
             ],
             "is_requesting": False,
@@ -304,7 +284,6 @@ MINIDUMP_SUCCESS = {
                     "function": "ZwGetContextThread@8",
                     "lineno": 0,
                     "trust": "context",
-                    "addr_mode": "abs",
                 },
                 {
                     "status": "symbolicated",
@@ -316,7 +295,6 @@ MINIDUMP_SUCCESS = {
                     "function": "NlsIsUserDefaultLocale@4",
                     "lineno": 0,
                     "trust": "cfi",
-                    "addr_mode": "abs",
                 },
             ],
             "is_requesting": False,

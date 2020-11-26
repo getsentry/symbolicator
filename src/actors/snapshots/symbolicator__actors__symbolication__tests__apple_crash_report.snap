@@ -19,72 +19,58 @@ stacktraces:
     frames:
       - status: unknown_image
         original_index: 0
-        addr_mode: abs
         instruction_addr: 0x7fff61bc6c2a
         package: libsystem_kernel.dylib
       - status: unknown_image
         original_index: 1
-        addr_mode: abs
         instruction_addr: 0x7fff349f505e
         package: CoreFoundation
       - status: unknown_image
         original_index: 2
-        addr_mode: abs
         instruction_addr: 0x7fff349f45ad
         package: CoreFoundation
       - status: unknown_image
         original_index: 3
-        addr_mode: abs
         instruction_addr: 0x7fff349f3ce4
         package: CoreFoundation
       - status: unknown_image
         original_index: 4
-        addr_mode: abs
         instruction_addr: 0x7fff33c8d895
         package: HIToolbox
       - status: unknown_image
         original_index: 5
-        addr_mode: abs
         instruction_addr: 0x7fff33c8d5cb
         package: HIToolbox
       - status: unknown_image
         original_index: 6
-        addr_mode: abs
         instruction_addr: 0x7fff33c8d348
         package: HIToolbox
       - status: unknown_image
         original_index: 7
-        addr_mode: abs
         instruction_addr: 0x7fff31f4a95b
         package: AppKit
       - status: unknown_image
         original_index: 8
-        addr_mode: abs
         instruction_addr: 0x7fff31f496fa
         package: AppKit
       - status: unknown_image
         original_index: 9
-        addr_mode: abs
         instruction_addr: 0x7fff31f4375d
         package: AppKit
       - status: missing
         original_index: 10
-        addr_mode: abs
         instruction_addr: 0x108b7092b
         package: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
       - status: missing
         original_index: 11
-        addr_mode: abs
         instruction_addr: 0x108b702a6
         package: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
       - status: unknown_image
         original_index: 12
-        addr_mode: abs
         instruction_addr: 0x7fff61a8e085
         package: libdyld.dylib
       - status: unknown_image
         original_index: 13
-        addr_mode: abs
         instruction_addr: 0xea004
         package: YetanotherMac
   - thread_id: 1
@@ -114,17 +100,14 @@ stacktraces:
     frames:
       - status: unknown_image
         original_index: 0
-        addr_mode: abs
         instruction_addr: 0x7fff61bc85be
         package: libsystem_kernel.dylib
       - status: unknown_image
         original_index: 1
-        addr_mode: abs
         instruction_addr: 0x7fff61c7f415
         package: libsystem_pthread.dylib
       - status: unknown_image
         original_index: 2
-        addr_mode: abs
         instruction_addr: 0x54485244
 modules:
   - debug_status: missing
