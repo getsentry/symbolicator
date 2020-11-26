@@ -377,7 +377,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawO
 pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 
 struct SourceLookup {
-    inner: Vec<(CompleteObjectInfo, Option<Arc<SourceObject>>)>,
+    inner: Vec<(usize, CompleteObjectInfo, Option<Arc<SourceObject>>)>,
 }
 
 impl SourceLookup {
@@ -393,7 +393,9 @@ impl SourceLookup {
 
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
-                if let Some(i) = self.get_object_index_by_addr(frame.raw.instruction_addr.0) {
+                if let Some(i) =
+                    self.get_object_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                {
                     referenced_objects.insert(i);
                 }
             }
@@ -401,7 +403,7 @@ impl SourceLookup {
 
         let mut futures = Vec::new();
 
-        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
+        for (i, mut object_info, _) in self.inner.into_iter() {
             let is_used = referenced_objects.contains(&i);
             let objects = objects.clone();
             let scope = scope.clone();
@@ -410,7 +412,7 @@ impl SourceLookup {
             futures.push(async move {
                 if !is_used {
                     object_info.debug_status = ObjectFileStatus::Unused;
-                    return (object_info, None);
+                    return (i, object_info, None);
                 }
 
                 let opt_object_file_meta = objects
@@ -443,7 +445,7 @@ impl SourceLookup {
                     object_info.features.has_sources = true;
                 }
 
-                (object_info, object_file_opt)
+                (i, object_info, object_file_opt)
             });
         }
 
@@ -455,7 +457,7 @@ impl SourceLookup {
     pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
         self.inner
             .iter()
-            .map(|&(_, ref o)| o.as_ref().and_then(|o| o.0.get().debug_session().ok()))
+            .map(|&(_, _, ref o)| o.as_ref().and_then(|o| o.0.get().debug_session().ok()))
             .collect()
     }
 
@@ -463,11 +465,12 @@ impl SourceLookup {
         &self,
         debug_sessions: &[Option<ObjectDebugSession<'_>>],
         addr: u64,
+        addr_mode: AddrMode,
         abs_path: &str,
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let index = self.get_object_index_by_addr(addr)?;
+        let index = self.get_object_index_by_addr(addr, addr_mode)?;
         let session = debug_sessions[index].as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
@@ -486,44 +489,54 @@ impl SourceLookup {
         Some((pre_context, context, post_context))
     }
 
-    fn get_object_index_by_addr(&self, addr: u64) -> Option<usize> {
-        for (i, (info, _)) in self.inner.iter().enumerate() {
-            let start_addr = info.raw.image_addr.0;
+    fn get_object_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
+        for &(module_index, ref info, _) in self.inner.iter() {
+            match addr_mode {
+                AddrMode::Abs => {
+                    let start_addr = info.raw.image_addr.0;
 
-            if start_addr > addr {
-                // The debug image starts at a too high address
-                continue;
-            }
+                    if start_addr > addr {
+                        // The debug image starts at a too high address
+                        continue;
+                    }
 
-            let size = info.raw.image_size.unwrap_or(0);
-            if let Some(end_addr) = start_addr.checked_add(size) {
-                if end_addr < addr && size != 0 {
-                    // The debug image ends at a too low address and we're also confident that
-                    // end_addr is accurate (size != 0)
-                    continue;
+                    let size = info.raw.image_size.unwrap_or(0);
+                    if let Some(end_addr) = start_addr.checked_add(size) {
+                        if end_addr < addr && size != 0 {
+                            // The debug image ends at a too low address and we're also confident that
+                            // end_addr is accurate (size != 0)
+                            continue;
+                        }
+                    }
+
+                    return Some(module_index);
+                }
+                AddrMode::ModRel(this_module_index) => {
+                    if this_module_index == module_index {
+                        return Some(module_index);
+                    }
                 }
             }
-
-            return Some(i);
         }
 
         None
     }
 
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _)| info.raw.image_addr.0);
+        self.inner.sort_by_key(|(_, info, _)| info.raw.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
-        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
-            // If this underflows we didn't sort properly.
-            let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
-            if info1.raw.image_size.unwrap_or(0) == 0 {
-                info1.raw.image_size = Some(size);
-            }
+        self.inner
+            .dedup_by(|(_, ref info2, _), (_, ref mut info1, _)| {
+                // If this underflows we didn't sort properly.
+                let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
+                if info1.raw.image_size.unwrap_or(0) == 0 {
+                    info1.raw.image_size = Some(size);
+                }
 
-            false
-        });
+                false
+            });
     }
 }
 
@@ -533,7 +546,11 @@ impl FromIterator<CompleteObjectInfo> for SourceLookup {
         T: IntoIterator<Item = CompleteObjectInfo>,
     {
         let mut rv = SourceLookup {
-            inner: iter.into_iter().map(|x| (x, None)).collect(),
+            inner: iter
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| (i, x, None))
+                .collect(),
         };
         rv.sort();
         rv
@@ -541,7 +558,7 @@ impl FromIterator<CompleteObjectInfo> for SourceLookup {
 }
 
 struct SymCacheLookup {
-    inner: Vec<(CompleteObjectInfo, Option<Arc<SymCacheFile>>)>,
+    inner: Vec<(usize, CompleteObjectInfo, Option<Arc<SymCacheFile>>)>,
 }
 
 impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
@@ -550,7 +567,11 @@ impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
         T: IntoIterator<Item = CompleteObjectInfo>,
     {
         let mut rv = SymCacheLookup {
-            inner: iter.into_iter().map(|x| (x, None)).collect(),
+            inner: iter
+                .into_iter()
+                .enumerate()
+                .map(|(idx, x)| (idx, x, None))
+                .collect(),
         };
         rv.sort();
         rv
@@ -559,19 +580,20 @@ impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
 
 impl SymCacheLookup {
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _)| info.raw.image_addr.0);
+        self.inner.sort_by_key(|(_, info, _)| info.raw.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
-        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
-            // If this underflows we didn't sort properly.
-            let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
-            if info1.raw.image_size.unwrap_or(0) == 0 {
-                info1.raw.image_size = Some(size);
-            }
+        self.inner
+            .dedup_by(|(_, ref info2, _), (_, ref mut info1, _)| {
+                // If this underflows we didn't sort properly.
+                let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
+                if info1.raw.image_size.unwrap_or(0) == 0 {
+                    info1.raw.image_size = Some(size);
+                }
 
-            false
-        });
+                false
+            });
     }
 
     async fn fetch_symcaches(
@@ -594,7 +616,7 @@ impl SymCacheLookup {
 
         let mut futures = Vec::new();
 
-        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
+        for (i, mut object_info, _) in self.inner.into_iter() {
             let is_used = referenced_objects.contains(&i);
             let sources = request.sources.clone();
             let scope = request.scope.clone();
@@ -603,7 +625,7 @@ impl SymCacheLookup {
             futures.push(async move {
                 if !is_used {
                     object_info.debug_status = ObjectFileStatus::Unused;
-                    return (object_info, None);
+                    return (i, object_info, None);
                 }
                 let symcache_result = symcache_actor
                     .fetch(FetchSymCache {
@@ -632,7 +654,7 @@ impl SymCacheLookup {
                 }
 
                 object_info.debug_status = status;
-                (object_info, symcache)
+                (i, object_info, symcache)
             });
         }
 
@@ -642,7 +664,7 @@ impl SymCacheLookup {
     }
 
     fn lookup_symcache(&self, addr: u64, addr_mode: AddrMode) -> Option<SymCacheLookupResult<'_>> {
-        for (module_index, (object_info, symcache)) in self.inner.iter().enumerate() {
+        for &(module_index, ref object_info, ref symcache) in self.inner.iter() {
             match addr_mode {
                 AddrMode::Abs => {
                     let start_addr = object_info.raw.image_addr.0;
@@ -1014,18 +1036,22 @@ impl SymbolicationActor {
                 .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
                 .collect();
 
-            let modules: Vec<_> = symcache_lookup
+            let mut modules: Vec<_> = symcache_lookup
                 .inner
                 .into_iter()
-                .map(|(object_info, _)| {
+                .map(|(index, object_info, _)| {
                     metric!(
                         counter("symbolication.debug_status") += 1,
                         "status" => object_info.debug_status.name()
                     );
 
-                    object_info
+                    (index, object_info)
                 })
                 .collect();
+
+            // bring modules back into the original order
+            modules.sort_by_key(|&(index, _)| index);
+            let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
 
             metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
             metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
@@ -1065,6 +1091,7 @@ impl SymbolicationActor {
                     let result = source_lookup.get_context_lines(
                         &debug_sessions,
                         frame.raw.instruction_addr.0,
+                        frame.raw.addr_mode,
                         abs_path,
                         lineno,
                         5,
