@@ -78,7 +78,7 @@ Specifically, the code and debug identifiers are defined as follows:
 **WASM**:
 
 - **Code ID:** The bytes as specified in the `build_id` custom section.
-- **Debug ID:** The same as code ID but truncated to 16 bytes.
+- **Debug ID:** The same as code ID but truncated to 16 bytes + `0` for age.
 
 **PE** / **PDB**:
 

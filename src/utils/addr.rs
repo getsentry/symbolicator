@@ -6,10 +6,13 @@ use serde::de::{self, Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use thiserror::Error;
 
+/// Defines the addressing mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum AddrMode {
+    /// Declares addresses to be absolute with a shared memory space.
     Abs,
-    ModRel(usize),
+    /// Declares an address to be relative to an indexed module.
+    Rel(usize),
 }
 
 impl Default for AddrMode {
@@ -22,7 +25,7 @@ impl fmt::Display for AddrMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             AddrMode::Abs => write!(f, "abs"),
-            AddrMode::ModRel(idx) => write!(f, "rel:{}", idx),
+            AddrMode::Rel(idx) => write!(f, "rel:{}", idx),
         }
     }
 }
@@ -54,7 +57,7 @@ impl FromStr for AddrMode {
             .and_then(|x| x.parse().ok())
             .ok_or(ParseAddrModeError)?;
         match kind {
-            "rel" => Ok(AddrMode::ModRel(index)),
+            "rel" => Ok(AddrMode::Rel(index)),
             _ => Err(ParseAddrModeError),
         }
     }
