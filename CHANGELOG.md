@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- No documented changes.
+
+### Features
+
+- Added WASM support. ([#301](https://github.com/getsentry/symbolicator/pull/301))
+
+### Bug Fixes
+
+- No documented changes.
+
 ## 0.3.0
 
 - No documented changes.
