@@ -29,6 +29,7 @@ SUCCESS_WINDOWS = {
             "frames": [
                 {
                     "status": "symbolicated",
+                    "addr_mode": "abs",
                     "original_index": 0,
                     "instruction_addr": "0x749e8630",
                     "lineno": 0,
@@ -69,6 +70,7 @@ def _make_unsuccessful_result(status):
                 "registers": {"eip": "0x1509530"},
                 "frames": [
                     {
+                        "addr_mode": "abs",
                         "status": status,
                         "original_index": 0,
                         "package": "C:\\Windows\\System32\\kernel32.dll",

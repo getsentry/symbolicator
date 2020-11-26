@@ -23,7 +23,7 @@ Content-Type: application/json
       "frames": [
         {
           "instruction_addr": "0xfeedbeef",
-          "addr_base_module": 0
+          "addr_mode": "rel:0"
         },
         ...
       ],
@@ -72,9 +72,8 @@ as well as external sources to pull symbols from:
     example, register values may be used to perform correction heuristics on the
     instruction address of the top frame.
   - `frames`: A list of frames with addresses. Arbitrary additional properties
-    may be passed with frames, but are discarded. When `addr_base_module` is
-    defined the address in `instruction_addr` is relative within the module
-    (zero indexed), otherwise it's absolute.
+    may be passed with frames, but are discarded. The `addr_mode` property
+    defines the beahvior of `instruction_addr`.
 
 ## Response
 

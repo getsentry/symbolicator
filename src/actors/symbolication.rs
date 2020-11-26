@@ -42,6 +42,7 @@ use crate::types::{
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
     RequestId, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
+use crate::utils::addr::AddrMode;
 use crate::utils::futures::{CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt as _;
@@ -96,6 +97,39 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
 type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
+
+#[derive(Debug, Clone)]
+pub struct SymCacheLookupResult<'a> {
+    module_index: usize,
+    object_info: &'a CompleteObjectInfo,
+    symcache: Option<&'a SymCacheFile>,
+    relative_addr: Option<u64>,
+}
+
+impl<'a> SymCacheLookupResult<'a> {
+    /// The preferred addr mode for this lookup.
+    ///
+    /// for the symbolicated frame we generally switch to absolute reporting of
+    /// addresses.  This is not done for images mounted at `0x0`.  This is done
+    /// because for instance WASM does not have a unified address space and so
+    /// it's not possible for us to absolutize addresses.
+    pub fn preferred_addr_mode(&self) -> AddrMode {
+        if self.object_info.supports_absolute_addresses() {
+            AddrMode::Abs
+        } else {
+            AddrMode::ModRel(self.module_index)
+        }
+    }
+
+    /// Exposes an address consistent with `preferred_addr_mode`.
+    pub fn expose_preferred_addr(&self, addr: u64) -> u64 {
+        if self.object_info.supports_absolute_addresses() {
+            self.object_info.rel_to_abs_addr(addr).unwrap_or(0)
+        } else {
+            addr
+        }
+    }
+}
 
 /// A builder for the modules list of the symbolication response.
 ///
@@ -550,10 +584,10 @@ impl SymCacheLookup {
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
-                if let Some((i, ..)) =
-                    self.lookup_symcache(frame.instruction_addr.0, frame.addr_base_module)
+                if let Some(SymCacheLookupResult { module_index, .. }) =
+                    self.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
                 {
-                    referenced_objects.insert(i);
+                    referenced_objects.insert(module_index);
                 }
             }
         }
@@ -607,36 +641,44 @@ impl SymCacheLookup {
         })
     }
 
-    fn lookup_symcache(
-        &self,
-        addr: u64,
-        addr_base_module: Option<usize>,
-    ) -> Option<(usize, &CompleteObjectInfo, Option<&SymCacheFile>)> {
-        for (i, (info, cache)) in self.inner.iter().enumerate() {
-            // if `addr_base_module` is defined we pick up the module directly
-            // by the index.
-            if Some(i) == addr_base_module {
-                return Some((i, info, cache.as_ref().map(|x| &**x)));
-            }
+    fn lookup_symcache(&self, addr: u64, addr_mode: AddrMode) -> Option<SymCacheLookupResult<'_>> {
+        for (module_index, (object_info, symcache)) in self.inner.iter().enumerate() {
+            match addr_mode {
+                AddrMode::Abs => {
+                    let start_addr = object_info.raw.image_addr.0;
 
-            // lookup by address
-            let start_addr = info.raw.image_addr.0;
+                    if start_addr > addr {
+                        // The debug image starts at a too high address
+                        continue;
+                    }
 
-            if start_addr > addr {
-                // The debug image starts at a too high address
-                continue;
-            }
+                    let size = object_info.raw.image_size.unwrap_or(0);
+                    if let Some(end_addr) = start_addr.checked_add(size) {
+                        if end_addr < addr && size != 0 {
+                            // The debug image ends at a too low address and we're also confident that
+                            // end_addr is accurate (size != 0)
+                            continue;
+                        }
+                    }
 
-            let size = info.raw.image_size.unwrap_or(0);
-            if let Some(end_addr) = start_addr.checked_add(size) {
-                if end_addr < addr && size != 0 {
-                    // The debug image ends at a too low address and we're also confident that
-                    // end_addr is accurate (size != 0)
-                    continue;
+                    return Some(SymCacheLookupResult {
+                        module_index,
+                        object_info,
+                        symcache: symcache.as_ref().map(|x| &**x),
+                        relative_addr: object_info.abs_to_rel_addr(addr),
+                    });
+                }
+                AddrMode::ModRel(this_module_index) => {
+                    if this_module_index == module_index {
+                        return Some(SymCacheLookupResult {
+                            module_index,
+                            object_info,
+                            symcache: symcache.as_ref().map(|x| &**x),
+                            relative_addr: Some(addr),
+                        });
+                    }
                 }
             }
-
-            return Some((i, info, cache.as_ref().map(|x| &**x)));
         }
 
         None
@@ -650,64 +692,73 @@ fn symbolicate_frame(
     frame: &mut RawFrame,
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-    let (object_info, symcache) =
-        match caches.lookup_symcache(frame.instruction_addr.0, frame.addr_base_module) {
-            Some((_, info, Some(symcache))) => {
-                frame.package = info.raw.code_file.clone();
-                (info, symcache)
+    let lookup_result = if let Some(lookup_result) =
+        caches.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
+    {
+        frame.package = lookup_result.object_info.raw.code_file.clone();
+        if lookup_result.symcache.is_none() {
+            if lookup_result.object_info.debug_status == ObjectFileStatus::Malformed {
+                return Err(FrameStatus::Malformed);
+            } else {
+                return Err(FrameStatus::Missing);
             }
-            Some((_, info, None)) => {
-                frame.package = info.raw.code_file.clone();
-                if info.debug_status == ObjectFileStatus::Malformed {
-                    return Err(FrameStatus::Malformed);
-                } else {
-                    return Err(FrameStatus::Missing);
-                }
-            }
-            None => return Err(FrameStatus::UnknownImage),
-        };
+        }
+        lookup_result
+    } else {
+        return Err(FrameStatus::UnknownImage);
+    };
 
     log::trace!("Loading symcache");
-    let symcache = match symcache.parse() {
+    let symcache = match lookup_result
+        .symcache
+        .as_ref()
+        .expect("symcache should always be available at this point")
+        .parse()
+    {
         Ok(Some(x)) => x,
         Ok(None) => return Err(FrameStatus::Missing),
         Err(_) => return Err(FrameStatus::Malformed),
     };
 
-    let is_crashing_frame = index == 0;
-    let ip_register_value = if is_crashing_frame {
-        symcache
-            .arch()
-            .cpu_family()
-            .ip_register_name()
-            .and_then(|ip_reg_name| registers.get(ip_reg_name))
-            .map(|x| x.0)
-    } else {
-        None
-    };
-
-    let caller_address = InstructionInfo::new(symcache.arch(), frame.instruction_addr.0)
-        .is_crashing_frame(is_crashing_frame)
-        .signal(signal.map(|signal| signal.0))
-        .ip_register_value(ip_register_value)
-        .caller_address();
-
-    // if `addr_base_module` is provided the relative address is the caller address,
-    // otherwise we have to subtract the image address to make it relative
-    // within the module.
-    let relative_addr = if frame.addr_base_module.is_some() {
-        caller_address
-    } else {
-        match caller_address.checked_sub(object_info.raw.image_addr.0) {
-            Some(x) => x,
-            None => {
-                log::warn!(
-                    "Underflow when trying to subtract image start addr from caller address"
-                );
-                metric!(counter("relative_addr.underflow") += 1);
-                return Err(FrameStatus::MissingSymbol);
-            }
+    // get the relative caller address
+    let relative_addr = if let Some(addr) = lookup_result.relative_addr {
+        // heuristics currently are only supported when we can work with absolute addresses.
+        // In cases where this is not possible we skip this part entirely and use the relative
+        // address calculated by the lookup result as lookup address in the module.
+        if let Some(absolute_addr) = lookup_result.object_info.rel_to_abs_addr(addr) {
+            let is_crashing_frame = index == 0;
+            let ip_register_value = if is_crashing_frame {
+                symcache
+                    .arch()
+                    .cpu_family()
+                    .ip_register_name()
+                    .and_then(|ip_reg_name| registers.get(ip_reg_name))
+                    .map(|x| x.0)
+            } else {
+                None
+            };
+            let absolute_caller_addr = InstructionInfo::new(symcache.arch(), absolute_addr)
+                .is_crashing_frame(is_crashing_frame)
+                .signal(signal.map(|signal| signal.0))
+                .ip_register_value(ip_register_value)
+                .caller_address();
+            lookup_result
+                .object_info
+                .abs_to_rel_addr(absolute_caller_addr)
+                .ok_or_else(|| {
+                    log::warn!(
+                            "Underflow when trying to subtract image start addr from caller address after heuristics"
+                        );
+                    metric!(counter("relative_addr.underflow") += 1);
+                    FrameStatus::MissingSymbol
+                })?
+        } else {
+            addr
         }
+    } else {
+        log::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
+        metric!(counter("relative_addr.underflow") += 1);
+        return Err(FrameStatus::MissingSymbol);
     };
 
     log::trace!("Symbolicating {:#x}", relative_addr);
@@ -770,19 +821,10 @@ fn symbolicate_frame(
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
             raw: RawFrame {
-                package: object_info.raw.code_file.clone(),
-                // for the symbolicated frame we generally switch to absolute reporting of
-                // addresses.  This is not done for images mounted at `0x0`.  This is done
-                // because for instance WASM does not have a unified address space and so
-                // it's not possible for us to absolutize addresses.
-                addr_base_module: if object_info.raw.image_addr.0 > 0 {
-                    None
-                } else {
-                    frame.addr_base_module
-                },
-                // make absolute.  This is a noop for images mounted at 0x0
+                package: lookup_result.object_info.raw.code_file.clone(),
+                addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr: HexValue(
-                    object_info.raw.image_addr.0 + line_info.instruction_address(),
+                    lookup_result.expose_preferred_addr(line_info.instruction_address()),
                 ),
                 symbol: Some(line_info.symbol().to_string()),
                 abs_path: if !abs_path.is_empty() {
@@ -803,9 +845,8 @@ fn symbolicate_frame(
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
-                // make absolute.  This is a noop for images mounted at 0x0
                 sym_addr: Some(HexValue(
-                    object_info.raw.image_addr.0 + line_info.function_address(),
+                    lookup_result.expose_preferred_addr(line_info.function_address()),
                 )),
                 lang: match line_info.language() {
                     Language::Unknown => None,
@@ -2074,10 +2115,10 @@ mod tests {
 
         let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
 
-        let (a, b, c) = lookup.lookup_symcache(43, None).unwrap();
-        assert_eq!(a, 0);
-        assert_eq!(b, &info);
-        assert!(c.is_none());
+        let lookup_result = lookup.lookup_symcache(43, AddrMode::Abs).unwrap();
+        assert_eq!(lookup_result.module_index, 0);
+        assert_eq!(lookup_result.object_info, &info);
+        assert!(lookup_result.symcache.is_none());
     }
 
     fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {

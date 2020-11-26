@@ -30,6 +30,7 @@ stacktraces:
     frames:
       - status: symbolicated
         original_index: 0
+        addr_mode: abs
         instruction_addr: 0x2a2a3d
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         symbol: main
@@ -41,6 +42,7 @@ stacktraces:
         trust: context
       - status: symbolicated
         original_index: 1
+        addr_mode: abs
         instruction_addr: 0x2a2d96
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         symbol: __scrt_common_main_seh
@@ -52,16 +54,19 @@ stacktraces:
         trust: cfi
       - status: missing
         original_index: 2
+        addr_mode: abs
         instruction_addr: 0x750662c4
         package: "C:\\Windows\\System32\\kernel32.dll"
         trust: cfi
       - status: missing
         original_index: 3
+        addr_mode: abs
         instruction_addr: 0x771d0f79
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
       - status: missing
         original_index: 4
+        addr_mode: abs
         instruction_addr: 0x771d0f44
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
@@ -81,21 +86,25 @@ stacktraces:
     frames:
       - status: missing
         original_index: 0
+        addr_mode: abs
         instruction_addr: 0x771e016c
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
       - status: missing
         original_index: 1
+        addr_mode: abs
         instruction_addr: 0x750662c4
         package: "C:\\Windows\\System32\\kernel32.dll"
         trust: fp
       - status: missing
         original_index: 2
+        addr_mode: abs
         instruction_addr: 0x771d0f79
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
       - status: missing
         original_index: 3
+        addr_mode: abs
         instruction_addr: 0x771d0f44
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
@@ -115,21 +124,25 @@ stacktraces:
     frames:
       - status: missing
         original_index: 0
+        addr_mode: abs
         instruction_addr: 0x771e016c
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
       - status: missing
         original_index: 1
+        addr_mode: abs
         instruction_addr: 0x750662c4
         package: "C:\\Windows\\System32\\kernel32.dll"
         trust: fp
       - status: missing
         original_index: 2
+        addr_mode: abs
         instruction_addr: 0x771d0f79
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
       - status: missing
         original_index: 3
+        addr_mode: abs
         instruction_addr: 0x771d0f44
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
@@ -149,6 +162,7 @@ stacktraces:
     frames:
       - status: missing
         original_index: 0
+        addr_mode: abs
         instruction_addr: 0x771df3dc
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context

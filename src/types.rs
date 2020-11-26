@@ -20,6 +20,7 @@ use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
+use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
 
@@ -124,20 +125,16 @@ fn is_default_frame_trust(trust: &FrameTrust) -> bool {
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
-    /// Switches the address to be interpreted to be within
-    /// a module of the specified index.  For instance sending `0` here
-    /// would use the first module.
-    ///
-    /// This applies to `instruction_addr` and `sym_addr`.  When the
-    /// `addr_base_module` is set then both `instruction_addr` and `sym_addr`
-    /// are relative within that module.  If it's not set or `null` then
-    /// the adresses are absolute within a unified address space.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub addr_base_module: Option<usize>,
+    /// Controls the addressing mode for `instruction_addr` and
+    /// `sym_addr`.  If not defined it defaults to "abs".  Can be
+    /// set to `"rel:INDEX"` to make the address relative to the
+    /// module at the given index.
+    #[serde(default)]
+    pub addr_mode: AddrMode,
 
     /// The instruction address of this frame.
     ///
-    /// See `addr_base_module` for the exact behavior of addresses.
+    /// See `addr_mode` for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
@@ -154,7 +151,7 @@ pub struct RawFrame {
 
     /// Start address of the function this frame is located in (lower or equal to instruction_addr).
     ///
-    /// See `addr_base_module` for the exact behavior of addresses.
+    /// See `addr_mode` for the exact behavior of addresses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sym_addr: Option<HexValue>,
 
@@ -232,8 +229,8 @@ pub struct RawObjectInfo {
     ///
     /// We do allow the image addr to be skipped if it's zero.  This is
     /// because for instance systems like WASM do not actually require an
-    /// image to be mounted at a specific address.  This makes sense mostly
-    /// when using `addr_base_module`.
+    /// image to be mounted at a specific address.  Per definition an image
+    /// mounted at 0 does not support absolute addressing.
     #[serde(default)]
     pub image_addr: HexValue,
 
@@ -449,6 +446,38 @@ pub struct CompleteObjectInfo {
     /// More information on the object file.
     #[serde(flatten)]
     pub raw: RawObjectInfo,
+}
+
+impl CompleteObjectInfo {
+    /// Given an absolute address converts it into a relative one.
+    ///
+    /// If it does not fit into the object `None` is returned.
+    pub fn abs_to_rel_addr(&self, addr: u64) -> Option<u64> {
+        if self.supports_absolute_addresses() {
+            addr.checked_sub(self.raw.image_addr.0)
+        } else {
+            None
+        }
+    }
+
+    /// Given a relative address returns the absolute address.
+    ///
+    /// Certain environments do not support absolute addresses in which
+    /// case this returns `None`.
+    pub fn rel_to_abs_addr(&self, addr: u64) -> Option<u64> {
+        if self.supports_absolute_addresses() {
+            self.raw.image_addr.0.checked_add(addr)
+        } else {
+            None
+        }
+    }
+
+    /// Checks if this image supports absolute addressing.
+    ///
+    /// Per definition images at 0 do not support absolute addresses.
+    pub fn supports_absolute_addresses(&self) -> bool {
+        self.raw.image_addr.0 != 0
+    }
 }
 
 impl From<RawObjectInfo> for CompleteObjectInfo {

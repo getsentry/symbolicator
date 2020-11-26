@@ -5,7 +5,7 @@ WASM_DATA = {
             "frames": [
                 {
                     "instruction_addr": "0x8c",
-                    "addr_base_module": 0,
+                    "addr_mode": "rel:0",
                 }
             ],
         },
@@ -46,7 +46,7 @@ SUCCESS_WASM = {
                     "filename": "src/lib.rs",
                     "function": "internal_func",
                     "instruction_addr": "0x8c",
-                    "addr_base_module": 0,
+                    "addr_mode": "rel:0",
                     "lang": "rust",
                     "lineno": 19,
                     "original_index": 0,

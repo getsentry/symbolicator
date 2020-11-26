@@ -37,91 +37,109 @@ stacktraces:
     frames:
       - status: missing
         original_index: 0
+        addr_mode: abs
         instruction_addr: 0x401d72
         package: /work/linux/build/crash
         trust: context
       - status: missing
         original_index: 1
+        addr_mode: abs
         instruction_addr: 0x7f514025002e
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
       - status: missing
         original_index: 2
+        addr_mode: abs
         instruction_addr: 0x7f51401e4800
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
       - status: missing
         original_index: 3
+        addr_mode: abs
         instruction_addr: 0x400000
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 4
+        addr_mode: abs
         instruction_addr: 0x7f5140cebac6
         package: /lib/x86_64-linux-gnu/ld-2.23.so
         trust: scan
       - status: missing
         original_index: 5
+        addr_mode: abs
         instruction_addr: 0x401ec0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 6
+        addr_mode: abs
         instruction_addr: 0x414c30
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 7
+        addr_mode: abs
         instruction_addr: 0x7f514017d830
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
       - status: missing
         original_index: 8
+        addr_mode: abs
         instruction_addr: 0x401c70
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 9
+        addr_mode: abs
         instruction_addr: 0x401dc0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 10
+        addr_mode: abs
         instruction_addr: 0x401c70
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 11
+        addr_mode: abs
         instruction_addr: 0x414ca0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 12
+        addr_mode: abs
         instruction_addr: 0x401dc0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 13
+        addr_mode: abs
         instruction_addr: 0x401de9
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 14
+        addr_mode: abs
         instruction_addr: 0x7fff5aef1000
         package: linux-gate.so
         trust: scan
       - status: missing
         original_index: 15
+        addr_mode: abs
         instruction_addr: 0x400040
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 16
+        addr_mode: abs
         instruction_addr: 0x7f5140cdc000
         package: /lib/x86_64-linux-gnu/ld-2.23.so
         trust: scan
       - status: missing
         original_index: 17
+        addr_mode: abs
         instruction_addr: 0x401dc0
         package: /work/linux/build/crash
         trust: scan

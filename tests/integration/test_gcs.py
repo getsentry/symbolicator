@@ -83,6 +83,7 @@ MACHO_SUCCESS = {
                     "status": "symbolicated",
                     "sym_addr": "0x190609598",
                     "symbol": "start",
+                    "addr_mode": "abs",
                 },
                 {
                     "function": "__CFRunLoopRun",
@@ -92,6 +93,7 @@ MACHO_SUCCESS = {
                     "status": "symbolicated",
                     "sym_addr": "0x1916ca6c0",
                     "symbol": "__CFRunLoopRun",
+                    "addr_mode": "abs",
                 },
                 {
                     "function": "__CFRunLoopDoBlocks",
@@ -101,6 +103,7 @@ MACHO_SUCCESS = {
                     "status": "symbolicated",
                     "sym_addr": "0x1916cca08",
                     "symbol": "__CFRunLoopDoBlocks",
+                    "addr_mode": "abs",
                 },
                 {
                     "function": "__CFRUNLOOP_IS_CALLING_OUT_TO_A_SOURCE0_PERFORM_FUNCTION__",
@@ -110,6 +113,7 @@ MACHO_SUCCESS = {
                     "status": "symbolicated",
                     "sym_addr": "0x1916cd414",
                     "symbol": "__CFRUNLOOP_IS_CALLING_OUT_TO_A_SOURCE0_PERFORM_FUNCTION__",
+                    "addr_mode": "abs",
                 },
             ]
         }
