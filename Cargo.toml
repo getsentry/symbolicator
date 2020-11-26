@@ -63,5 +63,12 @@ zstd = "0.5.1"
 insta = "1.3.0"
 procspawn = { version = "0.9.0", features = ["test-support"] }
 
+[profile.dev]
+# Debug information slows down the build and increases caches in the
+# target folder, but we don't require stack traces in most cases.
+debug = false
+
 [profile.release]
+# In release, however, we do want full debug information to report
+# panic and error stack traces to Sentry.
 debug = true
