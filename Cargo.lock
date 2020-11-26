@@ -3133,7 +3133,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f89d620cd3959370c8aeee95b65336c64ab7523b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#0bf2a12622c462ae80511a66616823142011e13b"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3145,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f89d620cd3959370c8aeee95b65336c64ab7523b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#0bf2a12622c462ae80511a66616823142011e13b"
 dependencies = [
  "debugid",
  "memmap",
@@ -3157,7 +3157,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f89d620cd3959370c8aeee95b65336c64ab7523b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#0bf2a12622c462ae80511a66616823142011e13b"
 dependencies = [
  "dmsort",
  "fallible-iterator",
@@ -3184,7 +3184,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f89d620cd3959370c8aeee95b65336c64ab7523b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#0bf2a12622c462ae80511a66616823142011e13b"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3196,7 +3196,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f89d620cd3959370c8aeee95b65336c64ab7523b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#0bf2a12622c462ae80511a66616823142011e13b"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3210,7 +3210,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f89d620cd3959370c8aeee95b65336c64ab7523b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#0bf2a12622c462ae80511a66616823142011e13b"
 dependencies = [
  "dmsort",
  "fnv",
