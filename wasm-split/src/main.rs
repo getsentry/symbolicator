@@ -90,7 +90,7 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    // if we do have to build a new one ad just roll a random uuid v4 as build id.
+    // if we do have to build a new one, just roll a random uuid v4 as build id.
     let build_id = match build_id {
         Some(build_id) => build_id,
         None => {
