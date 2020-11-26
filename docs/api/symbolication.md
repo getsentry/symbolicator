@@ -22,7 +22,8 @@ Content-Type: application/json
     {
       "frames": [
         {
-          "instruction_addr": "0xfeedbeef"
+          "instruction_addr": "0xfeedbeef",
+          "addr_mode": "rel:0"
         },
         ...
       ],
@@ -61,17 +62,18 @@ as well as external sources to pull symbols from:
 - `sources`: A list of descriptors for internal or external symbol sources. See
   [Sources](index.md).
 - `modules`: A list of code modules (aka debug images) that were loaded into the
-  process. All attributes other than `type` are required. The Symbolicator may
-  optimize lookups based on the `type` if present. Valid types are `macho`,
-  `pe`, `elf`. Invalid types are silently ignored. The Symbolicator still works
-  if the type is invalid, but less efficiently. However, a schematically valid
-  but _wrong_ type is fatal for finding symbols.
+  process. All attributes other than `type`, `image_addr` and `image_size` are
+  required. The Symbolicator may optimize lookups based on the `type` if present.
+  Valid types are `macho`, `pe`, `elf`. Invalid types are silently ignored. The
+  Symbolicator still works if the type is invalid, but less efficiently. However,
+  a schematically valid but _wrong_ type is fatal for finding symbols.
 - `threads`: A list of process threads to symbolicate.
-    - `registers`: Optional register values aiding symbolication heuristics. For
-      example, register values may be used to perform correction heuristics on the
-      instruction address of the top frame.
-    - `frames`: A list of frames with addresses. Arbitrary additional properties
-      may be passed with frames, but are discarded.
+  - `registers`: Optional register values aiding symbolication heuristics. For
+    example, register values may be used to perform correction heuristics on the
+    instruction address of the top frame.
+  - `frames`: A list of frames with addresses. Arbitrary additional properties
+    may be passed with frames, but are discarded. The `addr_mode` property
+    defines the beahvior of `instruction_addr`.
 
 ## Response
 

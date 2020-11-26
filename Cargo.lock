@@ -575,10 +575,10 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.0"
-source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#2d274c4865169e81cc84fc33c6227f61bceab1ae"
+version = "0.3.1"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#479281f0c8c2630c5a5a1aeec2ea74ce233d8cc6"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "glob",
 ]
 
@@ -1407,6 +1407,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "id-arena"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25a2bc672d1148e28034f176e01fffebb08b35768468cc954630da77a1449005"
+
+[[package]]
 name = "idna"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1594,6 +1600,12 @@ name = "lazycell"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b294d6fa9ee409a054354afc4352b0b9ef7ca222c69b8812cbea9e7d2bf3783f"
+
+[[package]]
+name = "leb128"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3576a87f2ba00f6f106fdfcd16db1d698d648a26ad8e0573cad8537c3c362d2a"
 
 [[package]]
 name = "libc"
@@ -1820,7 +1832,7 @@ dependencies = [
 [[package]]
 name = "msvc-demangler"
 version = "0.8.0"
-source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#47c1c61d28f5a226d7f59aeff94fc6e41f550e40"
+source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#075432259fe0eaac2f3fc225550a4db479bf3c81"
 dependencies = [
  "bitflags",
 ]
@@ -3121,7 +3133,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4619030e1ca0470c38190b89fb580d9aea5c5f07"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#749a39e7f34b7c22339c0f9d44a0b57502a05655"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3133,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4619030e1ca0470c38190b89fb580d9aea5c5f07"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#749a39e7f34b7c22339c0f9d44a0b57502a05655"
 dependencies = [
  "debugid",
  "memmap",
@@ -3145,7 +3157,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4619030e1ca0470c38190b89fb580d9aea5c5f07"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#749a39e7f34b7c22339c0f9d44a0b57502a05655"
 dependencies = [
  "dmsort",
  "fallible-iterator",
@@ -3164,13 +3176,15 @@ dependencies = [
  "smallvec 1.5.0",
  "symbolic-common",
  "thiserror",
+ "walrus",
+ "wasmparser 0.68.0",
  "zip",
 ]
 
 [[package]]
 name = "symbolic-demangle"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4619030e1ca0470c38190b89fb580d9aea5c5f07"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#749a39e7f34b7c22339c0f9d44a0b57502a05655"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3182,7 +3196,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4619030e1ca0470c38190b89fb580d9aea5c5f07"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#749a39e7f34b7c22339c0f9d44a0b57502a05655"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3196,7 +3210,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "7.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4619030e1ca0470c38190b89fb580d9aea5c5f07"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#749a39e7f34b7c22339c0f9d44a0b57502a05655"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3964,6 +3978,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "078775d0255232fb988e6fccf26ddc9d1ac274299aaedcedce21c6f72cc533ce"
 
 [[package]]
+name = "walrus"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d470d0583e65f4cab21a1ff3c1ba3dd23ae49e68f516f0afceaeb001b32af39"
+dependencies = [
+ "anyhow",
+ "id-arena",
+ "leb128",
+ "log",
+ "walrus-macro",
+ "wasmparser 0.59.0",
+]
+
+[[package]]
+name = "walrus-macro"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c2bb690b44cb1b0fdcc54d4998d21f8bdaf706b93775425e440b174f39ad16"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.10",
+ "quote 1.0.3",
+ "syn 1.0.17",
+]
+
+[[package]]
 name = "want"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4063,6 +4103,18 @@ name = "wasm-bindgen-shared"
 version = "0.2.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "daf76fe7d25ac79748a37538b7daeed1c7a6867c92d3245c12c6222e4a20d639"
+
+[[package]]
+name = "wasmparser"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a950e6a618f62147fd514ff445b2a0b53120d382751960797f85f058c7eda9b9"
+
+[[package]]
+name = "wasmparser"
+version = "0.68.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29a00e14eed9c2ecbbdbdd4fb284f49d21b6808965de24769a6379a13ec47d4c"
 
 [[package]]
 name = "web-sys"

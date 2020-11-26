@@ -34,8 +34,8 @@ symbolication succeeds within a configured timeframe (around 20 seconds):
 
           // Frame information
           "instruction_addr": "0xfeedbeef",  // actual address of the frame
+          "addr_mode": "abs",                // address mode
           "sym_addr": "0xfeed0000",          // start address of the function
-          "line_addr": "0xfeedbe00",         // start address of the line
           "package": "/path/to/module.so",   // path to the module's code file
           "symbol": "__1cGmemset6FpviI_0_",  // original mangled function name
           "function": "memset",              // demangled short version of symbol
@@ -72,6 +72,15 @@ request. Additional properties passed in the request are discarded. Errors that
 occurred during symbolication, such as missing symbol files or unresolvable
 addresses within symbols are reported as values for `status` in both modules and
 frames.
+
+## Note on Addresses
+
+Addresses (`instruction_addr` and `sym_addr`) can come in two versions. They
+can be absolute or relative. Symbolicator will always try to make addresses
+absolute but in some cases this cannot be done. For instance WASM modules do
+not have absolute addresses in which case the addresses stay relative. This is
+identified by the `addr_mode` property. When it's set to `"abs"` it means
+the addresses are absolute, when `"rel:X"` it's relative to module index `X`.
 
 ## Backoff Response
 

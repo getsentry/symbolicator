@@ -42,6 +42,7 @@ use crate::types::{
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
     RequestId, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
+use crate::utils::addr::AddrMode;
 use crate::utils::futures::{CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::SentryFutureExt as _;
@@ -96,6 +97,39 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
 type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
+
+#[derive(Debug, Clone)]
+pub struct SymCacheLookupResult<'a> {
+    module_index: usize,
+    object_info: &'a CompleteObjectInfo,
+    symcache: Option<&'a SymCacheFile>,
+    relative_addr: Option<u64>,
+}
+
+impl<'a> SymCacheLookupResult<'a> {
+    /// The preferred addr mode for this lookup.
+    ///
+    /// for the symbolicated frame we generally switch to absolute reporting of
+    /// addresses.  This is not done for images mounted at `0x0`.  This is done
+    /// because for instance WASM does not have a unified address space and so
+    /// it's not possible for us to absolutize addresses.
+    pub fn preferred_addr_mode(&self) -> AddrMode {
+        if self.object_info.supports_absolute_addresses() {
+            AddrMode::Abs
+        } else {
+            AddrMode::Rel(self.module_index)
+        }
+    }
+
+    /// Exposes an address consistent with `preferred_addr_mode`.
+    pub fn expose_preferred_addr(&self, addr: u64) -> u64 {
+        if self.object_info.supports_absolute_addresses() {
+            self.object_info.rel_to_abs_addr(addr).unwrap_or(0)
+        } else {
+            addr
+        }
+    }
+}
 
 /// A builder for the modules list of the symbolication response.
 ///
@@ -342,8 +376,14 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawO
 
 pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 
+struct SourceObjectEntry {
+    module_index: usize,
+    object_info: CompleteObjectInfo,
+    source_object: Option<Arc<SourceObject>>,
+}
+
 struct SourceLookup {
-    inner: Vec<(CompleteObjectInfo, Option<Arc<SourceObject>>)>,
+    inner: Vec<SourceObjectEntry>,
 }
 
 impl SourceLookup {
@@ -359,7 +399,9 @@ impl SourceLookup {
 
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
-                if let Some(i) = self.get_object_index_by_addr(frame.raw.instruction_addr.0) {
+                if let Some(i) =
+                    self.get_object_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                {
                     referenced_objects.insert(i);
                 }
             }
@@ -367,16 +409,17 @@ impl SourceLookup {
 
         let mut futures = Vec::new();
 
-        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
-            let is_used = referenced_objects.contains(&i);
+        for mut entry in self.inner.into_iter() {
+            let is_used = referenced_objects.contains(&entry.module_index);
             let objects = objects.clone();
             let scope = scope.clone();
             let sources = sources.clone();
 
             futures.push(async move {
                 if !is_used {
-                    object_info.debug_status = ObjectFileStatus::Unused;
-                    return (object_info, None);
+                    entry.object_info.debug_status = ObjectFileStatus::Unused;
+                    entry.source_object = None;
+                    return entry;
                 }
 
                 let opt_object_file_meta = objects
@@ -384,14 +427,14 @@ impl SourceLookup {
                         filetypes: FileType::sources(),
                         purpose: ObjectPurpose::Source,
                         scope: scope.clone(),
-                        identifier: object_id_from_object_info(&object_info.raw),
+                        identifier: object_id_from_object_info(&entry.object_info.raw),
                         sources,
                     })
                     .compat()
                     .await
                     .unwrap_or(None);
 
-                let object_file_opt = match opt_object_file_meta {
+                entry.source_object = match opt_object_file_meta {
                     None => None,
                     Some(object_file_meta) => objects
                         .fetch(object_file_meta)
@@ -405,11 +448,11 @@ impl SourceLookup {
                         }),
                 };
 
-                if object_file_opt.is_some() {
-                    object_info.features.has_sources = true;
+                if entry.source_object.is_some() {
+                    entry.object_info.features.has_sources = true;
                 }
 
-                (object_info, object_file_opt)
+                entry
             });
         }
 
@@ -421,7 +464,12 @@ impl SourceLookup {
     pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
         self.inner
             .iter()
-            .map(|&(_, ref o)| o.as_ref().and_then(|o| o.0.get().debug_session().ok()))
+            .map(|entry| {
+                entry
+                    .source_object
+                    .as_ref()
+                    .and_then(|o| o.0.get().debug_session().ok())
+            })
             .collect()
     }
 
@@ -429,11 +477,12 @@ impl SourceLookup {
         &self,
         debug_sessions: &[Option<ObjectDebugSession<'_>>],
         addr: u64,
+        addr_mode: AddrMode,
         abs_path: &str,
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let index = self.get_object_index_by_addr(addr)?;
+        let index = self.get_object_index_by_addr(addr, addr_mode)?;
         let session = debug_sessions[index].as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
@@ -452,40 +501,49 @@ impl SourceLookup {
         Some((pre_context, context, post_context))
     }
 
-    fn get_object_index_by_addr(&self, addr: u64) -> Option<usize> {
-        for (i, (info, _)) in self.inner.iter().enumerate() {
-            let start_addr = info.raw.image_addr.0;
+    fn get_object_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
+        match addr_mode {
+            AddrMode::Abs => {
+                for entry in self.inner.iter() {
+                    let start_addr = entry.object_info.raw.image_addr.0;
 
-            if start_addr > addr {
-                // The debug image starts at a too high address
-                continue;
-            }
+                    if start_addr > addr {
+                        // The debug image starts at a too high address
+                        continue;
+                    }
 
-            let size = info.raw.image_size.unwrap_or(0);
-            if let Some(end_addr) = start_addr.checked_add(size) {
-                if end_addr < addr && size != 0 {
-                    // The debug image ends at a too low address and we're also confident that
-                    // end_addr is accurate (size != 0)
-                    continue;
+                    let size = entry.object_info.raw.image_size.unwrap_or(0);
+                    if let Some(end_addr) = start_addr.checked_add(size) {
+                        if end_addr < addr && size != 0 {
+                            // The debug image ends at a too low address and we're also confident that
+                            // end_addr is accurate (size != 0)
+                            continue;
+                        }
+                    }
+
+                    return Some(entry.module_index);
                 }
+                None
             }
-
-            return Some(i);
+            AddrMode::Rel(this_module_index) => self
+                .inner
+                .iter()
+                .find(|x| x.module_index == this_module_index)
+                .map(|x| x.module_index),
         }
-
-        None
     }
 
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _)| info.raw.image_addr.0);
+        self.inner
+            .sort_by_key(|entry| entry.object_info.raw.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
-        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
+        self.inner.dedup_by(|entry2, entry1| {
             // If this underflows we didn't sort properly.
-            let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
-            if info1.raw.image_size.unwrap_or(0) == 0 {
-                info1.raw.image_size = Some(size);
+            let size = entry2.object_info.raw.image_addr.0 - entry1.object_info.raw.image_addr.0;
+            if entry1.object_info.raw.image_size.unwrap_or(0) == 0 {
+                entry1.object_info.raw.image_size = Some(size);
             }
 
             false
@@ -499,15 +557,29 @@ impl FromIterator<CompleteObjectInfo> for SourceLookup {
         T: IntoIterator<Item = CompleteObjectInfo>,
     {
         let mut rv = SourceLookup {
-            inner: iter.into_iter().map(|x| (x, None)).collect(),
+            inner: iter
+                .into_iter()
+                .enumerate()
+                .map(|(module_index, object_info)| SourceObjectEntry {
+                    module_index,
+                    object_info,
+                    source_object: None,
+                })
+                .collect(),
         };
         rv.sort();
         rv
     }
 }
 
+struct SymCacheEntry {
+    module_index: usize,
+    object_info: CompleteObjectInfo,
+    symcache: Option<Arc<SymCacheFile>>,
+}
+
 struct SymCacheLookup {
-    inner: Vec<(CompleteObjectInfo, Option<Arc<SymCacheFile>>)>,
+    inner: Vec<SymCacheEntry>,
 }
 
 impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
@@ -516,7 +588,15 @@ impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
         T: IntoIterator<Item = CompleteObjectInfo>,
     {
         let mut rv = SymCacheLookup {
-            inner: iter.into_iter().map(|x| (x, None)).collect(),
+            inner: iter
+                .into_iter()
+                .enumerate()
+                .map(|(module_index, object_info)| SymCacheEntry {
+                    module_index,
+                    object_info,
+                    symcache: None,
+                })
+                .collect(),
         };
         rv.sort();
         rv
@@ -525,15 +605,16 @@ impl FromIterator<CompleteObjectInfo> for SymCacheLookup {
 
 impl SymCacheLookup {
     fn sort(&mut self) {
-        self.inner.sort_by_key(|(info, _)| info.raw.image_addr.0);
+        self.inner
+            .sort_by_key(|entry| entry.object_info.raw.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
         // some.
-        self.inner.dedup_by(|(ref info2, _), (ref mut info1, _)| {
+        self.inner.dedup_by(|entry2, entry1| {
             // If this underflows we didn't sort properly.
-            let size = info2.raw.image_addr.0 - info1.raw.image_addr.0;
-            if info1.raw.image_size.unwrap_or(0) == 0 {
-                info1.raw.image_size = Some(size);
+            let size = entry2.object_info.raw.image_addr.0 - entry1.object_info.raw.image_addr.0;
+            if entry1.object_info.raw.image_size.unwrap_or(0) == 0 {
+                entry1.object_info.raw.image_size = Some(size);
             }
 
             false
@@ -550,29 +631,31 @@ impl SymCacheLookup {
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
-                if let Some((i, ..)) = self.lookup_symcache(frame.instruction_addr.0) {
-                    referenced_objects.insert(i);
+                if let Some(SymCacheLookupResult { module_index, .. }) =
+                    self.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
+                {
+                    referenced_objects.insert(module_index);
                 }
             }
         }
 
         let mut futures = Vec::new();
 
-        for (i, (mut object_info, _)) in self.inner.into_iter().enumerate() {
-            let is_used = referenced_objects.contains(&i);
+        for mut entry in self.inner.into_iter() {
+            let is_used = referenced_objects.contains(&entry.module_index);
             let sources = request.sources.clone();
             let scope = request.scope.clone();
             let symcache_actor = symcache_actor.clone();
 
             futures.push(async move {
                 if !is_used {
-                    object_info.debug_status = ObjectFileStatus::Unused;
-                    return (object_info, None);
+                    entry.object_info.debug_status = ObjectFileStatus::Unused;
+                    return entry;
                 }
                 let symcache_result = symcache_actor
                     .fetch(FetchSymCache {
-                        object_type: object_info.raw.ty,
-                        identifier: object_id_from_object_info(&object_info.raw),
+                        object_type: entry.object_info.raw.ty,
+                        identifier: object_id_from_object_info(&entry.object_info.raw),
                         sources,
                         scope,
                     })
@@ -588,15 +671,16 @@ impl SymCacheLookup {
                     Err(e) => (None, (&*e).into()),
                 };
 
-                object_info.arch = Default::default();
+                entry.object_info.arch = Default::default();
 
                 if let Some(ref symcache) = symcache {
-                    object_info.arch = symcache.arch();
-                    object_info.features.merge(symcache.features());
+                    entry.object_info.arch = symcache.arch();
+                    entry.object_info.features.merge(symcache.features());
                 }
 
-                object_info.debug_status = status;
-                (object_info, symcache)
+                entry.symcache = symcache;
+                entry.object_info.debug_status = status;
+                entry
             });
         }
 
@@ -605,31 +689,46 @@ impl SymCacheLookup {
         })
     }
 
-    fn lookup_symcache(
-        &self,
-        addr: u64,
-    ) -> Option<(usize, &CompleteObjectInfo, Option<&SymCacheFile>)> {
-        for (i, (info, cache)) in self.inner.iter().enumerate() {
-            let start_addr = info.raw.image_addr.0;
+    fn lookup_symcache(&self, addr: u64, addr_mode: AddrMode) -> Option<SymCacheLookupResult<'_>> {
+        match addr_mode {
+            AddrMode::Abs => {
+                for entry in self.inner.iter() {
+                    let start_addr = entry.object_info.raw.image_addr.0;
 
-            if start_addr > addr {
-                // The debug image starts at a too high address
-                continue;
-            }
+                    if start_addr > addr {
+                        // The debug image starts at a too high address
+                        continue;
+                    }
 
-            let size = info.raw.image_size.unwrap_or(0);
-            if let Some(end_addr) = start_addr.checked_add(size) {
-                if end_addr < addr && size != 0 {
-                    // The debug image ends at a too low address and we're also confident that
-                    // end_addr is accurate (size != 0)
-                    continue;
+                    let size = entry.object_info.raw.image_size.unwrap_or(0);
+                    if let Some(end_addr) = start_addr.checked_add(size) {
+                        if end_addr < addr && size != 0 {
+                            // The debug image ends at a too low address and we're also confident that
+                            // end_addr is accurate (size != 0)
+                            continue;
+                        }
+                    }
+
+                    return Some(SymCacheLookupResult {
+                        module_index: entry.module_index,
+                        object_info: &entry.object_info,
+                        symcache: entry.symcache.as_deref(),
+                        relative_addr: entry.object_info.abs_to_rel_addr(addr),
+                    });
                 }
+                None
             }
-
-            return Some((i, info, cache.as_ref().map(|x| &**x)));
+            AddrMode::Rel(this_module_index) => self
+                .inner
+                .iter()
+                .find(|x| x.module_index == this_module_index)
+                .map(|entry| SymCacheLookupResult {
+                    module_index: entry.module_index,
+                    object_info: &entry.object_info,
+                    symcache: entry.symcache.as_deref(),
+                    relative_addr: Some(addr),
+                }),
         }
-
-        None
     }
 }
 
@@ -640,54 +739,70 @@ fn symbolicate_frame(
     frame: &mut RawFrame,
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-    let (object_info, symcache) = match caches.lookup_symcache(frame.instruction_addr.0) {
-        Some((_, info, Some(symcache))) => {
-            frame.package = info.raw.code_file.clone();
-            (info, symcache)
+    let lookup_result = caches
+        .lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
+        .ok_or(FrameStatus::UnknownImage)?;
+
+    frame.package = lookup_result.object_info.raw.code_file.clone();
+    if lookup_result.symcache.is_none() {
+        if lookup_result.object_info.debug_status == ObjectFileStatus::Malformed {
+            return Err(FrameStatus::Malformed);
+        } else {
+            return Err(FrameStatus::Missing);
         }
-        Some((_, info, None)) => {
-            frame.package = info.raw.code_file.clone();
-            if info.debug_status == ObjectFileStatus::Malformed {
-                return Err(FrameStatus::Malformed);
-            } else {
-                return Err(FrameStatus::Missing);
-            }
-        }
-        None => return Err(FrameStatus::UnknownImage),
-    };
+    }
 
     log::trace!("Loading symcache");
-    let symcache = match symcache.parse() {
+    let symcache = match lookup_result
+        .symcache
+        .as_ref()
+        .expect("symcache should always be available at this point")
+        .parse()
+    {
         Ok(Some(x)) => x,
         Ok(None) => return Err(FrameStatus::Missing),
         Err(_) => return Err(FrameStatus::Malformed),
     };
 
-    let is_crashing_frame = index == 0;
-    let ip_register_value = if is_crashing_frame {
-        symcache
-            .arch()
-            .cpu_family()
-            .ip_register_name()
-            .and_then(|ip_reg_name| registers.get(ip_reg_name))
-            .map(|x| x.0)
-    } else {
-        None
-    };
-
-    let caller_address = InstructionInfo::new(symcache.arch(), frame.instruction_addr.0)
-        .is_crashing_frame(is_crashing_frame)
-        .signal(signal.map(|signal| signal.0))
-        .ip_register_value(ip_register_value)
-        .caller_address();
-
-    let relative_addr = match caller_address.checked_sub(object_info.raw.image_addr.0) {
-        Some(x) => x,
-        None => {
-            log::warn!("Underflow when trying to subtract image start addr from caller address");
-            metric!(counter("relative_addr.underflow") += 1);
-            return Err(FrameStatus::MissingSymbol);
+    // get the relative caller address
+    let relative_addr = if let Some(addr) = lookup_result.relative_addr {
+        // heuristics currently are only supported when we can work with absolute addresses.
+        // In cases where this is not possible we skip this part entirely and use the relative
+        // address calculated by the lookup result as lookup address in the module.
+        if let Some(absolute_addr) = lookup_result.object_info.rel_to_abs_addr(addr) {
+            let is_crashing_frame = index == 0;
+            let ip_register_value = if is_crashing_frame {
+                symcache
+                    .arch()
+                    .cpu_family()
+                    .ip_register_name()
+                    .and_then(|ip_reg_name| registers.get(ip_reg_name))
+                    .map(|x| x.0)
+            } else {
+                None
+            };
+            let absolute_caller_addr = InstructionInfo::new(symcache.arch(), absolute_addr)
+                .is_crashing_frame(is_crashing_frame)
+                .signal(signal.map(|signal| signal.0))
+                .ip_register_value(ip_register_value)
+                .caller_address();
+            lookup_result
+                .object_info
+                .abs_to_rel_addr(absolute_caller_addr)
+                .ok_or_else(|| {
+                    log::warn!(
+                            "Underflow when trying to subtract image start addr from caller address after heuristics"
+                        );
+                    metric!(counter("relative_addr.underflow") += 1);
+                    FrameStatus::MissingSymbol
+                })?
+        } else {
+            addr
         }
+    } else {
+        log::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
+        metric!(counter("relative_addr.underflow") += 1);
+        return Err(FrameStatus::MissingSymbol);
     };
 
     log::trace!("Symbolicating {:#x}", relative_addr);
@@ -750,9 +865,10 @@ fn symbolicate_frame(
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
             raw: RawFrame {
-                package: object_info.raw.code_file.clone(),
+                package: lookup_result.object_info.raw.code_file.clone(),
+                addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr: HexValue(
-                    object_info.raw.image_addr.0 + line_info.instruction_address(),
+                    lookup_result.expose_preferred_addr(line_info.instruction_address()),
                 ),
                 symbol: Some(line_info.symbol().to_string()),
                 abs_path: if !abs_path.is_empty() {
@@ -774,7 +890,7 @@ fn symbolicate_frame(
                 context_line: None,
                 post_context: vec![],
                 sym_addr: Some(HexValue(
-                    object_info.raw.image_addr.0 + line_info.function_address(),
+                    lookup_result.expose_preferred_addr(line_info.function_address()),
                 )),
                 lang: match line_info.language() {
                     Language::Unknown => None,
@@ -942,18 +1058,22 @@ impl SymbolicationActor {
                 .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
                 .collect();
 
-            let modules: Vec<_> = symcache_lookup
+            let mut modules: Vec<_> = symcache_lookup
                 .inner
                 .into_iter()
-                .map(|(object_info, _)| {
+                .map(|entry| {
                     metric!(
                         counter("symbolication.debug_status") += 1,
-                        "status" => object_info.debug_status.name()
+                        "status" => entry.object_info.debug_status.name()
                     );
 
-                    object_info
+                    (entry.module_index, entry.object_info)
                 })
                 .collect();
+
+            // bring modules back into the original order
+            modules.sort_by_key(|&(index, _)| index);
+            let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
 
             metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
             metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
@@ -993,6 +1113,7 @@ impl SymbolicationActor {
                     let result = source_lookup.get_context_lines(
                         &debug_sessions,
                         frame.raw.instruction_addr.0,
+                        frame.raw.addr_mode,
                         abs_path,
                         lineno,
                         5,
@@ -1427,7 +1548,7 @@ impl SymbolicationActor {
 
                         // Start building the module list to be returned in the
                         // symbolication response.  For all modules in the minidump we
-                        // create the CompletedObjectInfo and start populating it.
+                        // create the CompleteObjectInfo and start populating it.
                         let mut module_builder = process_state
                             .modules()
                             .into_iter()
@@ -2045,10 +2166,10 @@ mod tests {
 
         let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
 
-        let (a, b, c) = lookup.lookup_symcache(43).unwrap();
-        assert_eq!(a, 0);
-        assert_eq!(b, &info);
-        assert!(c.is_none());
+        let lookup_result = lookup.lookup_symcache(43, AddrMode::Abs).unwrap();
+        assert_eq!(lookup_result.module_index, 0);
+        assert_eq!(lookup_result.object_info, &info);
+        assert!(lookup_result.symcache.is_none());
     }
 
     fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {

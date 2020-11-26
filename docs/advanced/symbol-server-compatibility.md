@@ -75,6 +75,11 @@ Specifically, the code and debug identifiers are defined as follows:
   bidirectionally from the UUID.
 - **Debug ID:** The same UUID, amended by a `0` for age.
 
+**WASM**:
+
+- **Code ID:** The bytes as specified in the `build_id` custom section.
+- **Debug ID:** The same as code ID but truncated to 16 bytes + `0` for age.
+
 **PE** / **PDB**:
 
 - **Code ID:** The hex value of the `time_date_stamp` in the COFF header
@@ -266,6 +271,7 @@ The build-id hex representation is always provided in **lowercase**.
 
 - **ELF** (binary, potentially stripped)
 - **ELF** (debug info)
+- **WASM** (debug info)
 
 Symbol bundles are supported by adding a `.src.zip` prefix to the ELF:
 
@@ -297,7 +303,7 @@ The following layout types support this lookup:
 If you have no requirements to be compatible with another system you can also
 use the "unified" directory layout structure. This has the advantage that it's
 unified across all platforms and thus easier to manage. It can store breakpad
-files, PDBs, PEs and everything else.  The `symsorter` tool in the symbolicator
+files, PDBs, PEs and everything else. The `symsorter` tool in the symbolicator
 repository can automatically sort debug symbols into this format and also
 automatically create source bundles.
 
@@ -309,6 +315,7 @@ The debug id is in all cases lowercase in hex format and computed as follows:
 - **PDB**: `<Signature><Age>` (age in hex, not padded)
 - **ELF**: `<code_note_byte_sequence>`
 - **MachO**: `<uuid_bytes>`
+- **WASM**: `<BuildId>`
 
 The path format is then as follows:
 

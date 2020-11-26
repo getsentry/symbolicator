@@ -99,6 +99,11 @@ fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Stri
 }
 
 fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
+    // wasm files never get a breakpad path
+    if identifier.object_type == ObjectType::Wasm {
+        return None;
+    }
+
     let debug_file = identifier.debug_file_basename()?;
     let debug_id = identifier.debug_id.as_ref()?;
 
@@ -123,8 +128,9 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
     match filetype {
         // ELF follows GDB "Build ID Method" conventions.
         // See: https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
-        FileType::ElfCode => get_gdb_path(identifier).into_iter().collect(),
-        FileType::ElfDebug => {
+        // We apply the same rule for WASM.
+        FileType::ElfCode | FileType::WasmCode => get_gdb_path(identifier).into_iter().collect(),
+        FileType::ElfDebug | FileType::WasmDebug => {
             if let Some(mut path) = get_gdb_path(identifier) {
                 path.push_str(".debug");
                 vec![path]
@@ -174,7 +180,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
                     Some(path) => path,
                     None => return vec![],
                 },
-                ObjectType::Elf => match get_gdb_path(identifier) {
+                ObjectType::Elf | ObjectType::Wasm => match get_gdb_path(identifier) {
                     Some(path) => path,
                     None => return vec![],
                 },
@@ -248,6 +254,9 @@ fn get_symstore_path(
         // Microsoft SymbolServer does not specify Breakpad.
         FileType::Breakpad => None,
 
+        // Microsoft SymbolServer does not specify WASM.
+        FileType::WasmDebug | FileType::WasmCode => None,
+
         // source bundles are available through an extension for PE/PDB only.
         FileType::SourceBundle => {
             let original_file_type = match identifier.object_type {
@@ -293,6 +302,9 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         // PDB and PE are not supported
         FileType::Pdb | FileType::Pe => None,
 
+        // WASM is not supported
+        FileType::WasmDebug | FileType::WasmCode => None,
+
         // Breakpad is not supported
         FileType::Breakpad => None,
 
@@ -311,6 +323,7 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
         FileType::Pe | FileType::Pdb => ObjectType::Pe,
         FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
+        FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
         FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
     }
 }
@@ -318,8 +331,10 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
 fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
     // determine the suffix and object type
     let suffix = match filetype {
-        FileType::ElfCode | FileType::MachCode | FileType::Pe => "executable",
-        FileType::ElfDebug | FileType::MachDebug | FileType::Pdb => "debuginfo",
+        FileType::ElfCode | FileType::MachCode | FileType::Pe | FileType::WasmCode => "executable",
+        FileType::ElfDebug | FileType::MachDebug | FileType::Pdb | FileType::WasmDebug => {
+            "debuginfo"
+        }
         FileType::Breakpad => "breakpad",
         FileType::SourceBundle => "sourcebundle",
     };
@@ -332,8 +347,9 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         // we do not want to encode.
         ObjectType::Pe => Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase()),
         // On mach we can always determine the code ID from the debug ID if the
-        // code ID is unavailable.
-        ObjectType::Macho => {
+        // code ID is unavailable.  We apply the same rule to WASM files as we
+        // suggest Uuids to be used as build ids.
+        ObjectType::Macho | ObjectType::Wasm => {
             if identifier.code_id.is_none() {
                 Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
             } else {
@@ -533,6 +549,13 @@ mod tests {
             debug_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
             object_type: ObjectType::Elf,
         };
+        static ref WASM_OBJECT_ID: ObjectId = ObjectId {
+            code_id: Some("67e9247c814e392ba027dbde6748fcbf".parse().unwrap()),
+            code_file: None,
+            debug_id: Some("67e9247c-814e-392b-a027-dbde6748fcbf".parse().unwrap()),
+            debug_file: Some("file://foo.invalid/demo.wasm".into()),
+            object_type: ObjectType::Wasm,
+        };
     }
 
     fn pattern(x: &str) -> Glob {
@@ -558,6 +581,9 @@ mod tests {
         crash/67E9247C814E392BA027DBDE6748FCBF0/crash.src.zip
         67E9/247C/814E/392B/A027/DBDE6748FCBF.src.zip
         "###);
+        path_test!(FileType::WasmDebug, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf.debug");
+        path_test!(FileType::WasmCode, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf");
+        path_test!(FileType::SourceBundle, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf.src.zip");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920.debug");
         path_test!(FileType::Breakpad, ELF_OBJECT_ID, @"libm-2.23.so/E45DB8DFAF2D09FD640C8FE377D572DE0/libm-2.23.so.sym");
@@ -581,12 +607,15 @@ mod tests {
         path_test!(FileType::SourceBundle, PE_OBJECT_ID, @"32/49d99d0c4049318610f4e4fb0b69361/sourcebundle");
         path_test!(FileType::MachCode, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
         path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
+        path_test!(FileType::WasmDebug, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/debuginfo");
+        path_test!(FileType::WasmCode, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/executable");
         path_test!(FileType::Breakpad, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/breakpad");
         path_test!(FileType::SourceBundle, MACHO_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/sourcebundle");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/executable");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/debuginfo");
         path_test!(FileType::Breakpad, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/breakpad");
         path_test!(FileType::SourceBundle, ELF_OBJECT_ID, @"df/b85de42daffd09640c8fe377d572de3e168920/sourcebundle");
+        path_test!(FileType::SourceBundle, WASM_OBJECT_ID, @"67/e9247c814e392ba027dbde6748fcbf/sourcebundle");
     }
 
     #[test]

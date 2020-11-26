@@ -20,6 +20,7 @@ use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
+use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
 
@@ -116,15 +117,23 @@ impl fmt::Display for Scope {
 /// A map of register values.
 pub type Registers = BTreeMap<String, HexValue>;
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_frame_trust(trust: &FrameTrust) -> bool {
-    *trust == FrameTrust::None
+fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
 
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
-    /// The absolute instruction address of this frame.
+    /// Controls the addressing mode for `instruction_addr` and
+    /// `sym_addr`.  If not defined it defaults to "abs".  Can be
+    /// set to `"rel:INDEX"` to make the address relative to the
+    /// module at the given index.
+    #[serde(default, skip_serializing_if = "is_default_value")]
+    pub addr_mode: AddrMode,
+
+    /// The instruction address of this frame.
+    ///
+    /// See `addr_mode` for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
     /// The path to the image this frame is located in.
@@ -140,6 +149,8 @@ pub struct RawFrame {
     pub symbol: Option<String>,
 
     /// Start address of the function this frame is located in (lower or equal to instruction_addr).
+    ///
+    /// See `addr_mode` for the exact behavior of addresses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sym_addr: Option<HexValue>,
 
@@ -172,7 +183,7 @@ pub struct RawFrame {
     pub post_context: Vec<String>,
 
     /// Information about how the raw frame was created.
-    #[serde(default, skip_serializing_if = "is_default_frame_trust")]
+    #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
 }
 
@@ -214,6 +225,12 @@ pub struct RawObjectInfo {
     pub debug_file: Option<String>,
 
     /// Absolute address at which the image was mounted into virtual memory.
+    ///
+    /// We do allow the image addr to be skipped if it's zero.  This is
+    /// because for instance systems like WASM do not actually require an
+    /// image to be mounted at a specific address.  Per definition an image
+    /// mounted at 0 does not support absolute addressing.
+    #[serde(default)]
     pub image_addr: HexValue,
 
     /// Size of the image in virtual memory.
@@ -228,6 +245,7 @@ pub enum ObjectType {
     Elf,
     Macho,
     Pe,
+    Wasm,
     Unknown,
 }
 
@@ -239,6 +257,7 @@ impl FromStr for ObjectType {
             "elf" => ObjectType::Elf,
             "macho" => ObjectType::Macho,
             "pe" => ObjectType::Pe,
+            "wasm" => ObjectType::Wasm,
             _ => ObjectType::Unknown,
         })
     }
@@ -260,6 +279,7 @@ impl fmt::Display for ObjectType {
             ObjectType::Elf => write!(f, "elf"),
             ObjectType::Macho => write!(f, "macho"),
             ObjectType::Pe => write!(f, "pe"),
+            ObjectType::Wasm => write!(f, "wasm"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
     }
@@ -425,6 +445,38 @@ pub struct CompleteObjectInfo {
     /// More information on the object file.
     #[serde(flatten)]
     pub raw: RawObjectInfo,
+}
+
+impl CompleteObjectInfo {
+    /// Given an absolute address converts it into a relative one.
+    ///
+    /// If it does not fit into the object `None` is returned.
+    pub fn abs_to_rel_addr(&self, addr: u64) -> Option<u64> {
+        if self.supports_absolute_addresses() {
+            addr.checked_sub(self.raw.image_addr.0)
+        } else {
+            None
+        }
+    }
+
+    /// Given a relative address returns the absolute address.
+    ///
+    /// Certain environments do not support absolute addresses in which
+    /// case this returns `None`.
+    pub fn rel_to_abs_addr(&self, addr: u64) -> Option<u64> {
+        if self.supports_absolute_addresses() {
+            self.raw.image_addr.0.checked_add(addr)
+        } else {
+            None
+        }
+    }
+
+    /// Checks if this image supports absolute addressing.
+    ///
+    /// Per definition images at 0 do not support absolute addresses.
+    pub fn supports_absolute_addresses(&self) -> bool {
+        self.raw.image_addr.0 != 0
+    }
 }
 
 impl From<RawObjectInfo> for CompleteObjectInfo {

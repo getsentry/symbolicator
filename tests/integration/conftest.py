@@ -8,7 +8,6 @@ import time
 import traceback
 import uuid
 
-import boto3
 import pytest
 import requests
 from pytest_localserver.http import WSGIServer
@@ -201,6 +200,23 @@ class HitCounter:
                 print(f"status code: {r.status_code}")
                 start_response(f"{r.status_code} BOGUS", list(r.headers.items()))
                 return [r.content]
+        elif path.startswith("/symbols/"):
+            print(f"got requested: {path}")
+            path = path[len("/symbols/") :]
+            try:
+                filename = os.path.join(
+                    os.path.dirname(__file__), "..", "fixtures", "symbols", path
+                )
+                with open(
+                    filename,
+                    "rb",
+                ) as f:
+                    d = f.read()
+                    start_response("200 OK", [("Content-Length", str(len(d)))])
+                    return [d]
+            except IOError:
+                start_response("404 NOT FOUND", [])
+                return [b""]
         elif path.startswith("/respond_statuscode/"):
             statuscode = int(path.split("/")[2])
             start_response(f"{statuscode} BOGUS", [])
@@ -268,6 +284,8 @@ def s3(pytestconfig):
     """
     if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
         fail_missing_secrets("No AWS credentials")
+    import boto3
+
     return boto3.resource(
         "s3",
         aws_access_key_id=AWS_ACCESS_KEY_ID,

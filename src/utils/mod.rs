@@ -1,3 +1,4 @@
+pub mod addr;
 pub mod futures;
 pub mod hex;
 pub mod http;
