@@ -712,7 +712,7 @@ impl SymCacheLookup {
                     return Some(SymCacheLookupResult {
                         module_index: entry.module_index,
                         object_info: &entry.object_info,
-                        symcache: entry.symcache.as_ref().map(|x| &**x),
+                        symcache: entry.symcache.as_deref(),
                         relative_addr: entry.object_info.abs_to_rel_addr(addr),
                     });
                 }
@@ -725,7 +725,7 @@ impl SymCacheLookup {
                 .map(|entry| SymCacheLookupResult {
                     module_index: entry.module_index,
                     object_info: &entry.object_info,
-                    symcache: entry.symcache.as_ref().map(|x| &**x),
+                    symcache: entry.symcache.as_deref(),
                     relative_addr: Some(addr),
                 }),
         }
