@@ -59,6 +59,7 @@ MACHO_SUCCESS = {
                     "status": "symbolicated",
                     "sym_addr": "0x100000fa0",
                     "symbol": "main",
+                    "addr_mode": "abs",
                 }
             ]
         }

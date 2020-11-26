@@ -285,6 +285,7 @@ def s3(pytestconfig):
     if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
         fail_missing_secrets("No AWS credentials")
     import boto3
+
     return boto3.resource(
         "s3",
         aws_access_key_id=AWS_ACCESS_KEY_ID,
