@@ -91,22 +91,19 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     // if we do have to build a new one, just roll a random uuid v4 as build id.
-    let build_id = match build_id {
-        Some(build_id) => build_id,
-        None => {
-            let new_id = Uuid::new_v4().as_bytes().to_vec();
-            should_write_main_module = true;
-            module
-                .sections
-                .push(Section::Custom(Blob::from(CustomSection::Other(
-                    RawCustomSection {
-                        name: "build_id".to_string(),
-                        data: new_id.clone(),
-                    },
-                ))));
-            new_id
-        }
-    };
+    let build_id = build_id.unwrap_or_else(|| {
+        let new_id = Uuid::new_v4().as_bytes().to_vec();
+        should_write_main_module = true;
+        module
+            .sections
+            .push(Section::Custom(Blob::from(CustomSection::Other(
+                RawCustomSection {
+                    name: "build_id".to_string(),
+                    data: new_id.clone(),
+                },
+            ))));
+        new_id
+    });
 
     // split dwarf data out if needed into a separate file.
     if let Some(debug_output) = cli.debug_output {
