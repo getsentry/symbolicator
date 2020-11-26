@@ -1880,9 +1880,11 @@ mod tests {
 
         let cache_dir = test::tempdir();
 
-        let mut config = Config::default();
-        config.cache_dir = Some(cache_dir.path().to_owned());
-        config.connect_to_reserved_ips = true;
+        let config = Config {
+            cache_dir: Some(cache_dir.path().to_owned()),
+            connect_to_reserved_ips: true,
+            ..Default::default()
+        };
         let service = ServiceState::create(config).unwrap();
 
         (service, cache_dir)
