@@ -295,7 +295,7 @@ mod tests {
         assert!(!ret.is_empty());
         let item = &ret[0];
         if let SourceFileId::Filesystem(source_cfg, _loc) = item {
-            assert_eq!(source_cfg.id, source.id());
+            assert_eq!(&source_cfg.id, source.id());
         } else {
             panic!("Not a filesystem item");
         }

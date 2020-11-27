@@ -5,12 +5,37 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 
 use crate::types::{Glob, ObjectId, ObjectType};
 use crate::utils::paths;
 use crate::utils::sentry::WriteSentryScope;
+
+/// An identifier for DIF sources.
+///
+/// This is essentially a newtype for a string.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct SourceId(String);
+
+// For now we allow this to be unused, some tests use these already.
+impl SourceId {
+    #[allow(unused)]
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    #[allow(unused)]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for SourceId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Configuration for an external source.
 ///
@@ -34,7 +59,7 @@ pub enum SourceConfig {
 
 impl SourceConfig {
     /// The unique identifier of this source.
-    pub fn id(&self) -> &str {
+    pub fn id(&self) -> &SourceId {
         match *self {
             SourceConfig::Http(ref x) => &x.id,
             SourceConfig::S3(ref x) => &x.id,
@@ -122,7 +147,7 @@ impl fmt::Display for SentryFileId {
 #[derive(Deserialize, Clone, Debug)]
 pub struct SentrySourceConfig {
     /// Unique source identifier.
-    pub id: String,
+    pub id: SourceId,
 
     /// Absolute URL of the endpoint.
     #[serde(with = "url_serde")]
@@ -144,7 +169,7 @@ impl SentrySourceConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct HttpSourceConfig {
     /// Unique source identifier.
-    pub id: String,
+    pub id: SourceId,
 
     /// Absolute URL of the symbol server.
     #[serde(with = "url_serde")]
@@ -162,7 +187,7 @@ pub struct HttpSourceConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct FilesystemSourceConfig {
     /// Unique source identifier.
-    pub id: String,
+    pub id: SourceId,
 
     /// Path to symbol directory.
     pub path: PathBuf,
@@ -301,7 +326,7 @@ pub struct GcsSourceKey {
 #[derive(Deserialize, Clone, Debug)]
 pub struct GcsSourceConfig {
     /// Unique source identifier.
-    pub id: String,
+    pub id: SourceId,
 
     /// Name of the GCS bucket.
     pub bucket: String,
@@ -340,7 +365,7 @@ impl GcsSourceConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceConfig {
     /// Unique source identifier.
-    pub id: String,
+    pub id: SourceId,
 
     /// Name of the bucket in the S3 account.
     pub bucket: String,
@@ -570,7 +595,7 @@ mod tests {
     #[test]
     fn test_sentry_source_download_url() {
         let source = SentrySourceConfig {
-            id: "test".into(),
+            id: SourceId::new("test"),
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };

@@ -26,7 +26,7 @@ use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
-use crate::sources::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig};
+use crate::sources::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig, SourceId};
 
 pub use actix_web::test::*;
 pub use tempfile::TempDir;
@@ -146,7 +146,7 @@ where
 #[allow(unused)]
 pub(crate) fn local_source() -> SourceConfig {
     SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
-        id: "local".to_owned(),
+        id: SourceId::new("local"),
         path: PathBuf::from(SYMBOLS_PATH),
         files: Default::default(),
     }))
@@ -172,7 +172,7 @@ pub(crate) fn symbol_server() -> (TestServer, SourceConfig) {
     // differences when changing the bucket in tests.
 
     let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-        id: "local".to_owned(),
+        id: SourceId::new("local"),
         url: server.url("/download/").parse().unwrap(),
         headers: Default::default(),
         files: Default::default(),
