@@ -12,7 +12,7 @@
         <meta name="author" content="Sentry">
       
       <link rel="shortcut icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-6.1.5">
+      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-6.1.6">
     
     
       
@@ -20,7 +20,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.21aed14c.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.6910b76c.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.196e0c26.min.css">
@@ -406,6 +406,13 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#note-on-addresses" class="md-nav__link">
+    Note on Addresses
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backoff-response" class="md-nav__link">
     Backoff Response
   </a>
@@ -474,6 +481,13 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#note-on-addresses" class="md-nav__link">
+    Note on Addresses
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backoff-response" class="md-nav__link">
     Backoff Response
   </a>
@@ -532,8 +546,8 @@ symbolication succeeds within a configured timeframe (around 20 seconds):</p>
 
           <span class="c1">// Frame information</span>
           <span class="s2">&quot;instruction_addr&quot;</span><span class="o">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>  <span class="c1">// actual address of the frame</span>
+          <span class="s2">&quot;addr_mode&quot;</span><span class="o">:</span> <span class="s2">&quot;abs&quot;</span><span class="p">,</span>                <span class="c1">// address mode</span>
           <span class="s2">&quot;sym_addr&quot;</span><span class="o">:</span> <span class="s2">&quot;0xfeed0000&quot;</span><span class="p">,</span>          <span class="c1">// start address of the function</span>
-          <span class="s2">&quot;line_addr&quot;</span><span class="o">:</span> <span class="s2">&quot;0xfeedbe00&quot;</span><span class="p">,</span>         <span class="c1">// start address of the line</span>
           <span class="s2">&quot;package&quot;</span><span class="o">:</span> <span class="s2">&quot;/path/to/module.so&quot;</span><span class="p">,</span>   <span class="c1">// path to the module&#39;s code file</span>
           <span class="s2">&quot;symbol&quot;</span><span class="o">:</span> <span class="s2">&quot;__1cGmemset6FpviI_0_&quot;</span><span class="p">,</span>  <span class="c1">// original mangled function name</span>
           <span class="s2">&quot;function&quot;</span><span class="o">:</span> <span class="s2">&quot;memset&quot;</span><span class="p">,</span>              <span class="c1">// demangled short version of symbol</span>
@@ -570,6 +584,13 @@ request. Additional properties passed in the request are discarded. Errors that
 occurred during symbolication, such as missing symbol files or unresolvable
 addresses within symbols are reported as values for <code>status</code> in both modules and
 frames.</p>
+<h2 id="note-on-addresses">Note on Addresses</h2>
+<p>Addresses (<code>instruction_addr</code> and <code>sym_addr</code>) can come in two versions. They
+can be absolute or relative. Symbolicator will always try to make addresses
+absolute but in some cases this cannot be done. For instance WASM modules do
+not have absolute addresses in which case the addresses stay relative. This is
+identified by the <code>addr_mode</code> property. When it's set to <code>"abs"</code> it means
+the addresses are absolute, when <code>"rel:X"</code> it's relative to module index <code>X</code>.</p>
 <h2 id="backoff-response">Backoff Response</h2>
 <p>If symbolication takes longer than the threshold <code>timeout</code>, the server instead
 responds with a backoff response. It will then continue to fetch symbols and
@@ -664,8 +685,8 @@ then re-schedule symbolication</p>
       
     </div>
     
-      <script src="../../assets/javascripts/vendor.7e0ee788.min.js"></script>
-      <script src="../../assets/javascripts/bundle.b3a72adc.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}</script>
+      <script src="../../assets/javascripts/vendor.fd16492e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.7836ba4d.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}</script>
       
       <script>
         app = initialize({

@@ -12,7 +12,7 @@
         <meta name="author" content="Sentry">
       
       <link rel="shortcut icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-6.1.5">
+      <meta name="generator" content="mkdocs-1.1.2, mkdocs-material-6.1.6">
     
     
       
@@ -20,7 +20,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.21aed14c.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.6910b76c.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.196e0c26.min.css">
@@ -828,6 +828,11 @@ changed the semantics of those identifiers for all other platforms to:</p>
   bidirectionally from the UUID.</li>
 <li><strong>Debug ID:</strong> The same UUID, amended by a <code>0</code> for age.</li>
 </ul>
+<p><strong>WASM</strong>:</p>
+<ul>
+<li><strong>Code ID:</strong> The bytes as specified in the <code>build_id</code> custom section.</li>
+<li><strong>Debug ID:</strong> The same as code ID but truncated to 16 bytes + <code>0</code> for age.</li>
+</ul>
 <p><strong>PE</strong> / <strong>PDB</strong>:</p>
 <ul>
 <li><strong>Code ID:</strong> The hex value of the <code>time_date_stamp</code> in the COFF header
@@ -1000,6 +1005,7 @@ executables, the <code>.debug</code> suffix is omitted.</p>
 <ul>
 <li><strong>ELF</strong> (binary, potentially stripped)</li>
 <li><strong>ELF</strong> (debug info)</li>
+<li><strong>WASM</strong> (debug info)</li>
 </ul>
 <p>Symbol bundles are supported by adding a <code>.src.zip</code> prefix to the ELF:</p>
 <ul>
@@ -1027,7 +1033,7 @@ compatible servers for ELF and Macho.</p>
 <p>If you have no requirements to be compatible with another system you can also
 use the "unified" directory layout structure. This has the advantage that it's
 unified across all platforms and thus easier to manage. It can store breakpad
-files, PDBs, PEs and everything else.  The <code>symsorter</code> tool in the symbolicator
+files, PDBs, PEs and everything else. The <code>symsorter</code> tool in the symbolicator
 repository can automatically sort debug symbols into this format and also
 automatically create source bundles.</p>
 <p><strong>Schema</strong>:</p>
@@ -1037,6 +1043,7 @@ automatically create source bundles.</p>
 <li><strong>PDB</strong>: <code>&lt;Signature&gt;&lt;Age&gt;</code> (age in hex, not padded)</li>
 <li><strong>ELF</strong>: <code>&lt;code_note_byte_sequence&gt;</code></li>
 <li><strong>MachO</strong>: <code>&lt;uuid_bytes&gt;</code></li>
+<li><strong>WASM</strong>: <code>&lt;BuildId&gt;</code></li>
 </ul>
 <p>The path format is then as follows:</p>
 <ul>
@@ -1134,8 +1141,8 @@ Symbol Server no longer supports this.</p>
       
     </div>
     
-      <script src="../../assets/javascripts/vendor.7e0ee788.min.js"></script>
-      <script src="../../assets/javascripts/bundle.b3a72adc.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}</script>
+      <script src="../../assets/javascripts/vendor.fd16492e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.7836ba4d.min.js"></script><script id="__lang" type="application/json">{"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}</script>
       
       <script>
         app = initialize({
