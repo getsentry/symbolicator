@@ -21,7 +21,7 @@ use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
-use crate::types::{DifInfoCache, DifStatus, ObjectFeatures, ObjectId, Scope};
+use crate::types::{DifInfo, DifStatus, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -172,26 +172,14 @@ impl CacheItemRequest for FetchFileMetaRequest {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
                         let mut new_cache = fs::File::create(path)?;
+
                         let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
                             has_symbols: object.has_symbols(),
                             has_sources: object.has_sources(),
                         };
-                        // let info = DifInfoCache {
-                        //     source_id: data.file_id.source_id().clone(),
-                        //     source_location: data.file_id.location(),
-                        //     status: DifStatus::Ok,
-                        //     features: ObjectFeatures {
-                        //         has_debug_info: object.has_debug_info(),
-                        //         has_unwind_info: object.has_unwind_info(),
-                        //         has_symbols: object.has_symbols(),
-                        //         has_sources: object.has_sources(),
-                        //     },
-                        // };
 
-                        // TODO: Write in backwards compatible way, this used to be only
-                        // ObjectFeatures.
                         log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
                         serde_json::to_writer(&mut new_cache, &meta)?;
                     }
@@ -211,9 +199,6 @@ impl CacheItemRequest for FetchFileMetaRequest {
     ///
     /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
     /// returned will contain the default [`ObjectFileMeta::features`].
-    ///
-    /// The [`ObjectFileMeta::candidates`] field will probably only contain one entry since
-    /// we can only provide this info for the single object file here.
     fn load(
         &self,
         scope: Scope,
@@ -221,10 +206,19 @@ impl CacheItemRequest for FetchFileMetaRequest {
         data: ByteView<'static>,
         _: CachePath,
     ) -> Self::Item {
-        // TODO: load this in a backwards compatible way.
-        // TODO: We should be able to return an error instead of unwrap.
-        // let features = serde_json::from_slice(&data).expect("should we really be hitting this?");
-        let features = serde_json::from_slice(&data).unwrap_or_default();
+        // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
+        // get the malformed marker.
+        let features = match status {
+            CacheStatus::Positive => serde_json::from_slice(&data).unwrap_or_else(|err| {
+                log::error!(
+                    "Failed to load positive ObjectFileMeta cache for {:?}: {:?}",
+                    self.get_cache_key(),
+                    err
+                );
+                Default::default()
+            }),
+            _ => Default::default(),
+        };
 
         ObjectFileMeta {
             request: self.clone(),
@@ -402,8 +396,6 @@ pub struct ObjectFileMeta {
     scope: Scope,
     features: ObjectFeatures,
     status: CacheStatus,
-    // TODO: this shouldn't be a vec, just single item
-    // dif_info: DifInfoCache, // TODO: this struct has no `used` field which we will need.
 }
 
 impl ObjectFileMeta {
@@ -519,10 +511,18 @@ pub enum ObjectPurpose {
     Source,
 }
 
+/// The response for [`ObjectsActor::find`].
+///
+/// The found object is in the `meta` field with other DIFs considered in the `candidates`
+/// field.
 #[derive(Debug, Clone, Default)]
-pub struct FindResult {
+pub struct FoundObject {
+    /// If a matching object was found its [`ObjectFileMeta`] will be provided here,
+    /// otherwise this will be `None`.
     pub meta: Option<Arc<ObjectFileMeta>>,
-    pub candidates: Vec<DifInfoCache>,
+    /// This is a list of some meta information on all objects which have been considered
+    /// for this object.  It could be populated even if no matching object is found.
+    pub candidates: Vec<DifInfo>,
 }
 
 impl ObjectsActor {
@@ -548,8 +548,10 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    // TODO: in the None case we need to still show which DIF candidates were used
-    pub fn find(&self, request: FindObject) -> impl Future<Item = FindResult, Error = ObjectError> {
+    pub fn find(
+        &self,
+        request: FindObject,
+    ) -> impl Future<Item = FoundObject, Error = ObjectError> {
         let FindObject {
             filetypes,
             scope,
@@ -622,19 +624,29 @@ impl ObjectsActor {
         });
 
         file_metas.and_then(
-            move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| -> Result<FindResult, _> {
-                let mut candidates: Vec<DifInfoCache> = Vec::new();
+            move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| -> Result<FoundObject, _> {
+                let mut candidates: Vec<DifInfo> = Vec::new();
                 responses
                     .into_iter()
                     .inspect(|response| {
-                        // TODO: Can we add DifInfo in the Err case too?
+                        // TODO(flub): Can we add DifInfoCache in the Err case too?
+                        // In that case the meta-cache computation failed, this means
+                        // the data-cache computation failed so there was an error with
+                        // downloading.  This is transient in the sense that these
+                        // errors are not themselves cached.  So to do this we need to
+                        // represent a download error, currently this would be
+                        // {"status": "notfound", "response": "the err msg"}.
+                        //
+                        // However we also need to have the file_id + source_id which the
+                        // errors don't currently give us, so this needs to be added to
+                        // ObjectError.
                         if let Ok(obj_meta) = response {
                             let status = if obj_meta.status == CacheStatus::Positive {
                                 DifStatus::Ok
                             } else {
                                 DifStatus::NotFound
                             };
-                            candidates.push(DifInfoCache {
+                            candidates.push(DifInfo {
                                 source_id: obj_meta.request.file_id.source_id().clone(),
                                 source_location: obj_meta.request.file_id.location(),
                                 status,
@@ -688,7 +700,7 @@ impl ObjectsActor {
                     })
                     .map(|(_i, response)| response)
                     .transpose()
-                    .map(|meta| FindResult { meta, candidates })
+                    .map(|meta| FoundObject { meta, candidates })
             },
         )
     }

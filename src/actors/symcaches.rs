@@ -13,11 +13,11 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, FindResult, ObjectError, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
+    FindObject, FoundObject, ObjectError, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
-use crate::types::{DifInfoCache, ObjectFeatures, ObjectId, ObjectType, Scope};
+use crate::types::{DifInfo, ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -75,7 +75,7 @@ pub struct SymCacheFile {
     features: ObjectFeatures,
     status: CacheStatus,
     arch: Arch,
-    candidates: Vec<DifInfoCache>,
+    candidates: Arc<[DifInfo]>,
 }
 
 impl SymCacheFile {
@@ -99,8 +99,8 @@ impl SymCacheFile {
         self.features
     }
 
-    // TODO: make this return an Arc?
-    pub fn candidates(&self) -> Vec<DifInfoCache> {
+    /// Returns the list of DIFs which were searched for this symcache.
+    pub fn candidates(&self) -> Arc<[DifInfo]> {
         self.candidates.clone()
     }
 }
@@ -111,7 +111,7 @@ struct FetchSymCacheInternal {
     objects_actor: ObjectsActor,
     object_meta: Arc<ObjectFileMeta>,
     threadpool: ThreadPool,
-    candidates: Vec<DifInfoCache>,
+    candidates: Arc<[DifInfo]>,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -230,8 +230,9 @@ impl SymCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        find_result_future.and_then(move |find_result: FindResult| {
-            let FindResult { meta, candidates } = find_result;
+        find_result_future.and_then(move |find_result: FoundObject| {
+            let FoundObject { meta, candidates } = find_result;
+            let candidates: Arc<[DifInfo]> = Arc::from(candidates);
             meta.map(clone!(candidates, |object_meta| {
                 Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
                     request,

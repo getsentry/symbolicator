@@ -435,25 +435,37 @@ impl ObjectFeatures {
     }
 }
 
-/// Information about a Debug Information File.
+/// Information about a Debug Information File in the [`CompleteObjectInfo`].
 ///
-/// All DIFs are backed by an [`ObjectFile`].  But we may not have been able to get hold of
-/// this object file.  We still want to describe the relevant DIF however.
+/// All DIFs are backed by an [`ObjectFile`](crate::actors::objects::ObjectFile).  But we
+/// may not have been able to get hold of this object file.  We still want to describe the
+/// relevant DIF however.
 ///
-/// Currently has no ObjectId attached, since this is associated with and ObjectFileMeta
-/// which has this info already.
-///
-/// This type is meant to be serialised into the meta-cache, so only contains the fields
-/// which need to be there.
+/// Currently has no [`ObjectId`] attached and the parent container is expected to know
+/// which ID this DIF info was for.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DifInfoCache {
+pub struct DifInfo {
+    /// The ID of the object source where this DIF was expected to be found.
+    ///
+    /// This refers back to the IDs of sources in the symbolication requests, as well as any
+    /// globally configured sources from symbolicator's configuration.
+    ///
+    /// Generally this is a short readable string.
     pub source_id: SourceId,
+    /// The location of this DIF on the object source.
+    ///
+    /// This will generally be some sort of path name or key, if you know the type of object
+    /// source this may give you an idea of where this DIF was expected to be found.
     pub source_location: SourceLocation,
+    /// The status of this DIF.
     pub status: DifStatus,
+    /// The features provided by this DIF.
+    // TODO(flub): document better + hide when we don't know.
     pub features: ObjectFeatures,
-    // used: ObjectFeatures, // TODO: consider a custom type?
+    // TODO(flub): More fields to describe the DIF.
 }
 
+/// Status describing a Debug Information File in [`DifInfo`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DifStatus {
@@ -469,7 +481,10 @@ pub enum DifStatus {
 
 /// Normalized [`RawObjectInfo`] with status attached.
 ///
-/// `RawObjectInfo` is what the user sends and [`CompleteObjectInfo`] is what the user gets.
+/// This describes an object in the modules list of a response to a symbolication request.
+///
+/// [`RawObjectInfo`] is what the user sends and [`CompleteObjectInfo`] is what the user
+/// gets.
 #[derive(Debug, Clone, Serialize, Eq, PartialEq, Deserialize)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
@@ -489,10 +504,14 @@ pub struct CompleteObjectInfo {
     #[serde(flatten)]
     pub raw: RawObjectInfo,
 
-    /// Move information about the DIF files which were consulted for this object file.
+    /// More information about the DIF files which were consulted for this object file.
     ///
-    /// TODO: write something helpful.
-    pub difs: Vec<DifInfoCache>, // TODO: do not share internal type here
+    /// For stackwalking and symbolication we need various Debug Information Files about
+    /// this module.  We look for these DIF files in various locations, this describes all
+    /// the DIF files we looked up and what we know about them, how we used them.  It can be
+    /// helpful to understand what information was available or missing and for which
+    /// reasons.
+    pub difs: Vec<DifInfo>,
 }
 
 impl CompleteObjectInfo {

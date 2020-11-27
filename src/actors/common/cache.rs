@@ -286,6 +286,14 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// The computation itself is done by [`T::compute`](CacheItemRequest::compute), but only if it
     /// was not already in the cache.
+    ///
+    /// # Errors
+    ///
+    /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
+    /// will return an error of type [`T::Error`](CacheItemRequest::Error).  When this
+    /// occurs the error result is returned, **however** in this case nothing is written
+    /// into the cache and the next call to the same cache item will attempt to re-compute
+    /// the cache.
     pub fn compute_memoized(&self, request: T) -> ResponseFuture<Arc<T::Item>, Arc<T::Error>> {
         let key = request.get_cache_key();
         let name = self.config.name();
