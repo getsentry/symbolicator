@@ -220,6 +220,7 @@ impl CfiCacheActor {
 
         object.and_then(move |object| {
             object
+                .meta
                 .map(move |object| {
                     Either::A(cficaches.compute_memoized(FetchCfiCacheInternal {
                         request,

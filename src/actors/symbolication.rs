@@ -431,7 +431,8 @@ impl SourceLookup {
                     })
                     .compat()
                     .await
-                    .unwrap_or(None);
+                    .unwrap_or_default()
+                    .meta;
 
                 entry.source_object = match opt_object_file_meta {
                     None => None,
@@ -675,6 +676,7 @@ impl SymCacheLookup {
                 if let Some(ref symcache) = symcache {
                     entry.object_info.arch = symcache.arch();
                     entry.object_info.features.merge(symcache.features());
+                    entry.object_info.difs = symcache.candidates(); // TODO: merge!
                 }
 
                 entry.symcache = symcache;

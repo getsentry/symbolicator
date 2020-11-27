@@ -20,6 +20,7 @@ use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
+use crate::sources::{SourceId, SourceLocation};
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
@@ -434,6 +435,38 @@ impl ObjectFeatures {
     }
 }
 
+/// Information about a Debug Information File.
+///
+/// All DIFs are backed by an [`ObjectFile`].  But we may not have been able to get hold of
+/// this object file.  We still want to describe the relevant DIF however.
+///
+/// Currently has no ObjectId attached, since this is associated with and ObjectFileMeta
+/// which has this info already.
+///
+/// This type is meant to be serialised into the meta-cache, so only contains the fields
+/// which need to be there.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DifInfoCache {
+    pub source_id: SourceId,
+    pub source_location: SourceLocation,
+    pub status: DifStatus,
+    pub features: ObjectFeatures,
+    // used: ObjectFeatures, // TODO: consider a custom type?
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DifStatus {
+    /// The object file for this DIF is usable.
+    Ok,
+    /// The object file for this DIF was malformed.
+    Malformed,
+    /// There were insufficient permissions to access this object file from its source.
+    NoPerm,
+    /// The object file for this DIF was not found at its source.
+    NotFound,
+}
+
 /// Normalized [`RawObjectInfo`] with status attached.
 ///
 /// `RawObjectInfo` is what the user sends and [`CompleteObjectInfo`] is what the user gets.
@@ -455,6 +488,11 @@ pub struct CompleteObjectInfo {
     /// More information on the object file.
     #[serde(flatten)]
     pub raw: RawObjectInfo,
+
+    /// Move information about the DIF files which were consulted for this object file.
+    ///
+    /// TODO: write something helpful.
+    pub difs: Vec<DifInfoCache>, // TODO: do not share internal type here
 }
 
 impl CompleteObjectInfo {
@@ -509,6 +547,7 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             features: ObjectFeatures::default(),
             arch: Arch::Unknown,
             raw,
+            difs: Vec::new(),
         }
     }
 }

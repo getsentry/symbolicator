@@ -21,7 +21,7 @@ use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
-use crate::types::{ObjectFeatures, ObjectId, Scope};
+use crate::types::{DifInfoCache, DifStatus, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -168,18 +168,30 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
             .map_err(ObjectError::Caching)
-            .and_then(move |data| {
+            .and_then(move |data: Arc<ObjectFile>| {
                 if data.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&data.data) {
                         let mut new_cache = fs::File::create(path)?;
-
                         let meta = ObjectFeatures {
                             has_debug_info: object.has_debug_info(),
                             has_unwind_info: object.has_unwind_info(),
                             has_symbols: object.has_symbols(),
                             has_sources: object.has_sources(),
                         };
+                        // let info = DifInfoCache {
+                        //     source_id: data.file_id.source_id().clone(),
+                        //     source_location: data.file_id.location(),
+                        //     status: DifStatus::Ok,
+                        //     features: ObjectFeatures {
+                        //         has_debug_info: object.has_debug_info(),
+                        //         has_unwind_info: object.has_unwind_info(),
+                        //         has_symbols: object.has_symbols(),
+                        //         has_sources: object.has_sources(),
+                        //     },
+                        // };
 
+                        // TODO: Write in backwards compatible way, this used to be only
+                        // ObjectFeatures.
                         log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
                         serde_json::to_writer(&mut new_cache, &meta)?;
                     }
@@ -199,6 +211,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
     ///
     /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
     /// returned will contain the default [`ObjectFileMeta::features`].
+    ///
+    /// The [`ObjectFileMeta::candidates`] field will probably only contain one entry since
+    /// we can only provide this info for the single object file here.
     fn load(
         &self,
         scope: Scope,
@@ -206,6 +221,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
         data: ByteView<'static>,
         _: CachePath,
     ) -> Self::Item {
+        // TODO: load this in a backwards compatible way.
+        // TODO: We should be able to return an error instead of unwrap.
+        // let features = serde_json::from_slice(&data).expect("should we really be hitting this?");
         let features = serde_json::from_slice(&data).unwrap_or_default();
 
         ObjectFileMeta {
@@ -384,6 +402,8 @@ pub struct ObjectFileMeta {
     scope: Scope,
     features: ObjectFeatures,
     status: CacheStatus,
+    // TODO: this shouldn't be a vec, just single item
+    // dif_info: DifInfoCache, // TODO: this struct has no `used` field which we will need.
 }
 
 impl ObjectFileMeta {
@@ -499,6 +519,12 @@ pub enum ObjectPurpose {
     Source,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct FindResult {
+    pub meta: Option<Arc<ObjectFileMeta>>,
+    pub candidates: Vec<DifInfoCache>,
+}
+
 impl ObjectsActor {
     /// Returns the requested object file.
     ///
@@ -522,10 +548,8 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    pub fn find(
-        &self,
-        request: FindObject,
-    ) -> impl Future<Item = Option<Arc<ObjectFileMeta>>, Error = ObjectError> {
+    // TODO: in the None case we need to still show which DIF candidates were used
+    pub fn find(&self, request: FindObject) -> impl Future<Item = FindResult, Error = ObjectError> {
         let FindObject {
             filetypes,
             scope,
@@ -550,7 +574,11 @@ impl ObjectsActor {
                             // the search by debug/code id. We do not surface those errors to the
                             // user (instead we default to an empty search result) and only report
                             // them internally.
-                            log::error!("Failed to download from {}: {}", type_name, LogError(&e));
+                            log::error!(
+                                "Source list-files failed for {}: {}",
+                                type_name,
+                                LogError(&e)
+                            );
                             Ok(Vec::new())
                         })
                 })
@@ -593,57 +621,76 @@ impl ObjectsActor {
             }))
         });
 
-        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>|
-                                                 -> Result<Option<Arc<ObjectFileMeta>>, _> {
-            responses
-                .into_iter()
-                .filter(|response| match response {
-                    // Make sure we only return objects which provide the requested info
-                    Ok(object_meta) => {
-                        if object_meta.status == CacheStatus::Positive {
-                            // object_meta.features is meaningless when CacheStatus != Positive
-                            match purpose {
-                                ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
-                                ObjectPurpose::Debug => {
-                                    object_meta.features.has_debug_info
-                                        || object_meta.features.has_symbols
+        file_metas.and_then(
+            move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| -> Result<FindResult, _> {
+                let mut candidates: Vec<DifInfoCache> = Vec::new();
+                responses
+                    .into_iter()
+                    .inspect(|response| {
+                        // TODO: Can we add DifInfo in the Err case too?
+                        if let Ok(obj_meta) = response {
+                            let status = if obj_meta.status == CacheStatus::Positive {
+                                DifStatus::Ok
+                            } else {
+                                DifStatus::NotFound
+                            };
+                            candidates.push(DifInfoCache {
+                                source_id: obj_meta.request.file_id.source_id().clone(),
+                                source_location: obj_meta.request.file_id.location(),
+                                status,
+                                features: obj_meta.features(),
+                            })
+                        }
+                    })
+                    .filter(|response| match response {
+                        // Make sure we only return objects which provide the requested info
+                        Ok(object_meta) => {
+                            if object_meta.status == CacheStatus::Positive {
+                                // object_meta.features is meaningless when CacheStatus != Positive
+                                match purpose {
+                                    ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
+                                    ObjectPurpose::Debug => {
+                                        object_meta.features.has_debug_info
+                                            || object_meta.features.has_symbols
+                                    }
+                                    ObjectPurpose::Source => object_meta.features.has_sources,
                                 }
-                                ObjectPurpose::Source => object_meta.features.has_sources,
+                            } else {
+                                true
                             }
-                        } else {
-                            true
                         }
-                    }
-                    Err(_) => true,
-                })
-                .enumerate()
-                .min_by_key(|(i, response)| {
-                    // The sources are ordered in priority, so for the same quality of
-                    // object file prefer a file from an earlier source using the index `i`
-                    // provided by enumerate.
+                        Err(_) => true,
+                    })
+                    .enumerate()
+                    .min_by_key(|(i, response)| {
+                        // The sources are ordered in priority, so for the same quality of
+                        // object file prefer a file from an earlier source using the index `i`
+                        // provided by enumerate.
 
-                    // Prefer files that contain an object over unparseable files
-                    let object_meta = match response {
-                        Ok(object_meta) => object_meta,
-                        Err(e) => {
-                            log::debug!("Failed to download: {:#?}", e);
-                            return (3, *i);
-                        }
-                    };
+                        // Prefer files that contain an object over unparseable files
+                        let object_meta = match response {
+                            Ok(object_meta) => object_meta,
+                            Err(e) => {
+                                log::debug!("Failed to download: {:#?}", e);
+                                return (3, *i);
+                            }
+                        };
 
-                    // Prefer object files with debug/unwind info over object files without
-                    let score = match purpose {
-                        ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
-                        ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
-                        ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
-                        ObjectPurpose::Source if object_meta.features.has_sources => 0,
-                        _ => 2,
-                    };
-                    (score, *i)
-                })
-                .map(|(_i, response)| response)
-                .transpose()
-        })
+                        // Prefer object files with debug/unwind info over object files without
+                        let score = match purpose {
+                            ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
+                            ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
+                            ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
+                            ObjectPurpose::Source if object_meta.features.has_sources => 0,
+                            _ => 2,
+                        };
+                        (score, *i)
+                    })
+                    .map(|(_i, response)| response)
+                    .transpose()
+                    .map(|meta| FindResult { meta, candidates })
+            },
+        )
     }
 }
 

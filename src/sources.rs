@@ -103,7 +103,7 @@ impl WriteSentryScope for SourceConfig {
 ///
 /// It is essentially a `/`-separated string. This is currently used by all sources other than
 /// [`SentrySourceConfig`]. This may change in the future.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct SourceLocation(String);
 
 impl SourceLocation {
@@ -130,6 +130,10 @@ pub struct SentryFileId(String);
 impl SentryFileId {
     pub fn new(id: impl Into<String>) -> Self {
         SentryFileId(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -232,6 +236,37 @@ impl SourceFileId {
                 format!("{}.{}.sentryinternal", source.id, file_id.0)
             }
             SourceFileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
+        }
+    }
+
+    /// Returns the ID of the source.
+    ///
+    /// Within one request these IDs should be unique, this includes any sources from the
+    /// configuration which are available to all requests.
+    pub fn source_id(&self) -> &SourceId {
+        match self {
+            SourceFileId::Sentry(ref cfg, _) => &cfg.id,
+            SourceFileId::Http(ref cfg, _) => &cfg.id,
+            SourceFileId::S3(ref cfg, _) => &cfg.id,
+            SourceFileId::Gcs(ref cfg, _) => &cfg.id,
+            SourceFileId::Filesystem(ref cfg, _) => &cfg.id,
+        }
+    }
+
+    /// The location of the file on the source, normalised for all sources.
+    ///
+    /// The location is a string who's content is dependent on the source itself, which can
+    /// identify the file on that source.  The underlying type might vary for source types
+    /// however this normalises these all to [`SourceLocation`].  If you working on the
+    /// source itself you should prefer accessing the location directly so you use the
+    /// specific type.
+    pub fn location(&self) -> SourceLocation {
+        match self {
+            SourceFileId::Sentry(_, ref sentry_id) => SourceLocation::new(sentry_id.as_str()),
+            SourceFileId::Http(_, ref loc) => loc.clone(),
+            SourceFileId::S3(_, ref loc) => loc.clone(),
+            SourceFileId::Gcs(_, ref loc) => loc.clone(),
+            SourceFileId::Filesystem(_, ref loc) => loc.clone(),
         }
     }
 }

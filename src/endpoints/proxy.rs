@@ -48,7 +48,7 @@ fn proxy_symstore_request(
             .map_err(|e| e.context("failed to download object").into());
 
         let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
-            if let Some(object_meta) = object_meta_opt {
+            if let Some(object_meta) = object_meta_opt.meta {
                 Either::A(
                     state
                         .objects()
