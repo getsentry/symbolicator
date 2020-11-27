@@ -18,11 +18,14 @@ use crate::utils::sentry::WriteSentryScope;
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct SourceId(String);
 
+// For now we allow this to be unused, some tests use these already.
 impl SourceId {
+    #[allow(unused)]
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
+    #[allow(unused)]
     pub fn as_str(&self) -> &str {
         &self.0
     }
