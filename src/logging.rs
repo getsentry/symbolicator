@@ -124,8 +124,10 @@ where
 /// Initializes logging for the symbolicator.
 ///
 /// This considers the `RUST_LOG` environment variable and defaults it to the level specified in the
-/// configuration. Additionally, this toggles `RUST_BACKTRACE` based on the `enable_stacktraces`
+/// configuration. Additionally, this toggles `RUST_BACKTRACE` based on the [`enable_stacktraces`]
 /// config value.
+///
+/// [`enable_stacktraces`]: crate::config::Logging::enable_backtraces
 pub fn init_logging(config: &Config) {
     if config.logging.enable_backtraces {
         env::set_var("RUST_BACKTRACE", "1");
@@ -154,7 +156,7 @@ pub fn init_logging(config: &Config) {
     log::set_boxed_logger(breadcrumb_logger).unwrap();
 }
 
-/// A wrapper around a `std::error::Error` that prints its causes.
+/// A wrapper around an [`Error`](std::error::Error) that prints its causes.
 pub struct LogError<'a>(pub &'a dyn std::error::Error);
 
 impl<'a> fmt::Display for LogError<'a> {

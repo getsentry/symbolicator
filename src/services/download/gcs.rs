@@ -1,8 +1,6 @@
 //! Support to download from Google Cloud Storage buckets.
 //!
 //! Specifically this supports the [`GcsSourceConfig`] source.
-//!
-//! [`GcsSourceConfig`]: ../../../sources/struct.GcsSourceConfig.html
 
 use std::path::PathBuf;
 use std::sync::Arc;

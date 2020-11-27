@@ -109,7 +109,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     /// Extracts the Call Frame Information (CFI) from an object file.
     ///
     /// The extracted CFI is written to `path` in symbolic's
-    /// [symbolic::minidump::cfi::CfiCache] format.
+    /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let path = path.to_owned();
         let object = self

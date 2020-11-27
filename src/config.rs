@@ -71,7 +71,7 @@ impl Default for Metrics {
 
 /// Fine-tuning downloaded cache expiry.
 ///
-/// These differ from `DerivedCacheConfig` in the `Default::default` implementation.
+/// These differ from [`DerivedCacheConfig`] in the [`Default`] implementation.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(default)]
 pub struct DownloadedCacheConfig {
@@ -100,7 +100,7 @@ impl Default for DownloadedCacheConfig {
 
 /// Fine-tuning derived cache expiry.
 ///
-/// These differ from `DownloadedCacheConfig` in the `Default::default` implementation.
+/// These differ from [`DownloadedCacheConfig`] in the [`Default`] implementation.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(default)]
 pub struct DerivedCacheConfig {

@@ -91,8 +91,6 @@ async fn dispatch_download(
 ///
 /// The service is rather simple on the outside but will one day control
 /// rate limits and the concurrency it uses.
-///
-/// [`SourceConfig`]: ../../types/enum.SourceConfig.html
 #[derive(Debug, Clone)]
 pub struct DownloadService {
     worker: RemoteThread,
@@ -107,12 +105,11 @@ impl DownloadService {
 
     /// Download a file from a source and store it on the local filesystem.
     ///
-    /// This does not do any deduplication of requests, every requested file is
-    /// freshly downloaded.
+    /// This does not do any deduplication of requests, every requested file is freshly downloaded.
     ///
-    /// The downloaded file is saved into `destination`.  The file will be created if it
-    /// does not exist and truncated if it does.  In case of any error the file's contents
-    /// is considered garbage.
+    /// The downloaded file is saved into `destination`. The file will be created if it does not
+    /// exist and truncated if it does. In case of any error, the file's contents is considered
+    /// garbage.
     pub fn download(
         &self,
         source: SourceFileId,
@@ -128,13 +125,13 @@ impl DownloadService {
             .map(|o| o.unwrap_or(Err(DownloadError::Canceled)))
     }
 
-    /// Returns all objects matching the [ObjectId] at the source.
+    /// Returns all objects matching the [`ObjectId`] at the source.
     ///
     /// Some sources, namely all the symbol servers, simply return the locations at which a
     /// download attempt should be made without any guarantee the object is actually there.
     ///
     /// If the source needs to be contacted to get matching objects this may fail and
-    /// returns a [DownloadError].
+    /// returns a [`DownloadError`].
     pub fn list_files(
         &self,
         source: SourceConfig,
@@ -189,18 +186,22 @@ async fn download_stream(
     Ok(DownloadStatus::Completed)
 }
 
-/// Iterator to generate a list of filepaths to try downloading from.
-///
-///  - `object_id`: Information about the image we want to download.
-///  - `filetypes`: Limit search to these filetypes.
-///  - `filters`: Filters from a `SourceConfig` to limit the amount of generated paths.
-///  - `layout`: Directory from `SourceConfig` to define what kind of paths we generate.
+/// Iterator to generate a list of [`SourceLocation`]s to attempt downloading.
 #[derive(Debug)]
 struct SourceLocationIter<'a> {
+    /// Limits search to a set of filetypes.
     filetypes: std::slice::Iter<'a, FileType>,
+
+    /// Filters from a `SourceConfig` to limit the amount of generated paths.
     filters: &'a SourceFilters,
+
+    /// Information about the object file to be downloaded.
     object_id: &'a ObjectId,
+
+    /// Directory from `SourceConfig` to define what kind of paths we generate.
     layout: DirectoryLayout,
+
+    /// Remaining locations to iterate.
     next: Vec<String>,
 }
 

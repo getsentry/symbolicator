@@ -23,15 +23,15 @@ pub fn enable_test_mode() {
     IS_TEST.store(true, Ordering::Relaxed);
 }
 
-/// Error returned from a `SpawnHandle` when the thread pool restarts.
+/// Error returned from a [`SpawnHandle`] when the thread pool restarts.
 pub use oneshot::Canceled as RemoteCanceled;
 
-/// Handle returned from `ThreadPool::spawn_handle`.
+/// Handle returned from [`ThreadPool::spawn_handle`].
 ///
 /// This handle is a future representing the completion of a different future spawned on to the
-/// thread pool. Created through the `ThreadPool::spawn_handle` function this handle will resolve
+/// thread pool. Created through the [`ThreadPool::spawn_handle`] function this handle will resolve
 /// when the future provided resolves on the thread pool. If the remote thread restarts due to
-/// panics, `SpawnError::Canceled` is returned.
+/// panics, [`SpawnError::Canceled`] is returned.
 pub use oneshot::Receiver as SpawnHandle;
 
 /// Work-stealing based thread pool for executing futures.
@@ -59,7 +59,7 @@ impl ThreadPool {
 
     /// Spawn a future on to the thread pool, return a future representing the produced value.
     ///
-    /// The `SpawnHandle` returned is a future that is a proxy for future itself. When future
+    /// The [`SpawnHandle`] returned is a future that is a proxy for future itself. When future
     /// completes on this thread pool then the SpawnHandle will itself be resolved.
     pub fn spawn_handle<F>(&self, future: F) -> SpawnHandle<F::Output>
     where
@@ -89,24 +89,22 @@ impl ThreadPool {
 /// This can be used to implement any services which internally need to use
 /// non-`Send`able futures and are sufficient with running on single thread.
 ///
-/// When the global `IS_TEST` is set by calling [`enable_test_mode`] this will
+/// When the global `IS_TEST` is set by calling `enable_test_mode`, this will
 /// not create a new thread and instead spawn any executions in the current
 /// thread.  This is a workaround for the stdout and panic capturing not being
 /// exposed properly to the test framework users which stops us from enabling
 /// these things in spawned threads during tests.
-///
-/// [`enable_test_mode`]: func.enable_test_mode.html
 #[derive(Clone, Debug)]
 pub struct RemoteThread {
     inner: Arc<InnerRemoteThread>,
 }
 
-/// Inner `RemoteThread` struct to get correct clone behaviour.
+/// Inner [`RemoteThread`] struct to get correct clone behaviour.
 ///
-/// We only have an `actix::Addr` to the arbiter, which itself can be cloned.  Dropping this
-/// does not terminate the arbiter, but we wan the `RemoteThread` to stop when dropped.  So
-/// we need to implement `Drop`, but only want to actually trigger this drop when all clones
-/// of our `RemoteThread` are dropped.  Hence the need to put the drop on an inner struct
+/// We only have an [`actix::Addr`] to the arbiter, which itself can be cloned. Dropping this
+/// does not terminate the arbiter, but we wan the [`RemoteThread`] to stop when dropped. So
+/// we need to implement [`Drop`], but only want to actually trigger this drop when all clones
+/// of our [`RemoteThread`] are dropped.  Hence the need to put the drop on an inner struct
 /// which is wrapped in an Arc.
 #[derive(Debug)]
 struct InnerRemoteThread {
@@ -125,7 +123,7 @@ pub enum SpawnError {
     Timeout,
 }
 
-/// Dropping terminates the RemoteThread, cancelling all futures.
+/// Dropping terminates the [`RemoteThread`], cancelling all futures.
 impl Drop for InnerRemoteThread {
     fn drop(&mut self) {
         // Without sending the StopArbiter message the arbiter thread keeps running even if
@@ -167,8 +165,8 @@ impl RemoteThread {
     /// output type of the spawned future is wrapped in a `Result`, normally the output is
     /// returned in an `Ok`.
     ///
-    /// When the future takes too long `SpawnError::Timeout` is returned, if the
-    /// `RemoteThread` it is running on is dropped `SpawnError::Canceled` is returned.
+    /// When the future takes too long [`SpawnError::Timeout`] is returned, if the
+    /// `RemoteThread` it is running on is dropped [`SpawnError::Canceled`] is returned.
     pub fn spawn<F, R, T>(
         &self,
         task_name: &'static str,

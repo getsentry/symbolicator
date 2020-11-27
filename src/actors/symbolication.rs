@@ -107,12 +107,11 @@ pub struct SymCacheLookupResult<'a> {
 }
 
 impl<'a> SymCacheLookupResult<'a> {
-    /// The preferred addr mode for this lookup.
+    /// The preferred [`AddrMode`] for this lookup.
     ///
-    /// for the symbolicated frame we generally switch to absolute reporting of
-    /// addresses.  This is not done for images mounted at `0x0`.  This is done
-    /// because for instance WASM does not have a unified address space and so
-    /// it's not possible for us to absolutize addresses.
+    /// For the symbolicated frame, we generally switch to absolute reporting of addresses. This is
+    /// not done for images mounted at `0` because, for instance, WASM does not have a unified
+    /// address space and so it is not possible for us to absolutize addresses.
     pub fn preferred_addr_mode(&self) -> AddrMode {
         if self.object_info.supports_absolute_addresses() {
             AddrMode::Abs
@@ -121,7 +120,7 @@ impl<'a> SymCacheLookupResult<'a> {
         }
     }
 
-    /// Exposes an address consistent with `preferred_addr_mode`.
+    /// Exposes an address consistent with [`preferred_addr_mode`](Self::preferred_addr_mode).
     pub fn expose_preferred_addr(&self, addr: u64) -> u64 {
         if self.object_info.supports_absolute_addresses() {
             self.object_info.rel_to_abs_addr(addr).unwrap_or(0)
@@ -989,17 +988,17 @@ pub struct SymbolicateStacktraces {
 
     /// A list of images that were loaded into the process.
     ///
-    /// This list must cover the instruction addresses of the frames in `threads`. If a frame is not
-    /// covered by any image, the frame cannot be symbolicated as it is not clear which debug file
-    /// to load.
+    /// This list must cover the instruction addresses of the frames in
+    /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
+    /// be symbolicated as it is not clear which debug file to load.
     pub modules: Vec<CompleteObjectInfo>,
 }
 
 /// Run future with a timeout, instrumented with metrics.
 ///
-/// This runs the future `future` and exports the duration as the `futures.done` metric
-/// using `task_name` as metric field.  The future will be cancelled if it runs for longer
-/// than `duration` with this status also being represented in the metric.
+/// This polls the [`Future`] to completion and exposes the duration as the `"futures.done"` metric
+/// using `"task_name"` as metric tag. The future will be cancelled if it runs for longer than
+/// `duration` with this status also being represented in the metric.
 async fn measure_task_timeout<T, F>(task_name: &str, future: F, duration: Duration) -> F::Output
 where
     F: Future<Output = Result<T, SymbolicationError>>,
@@ -1142,7 +1141,8 @@ impl SymbolicationActor {
 
     /// Polls the status for a started symbolication task.
     ///
-    /// If the timeout is set and no result is ready within the given time, a `pending` status is
+    /// If the timeout is set and no result is ready within the given time,
+    /// [`SymbolicationResponse::Pending`] is returned.
     pub fn get_response(
         &self,
         request_id: RequestId,
@@ -1169,8 +1169,8 @@ type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError
 
 /// Contains some meta-data about a minidump.
 ///
-/// The minidump meta-data contained here is extracted in a [procspawn] subprocess so needs
-/// to be (de)serialisable to/from JSON.  It is only a way to get this metadata out of the
+/// The minidump meta-data contained here is extracted in a [`procspawn`] subprocess, so needs
+/// to be (de)serialisable to/from JSON. It is only a way to get this metadata out of the
 /// subprocess and merged into the final symbolication result.
 ///
 /// A few more convenience methods exist to help with building the symbolication results.
@@ -1310,7 +1310,7 @@ impl SymbolicationActor {
     ///
     /// This handles the procspawn result, makes sure to appropriately log any failures and
     /// save the minidump for debugging.  Returns a simple result converted to the
-    /// `SymbolicationError`.
+    /// [`SymbolicationError`].
     fn join_procspawn<T, E>(
         handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
         timeout: Duration,
@@ -1416,8 +1416,8 @@ impl SymbolicationActor {
     /// This processes the minidump to stackwalk all the threads found in the minidump.
     ///
     /// The `cfi_results` must contain all modules found in the minidump (extracted using
-    /// [SymbolicationActor::get_referenced_modules_from_minidump]) and the result of trying
-    /// to fetch the Call Frame Information (CFI) for them from the [CfiCacheActor].
+    /// [`SymbolicationActor::get_referenced_modules_from_minidump`]) and the result of trying
+    /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`].
     ///
     /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
     /// Once it has stacktraces it creates the list of used modules and returns the
@@ -1991,7 +1991,7 @@ mod tests {
     /// Setup tests and create a test service.
     ///
     /// This function returns a tuple containing the service to test, and a temporary cache
-    /// directory. The directory is cleaned up when the `TempDir` instance is dropped. Keep it as
+    /// directory. The directory is cleaned up when the [`TempDir`] instance is dropped. Keep it as
     /// guard until the test has finished.
     ///
     /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local

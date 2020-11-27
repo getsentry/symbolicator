@@ -124,19 +124,20 @@ fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
-    /// Controls the addressing mode for `instruction_addr` and
-    /// `sym_addr`.  If not defined it defaults to "abs".  Can be
-    /// set to `"rel:INDEX"` to make the address relative to the
-    /// module at the given index.
+    /// Controls the addressing mode for [`instruction_addr`](Self::instruction_addr) and
+    /// [`sym_addr`](Self::sym_addr).
+    ///
+    /// If not defined, it defaults to [`AddrMode::Abs`]. The mode can be set to `"rel:INDEX"` to
+    /// make the address relative to the module at the given index ([`AddrMode::Rel`]).
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub addr_mode: AddrMode,
 
-    /// The instruction address of this frame.
+    /// The absolute instruction address of this frame.
     ///
-    /// See `addr_mode` for the exact behavior of addresses.
+    /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
-    /// The path to the image this frame is located in.
+    /// The path to the [module](RawObjectInfo) this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
 
@@ -148,9 +149,10 @@ pub struct RawFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
 
-    /// Start address of the function this frame is located in (lower or equal to instruction_addr).
+    /// Start address of the function this frame is located in (lower or equal to
+    /// [`instruction_addr`](Self::instruction_addr)).
     ///
-    /// See `addr_mode` for the exact behavior of addresses.
+    /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sym_addr: Option<HexValue>,
 
@@ -162,15 +164,15 @@ pub struct RawFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
-    /// Absolute source file path.
+    /// Absolute path to the source file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub abs_path: Option<String>,
 
-    /// The line number within the source file, starting at 1 for the first line.
+    /// The line number within the source file, starting at `1` for the first line.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lineno: Option<u32>,
 
-    /// Source context before the context line
+    /// Source context before the context line.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre_context: Vec<String>,
 
@@ -187,21 +189,28 @@ pub struct RawFrame {
     pub trust: FrameTrust,
 }
 
+/// A stack trace containing unsymbolicated stack frames.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct RawStacktrace {
+    /// The OS-dependent identifier of the thread.
     #[serde(default)]
     pub thread_id: Option<u64>,
 
+    /// `true` if this thread triggered the report. Usually indicates that this trace crashed.
     #[serde(default)]
     pub is_requesting: Option<bool>,
 
+    /// Values of CPU registers in the top frame in the trace.
     #[serde(default)]
     pub registers: Registers,
 
+    /// A list of unsymbolicated stack frames.
+    ///
+    /// The first entry in the list is the active frame, with its callers below.
     pub frames: Vec<RawFrame>,
 }
 
-/// Specification of an image loaded into the process.
+/// Specification of a module loaded into the process.
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct RawObjectInfo {
     /// Platform image file type (container format).
@@ -226,14 +235,15 @@ pub struct RawObjectInfo {
 
     /// Absolute address at which the image was mounted into virtual memory.
     ///
-    /// We do allow the image addr to be skipped if it's zero.  This is
-    /// because for instance systems like WASM do not actually require an
-    /// image to be mounted at a specific address.  Per definition an image
-    /// mounted at 0 does not support absolute addressing.
+    /// We do allow the `image_addr` to be skipped if it is zero. This is because systems like WASM
+    /// do not require modules to be mounted at a specific absolute address. Per definition, a
+    /// module mounted at `0` does not support absolute addressing.
     #[serde(default)]
     pub image_addr: HexValue,
 
     /// Size of the image in virtual memory.
+    ///
+    /// The size is infered from the module list if not specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
 }
@@ -424,9 +434,9 @@ impl ObjectFeatures {
     }
 }
 
-/// Normalized [RawObjectInfo] with status attached.
+/// Normalized [`RawObjectInfo`] with status attached.
 ///
-/// [RawObjectInfo] is what the user sends and [CompleteObjectInfo] is what the user gets.
+/// `RawObjectInfo` is what the user sends and [`CompleteObjectInfo`] is what the user gets.
 #[derive(Debug, Clone, Serialize, Eq, PartialEq, Deserialize)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
@@ -530,7 +540,7 @@ pub enum SymbolicationResponse {
 /// This object is the main type containing the symblicated crash as returned by the
 /// `/minidump`, `/symbolicate` and `/applecrashreport` endpoints.  It is publicly
 /// documented at <https://getsentry.github.io/symbolicator/api/response/>.  For the actual
-/// HTTP response this is further wrapped in [SymbolicationResponse] which can also return a
+/// HTTP response this is further wrapped in [`SymbolicationResponse`] which can also return a
 /// pending or failed state etc instead of a result.
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct CompletedSymbolicationResponse {
@@ -596,9 +606,9 @@ pub struct SystemInfo {
     pub device_model: String,
 }
 
-/// Information to find a Object in external sources and also internal cache.
+/// Information to find an object in external sources and also internal cache.
 ///
-/// See [ObjectId::match_object] for how these can be compared.
+/// See [`ObjectId::match_object`] for how these can be compared.
 #[derive(Debug, Clone, Default)]
 pub struct ObjectId {
     /// Identifier of the code file.

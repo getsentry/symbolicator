@@ -2,18 +2,18 @@
 //!
 //! When writing tests, keep the following points in mind:
 //!
-//!  - In every test, call `test::setup`. This will set up the logger so that all console output is
-//!    captured by the test runner.
+//!  - In every test, call [`test::setup`]. This will set up the logger so that all console output
+//!    is captured by the test runner.
 //!
-//!  - When using `test::tempdir`, make sure that the handle to the temp directory is held for the
+//!  - When using [`test::tempdir`], make sure that the handle to the temp directory is held for the
 //!    entire lifetime of the test. When dropped too early, this might silently leak the temp
 //!    directory, since symbolicator will create it again lazily after it has been deleted. To avoid
 //!    this, assign it to a variable in the test function (e.g. `let _cache_dir = test::tempdir()`).
 //!
-//!  - When using `test::symbol_server`, make sure that the server is held until all requests to the
-//!    server have been made. If the server is dropped, the ports remain open and all connections
-//!    to it will time out. To avoid this, assign it to a variable: `let (_server, source) =
-//!    test::symbol_server();`. Alternatively, use `test::local_source()` to test without HTTP
+//!  - When using [`test::symbol_server`], make sure that the server is held until all requests to the
+//!    server have been made. If the server is dropped, the ports remain open and all connections to
+//!    it will time out. To avoid this, assign it to a variable: `let (_server, source) =
+//!    test::symbol_server();`. Alternatively, use [`test::local_source`] to test without HTTP
 //!    connections.
 
 use std::cell::RefCell;
@@ -91,26 +91,26 @@ pub(crate) fn setup() {
 
 /// Creates a temporary directory.
 ///
-/// The directory is deleted when the `TempDir` instance is dropped, unless `into_path()` is called.
-/// Use it as a guard to automatically clean up after tests.
+/// The directory is deleted when the [`TempDir`] instance is dropped, unless
+/// [`into_path`](TemptDir::into_path) is called. Use it as a guard to automatically clean up after
+/// tests.
 pub(crate) fn tempdir() -> TempDir {
     TempDir::new().unwrap()
 }
 
-/// Runs the provided function, blocking the current thread until the result
-/// future completes.
+/// Runs the provided function, blocking the current thread until the result **legacy**
+/// [`Future`](futures01::Future) completes.
 ///
-/// This function can be used to synchronously block the current thread
-/// until the provided `future` has resolved either successfully or with an
-/// error. The result of the future is then returned from this function
-/// call.
+/// This function can be used to synchronously block the current thread until the provided `Future`
+/// has resolved either successfully or with an error. The result of the future is then returned
+/// from this function call.
 ///
-/// This is provided rather than a `block_on()`-like interface to avoid accidentally calling
-/// a function which spawns before creating a future, which would attempt to spawn before
-/// actix is initialised.
+/// This is provided rather than a `block_on`-like interface to avoid accidentally calling a
+/// function which spawns before creating a future, which would attempt to spawn before actix is
+/// initialised.
 ///
-/// Note that this function is intended to be used only for testing purpose.
-/// This function panics on nested call.
+/// Note that this function is intended to be used only for testing purpose. This function panics on
+/// nested call.
 pub fn block_fn01<F, R>(f: F) -> Result<R::Item, R::Error>
 where
     F: FnOnce() -> R,
@@ -123,7 +123,19 @@ where
     })
 }
 
-/// Version of `block_fn` which works with std::future aka futures03.
+/// Runs the provided function, blocking the current thread until the result
+/// [`Future`](std::future::Future) completes.
+///
+/// This function can be used to synchronously block the current thread until the provided `Future`
+/// has resolved either successfully or with an error. The result of the future is then returned
+/// from this function call.
+///
+/// This is provided rather than a `block_on`-like interface to avoid accidentally calling a
+/// function which spawns before creating a future, which would attempt to spawn before actix is
+/// initialised.
+///
+/// Note that this function is intended to be used only for testing purpose. This function panics on
+/// nested call.
 pub fn block_fn<F, R, T>(f: F) -> T
 where
     F: FnOnce() -> R,
@@ -155,12 +167,12 @@ pub(crate) fn local_source() -> SourceConfig {
 /// Spawn an actual HTTP symbol server for local fixtures.
 ///
 /// The symbol server serves static files from the local symbols fixture location under the
-/// `/download` prefix. The layout of this folder is `Native`. This function returns the test server
-/// as well as a source configuration, which can be used to access the symbol server in
-/// symbolication requests.
+/// `/download` prefix. The layout of this folder is [`DirectoryLayoutType::Native`]. This function
+/// returns the test server as well as a source configuration, which can be used to access the
+/// symbol server in symbolication requests.
 ///
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
-/// permitted, and need to be activated via `Config::connect_to_reserved_ips`.
+/// permitted, and need to be activated via [`Config::connect_to_reserved_ips`].
 pub(crate) fn symbol_server() -> (TestServer, SourceConfig) {
     let server = TestServer::new(|app| {
         app.resource("/download/{tail:.+}", |resource| {
