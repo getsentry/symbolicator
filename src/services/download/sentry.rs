@@ -2,8 +2,6 @@
 //!
 //! Specifically this supports the [`SentrySourceConfig`] source, which allows
 //! to fetch files which were directly uploaded to Sentry itself.
-//!
-//! [`SentrySourceConfig`]: ../../../sources/struct.SentrySourceConfig.html
 
 use std::path::PathBuf;
 use std::sync::Arc;

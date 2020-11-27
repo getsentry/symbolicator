@@ -1,8 +1,6 @@
 //! Support to download from S3 buckets.
 //!
 //! Specifically this supports the [`S3SourceConfig`] source.
-//!
-//! [`S3SourceConfig`]: ../../../sources/struct.S3SourceConfig.html
 
 use std::path::PathBuf;
 use std::sync::Arc;

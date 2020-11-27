@@ -71,9 +71,9 @@ pub trait SentryFutureExt: Sized {
 
 impl<F> SentryFutureExt for F where F: futures01::future::Future {}
 
-/// Write own data to Sentry scope, only the subset that is considered useful for debugging. Right
-/// now this could've been a simple method, but the idea is that one day we want a custom derive
-/// for this.
+/// Write own data to [`sentry::Scope`], only the subset that is considered useful for debugging.
+// Right now, this could have been a simple method, but the idea is that one day we want a custom
+// derive for this.
 pub trait WriteSentryScope {
     fn write_sentry_scope(&self, scope: &mut Scope);
 }
@@ -232,12 +232,11 @@ impl<S: 'static> Middleware<S> for SentryMiddleware {
     }
 }
 
-/// Hub extensions for actix.
+/// Hub extensions for [`actix_web`].
 pub trait ActixWebHubExt {
     /// Returns the hub from a given http request.
     ///
-    /// This requires that the `SentryMiddleware` middleware has been enabled or the
-    /// call will panic.
+    /// This requires that [`SentryMiddleware`] has been enabled or the call will panic.
     fn from_request<S>(req: &HttpRequest<S>) -> Arc<Hub>;
     /// Captures an actix error on the given hub.
     fn capture_actix_error(&self, err: &Error) -> Uuid;

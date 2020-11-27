@@ -22,7 +22,7 @@ use crate::types::Scope;
 /// The malformed state is useful for failed computations that are unlikely to succeed before the
 /// next deploy. For example, symcache writing may fail due to an object file symbolic can't parse
 /// yet.
-const MALFORMED_MARKER: &[u8] = b"malformed";
+pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CacheStatus {
@@ -33,7 +33,7 @@ pub enum CacheStatus {
     /// trying to download a file, and cached that fact. Represented by an empty file.
     Negative,
     /// We are unable to create or use the cache item. E.g. we failed to create a symcache. See
-    /// docs for `MALFORMED_MARKER`.
+    /// docs for [`MALFORMED_MARKER`].
     Malformed,
 }
 
@@ -60,7 +60,7 @@ impl CacheStatus {
 
     /// Persist the operation in the cache.
     ///
-    /// If the status was [CacheStatus::Positive] this copies the data from the temporary
+    /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
     /// file to the final cache location.  Otherwise it writes corresponding marker in the
     /// cache location.
     pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
@@ -100,7 +100,7 @@ pub struct Cache {
     ///
     /// When writing a new file into the cache it is best to write it to a temporary file in
     /// a sibling directory, once fully written it can then be atomically moved to the
-    /// actual location withing the `cache_dir`.
+    /// actual location withing the [`cache_dir`](Self::cache_dir).
     ///
     /// Just like for `cache_dir` when this cache is disabled this will be `None`.
     tmp_dir: Option<PathBuf>,
@@ -186,10 +186,10 @@ impl Cache {
     }
 
     /// Validate cache expiration of path. If cache should not be used,
-    /// `Err(io::ErrorKind::NotFound)` is returned.  If cache is usable, `Ok(x)` is returned, where
+    /// `Err(io::ErrorKind::NotFound)` is returned. If cache is usable, `Ok(x)` is returned, where
     /// `x` indicates whether the file should be touched before using.
     fn check_expiry(&self, path: &Path) -> io::Result<bool> {
-        // We use mtime to keep track of both "cache last used" and "cache created" depending on
+        // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
         // filesystem attribute is unreliable.
         //
@@ -311,7 +311,7 @@ pub fn get_scope_path(cache_dir: Option<&Path>, scope: &Scope, cache_key: &str) 
 }
 
 fn safe_path_segment(s: &str) -> String {
-    s.replace(".", "_") // protect against ..
+    s.replace(".", "_") // protect against ".."
         .replace("/", "_") // protect against absolute paths
         .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
 }

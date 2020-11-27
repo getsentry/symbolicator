@@ -3,8 +3,6 @@
 //! Specifically this supports the [`FilesystemSourceConfig`] source.  It allows
 //! sources to be present on the local filesystem, usually only used for
 //! testing.
-//!
-//! [`FilesystemSourceConfig`]: ../../../sources/struct.S3SourceConfig.html
 
 use std::fs;
 use std::io;

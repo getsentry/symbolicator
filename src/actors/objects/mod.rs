@@ -157,7 +157,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// the data cache has probably also expired.
     ///
     /// This returns an error if the download failed.  If the data cache has a
-    /// [CacheStatus::Negative] or [CacheStatus::Malformed] status the same status is
+    /// [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] status the same status is
     /// returned.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
@@ -195,10 +195,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
         serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
-    /// Returns the [ObjectFileMeta] at the given cache key.
+    /// Returns the [`ObjectFileMeta`] at the given cache key.
     ///
-    /// If the `status` is [CacheStatus::Malformed] or [CacheStatus::Negative] the metadata
-    /// returned will contain the default [ObjectFileMeta::features].
+    /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
+    /// returned will contain the default [`ObjectFileMeta::features`].
     fn load(
         &self,
         scope: Scope,
@@ -233,10 +233,10 @@ impl CacheItemRequest for FetchFileDataRequest {
     /// symbolic to ensure it is not malformed.
     ///
     /// If there is an error with downloading or decompression then an `Err` of
-    /// [ObjectError] is returned.  However if only the final object file parsing failed
-    /// then an `Ok` with [CacheStatus::Malformed] is returned.
+    /// [`ObjectError`] is returned.  However if only the final object file parsing failed
+    /// then an `Ok` with [`CacheStatus::Malformed`] is returned.
     ///
-    /// If the object file did not exist on the source a [CacheStatus::Negative] will be
+    /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
     /// returned.
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
         let cache_key = self.get_cache_key();
@@ -650,7 +650,7 @@ impl ObjectsActor {
 /// Decompresses an object file.
 ///
 /// Some compression methods are implemented by spawning an external tool and can only
-/// process from a named pathname, hence we need a [NamedTempFile] as source.
+/// process from a named pathname, hence we need a [`NamedTempFile`] as source.
 fn decompress_object_file(src: &NamedTempFile, mut dst: fs::File) -> io::Result<fs::File> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.

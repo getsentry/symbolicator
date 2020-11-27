@@ -1,8 +1,6 @@
 //! Support to download from HTTP sources.
 //!
 //! Specifically this supports the [`HttpSourceConfig`] source.
-//!
-//! [`HttpSourceConfig`]: ../../../sources/struct.HttpSourceConfig.html
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,7 +23,7 @@ const MAX_HTTP_REDIRECTS: usize = 10;
 
 /// Joins the relative path to the given URL.
 ///
-/// As opposed to `Url::join`, this only supports relative paths. Each segment of the path is
+/// As opposed to [`Url::join`], this only supports relative paths. Each segment of the path is
 /// percent-encoded. Empty segments are skipped, for example, `foo//bar` is collapsed to `foo/bar`.
 ///
 /// The base URL is treated as directory. If it does not end with a slash, then a slash is

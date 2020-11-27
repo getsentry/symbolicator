@@ -1,4 +1,4 @@
-//! Download sources types and related `impl`s.
+//! Download sources types and related implementations.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -76,10 +76,8 @@ impl WriteSentryScope for SourceConfig {
 
 /// A location for a file retrievable from many source configs.
 ///
-/// It is essentially a `/`-separated string.  This is currently used by all
-/// sources other than [`SentrySourceConfig`].  This may change in the future.
-///
-/// [`SentrySourceConfig`]: struct.SentrySourceConfig.html
+/// It is essentially a `/`-separated string. This is currently used by all sources other than
+/// [`SentrySourceConfig`]. This may change in the future.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SourceLocation(String);
 
@@ -101,8 +99,6 @@ impl fmt::Display for SourceLocation {
 }
 
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
-///
-/// [`SentrySourceConfig`]: struct.SentrySourceConfig.html
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SentryFileId(String);
 
@@ -182,8 +178,6 @@ impl FilesystemSourceConfig {
 /// This is a combination of the [`SourceConfig`], which describes a download
 /// source and how to download rom it, with an identifier describing a single
 /// file in that source.
-///
-/// [`SourceConfig`]: enum.SourceConfig.html
 #[derive(Debug, Clone)]
 pub enum SourceFileId {
     Sentry(Arc<SentrySourceConfig>, SentryFileId),
@@ -413,10 +407,12 @@ pub struct DirectoryLayout {
     #[serde(rename = "type")]
     pub ty: DirectoryLayoutType,
 
-    /// Overwrite filename casing convention of `self.layout`. This is useful in the case of
-    /// DirectoryLayout::Symstore, where servers are supposed to handle requests
-    /// case-insensitively, but practically don't (in the case of S3 buckets it's not possible),
-    /// making this aspect not well-specified.
+    /// Overwrite the default filename casing convention of the [layout type](Self::ty).
+    ///
+    /// This is useful in the case of [`DirectoryLayoutType::Symstore`], where servers are supposed to
+    /// handle requests case-insensitively, but practically do not, making this aspect not
+    /// well-specified. For instance, in S3 buckets it is not possible to perform case-insensitive
+    /// queries.
     pub casing: FilenameCasing,
 }
 
@@ -429,7 +425,7 @@ impl Default for DirectoryLayout {
     }
 }
 
-/// Known conventions for `DirectoryLayout`
+/// Known conventions for [`DirectoryLayout`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum DirectoryLayoutType {
     /// Uses conventions of native debuggers.
@@ -444,10 +440,10 @@ pub enum DirectoryLayoutType {
     /// Uses Microsoft SSQP server conventions.
     #[serde(rename = "ssqp")]
     SSQP,
-    /// debuginfod conventions.
+    /// Uses [debuginfod](https://www.mankier.com/8/debuginfod) conventions.
     #[serde(rename = "debuginfod")]
     Debuginfod,
-    /// unified sentry propriertary bucket format
+    /// Unified sentry propriertary bucket format.
     #[serde(rename = "unified")]
     Unified,
 }

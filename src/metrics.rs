@@ -41,8 +41,8 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A) {
 
 /// Invoke a callback with the current statsd client.
 ///
-/// If statsd is not configured the callback is not invoked.  For the most part
-/// the `metric!` macro should be used instead.
+/// If statsd is not configured the callback is not invoked. For the most part
+/// the [`metric!`] macro should be used instead.
 #[inline(always)]
 pub fn with_client<F, R>(f: F) -> R
 where

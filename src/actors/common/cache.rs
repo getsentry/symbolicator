@@ -29,7 +29,7 @@ type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E
 /// - Symcaches
 /// - CFI caches
 ///
-/// Transparently performs cache lookups, downloads and cache stores via the `CacheItemRequest`
+/// Transparently performs cache lookups, downloads and cache stores via the [`CacheItemRequest`]
 /// trait and associated types.
 ///
 /// Internally deduplicates concurrent cache lookups (in-memory).
@@ -189,11 +189,11 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Compute an item.
     ///
     /// If the item is in the file system cache, it is returned immediately. Otherwise, it
-    /// is computed using `T::compute` ([CacheItemRequest::compute]), and then persisted to
+    /// is computed using [`T::compute`](CacheItemRequest::compute), and then persisted to
     /// the cache.
     ///
     /// This method does not take care of ensuring the computation only happens once even
-    /// for concurrent requests, see the public [Cacher::compute_memoized] for this.
+    /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     fn compute(&self, request: T, key: CacheKey) -> ResponseFuture<T::Item, T::Error> {
         // cache_path is None when caching is disabled.
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
@@ -284,8 +284,8 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// The actual computation is deduplicated between concurrent requests. Finally, the result is
     /// inserted into the cache and all subsequent calls fetch from the cache.
     ///
-    /// The computation itself is done by the [CacheItemRequest::compute] (`T::compute` or
-    /// `request.compute`) function, but only if it was not already in the cache.
+    /// The computation itself is done by [`T::compute`](CacheItemRequest::compute), but only if it
+    /// was not already in the cache.
     pub fn compute_memoized(&self, request: T) -> ResponseFuture<Arc<T::Item>, Arc<T::Error>> {
         let key = request.get_cache_key();
         let name = self.config.name();

@@ -73,7 +73,8 @@ where
     }
 }
 
-/// A Resolver-like actor for the actix-web http client that refuses to resolve to reserved IP addresses.
+/// A [`Resolver`]-like actor for the actix-web http client that refuses to resolve to reserved IP
+/// addresses.
 pub struct SafeResolver(Addr<Resolver>);
 
 impl Default for SafeResolver {
@@ -142,8 +143,8 @@ impl Handler<Connect> for SafeResolver {
     }
 }
 
-/// Tcp stream connector, copied from `actix::actors::resolver::TcpConnector`. The only change is
-/// that this one implements `Future` while the original only implements ActorFuture.
+/// Tcp stream connector, copied from [`actix::actors::resolver::TcpConnector`]. The only change is
+/// that this one implements [`Future`] while the original only implements [`actix::ActorFuture`].
 struct TcpConnector {
     addrs: VecDeque<SocketAddr>,
     timeout: Delay,
