@@ -1,20 +1,17 @@
 # Changelog
 
-## 0.4.0
-
-- No documented changes.
+## Unreleased
 
 ### Features
 
-- Added WASM support. ([#301](https://github.com/getsentry/symbolicator/pull/301))
+- Add support for DWARF in WASM. ([#301](https://github.com/getsentry/symbolicator/pull/301))
+- Support symbolication of native Dart stack traces by prioritizing DWARF function names over symbol table entries.
 
-### Bug Fixes
+### Tools
 
-- No documented changes.
+- Add `wasm-split`, which splits WASM files into code and debug information. ([#303](https://github.com/getsentry/symbolicator/pull/303))
 
 ## 0.3.0
-
-- No documented changes.
 
 ### Features
 
