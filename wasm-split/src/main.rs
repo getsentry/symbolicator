@@ -11,7 +11,11 @@ use wasmbin::Module;
 /// Adds build IDs to wasm files.
 ///
 /// This tool can both add missing build IDs and split a WASM file
-/// into two: a main binary and a companion debug file.
+/// into two: a main binary and a debug companion file.  The debug
+/// companion file will contain all sections of the original file.
+/// This is necessary as DWARF processing requires knowing the
+/// location of all sections (specially the code section) to
+/// calculate offsets.
 ///
 /// This prints the embedded build_id in hexadecimal format to stdout.
 #[derive(FromArgs, Debug)]
@@ -55,23 +59,6 @@ fn is_strippable_section(section: &Section) -> bool {
     load_custom_section(section).map_or(false, |(name, _)| name.starts_with(".debug_"))
 }
 
-/// Checks if a given WASM section is an important meta section.
-///
-/// Meta sections remain in the debug file
-fn is_debug_file_section(section: &Section) -> bool {
-    match section
-        .try_as::<CustomSection>()
-        .and_then(|x| x.try_contents().ok())
-    {
-        Some(CustomSection::Producers(_)) => true,
-        Some(CustomSection::Name(_)) => true,
-        Some(CustomSection::Other(other)) => {
-            other.name == "build_id" || other.name.starts_with(".debug_")
-        }
-        None => false,
-    }
-}
-
 fn main() -> Result<(), anyhow::Error> {
     let cli: Cli = argh::from_env();
 
@@ -107,9 +94,15 @@ fn main() -> Result<(), anyhow::Error> {
 
     // split dwarf data out if needed into a separate file.
     if let Some(debug_output) = cli.debug_output {
-        let mut debug_module = module.clone();
-        debug_module.sections.retain(is_debug_file_section);
-        debug_module.encode_into(BufWriter::new(File::create(debug_output)?))?;
+        // note that this actually copies the entire original file over after
+        // adding the build ID.  The reason for this is that we can only deal
+        // with WASM files if the code section offset can be calculated.  This
+        // means we want to retain the original code section.
+        //
+        // That said, this limitation might actually turn out to be a good thing.
+        // On other platforms we also generally require that we get access to
+        // the binary for eh_frame and friends.
+        module.encode_into(BufWriter::new(File::create(debug_output)?))?;
     }
 
     // do we want to strip debug data from main file?
