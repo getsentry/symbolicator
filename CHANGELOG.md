@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Tools
+
+- `wasm-split` now retains all sections. ([#311](https://github.com/getsentry/symbolicator/pull/311))
+
 ## 0.3.1
 
 ### Features
