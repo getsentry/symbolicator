@@ -204,12 +204,10 @@ pub fn start_safe_connector() {
 mod tests {
     use super::*;
 
-    use actix_web::Error;
-
     use crate::test;
 
     #[test]
-    fn test_local_connection() -> Result<(), Error> {
+    fn test_local_connection() {
         test::setup();
         start_safe_connector();
 
@@ -219,7 +217,5 @@ mod tests {
 
         let response = test::block_fn01(|| server.get().finish().unwrap().send());
         assert!(response.is_err());
-
-        Ok(())
     }
 }
