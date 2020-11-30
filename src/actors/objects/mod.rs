@@ -577,7 +577,7 @@ impl ObjectsActor {
                             // user (instead we default to an empty search result) and only report
                             // them internally.
                             log::error!(
-                                "Source list-files failed for {}: {}",
+                                "Failed to fetch file list from {}: {}",
                                 type_name,
                                 LogError(&e)
                             );
@@ -651,7 +651,7 @@ impl ObjectsActor {
                                 source_location: obj_meta.request.file_id.location(),
                                 status,
                                 features: obj_meta.features(),
-                            })
+                            });
                         }
                     })
                     .filter(|response| match response {
