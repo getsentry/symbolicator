@@ -268,7 +268,7 @@ fn is_docker() -> bool {
     }
 
     fs::read_to_string("/proc/self/cgroup")
-        .map(|s| s.find("/docker").is_some())
+        .map(|s| s.contains("/docker"))
         .unwrap_or(false)
 }
 
