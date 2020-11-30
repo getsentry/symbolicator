@@ -679,7 +679,7 @@ impl SymCacheLookup {
 
                     let mut difs = Vec::new();
                     difs.extend_from_slice(&symcache.candidates());
-                    entry.object_info.difs = difs; // TODO(flub): merge!
+                    entry.object_info.candidates = difs; // TODO(flub): merge!
                 }
 
                 entry.symcache = symcache;

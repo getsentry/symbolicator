@@ -444,7 +444,7 @@ impl ObjectFeatures {
 /// Currently has no [`ObjectId`] attached and the parent container is expected to know
 /// which ID this DIF info was for.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DifInfo {
+pub struct ObjectCandidate {
     /// The ID of the object source where this DIF was expected to be found.
     ///
     /// This refers back to the IDs of sources in the symbolication requests, as well as any
@@ -511,7 +511,7 @@ pub struct CompleteObjectInfo {
     /// the DIF files we looked up and what we know about them, how we used them.  It can be
     /// helpful to understand what information was available or missing and for which
     /// reasons.
-    pub difs: Vec<DifInfo>,
+    pub candidates: Vec<ObjectCandidate>,
 }
 
 impl CompleteObjectInfo {
@@ -566,7 +566,7 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             features: ObjectFeatures::default(),
             arch: Arch::Unknown,
             raw,
-            difs: Vec::new(),
+            candidates: Vec::new(),
         }
     }
 }

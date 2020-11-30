@@ -17,7 +17,7 @@ use crate::actors::objects::{
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
-use crate::types::{DifInfo, ObjectFeatures, ObjectId, ObjectType, Scope};
+use crate::types::{ObjectCandidate, ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -75,7 +75,7 @@ pub struct SymCacheFile {
     features: ObjectFeatures,
     status: CacheStatus,
     arch: Arch,
-    candidates: Arc<[DifInfo]>,
+    candidates: Arc<[ObjectCandidate]>,
 }
 
 impl SymCacheFile {
@@ -100,7 +100,7 @@ impl SymCacheFile {
     }
 
     /// Returns the list of DIFs which were searched for this symcache.
-    pub fn candidates(&self) -> Arc<[DifInfo]> {
+    pub fn candidates(&self) -> Arc<[ObjectCandidate]> {
         self.candidates.clone()
     }
 }
@@ -111,7 +111,7 @@ struct FetchSymCacheInternal {
     objects_actor: ObjectsActor,
     object_meta: Arc<ObjectFileMeta>,
     threadpool: ThreadPool,
-    candidates: Arc<[DifInfo]>,
+    candidates: Arc<[ObjectCandidate]>,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -232,7 +232,7 @@ impl SymCacheActor {
 
         find_result_future.and_then(move |find_result: FoundObject| {
             let FoundObject { meta, candidates } = find_result;
-            let candidates: Arc<[DifInfo]> = Arc::from(candidates);
+            let candidates: Arc<[ObjectCandidate]> = Arc::from(candidates);
             meta.map(clone!(candidates, |object_meta| {
                 Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
                     request,

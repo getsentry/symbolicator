@@ -21,7 +21,7 @@ use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
-use crate::types::{DifInfo, DifStatus, ObjectFeatures, ObjectId, Scope};
+use crate::types::{DifStatus, ObjectCandidate, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -168,9 +168,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
             .map_err(ObjectError::Caching)
-            .and_then(move |data: Arc<ObjectFile>| {
-                if data.status == CacheStatus::Positive {
-                    if let Ok(object) = Object::parse(&data.data) {
+            .and_then(move |object_handle: Arc<ObjectFile>| {
+                if object_handle.status == CacheStatus::Positive {
+                    if let Ok(object) = Object::parse(&object_handle.data) {
                         let mut new_cache = fs::File::create(path)?;
 
                         let meta = ObjectFeatures {
@@ -185,7 +185,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                     }
                 }
 
-                Ok(data.status)
+                Ok(object_handle.status)
             });
 
         Box::new(result)
@@ -522,7 +522,7 @@ pub struct FoundObject {
     pub meta: Option<Arc<ObjectFileMeta>>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
-    pub candidates: Vec<DifInfo>,
+    pub candidates: Vec<ObjectCandidate>,
 }
 
 impl ObjectsActor {
@@ -625,7 +625,7 @@ impl ObjectsActor {
 
         file_metas.and_then(
             move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| -> Result<FoundObject, _> {
-                let mut candidates: Vec<DifInfo> = Vec::new();
+                let mut candidates: Vec<ObjectCandidate> = Vec::new();
                 responses
                     .into_iter()
                     .inspect(|response| {
@@ -646,7 +646,7 @@ impl ObjectsActor {
                             } else {
                                 DifStatus::NotFound
                             };
-                            candidates.push(DifInfo {
+                            candidates.push(ObjectCandidate {
                                 source_id: obj_meta.request.file_id.source_id().clone(),
                                 source_location: obj_meta.request.file_id.location(),
                                 status,

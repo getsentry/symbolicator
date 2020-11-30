@@ -221,11 +221,11 @@ impl CfiCacheActor {
         object.and_then(move |object| {
             object
                 .meta
-                .map(move |object| {
+                .map(move |object_meta| {
                     Either::A(cficaches.compute_memoized(FetchCfiCacheInternal {
                         request,
                         objects_actor: objects,
-                        object_meta: object,
+                        object_meta,
                         threadpool,
                     }))
                 })
