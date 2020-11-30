@@ -20,7 +20,7 @@ use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
-use crate::sources::{FileType, SourceConfig, SourceFileId};
+use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
 use crate::types::{ObjectCandidate, ObjectFeatures, ObjectId, ObjectStatus, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
@@ -113,6 +113,21 @@ impl From<debuginfo::ObjectError> for ObjectError {
     fn from(source: debuginfo::ObjectError) -> Self {
         Self::Parsing(source)
     }
+}
+
+/// Wrapper around [`ObjectError`] to also pass the file information along.
+///
+/// Because of the requirement of [`CacheItemRequest`] to impl `From<io::Error>` it can not
+/// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this
+/// along some errors, so we use this wrapper.
+#[derive(Debug)]
+struct CacheLookupError {
+    /// The [`SourceId`] of the object which caused the [`ObjectError`] while being fetched.
+    source_id: SourceId,
+    /// The [`SourceLocation`] of the object which caused the [`ObjectError`] while being fetched.
+    source_location: SourceLocation,
+    /// The wrapped [`ObjectError`] which occurred while fetching the object file.
+    error: Arc<ObjectError>,
 }
 
 /// This requests metadata of a single file at a specific path/url.
@@ -598,6 +613,8 @@ impl ObjectsActor {
 
         let file_metas = file_ids.and_then(move |file_ids| {
             future::join_all(file_ids.into_iter().map(move |file_id| {
+                let source_id = file_id.source_id().to_owned();
+                let source_location = file_id.location();
                 let request = FetchFileMetaRequest {
                     scope: if file_id.source().is_public() {
                         Scope::Global
@@ -613,7 +630,11 @@ impl ObjectsActor {
 
                 meta_cache
                     .compute_memoized(request)
-                    .map_err(ObjectError::Caching)
+                    .map_err(move |error| CacheLookupError {
+                        source_id,
+                        source_location,
+                        error,
+                    })
                     // Errors from a file download should not make the entire join_all fail. We
                     // collect a Vec<Result> and surface the original error to the user only when
                     // we have no successful downloads.
@@ -624,34 +645,36 @@ impl ObjectsActor {
         });
 
         file_metas.and_then(
-            move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>| -> Result<FoundObject, _> {
+            move |responses: Vec<Result<Arc<ObjectFileMeta>, CacheLookupError>>|
+                                 -> Result<FoundObject, ObjectError> {
                 let mut candidates: Vec<ObjectCandidate> = Vec::new();
                 responses
                     .into_iter()
-                    .inspect(|response| {
-                        // TODO(flub): Can we add DifInfoCache in the Err case too?
-                        // In that case the meta-cache computation failed, this means
-                        // the data-cache computation failed so there was an error with
-                        // downloading.  This is transient in the sense that these
-                        // errors are not themselves cached.  So to do this we need to
-                        // represent a download error, currently this would be
-                        // {"status": "notfound", "response": "the err msg"}.
-                        //
-                        // However we also need to have the file_id + source_id which the
-                        // errors don't currently give us, so this needs to be added to
-                        // ObjectError.
-                        if let Ok(obj_meta) = response {
-                            let status = if obj_meta.status == CacheStatus::Positive {
-                                ObjectStatus::Ok
-                            } else {
-                                ObjectStatus::NotFound
-                            };
-                            candidates.push(ObjectCandidate {
-                                source_id: obj_meta.request.file_id.source_id().clone(),
-                                source_location: obj_meta.request.file_id.location(),
-                                status,
-                                features: obj_meta.features(),
-                            });
+                    .map(|response| {
+                        match response {
+                            Ok(obj_meta) => {
+                                let status = if obj_meta.status == CacheStatus::Positive {
+                                    ObjectStatus::Ok
+                                } else {
+                                    ObjectStatus::NotFound
+                                };
+                                candidates.push(ObjectCandidate {
+                                    source_id: obj_meta.request.file_id.source_id().clone(),
+                                    source_location: obj_meta.request.file_id.location(),
+                                    status,
+                                    features: obj_meta.features(),
+                                });
+                                Ok(obj_meta)
+                            }
+                            Err(wrapped_error) => {
+                                candidates.push(ObjectCandidate {
+                                    source_id: wrapped_error.source_id,
+                                    source_location: wrapped_error.source_location,
+                                    status: ObjectStatus::NotFound,
+                                    features: Default::default(),
+                                });
+                                Err(ObjectError::Caching(wrapped_error.error))
+                            }
                         }
                     })
                     .filter(|response| match response {
