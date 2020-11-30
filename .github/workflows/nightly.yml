@@ -24,7 +24,7 @@ jobs:
           override: true
           components: clippy
 
-      - name: Run clipppy ${{ matrix.rust }}
+      - name: Run clippy ${{ matrix.rust }}
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
