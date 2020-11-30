@@ -21,7 +21,7 @@ use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId};
-use crate::types::{DifStatus, ObjectCandidate, ObjectFeatures, ObjectId, Scope};
+use crate::types::{ObjectCandidate, ObjectFeatures, ObjectId, ObjectStatus, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -642,9 +642,9 @@ impl ObjectsActor {
                         // ObjectError.
                         if let Ok(obj_meta) = response {
                             let status = if obj_meta.status == CacheStatus::Positive {
-                                DifStatus::Ok
+                                ObjectStatus::Ok
                             } else {
-                                DifStatus::NotFound
+                                ObjectStatus::NotFound
                             };
                             candidates.push(ObjectCandidate {
                                 source_id: obj_meta.request.file_id.source_id().clone(),

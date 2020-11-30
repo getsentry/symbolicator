@@ -458,17 +458,17 @@ pub struct ObjectCandidate {
     /// source this may give you an idea of where this DIF was expected to be found.
     pub source_location: SourceLocation,
     /// The status of this DIF.
-    pub status: DifStatus,
+    pub status: ObjectStatus,
     /// The features provided by this DIF.
     // TODO(flub): document better + hide when we don't know.
     pub features: ObjectFeatures,
     // TODO(flub): More fields to describe the DIF.
 }
 
-/// Status describing a Debug Information File in [`DifInfo`].
+/// Status describing a Debug Information File in [`ObjectCandidate`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum DifStatus {
+pub enum ObjectStatus {
     /// The object file for this DIF is usable.
     Ok,
     /// The object file for this DIF was malformed.
