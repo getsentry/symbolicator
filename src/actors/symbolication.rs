@@ -64,9 +64,6 @@ pub enum SymbolicationError {
     #[error("symbolication took too long")]
     Timeout,
 
-    #[error("internal IO failed")]
-    Io(#[from] std::io::Error),
-
     #[error("computation was canceled internally")]
     Canceled,
 
@@ -81,7 +78,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
         match err {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
+            // SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
             SymbolicationError::Canceled => SymbolicationResponse::InternalError,
             SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
                 message: err.to_string(),
@@ -2063,7 +2060,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_bucket() -> Result<(), SymbolicationError> {
+    fn test_add_bucket() -> anyhow::Result<()> {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
@@ -2089,7 +2086,7 @@ mod tests {
         Ok(())
     }
 
-    fn stackwalk_minidump(path: &str) -> Result<(), SymbolicationError> {
+    fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
@@ -2114,22 +2111,22 @@ mod tests {
     }
 
     #[test]
-    fn test_minidump_windows() -> Result<(), SymbolicationError> {
+    fn test_minidump_windows() -> anyhow::Result<()> {
         stackwalk_minidump("./tests/fixtures/windows.dmp")
     }
 
     #[test]
-    fn test_minidump_macos() -> Result<(), SymbolicationError> {
+    fn test_minidump_macos() -> anyhow::Result<()> {
         stackwalk_minidump("./tests/fixtures/macos.dmp")
     }
 
     #[test]
-    fn test_minidump_linux() -> Result<(), SymbolicationError> {
+    fn test_minidump_linux() -> anyhow::Result<()> {
         stackwalk_minidump("./tests/fixtures/linux.dmp")
     }
 
     #[test]
-    fn test_apple_crash_report() -> Result<(), SymbolicationError> {
+    fn test_apple_crash_report() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
