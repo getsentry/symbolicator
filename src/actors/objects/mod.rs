@@ -653,12 +653,15 @@ impl ObjectsActor {
                     .map(|response| {
                         match response {
                             Ok(obj_meta) => {
-                                let download = if obj_meta.status == CacheStatus::Positive {
-                                    ObjectDownloadInfo::Ok {
+                                let download = match obj_meta.status {
+                                    CacheStatus::Positive => ObjectDownloadInfo::Ok {
                                         features: obj_meta.features()
-                                    }
-                                } else {
-                                    ObjectDownloadInfo::NotFound
+                                    },
+                                    CacheStatus::Negative => ObjectDownloadInfo::NotFound,
+                                    CacheStatus::Malformed => ObjectDownloadInfo::Malformed {
+                                        // TODO(flub): remove details field from malformed?
+                                        details: String::from("not-yet-implemented")
+                                    },
                                 };
                                 candidates.push(ObjectCandidate {
                                     source: obj_meta.request.file_id.source_id().clone(),
