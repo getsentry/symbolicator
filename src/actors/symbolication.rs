@@ -78,7 +78,6 @@ impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(err: &SymbolicationError) -> SymbolicationResponse {
         match err {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            // SymbolicationError::Io(_) => SymbolicationResponse::InternalError,
             SymbolicationError::Canceled => SymbolicationResponse::InternalError,
             SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
                 message: err.to_string(),
