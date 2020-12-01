@@ -589,7 +589,6 @@ pub struct CompleteObjectInfo {
     /// reasons.
     ///
     /// This list is not serialised if it is empty.
-    // #[serde(skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<ObjectCandidate>,
 }
 
