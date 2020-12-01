@@ -124,6 +124,19 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
     image_addr: 0x10864e000
     image_size: 108797951
+    candidates:
+      - source: local
+        location: 2D90/3291/397D/3D14/BFCA/52C7FB8C5E00
+        download:
+          status: notfound
+      - source: local
+        location: 2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.app
+        download:
+          status: notfound
+      - source: local
+        location: YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym
+        download:
+          status: notfound
   - debug_status: unused
     features:
       has_debug_info: false
@@ -138,6 +151,7 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3PROFILE.dylib
     image_addr: 0x112bb2000
     image_size: 2170879
+    candidates: []
   - debug_status: unused
     features:
       has_debug_info: false
@@ -152,6 +166,7 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3CookingPROFILE.dylib
     image_addr: 0x112fc0000
     image_size: 221183
+    candidates: []
   - debug_status: unused
     features:
       has_debug_info: false
@@ -166,6 +181,7 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3CommonPROFILE.dylib
     image_addr: 0x113013000
     image_size: 1474559
+    candidates: []
   - debug_status: unused
     features:
       has_debug_info: false
@@ -180,3 +196,4 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPxFoundationPROFILE.dylib
     image_addr: 0x1131fa000
     image_size: 28671
+    candidates: []

@@ -168,6 +168,32 @@ modules:
     debug_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb"
     image_addr: 0x2a0000
     image_size: 36864
+    candidates:
+      - source: local
+        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: true
+            has_symbols: true
+            has_sources: false
+      - source: local
+        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_
+        download:
+          status: notfound
+      - source: local
+        location: crash.exe/5AB380779000/crash.exe
+        download:
+          status: notfound
+      - source: local
+        location: crash.exe/5AB380779000/crash.ex_
+        download:
+          status: notfound
+      - source: local
+        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -183,6 +209,7 @@ modules:
     debug_file: dbghelp.pdb
     image_addr: 0x70850000
     image_size: 1331200
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -198,6 +225,7 @@ modules:
     debug_file: msvcp140.i386.pdb
     image_addr: 0x709a0000
     image_size: 442368
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -213,6 +241,7 @@ modules:
     debug_file: apphelp.pdb
     image_addr: 0x70a10000
     image_size: 598016
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -228,6 +257,7 @@ modules:
     debug_file: dbgcore.pdb
     image_addr: 0x70b70000
     image_size: 151552
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -243,6 +273,7 @@ modules:
     debug_file: vcruntime140.i386.pdb
     image_addr: 0x70c60000
     image_size: 81920
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -258,6 +289,7 @@ modules:
     debug_file: cryptbase.pdb
     image_addr: 0x73ba0000
     image_size: 40960
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -273,6 +305,7 @@ modules:
     debug_file: wsspicli.pdb
     image_addr: 0x73bb0000
     image_size: 126976
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -288,6 +321,7 @@ modules:
     debug_file: advapi32.pdb
     image_addr: 0x73c70000
     image_size: 487424
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -303,6 +337,7 @@ modules:
     debug_file: msvcrt.pdb
     image_addr: 0x73cf0000
     image_size: 778240
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -318,6 +353,7 @@ modules:
     debug_file: sechost.pdb
     image_addr: 0x74450000
     image_size: 266240
+    candidates: []
   - debug_status: missing
     unwind_status: unused
     features:
@@ -333,6 +369,27 @@ modules:
     debug_file: wkernel32.pdb
     image_addr: 0x75050000
     image_size: 917504
+    candidates:
+      - source: local
+        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb
+        download:
+          status: notfound
+      - source: local
+        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_
+        download:
+          status: notfound
+      - source: local
+        location: kernel32.dll/590285E9e0000/kernel32.dll
+        download:
+          status: notfound
+      - source: local
+        location: kernel32.dll/590285E9e0000/kernel32.dl_
+        download:
+          status: notfound
+      - source: local
+        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.sym
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -348,6 +405,7 @@ modules:
     debug_file: bcryptprimitives.pdb
     image_addr: 0x75130000
     image_size: 368640
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -363,6 +421,7 @@ modules:
     debug_file: wrpcrt4.pdb
     image_addr: 0x75810000
     image_size: 790528
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -378,6 +437,7 @@ modules:
     debug_file: ucrtbase.pdb
     image_addr: 0x758f0000
     image_size: 917504
+    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -393,6 +453,7 @@ modules:
     debug_file: wkernelbase.pdb
     image_addr: 0x76db0000
     image_size: 1708032
+    candidates: []
   - debug_status: missing
     unwind_status: unused
     features:
@@ -408,3 +469,24 @@ modules:
     debug_file: wntdll.pdb
     image_addr: 0x77170000
     image_size: 1585152
+    candidates:
+      - source: local
+        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb
+        download:
+          status: notfound
+      - source: local
+        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_
+        download:
+          status: notfound
+      - source: local
+        location: ntdll.dll/59B0D8F3183000/ntdll.dll
+        download:
+          status: notfound
+      - source: local
+        location: ntdll.dll/59B0D8F3183000/ntdll.dl_
+        download:
+          status: notfound
+      - source: local
+        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.sym
+        download:
+          status: notfound

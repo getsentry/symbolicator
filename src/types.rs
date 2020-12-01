@@ -451,32 +451,108 @@ pub struct ObjectCandidate {
     /// globally configured sources from symbolicator's configuration.
     ///
     /// Generally this is a short readable string.
-    pub source_id: SourceId,
+    pub source: SourceId,
     /// The location of this DIF on the object source.
     ///
     /// This will generally be some sort of path name or key, if you know the type of object
     /// source this may give you an idea of where this DIF was expected to be found.
-    pub source_location: SourceLocation,
-    /// The status of this DIF.
-    pub status: ObjectStatus,
-    /// The features provided by this DIF.
-    // TODO(flub): document better + hide when we don't know.
-    pub features: ObjectFeatures,
-    // TODO(flub): More fields to describe the DIF.
+    pub location: SourceLocation,
+    /// Information about fetching or downloading this DIF object.
+    ///
+    /// This section is always present and will at least have a `status` field.
+    pub download: ObjectDownloadInfo,
+    /// Information about any unwind info in this DIF object.
+    ///
+    /// This section is only present if this DIF object was used for unwinding by the
+    /// symbolication request.
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none")]
+    pub unwind: ObjectUseInfo,
+    /// Information about any debug info this DIF object may have.
+    ///
+    /// This section is only present if this DIF object was used for symbol lookups by the
+    /// symbolication request.
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none")]
+    pub debug: ObjectUseInfo,
 }
 
-/// Status describing a Debug Information File in [`ObjectCandidate`].
+/// Information about downloading of a DIF object.
+///
+/// This is part of the larger [`ObjectCandidate`] struct.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ObjectStatus {
-    /// The object file for this DIF is usable.
-    Ok,
-    /// The object file for this DIF was malformed.
-    Malformed,
-    /// There were insufficient permissions to access this object file from its source.
-    NoPerm,
-    /// The object file for this DIF was not found at its source.
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ObjectDownloadInfo {
+    /// The DIF object was downloaded successfully.
+    ///
+    /// The `features` field describes which [`ObjectFeatures`] the object is expected to
+    /// provide, though whether these are actually usable has not yet been verified.
+    Ok { features: ObjectFeatures },
+    /// The DIF object could not be parsed after downloading.
+    ///
+    /// This is only a basic validity check of whether the container of the object file can
+    /// be parsed.  Actually using the object for CFI or symbols might result in more
+    /// detailed problems, see [`ObjectUseInfo`] for more on this.
+    Malformed { details: String },
+    /// Symbolicator had insufficient permissions to download the DIF object.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    NoPerm { details: String },
+    /// The DIF object was not found.
+    ///
+    /// This is considered a *regular notfound* where the object was simply not available at
+    /// the source expected to provde this DIF.  Thus no further details are available.
     NotFound,
+    /// An error occurred during downloading of this DIF object.
+    ///
+    /// This is mostly an internal error from symbolicator which is considered transient.
+    /// The next attempt to access this DIF object will retry the download.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Error { details: String },
+}
+
+/// Information about the use of a DIF object.
+///
+/// This information is applicable to both "unwind" and "debug" use cases, in each case the
+/// object needs to be processed a little more than just the downloaded artifact and we may
+/// need to report some status on this.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ObjectUseInfo {
+    /// The DIF object was successfully used to provide the required information.
+    ///
+    /// This means the object was used for CFI when used for [`ObjectCandidate::unwind`]
+    Ok,
+    /// The DIF object contained malformed data which could not be used.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Malformed { details: String },
+    /// An error occurred when attempting to use this DIF object.
+    ///
+    /// This is mostly an internal error from symbolicator which is considered transient.
+    /// The next attempt to access this DIF object will retry the using this DIF object.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Error { details: String },
+    /// Internal state, this is not serialised.
+    ///
+    /// This enum is not serialised into its parent object when it is set to this value.
+    None,
+}
+
+impl Default for ObjectUseInfo {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl ObjectUseInfo {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
 }
 
 /// Normalized [`RawObjectInfo`] with status attached.
@@ -511,6 +587,9 @@ pub struct CompleteObjectInfo {
     /// the DIF files we looked up and what we know about them, how we used them.  It can be
     /// helpful to understand what information was available or missing and for which
     /// reasons.
+    ///
+    /// This list is not serialised if it is empty.
+    // #[serde(skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<ObjectCandidate>,
 }
 

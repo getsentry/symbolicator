@@ -21,7 +21,7 @@ use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
-use crate::types::{ObjectCandidate, ObjectFeatures, ObjectId, ObjectStatus, Scope};
+use crate::types::{ObjectCandidate, ObjectDownloadInfo, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -653,25 +653,31 @@ impl ObjectsActor {
                     .map(|response| {
                         match response {
                             Ok(obj_meta) => {
-                                let status = if obj_meta.status == CacheStatus::Positive {
-                                    ObjectStatus::Ok
+                                let download = if obj_meta.status == CacheStatus::Positive {
+                                    ObjectDownloadInfo::Ok {
+                                        features: obj_meta.features()
+                                    }
                                 } else {
-                                    ObjectStatus::NotFound
+                                    ObjectDownloadInfo::NotFound
                                 };
                                 candidates.push(ObjectCandidate {
-                                    source_id: obj_meta.request.file_id.source_id().clone(),
-                                    source_location: obj_meta.request.file_id.location(),
-                                    status,
-                                    features: obj_meta.features(),
+                                    source: obj_meta.request.file_id.source_id().clone(),
+                                    location: obj_meta.request.file_id.location(),
+                                    download,
+                                    unwind: Default::default(),
+                                    debug: Default::default(),
                                 });
                                 Ok(obj_meta)
                             }
                             Err(wrapped_error) => {
                                 candidates.push(ObjectCandidate {
-                                    source_id: wrapped_error.source_id,
-                                    source_location: wrapped_error.source_location,
-                                    status: ObjectStatus::NotFound,
-                                    features: Default::default(),
+                                    source: wrapped_error.source_id,
+                                    location: wrapped_error.source_location,
+                                    download: ObjectDownloadInfo::Error {
+                                        details: wrapped_error.error.to_string(),
+                                    },
+                                    unwind: Default::default(),
+                                    debug: Default::default(),
                                 });
                                 Err(ObjectError::Caching(wrapped_error.error))
                             }
