@@ -658,10 +658,7 @@ impl ObjectsActor {
                                         features: obj_meta.features()
                                     },
                                     CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                                    CacheStatus::Malformed => ObjectDownloadInfo::Malformed {
-                                        // TODO(flub): remove details field from malformed?
-                                        details: String::from("not-yet-implemented")
-                                    },
+                                    CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
                                 };
                                 candidates.push(ObjectCandidate {
                                     source: obj_meta.request.file_id.source_id().clone(),

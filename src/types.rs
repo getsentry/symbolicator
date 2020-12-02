@@ -491,7 +491,7 @@ pub enum ObjectDownloadInfo {
     /// This is only a basic validity check of whether the container of the object file can
     /// be parsed.  Actually using the object for CFI or symbols might result in more
     /// detailed problems, see [`ObjectUseInfo`] for more on this.
-    Malformed { details: String },
+    Malformed,
     /// Symbolicator had insufficient permissions to download the DIF object.
     ///
     /// More details should be available in the `details` field, which is not meant to be
