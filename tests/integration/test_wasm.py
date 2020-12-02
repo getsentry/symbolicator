@@ -36,6 +36,21 @@ SUCCESS_WASM = {
             },
             "image_addr": "0x0",
             "type": "wasm",
+            "candidates": [
+                {
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": False,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "bd/a18fd85d4a4eb893022d6bfad846b1.debug",
+                    "source": "stuff",
+                },
+            ],
         }
     ],
     "stacktraces": [

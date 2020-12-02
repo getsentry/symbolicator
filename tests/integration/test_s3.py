@@ -1,3 +1,4 @@
+import copy
 import uuid
 import pytest
 
@@ -43,6 +44,21 @@ MACHO_SUCCESS = {
                 "has_unwind_info": False,
             },
             "type": "macho",
+            "candidates": [
+                {
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": False,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "_.dwarf/mach-uuid-sym-502fc0a51ec13e479998684fa139dca7/_.dwarf",
+                    "source": "s3",
+                },
+            ],
         }
     ],
     "stacktraces": [
@@ -99,4 +115,9 @@ def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
     response = response.json()
-    assert response == MACHO_SUCCESS
+    if casing == "uppercase":
+        success = copy.deepcopy(MACHO_SUCCESS)
+        location = success["modules"][0]["candidates"][0]["location"]
+        success["modules"][0]["candidates"][0]["location"] = location.upper()
+    else:
+        assert response == MACHO_SUCCESS

@@ -55,6 +55,35 @@ MACHO_SUCCESS = {
                 "has_symbols": True,
                 "has_unwind_info": False,
             },
+            "candidates": [
+                {
+                    "download": {
+                        "status": "notfound",
+                    },
+                    "location": "e5/14c9464eed3be5943a2c61d9241fad/debuginfo",
+                    "source": "ios",
+                },
+                {
+                    "download": {
+                        "features": {
+                            "has_debug_info": False,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": False,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "e5/14c9464eed3be5943a2c61d9241fad/executable",
+                    "source": "ios",
+                },
+                {
+                    "download": {
+                        "status": "notfound",
+                    },
+                    "location": "e5/14c9464eed3be5943a2c61d9241fad/breakpad",
+                    "source": "ios",
+                },
+            ],
         },
         {
             "type": "macho",
@@ -70,6 +99,35 @@ MACHO_SUCCESS = {
                 "has_symbols": True,
                 "has_unwind_info": False,
             },
+            "candidates": [
+                {
+                    "download": {
+                        "status": "notfound",
+                    },
+                    "location": "71/9044f95fe23ee0ab14504def42b100/debuginfo",
+                    "source": "ios",
+                },
+                {
+                    "download": {
+                        "features": {
+                            "has_debug_info": False,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": False,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "71/9044f95fe23ee0ab14504def42b100/executable",
+                    "source": "ios",
+                },
+                {
+                    "download": {
+                        "status": "notfound",
+                    },
+                    "location": "71/9044f95fe23ee0ab14504def42b100/breakpad",
+                    "source": "ios",
+                },
+            ],
         },
     ],
     "stacktraces": [

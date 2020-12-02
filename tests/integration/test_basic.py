@@ -56,13 +56,48 @@ SUCCESS_WINDOWS = {
             "arch": "x86",
             "image_addr": "0x749d0000",
             "image_size": 851_968,
+            "candidates": [
+                {
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                    "source": "microsoft",
+                },
+                {
+                    "download": {"status": "notfound"},
+                    "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                    "source": "microsoft",
+                },
+            ],
         }
     ],
     "status": "completed",
 }
 
 
-def _make_unsuccessful_result(status):
+def _make_unsuccessful_result(status, source="microsoft"):
+    if source in ["microsoft", "unknown", "broken"]:
+        candidates = [
+            {
+                "download": {"status": "notfound"},
+                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "source": source,
+            },
+            {
+                "download": {"status": "notfound"},
+                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "source": source,
+            },
+        ]
+    else:
+        candidates = []
     return {
         "stacktraces": [
             {
@@ -93,6 +128,7 @@ def _make_unsuccessful_result(status):
                 "arch": "unknown",
                 "image_addr": "0x749d0000",
                 "image_size": 851_968,
+                "candidates": candidates,
             }
         ],
         "status": "completed",
@@ -101,6 +137,9 @@ def _make_unsuccessful_result(status):
 
 MISSING_FILE = _make_unsuccessful_result("missing")
 MALFORMED_FILE = _make_unsuccessful_result("malformed")
+MALFORMED_NO_SOURCES = _make_unsuccessful_result("malformed", source=None)
+NO_SOURCES = _make_unsuccessful_result("missing", source=None)
+UNKNOWN_SOURCE = _make_unsuccessful_result("missing", source="unknown")
 
 
 @pytest.fixture(params=[True, False])
@@ -184,7 +223,7 @@ def test_no_sources(symbolicator, cache_dir_param):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == MISSING_FILE
+    assert response.json() == NO_SOURCES
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
@@ -256,7 +295,7 @@ def test_sources_filetypes(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == MISSING_FILE
+    assert response.json() == NO_SOURCES
     assert not hitcounter.hits
 
 
@@ -282,7 +321,7 @@ def test_unknown_source_config(symbolicator, hitcounter):
 
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
-    assert response.json() == MISSING_FILE
+    assert response.json() == UNKNOWN_SOURCE
 
 
 def test_timeouts(symbolicator, hitcounter):
@@ -363,7 +402,10 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     response.raise_for_status()
     response = response.json()
     # TODO(markus): Better error reporting
-    assert response == MISSING_FILE
+    if bucket_type == "sentry":
+        assert response == NO_SOURCES
+    else:
+        assert response == _make_unsuccessful_result(status="missing", source="broken")
 
 
 def test_malformed_objects(symbolicator, hitcounter):
@@ -385,7 +427,7 @@ def test_malformed_objects(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
     response = response.json()
-    assert response == MALFORMED_FILE
+    assert response == MALFORMED_NO_SOURCES
 
 
 @pytest.mark.parametrize(
@@ -394,8 +436,8 @@ def test_malformed_objects(symbolicator, hitcounter):
         [["?:/windows/**"], SUCCESS_WINDOWS],
         [["?:/windows/*"], SUCCESS_WINDOWS],
         [[], SUCCESS_WINDOWS],
-        [["?:/windows/"], MISSING_FILE],
-        [["d:/windows/**"], MISSING_FILE],
+        [["?:/windows/"], NO_SOURCES],
+        [["d:/windows/**"], NO_SOURCES],
     ],
 )
 def test_path_patterns(symbolicator, hitcounter, patterns, output):
