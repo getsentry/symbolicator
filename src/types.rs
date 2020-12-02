@@ -465,13 +465,13 @@ pub struct ObjectCandidate {
     ///
     /// This section is only present if this DIF object was used for unwinding by the
     /// symbolication request.
-    #[serde(skip_serializing_if = "ObjectUseInfo::is_none")]
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
     pub unwind: ObjectUseInfo,
     /// Information about any debug info this DIF object may have.
     ///
     /// This section is only present if this DIF object was used for symbol lookups by the
     /// symbolication request.
-    #[serde(skip_serializing_if = "ObjectUseInfo::is_none")]
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
     pub debug: ObjectUseInfo,
 }
 
