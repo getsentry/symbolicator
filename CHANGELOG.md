@@ -6,21 +6,22 @@
 
 - Symbolication responses include download information about all DIF object files which were looked up on the available object sources. ([#309](https://github.com/getsentry/symbolicator/pull/309))
 
-## 0.4.0
+### Tools
 
-- No documented changes.
+- `wasm-split` now retains all sections. ([#311](https://github.com/getsentry/symbolicator/pull/311))
+
+## 0.3.1
 
 ### Features
 
-- Added WASM support. ([#301](https://github.com/getsentry/symbolicator/pull/301))
+- Add support for DWARF in WASM. ([#301](https://github.com/getsentry/symbolicator/pull/301))
+- Support symbolication of native Dart stack traces by prioritizing DWARF function names over symbol table entries.
 
-### Bug Fixes
+### Tools
 
-- No documented changes.
+- Add `wasm-split`, which splits WASM files into code and debug information. ([#303](https://github.com/getsentry/symbolicator/pull/303))
 
 ## 0.3.0
-
-- No documented changes.
 
 ### Features
 

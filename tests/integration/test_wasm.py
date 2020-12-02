@@ -23,7 +23,7 @@ WASM_DATA = {
 SUCCESS_WASM = {
     "modules": [
         {
-            "arch": "wasm",
+            "arch": "wasm32",
             "code_id": "bda18fd85d4a4eb893022d6bfad846b1",
             "debug_file": "file://foo.invalid/demo.wasm",
             "debug_id": "bda18fd8-5d4a-4eb8-9302-2d6bfad846b1",
