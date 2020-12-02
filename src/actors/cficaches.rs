@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, ObjectError, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
@@ -251,7 +251,7 @@ impl CfiCacheActor {
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [symbolic::minidump::cfi::CfiCache].
-fn write_cficache(path: &Path, object_file: &ObjectFile) -> Result<(), CfiCacheError> {
+fn write_cficache(path: &Path, object_file: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
         object_file.write_sentry_scope(scope);

@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, FoundObject, ObjectError, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
+    FindObject, FoundObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
@@ -261,7 +261,7 @@ impl SymCacheActor {
     }
 }
 
-fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError> {
+fn write_symcache(path: &Path, object: &ObjectHandle) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
         object.write_sentry_scope(scope);

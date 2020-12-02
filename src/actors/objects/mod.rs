@@ -183,7 +183,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
             .map_err(ObjectError::Caching)
-            .and_then(move |object_handle: Arc<ObjectFile>| {
+            .and_then(move |object_handle: Arc<ObjectHandle>| {
                 if object_handle.status == CacheStatus::Positive {
                     if let Ok(object) = Object::parse(&object_handle.data) {
                         let mut new_cache = fs::File::create(path)?;
@@ -245,7 +245,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
 }
 
 impl CacheItemRequest for FetchFileDataRequest {
-    type Item = ObjectFile;
+    type Item = ObjectHandle;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -375,7 +375,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         data: ByteView<'static>,
         _: CachePath,
     ) -> Self::Item {
-        let object = ObjectFile {
+        let object = ObjectHandle {
             object_id: self.0.object_id.clone(),
             scope,
 
@@ -394,7 +394,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 }
 
-pub struct ObjectFileBytes(pub Arc<ObjectFile>);
+pub struct ObjectFileBytes(pub Arc<ObjectHandle>);
 
 impl AsRef<[u8]> for ObjectFileBytes {
     fn as_ref(&self) -> &[u8] {
@@ -424,8 +424,11 @@ impl ObjectFileMeta {
 }
 
 /// Handle to local cache file of an object.
+///
+/// This handle contains some information identifying the object it is for as well as the
+/// cache information.
 #[derive(Debug, Clone)]
-pub struct ObjectFile {
+pub struct ObjectHandle {
     object_id: ObjectId,
     scope: Scope,
 
@@ -433,11 +436,15 @@ pub struct ObjectFile {
     cache_key: CacheKey,
 
     /// The mmapped object.
+    ///
+    /// This only contains the object **if** [`ObjectHandle::status`] is
+    /// [`CacheStatus::Positive`], otherwise it will contain an empty string or the special
+    /// malformed marker.
     data: ByteView<'static>,
     status: CacheStatus,
 }
 
-impl ObjectFile {
+impl ObjectHandle {
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -471,7 +478,7 @@ impl ObjectFile {
     }
 }
 
-impl WriteSentryScope for ObjectFile {
+impl WriteSentryScope for ObjectHandle {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.write_sentry_scope(scope);
         self.file_id.write_sentry_scope(scope);
@@ -548,7 +555,7 @@ impl ObjectsActor {
     pub fn fetch(
         &self,
         shallow_file: Arc<ObjectFileMeta>,
-    ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
+    ) -> impl Future<Item = Arc<ObjectHandle>, Error = ObjectError> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
             .map_err(ObjectError::Caching)
