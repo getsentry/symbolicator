@@ -293,7 +293,8 @@ impl SymbolicationActor {
         let drop_hub = hub.clone();
         let token = CallOnDrop::new(move || {
             requests.lock().remove(&request_id);
-            // we consider every premature drop of the future as fatal crash
+            // we consider every premature drop of the future as fatal crash, which works fine
+            // since ending a session consumes it and its not possible to double-end.
             drop_hub.end_session_with_status(SessionStatus::Crashed);
         });
 
@@ -307,10 +308,9 @@ impl SymbolicationActor {
                     sentry::capture_error(error);
 
                     // a timeout is an abnormal session exit, all other errors are considered "crashed"
-                    let status = if matches!(error, SymbolicationError::Timeout) {
-                        SessionStatus::Abnormal
-                    } else {
-                        SessionStatus::Crashed
+                    let status = match &error {
+                        SymbolicationError::Timeout => SessionStatus::Abnormal,
+                        _ => SessionStatus::Crashed,
                     };
                     sentry::end_session_with_status(status);
 
