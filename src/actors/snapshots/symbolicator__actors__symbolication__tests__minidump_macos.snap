@@ -99,7 +99,6 @@ modules:
     debug_file: CoreFoundation
     image_addr: 0x7fffd229c000
     image_size: 4800512
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -115,7 +114,6 @@ modules:
     debug_file: libDiagnosticMessagesClient.dylib
     image_addr: 0x7fffe668e000
     image_size: 8192
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -131,7 +129,6 @@ modules:
     debug_file: libSystem.B.dylib
     image_addr: 0x7fffe68cd000
     image_size: 8192
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -147,7 +144,6 @@ modules:
     debug_file: libc++.1.dylib
     image_addr: 0x7fffe6a80000
     image_size: 356352
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -163,7 +159,6 @@ modules:
     debug_file: libc++abi.dylib
     image_addr: 0x7fffe6ad7000
     image_size: 172032
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -179,7 +174,6 @@ modules:
     debug_file: libicucore.A.dylib
     image_addr: 0x7fffe7041000
     image_size: 2252800
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -195,7 +189,6 @@ modules:
     debug_file: libobjc.A.dylib
     image_addr: 0x7fffe75f5000
     image_size: 4022272
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -211,7 +204,6 @@ modules:
     debug_file: libz.1.dylib
     image_addr: 0x7fffe7def000
     image_size: 73728
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -227,7 +219,6 @@ modules:
     debug_file: libcache.dylib
     image_addr: 0x7fffe7e0f000
     image_size: 20480
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -243,7 +234,6 @@ modules:
     debug_file: libcommonCrypto.dylib
     image_addr: 0x7fffe7e14000
     image_size: 45056
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -259,7 +249,6 @@ modules:
     debug_file: libcompiler_rt.dylib
     image_addr: 0x7fffe7e1f000
     image_size: 32768
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -275,7 +264,6 @@ modules:
     debug_file: libcopyfile.dylib
     image_addr: 0x7fffe7e27000
     image_size: 36864
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -291,7 +279,6 @@ modules:
     debug_file: libcorecrypto.dylib
     image_addr: 0x7fffe7e30000
     image_size: 540672
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -307,7 +294,6 @@ modules:
     debug_file: libdispatch.dylib
     image_addr: 0x7fffe7eb4000
     image_size: 204800
-    candidates: []
   - debug_status: missing
     unwind_status: missing
     features:
@@ -351,7 +337,6 @@ modules:
     debug_file: libkeymgr.dylib
     image_addr: 0x7fffe7eec000
     image_size: 4096
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -367,7 +352,6 @@ modules:
     debug_file: liblaunch.dylib
     image_addr: 0x7fffe7efa000
     image_size: 4096
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -383,7 +367,6 @@ modules:
     debug_file: libmacho.dylib
     image_addr: 0x7fffe7efb000
     image_size: 24576
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -399,7 +382,6 @@ modules:
     debug_file: libquarantine.dylib
     image_addr: 0x7fffe7f01000
     image_size: 12288
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -415,7 +397,6 @@ modules:
     debug_file: libremovefile.dylib
     image_addr: 0x7fffe7f04000
     image_size: 8192
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -431,7 +412,6 @@ modules:
     debug_file: libsystem_asl.dylib
     image_addr: 0x7fffe7f06000
     image_size: 102400
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -447,7 +427,6 @@ modules:
     debug_file: libsystem_blocks.dylib
     image_addr: 0x7fffe7f1f000
     image_size: 4096
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -463,7 +442,6 @@ modules:
     debug_file: libsystem_c.dylib
     image_addr: 0x7fffe7f20000
     image_size: 581632
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -479,7 +457,6 @@ modules:
     debug_file: libsystem_configuration.dylib
     image_addr: 0x7fffe7fae000
     image_size: 16384
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -495,7 +472,6 @@ modules:
     debug_file: libsystem_coreservices.dylib
     image_addr: 0x7fffe7fb2000
     image_size: 16384
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -511,7 +487,6 @@ modules:
     debug_file: libsystem_coretls.dylib
     image_addr: 0x7fffe7fb6000
     image_size: 102400
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -527,7 +502,6 @@ modules:
     debug_file: libsystem_dnssd.dylib
     image_addr: 0x7fffe7fcf000
     image_size: 28672
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -543,7 +517,6 @@ modules:
     debug_file: libsystem_info.dylib
     image_addr: 0x7fffe7fd6000
     image_size: 172032
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -559,7 +532,6 @@ modules:
     debug_file: libsystem_kernel.dylib
     image_addr: 0x7fffe8000000
     image_size: 143360
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -575,7 +547,6 @@ modules:
     debug_file: libsystem_m.dylib
     image_addr: 0x7fffe8023000
     image_size: 294912
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -591,7 +562,6 @@ modules:
     debug_file: libsystem_malloc.dylib
     image_addr: 0x7fffe806b000
     image_size: 126976
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -607,7 +577,6 @@ modules:
     debug_file: libsystem_network.dylib
     image_addr: 0x7fffe808a000
     image_size: 368640
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -623,7 +592,6 @@ modules:
     debug_file: libsystem_networkextension.dylib
     image_addr: 0x7fffe80e4000
     image_size: 40960
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -639,7 +607,6 @@ modules:
     debug_file: libsystem_notify.dylib
     image_addr: 0x7fffe80ee000
     image_size: 40960
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -655,7 +622,6 @@ modules:
     debug_file: libsystem_platform.dylib
     image_addr: 0x7fffe80f8000
     image_size: 36864
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -671,7 +637,6 @@ modules:
     debug_file: libsystem_pthread.dylib
     image_addr: 0x7fffe8101000
     image_size: 45056
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -687,7 +652,6 @@ modules:
     debug_file: libsystem_sandbox.dylib
     image_addr: 0x7fffe810c000
     image_size: 16384
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -703,7 +667,6 @@ modules:
     debug_file: libsystem_secinit.dylib
     image_addr: 0x7fffe8110000
     image_size: 8192
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -719,7 +682,6 @@ modules:
     debug_file: libsystem_symptoms.dylib
     image_addr: 0x7fffe8112000
     image_size: 32768
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -735,7 +697,6 @@ modules:
     debug_file: libsystem_trace.dylib
     image_addr: 0x7fffe811a000
     image_size: 81920
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -751,7 +712,6 @@ modules:
     debug_file: libunwind.dylib
     image_addr: 0x7fffe812e000
     image_size: 24576
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -767,4 +727,3 @@ modules:
     debug_file: libxpc.dylib
     image_addr: 0x7fffe8134000
     image_size: 172032
-    candidates: []

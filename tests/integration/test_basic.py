@@ -83,22 +83,7 @@ SUCCESS_WINDOWS = {
 
 
 def _make_unsuccessful_result(status, source="microsoft"):
-    if source in ["microsoft", "unknown", "broken"]:
-        candidates = [
-            {
-                "download": {"status": "notfound"},
-                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
-                "source": source,
-            },
-            {
-                "download": {"status": "notfound"},
-                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
-                "source": source,
-            },
-        ]
-    else:
-        candidates = []
-    return {
+    response = {
         "stacktraces": [
             {
                 "registers": {"eip": "0x1509530"},
@@ -128,11 +113,24 @@ def _make_unsuccessful_result(status, source="microsoft"):
                 "arch": "unknown",
                 "image_addr": "0x749d0000",
                 "image_size": 851_968,
-                "candidates": candidates,
             }
         ],
         "status": "completed",
     }
+    if source in ["microsoft", "unknown", "broken"]:
+        response["modules"][0]["candidates"] = [
+            {
+                "download": {"status": "notfound"},
+                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "source": source,
+            },
+            {
+                "download": {"status": "notfound"},
+                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "source": source,
+            },
+        ]
+    return response
 
 
 MISSING_FILE = _make_unsuccessful_result("missing")

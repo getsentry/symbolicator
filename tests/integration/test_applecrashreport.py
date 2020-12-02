@@ -24,7 +24,6 @@ APPLE_CRASH_REPORT_SUCCESS = {
             "image_addr": "0x10864e000",
             "image_size": 108797951,
             "type": "macho",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -44,7 +43,6 @@ APPLE_CRASH_REPORT_SUCCESS = {
             "image_addr": "0x112bb2000",
             "image_size": 2170879,
             "type": "macho",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -64,7 +62,6 @@ APPLE_CRASH_REPORT_SUCCESS = {
             "image_addr": "0x112fc0000",
             "image_size": 221183,
             "type": "macho",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -84,7 +81,6 @@ APPLE_CRASH_REPORT_SUCCESS = {
             "image_addr": "0x113013000",
             "image_size": 1474559,
             "type": "macho",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -104,7 +100,6 @@ APPLE_CRASH_REPORT_SUCCESS = {
             "image_addr": "0x1131fa000",
             "image_size": 28671,
             "type": "macho",
-            "candidates": [],
         },
     ],
     "stacktraces": [

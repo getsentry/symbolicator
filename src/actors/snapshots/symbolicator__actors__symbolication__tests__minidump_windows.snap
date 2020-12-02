@@ -209,7 +209,6 @@ modules:
     debug_file: dbghelp.pdb
     image_addr: 0x70850000
     image_size: 1331200
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -225,7 +224,6 @@ modules:
     debug_file: msvcp140.i386.pdb
     image_addr: 0x709a0000
     image_size: 442368
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -241,7 +239,6 @@ modules:
     debug_file: apphelp.pdb
     image_addr: 0x70a10000
     image_size: 598016
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -257,7 +254,6 @@ modules:
     debug_file: dbgcore.pdb
     image_addr: 0x70b70000
     image_size: 151552
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -273,7 +269,6 @@ modules:
     debug_file: vcruntime140.i386.pdb
     image_addr: 0x70c60000
     image_size: 81920
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -289,7 +284,6 @@ modules:
     debug_file: cryptbase.pdb
     image_addr: 0x73ba0000
     image_size: 40960
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -305,7 +299,6 @@ modules:
     debug_file: wsspicli.pdb
     image_addr: 0x73bb0000
     image_size: 126976
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -321,7 +314,6 @@ modules:
     debug_file: advapi32.pdb
     image_addr: 0x73c70000
     image_size: 487424
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -337,7 +329,6 @@ modules:
     debug_file: msvcrt.pdb
     image_addr: 0x73cf0000
     image_size: 778240
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -353,7 +344,6 @@ modules:
     debug_file: sechost.pdb
     image_addr: 0x74450000
     image_size: 266240
-    candidates: []
   - debug_status: missing
     unwind_status: unused
     features:
@@ -405,7 +395,6 @@ modules:
     debug_file: bcryptprimitives.pdb
     image_addr: 0x75130000
     image_size: 368640
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -421,7 +410,6 @@ modules:
     debug_file: wrpcrt4.pdb
     image_addr: 0x75810000
     image_size: 790528
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -437,7 +425,6 @@ modules:
     debug_file: ucrtbase.pdb
     image_addr: 0x758f0000
     image_size: 917504
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -453,7 +440,6 @@ modules:
     debug_file: wkernelbase.pdb
     image_addr: 0x76db0000
     image_size: 1708032
-    candidates: []
   - debug_status: missing
     unwind_status: unused
     features:

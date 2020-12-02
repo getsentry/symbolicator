@@ -169,7 +169,6 @@ modules:
     debug_file: /lib/x86_64-linux-gnu/libm-2.23.so
     image_addr: 0x7f513fe54000
     image_size: 1081344
-    candidates: []
   - debug_status: missing
     unwind_status: missing
     features:
@@ -213,7 +212,6 @@ modules:
     debug_file: /lib/x86_64-linux-gnu/libgcc_s.so.1
     image_addr: 0x7f5140527000
     image_size: 90112
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -229,7 +227,6 @@ modules:
     debug_file: /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.21
     image_addr: 0x7f514073d000
     image_size: 1515520
-    candidates: []
   - debug_status: unused
     unwind_status: unused
     features:
@@ -245,7 +242,6 @@ modules:
     debug_file: /lib/x86_64-linux-gnu/libpthread-2.23.so
     image_addr: 0x7f5140abf000
     image_size: 98304
-    candidates: []
   - debug_status: missing
     unwind_status: missing
     features:

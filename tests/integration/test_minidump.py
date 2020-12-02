@@ -427,7 +427,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -446,7 +445,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "debug_status": "found",
@@ -521,7 +519,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -540,7 +537,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -559,7 +555,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -578,7 +573,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -597,7 +591,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "unknown",
@@ -616,7 +609,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "debug_status": "found",
@@ -692,7 +684,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "debug_status": "found",
@@ -767,7 +758,6 @@ MINIDUMP_SUCCESS = {
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [],
         },
         {
             "arch": "x86",
