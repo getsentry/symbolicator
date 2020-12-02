@@ -437,7 +437,7 @@ impl ObjectFeatures {
 
 /// Information about a Debug Information File in the [`CompleteObjectInfo`].
 ///
-/// All DIFs are backed by an [`ObjectFile`](crate::actors::objects::ObjectFile).  But we
+/// All DIFs are backed by an [`ObjectHandle`](crate::actors::objects::ObjectHandle).  But we
 /// may not have been able to get hold of this object file.  We still want to describe the
 /// relevant DIF however.
 ///
