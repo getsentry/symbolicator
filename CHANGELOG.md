@@ -6,6 +6,10 @@
 
 - Symbolication responses include download information about all DIF object files which were looked up on the available object sources. ([#309](https://github.com/getsentry/symbolicator/pull/309))
 
+### Bug Fixes
+
+- Ensure deserialisation works for objects passed through procspawn. ([#314](https://github.com/getsentry/symbolicator/pull/314))
+
 ### Tools
 
 - `wasm-split` now retains all sections. ([#311](https://github.com/getsentry/symbolicator/pull/311))
