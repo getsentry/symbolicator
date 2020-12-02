@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Buf Fixes
+### Bug Fixes
 
 - Ensure deserialisation. ([#314](https://github.com/getsentry/symbolicator/pull/314))
 
