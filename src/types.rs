@@ -443,7 +443,7 @@ pub struct CompleteObjectInfo {
     pub debug_status: ObjectFileStatus,
 
     /// Status for fetching the file with unwind info (for minidump stackwalking).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub unwind_status: Option<ObjectFileStatus>,
 
     /// Features available during symbolication.
