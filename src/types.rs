@@ -525,10 +525,7 @@ pub enum ObjectUseInfo {
     /// This means the object was used for CFI when used for [`ObjectCandidate::unwind`]
     Ok,
     /// The DIF object contained malformed data which could not be used.
-    ///
-    /// More details should be available in the `details` field, which is not meant to be
-    /// machine parsable.
-    Malformed { details: String },
+    Malformed,
     /// An error occurred when attempting to use this DIF object.
     ///
     /// This is mostly an internal error from symbolicator which is considered transient.
