@@ -28,7 +28,7 @@ jobs:
         run: pip install --upgrade black flake8
 
       - name: Run Black
-        run: black --check tests
+        run: black --check --diff tests
 
       - name: Run Flake8
         run: flake8 tests

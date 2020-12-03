@@ -21,7 +21,9 @@ use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
-use crate::types::{ObjectCandidate, ObjectDownloadInfo, ObjectFeatures, ObjectId, Scope};
+use crate::types::{
+    AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectFeatures, ObjectId, Scope,
+};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -421,6 +423,18 @@ impl ObjectFileMeta {
     pub fn features(&self) -> ObjectFeatures {
         self.features
     }
+
+    pub fn source(&self) -> &SourceId {
+        self.request.file_id.source_id()
+    }
+
+    pub fn location(&self) -> SourceLocation {
+        self.request.file_id.location()
+    }
+
+    pub fn status(&self) -> CacheStatus {
+        self.status
+    }
 }
 
 /// Handle to local cache file of an object.
@@ -544,7 +558,7 @@ pub struct FoundObject {
     pub meta: Option<Arc<ObjectFileMeta>>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
-    pub candidates: Vec<ObjectCandidate>,
+    pub candidates: AllObjectCandidates,
 }
 
 impl ObjectsActor {
@@ -736,7 +750,7 @@ impl ObjectsActor {
                     })
                     .map(|(_i, response)| response)
                     .transpose()
-                    .map(|meta| FoundObject { meta, candidates })
+                    .map(|meta| FoundObject { meta, candidates: candidates.into() })
             },
         )
     }

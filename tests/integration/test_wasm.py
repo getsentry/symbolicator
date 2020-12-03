@@ -2,12 +2,7 @@ WASM_DATA = {
     "stacktraces": [
         {
             "registers": {},
-            "frames": [
-                {
-                    "instruction_addr": "0x8c",
-                    "addr_mode": "rel:0",
-                }
-            ],
+            "frames": [{"instruction_addr": "0x8c", "addr_mode": "rel:0"}],
         },
     ],
     "modules": [
@@ -38,6 +33,8 @@ SUCCESS_WASM = {
             "type": "wasm",
             "candidates": [
                 {
+                    "source": "stuff",
+                    "location": "bd/a18fd85d4a4eb893022d6bfad846b1.debug",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -47,8 +44,7 @@ SUCCESS_WASM = {
                         },
                         "status": "ok",
                     },
-                    "location": "bd/a18fd85d4a4eb893022d6bfad846b1.debug",
-                    "source": "stuff",
+                    "debug": {"status": "ok"},
                 },
             ],
         }

@@ -3,8 +3,13 @@
 //! This module contains all the types which (de)serialise to/from JSON to make up the
 //! public HTTP API.
 //!
-//! Or at least it strives to.  Currently it also contains some extra common types as well
-//! some types for the public API exist in other places.  Feel free to fix this up.
+//! Some types also require `impl` blocks, these live in a sub-module so that the `mod.rs`
+//! file contains only type definitions which are part of the JSON schema.
+//!
+//! Or at least this is what is the desired state.  Currently it also contains some extra
+//! common types as well some types for the public API exist in other places.  There are
+//! also a number of `impl`s which have not yet been moved to a sub-module.  Feel free to
+//! fix this up.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -24,6 +29,8 @@ use crate::sources::{SourceId, SourceLocation};
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
+
+mod objects;
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -572,17 +579,13 @@ pub enum ObjectUseInfo {
     None,
 }
 
-impl Default for ObjectUseInfo {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-impl ObjectUseInfo {
-    pub fn is_none(&self) -> bool {
-        matches!(self, Self::None)
-    }
-}
+/// Newtype around a collection of [`ObjectCandidate`] structs.
+///
+/// This abstracts away some common operations needed on this collection.
+///
+/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AllObjectCandidates(Vec<ObjectCandidate>);
 
 /// Normalized [`RawObjectInfo`] with status attached.
 ///
@@ -618,8 +621,8 @@ pub struct CompleteObjectInfo {
     /// reasons.
     ///
     /// This list is not serialised if it is empty.
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub candidates: Vec<ObjectCandidate>,
+    #[serde(skip_serializing_if = "AllObjectCandidates::is_empty", default)]
+    pub candidates: AllObjectCandidates,
 }
 
 impl CompleteObjectInfo {
@@ -651,31 +654,6 @@ impl CompleteObjectInfo {
     /// Per definition images at 0 do not support absolute addresses.
     pub fn supports_absolute_addresses(&self) -> bool {
         self.raw.image_addr.0 != 0
-    }
-}
-
-impl From<RawObjectInfo> for CompleteObjectInfo {
-    fn from(mut raw: RawObjectInfo) -> Self {
-        raw.debug_id = raw
-            .debug_id
-            .filter(|id| !id.is_empty())
-            .and_then(|id| id.parse::<DebugId>().ok())
-            .map(|id| id.to_string());
-
-        raw.code_id = raw
-            .code_id
-            .filter(|id| !id.is_empty())
-            .and_then(|id| id.parse::<CodeId>().ok())
-            .map(|id| id.to_string());
-
-        CompleteObjectInfo {
-            debug_status: ObjectFileStatus::Unused,
-            unwind_status: None,
-            features: ObjectFeatures::default(),
-            arch: Arch::Unknown,
-            raw,
-            candidates: Vec::new(),
-        }
     }
 }
 

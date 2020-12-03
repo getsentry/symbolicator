@@ -15,7 +15,7 @@ use crate::utils::sentry::WriteSentryScope;
 /// An identifier for DIF sources.
 ///
 /// This is essentially a newtype for a string.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct SourceId(String);
 
 // For now we allow this to be unused, some tests use these already.
@@ -103,7 +103,7 @@ impl WriteSentryScope for SourceConfig {
 ///
 /// It is essentially a `/`-separated string. This is currently used by all sources other than
 /// [`SentrySourceConfig`]. This may change in the future.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct SourceLocation(String);
 
 impl SourceLocation {

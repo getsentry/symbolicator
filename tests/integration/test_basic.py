@@ -61,6 +61,12 @@ SUCCESS_WINDOWS = {
             "image_size": 851_968,
             "candidates": [
                 {
+                    "download": {"status": "notfound"},
+                    "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                    "source": "microsoft",
+                },
+                {
+                    "debug": {"status": "ok"},
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -71,11 +77,6 @@ SUCCESS_WINDOWS = {
                         "status": "ok",
                     },
                     "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
-                    "source": "microsoft",
-                },
-                {
-                    "download": {"status": "notfound"},
-                    "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                     "source": "microsoft",
                 },
             ],
@@ -124,12 +125,12 @@ def _make_unsuccessful_result(status, source="microsoft"):
         response["modules"][0]["candidates"] = [
             {
                 "download": {"status": "notfound"},
-                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                 "source": source,
             },
             {
                 "download": {"status": "notfound"},
-                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
                 "source": source,
             },
         ]

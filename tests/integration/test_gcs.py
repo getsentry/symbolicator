@@ -57,13 +57,17 @@ MACHO_SUCCESS = {
             },
             "candidates": [
                 {
-                    "download": {
-                        "status": "notfound",
-                    },
+                    "download": {"status": "notfound"},
+                    "location": "e5/14c9464eed3be5943a2c61d9241fad/breakpad",
+                    "source": "ios",
+                },
+                {
+                    "download": {"status": "notfound"},
                     "location": "e5/14c9464eed3be5943a2c61d9241fad/debuginfo",
                     "source": "ios",
                 },
                 {
+                    "debug": {"status": "ok"},
                     "download": {
                         "features": {
                             "has_debug_info": False,
@@ -74,13 +78,6 @@ MACHO_SUCCESS = {
                         "status": "ok",
                     },
                     "location": "e5/14c9464eed3be5943a2c61d9241fad/executable",
-                    "source": "ios",
-                },
-                {
-                    "download": {
-                        "status": "notfound",
-                    },
-                    "location": "e5/14c9464eed3be5943a2c61d9241fad/breakpad",
                     "source": "ios",
                 },
             ],
@@ -101,13 +98,17 @@ MACHO_SUCCESS = {
             },
             "candidates": [
                 {
-                    "download": {
-                        "status": "notfound",
-                    },
+                    "download": {"status": "notfound"},
+                    "location": "71/9044f95fe23ee0ab14504def42b100/breakpad",
+                    "source": "ios",
+                },
+                {
+                    "download": {"status": "notfound"},
                     "location": "71/9044f95fe23ee0ab14504def42b100/debuginfo",
                     "source": "ios",
                 },
                 {
+                    "debug": {"status": "ok"},
                     "download": {
                         "features": {
                             "has_debug_info": False,
@@ -118,13 +119,6 @@ MACHO_SUCCESS = {
                         "status": "ok",
                     },
                     "location": "71/9044f95fe23ee0ab14504def42b100/executable",
-                    "source": "ios",
-                },
-                {
-                    "download": {
-                        "status": "notfound",
-                    },
-                    "location": "71/9044f95fe23ee0ab14504def42b100/breakpad",
                     "source": "ios",
                 },
             ],
