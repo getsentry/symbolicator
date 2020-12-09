@@ -529,7 +529,7 @@ pub enum ObjectUseInfo {
     /// An error occurred when attempting to use this DIF object.
     ///
     /// This is mostly an internal error from symbolicator which is considered transient.
-    /// The next attempt to access this DIF object will retry the using this DIF object.
+    /// The next attempt to access this DIF object will retry using this DIF object.
     ///
     /// More details should be available in the `details` field, which is not meant to be
     /// machine parsable.
