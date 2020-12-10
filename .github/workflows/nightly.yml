@@ -28,7 +28,7 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --workspace --tests --examples -- -D clippy::all
+          args: --all-features --workspace --tests --examples
 
       - uses: actions-rs/cargo@v1
         with:
