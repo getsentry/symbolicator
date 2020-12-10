@@ -13,7 +13,8 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, FoundObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
+    FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
+    ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
@@ -111,7 +112,7 @@ impl SymCacheFile {
 struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects_actor: ObjectsActor,
-    object_meta: Arc<ObjectFileMeta>,
+    object_meta: Arc<ObjectMetaHandle>,
     threadpool: ThreadPool,
     candidates: AllObjectCandidates,
 }

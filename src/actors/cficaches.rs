@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
@@ -94,7 +94,7 @@ impl CfiCacheFile {
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: ObjectsActor,
-    object_meta: Arc<ObjectFileMeta>,
+    object_meta: Arc<ObjectMetaHandle>,
     threadpool: ThreadPool,
 }
 

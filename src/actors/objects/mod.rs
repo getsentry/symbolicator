@@ -22,7 +22,7 @@ use data_cache::FetchFileDataRequest;
 use meta_cache::FetchFileMetaRequest;
 
 pub use data_cache::ObjectHandle;
-pub use meta_cache::ObjectFileMeta;
+pub use meta_cache::ObjectMetaHandle;
 
 mod data_cache;
 mod meta_cache;
@@ -189,7 +189,7 @@ pub enum ObjectPurpose {
 pub struct FoundObject {
     /// If a matching object was found its [`ObjectFileMeta`] will be provided here,
     /// otherwise this will be `None`.
-    pub meta: Option<Arc<ObjectFileMeta>>,
+    pub meta: Option<Arc<ObjectMetaHandle>>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
     pub candidates: AllObjectCandidates,
@@ -202,7 +202,7 @@ impl ObjectsActor {
     /// longer in the cache.
     pub fn fetch(
         &self,
-        shallow_file: Arc<ObjectFileMeta>,
+        shallow_file: Arc<ObjectMetaHandle>,
     ) -> impl Future<Item = Arc<ObjectHandle>, Error = ObjectError> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
@@ -300,7 +300,7 @@ impl ObjectsActor {
         });
 
         file_metas.and_then(
-            move |responses: Vec<Result<Arc<ObjectFileMeta>, CacheLookupError>>|
+            move |responses: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>|
                                  -> Result<FoundObject, ObjectError> {
                 let mut candidates: Vec<ObjectCandidate> = Vec::new();
                 responses

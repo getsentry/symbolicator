@@ -44,16 +44,15 @@ pub(super) struct FetchFileMetaRequest {
 /// Handle to local metadata file of an object. Having an instance of this type does not mean there
 /// is a downloaded object file behind it. We cache metadata separately (ObjectFeatures) because
 /// every symcache lookup requires reading this metadata.
-// TODO(flub): rename to ObjectMetaHandle
 #[derive(Clone, Debug)]
-pub struct ObjectFileMeta {
+pub struct ObjectMetaHandle {
     pub(super) request: FetchFileMetaRequest,
     pub(super) scope: Scope,
     pub(super) features: ObjectFeatures,
     pub(super) status: CacheStatus,
 }
 
-impl ObjectFileMeta {
+impl ObjectMetaHandle {
     pub fn cache_key(&self) -> CacheKey {
         self.request.get_cache_key()
     }
@@ -76,7 +75,7 @@ impl ObjectFileMeta {
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
-    type Item = ObjectFileMeta;
+    type Item = ObjectMetaHandle;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -158,7 +157,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
             _ => Default::default(),
         };
 
-        ObjectFileMeta {
+        ObjectMetaHandle {
             request: self.clone(),
             scope,
             features,
