@@ -130,6 +130,9 @@ pub trait CacheItemRequest: 'static + Send {
     fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>>;
 
     /// Determines whether this item should be loaded.
+    ///
+    /// If this returns `false` the cache will re-computed and be overwritten with the new
+    /// result.
     fn should_load(&self, _data: &[u8]) -> bool {
         true
     }
@@ -146,6 +149,14 @@ pub trait CacheItemRequest: 'static + Send {
 
 impl<T: CacheItemRequest> Cacher<T> {
     /// Look up an item in the file system cache and load it if available.
+    ///
+    /// Returns `Ok(None)` if the cache item needs to be re-computed, otherwise reads the
+    /// cached data from disk and returns the cached item as returned by
+    /// [`CacheItemRequest::load`].
+    ///
+    /// # Errors
+    ///
+    /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
     fn lookup_cache(
         &self,
         request: &T,
