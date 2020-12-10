@@ -72,6 +72,7 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
     Ok(None)
 }
 
+/// Console logging for the symsorter app.
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {
