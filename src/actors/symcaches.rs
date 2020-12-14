@@ -130,6 +130,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
+            .compat()
             .map_err(SymCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
@@ -248,6 +249,7 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
+            .compat()
             .map_err(|e| Arc::new(SymCacheError::Fetching(e)));
 
         let symcaches = self.symcaches.clone();

@@ -115,6 +115,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
+            .compat()
             .map_err(CfiCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
@@ -218,7 +219,7 @@ impl CfiCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.and_then(move |object| {
+        object.compat().and_then(move |object| {
             object
                 .meta
                 .map(move |object_meta| {

@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use ::sentry::Hub;
 use backtrace::Backtrace;
-use futures::future::{FutureExt, TryFutureExt};
-use futures01::{future, Future};
+use futures::compat::Future01CompatExt;
+use futures::future::{self, Future, FutureExt, TryFutureExt};
+use sentry::SentryFutureExt;
 use symbolic::debuginfo;
 
 use crate::actors::common::cache::Cacher;
@@ -16,7 +17,6 @@ use crate::services::download::{DownloadError, DownloadService};
 use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
-use crate::utils::sentry::SentryFutureExt;
 
 use data_cache::FetchFileDataRequest;
 use meta_cache::FetchFileMetaRequest;
@@ -203,9 +203,10 @@ impl ObjectsActor {
     pub fn fetch(
         &self,
         shallow_file: Arc<ObjectMetaHandle>,
-    ) -> impl Future<Item = Arc<ObjectHandle>, Error = ObjectError> {
+    ) -> impl Future<Output = Result<Arc<ObjectHandle>, ObjectError>> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
+            .compat()
             .map_err(ObjectError::Caching)
     }
 
@@ -221,7 +222,7 @@ impl ObjectsActor {
     pub fn find(
         &self,
         request: FindObject,
-    ) -> impl Future<Item = FoundObject, Error = ObjectError> {
+    ) -> impl Future<Output = Result<FoundObject, ObjectError>> {
         let FindObject {
             filetypes,
             scope,
@@ -239,9 +240,7 @@ impl ObjectsActor {
                     let hub = Arc::new(Hub::new_from_top(Hub::current()));
                     self.download_svc
                         .list_files(source.clone(), filetypes, identifier.clone(), hub)
-                        .boxed_local()
-                        .compat()
-                        .or_else(move |e| {
+                        .unwrap_or_else(move |err| {
                             // This basically only happens for the Sentry source type, when doing
                             // the search by debug/code id. We do not surface those errors to the
                             // user (instead we default to an empty search result) and only report
@@ -249,9 +248,9 @@ impl ObjectsActor {
                             log::error!(
                                 "Failed to fetch file list from {}: {}",
                                 type_name,
-                                LogError(&e)
+                                LogError(&err)
                             );
-                            Ok(Vec::new())
+                            Vec::new()
                         })
                 })
                 // collect into intermediate vector because of borrowing problems
@@ -266,7 +265,7 @@ impl ObjectsActor {
         let data_cache = self.data_cache.clone();
         let download_svc = self.download_svc.clone();
 
-        let file_metas = file_ids.and_then(move |file_ids| {
+        let file_metas = file_ids.then(move |file_ids| {
             future::join_all(file_ids.into_iter().map(move |file_id| {
                 let source_id = file_id.source_id().to_owned();
                 let source_location = file_id.location();
@@ -285,57 +284,51 @@ impl ObjectsActor {
 
                 meta_cache
                     .compute_memoized(request)
+                    .compat()
                     .map_err(move |error| CacheLookupError {
                         source_id,
                         source_location,
                         error,
                     })
-                    // Errors from a file download should not make the entire join_all fail. We
-                    // collect a Vec<Result> and surface the original error to the user only when
-                    // we have no successful downloads.
-                    .then(Ok)
                     // create a new hub for each file download
-                    .sentry_hub_new_from_current()
+                    .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()))
             }))
         });
 
-        file_metas.and_then(
-            move |responses: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>|
-                                 -> Result<FoundObject, ObjectError> {
+        file_metas.then(
+            move |responses: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>| {
                 let mut candidates: Vec<ObjectCandidate> = Vec::new();
-                responses
+                let res: Result<FoundObject, ObjectError> = responses
                     .into_iter()
-                    .map(|response| {
-                        match response {
-                            Ok(obj_meta) => {
-                                let download = match obj_meta.status {
-                                    CacheStatus::Positive => ObjectDownloadInfo::Ok {
-                                        features: obj_meta.features()
-                                    },
-                                    CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                                    CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
-                                };
-                                candidates.push(ObjectCandidate {
-                                    source: obj_meta.request.file_id.source_id().clone(),
-                                    location: obj_meta.request.file_id.location(),
-                                    download,
-                                    unwind: Default::default(),
-                                    debug: Default::default(),
-                                });
-                                Ok(obj_meta)
-                            }
-                            Err(wrapped_error) => {
-                                candidates.push(ObjectCandidate {
-                                    source: wrapped_error.source_id,
-                                    location: wrapped_error.source_location,
-                                    download: ObjectDownloadInfo::Error {
-                                        details: wrapped_error.error.to_string(),
-                                    },
-                                    unwind: Default::default(),
-                                    debug: Default::default(),
-                                });
-                                Err(ObjectError::Caching(wrapped_error.error))
-                            }
+                    .map(|response| match response {
+                        Ok(obj_meta) => {
+                            let download = match obj_meta.status {
+                                CacheStatus::Positive => ObjectDownloadInfo::Ok {
+                                    features: obj_meta.features(),
+                                },
+                                CacheStatus::Negative => ObjectDownloadInfo::NotFound,
+                                CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                            };
+                            candidates.push(ObjectCandidate {
+                                source: obj_meta.request.file_id.source_id().clone(),
+                                location: obj_meta.request.file_id.location(),
+                                download,
+                                unwind: Default::default(),
+                                debug: Default::default(),
+                            });
+                            Ok(obj_meta)
+                        }
+                        Err(wrapped_error) => {
+                            candidates.push(ObjectCandidate {
+                                source: wrapped_error.source_id,
+                                location: wrapped_error.source_location,
+                                download: ObjectDownloadInfo::Error {
+                                    details: wrapped_error.error.to_string(),
+                                },
+                                unwind: Default::default(),
+                                debug: Default::default(),
+                            });
+                            Err(ObjectError::Caching(wrapped_error.error))
                         }
                     })
                     .filter(|response| match response {
@@ -384,7 +377,11 @@ impl ObjectsActor {
                     })
                     .map(|(_i, response)| response)
                     .transpose()
-                    .map(|meta| FoundObject { meta, candidates: candidates.into() })
+                    .map(|meta| FoundObject {
+                        meta,
+                        candidates: candidates.into(),
+                    });
+                future::ready(res)
             },
         )
     }

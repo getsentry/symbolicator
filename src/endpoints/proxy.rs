@@ -4,6 +4,7 @@ use actix::ResponseFuture;
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
+use futures::future::TryFutureExt;
 use futures01::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
 use tokio::codec::{BytesCodec, FramedRead};
@@ -45,6 +46,7 @@ fn proxy_symstore_request(
                 scope: Scope::Global,
                 purpose: ObjectPurpose::Debug,
             })
+            .compat()
             .map_err(|e| e.context("failed to download object").into());
 
         let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
@@ -53,6 +55,7 @@ fn proxy_symstore_request(
                     state
                         .objects()
                         .fetch(object_meta)
+                        .compat()
                         .map_err(|e| e.context("failed to download object").into())
                         .map(Some),
                 )
