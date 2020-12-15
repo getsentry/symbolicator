@@ -177,7 +177,9 @@ MACHO_SUCCESS = {
 
 
 def test_gcs(symbolicator, hitcounter, ios_bucket_config):
-    input = dict(sources=[ios_bucket_config], **MACHO_TEST_DATA)
+    input = dict(
+        sources=[ios_bucket_config], options={"dif_candidates": True}, **MACHO_TEST_DATA
+    )
 
     service = symbolicator()
     service.wait_healthcheck()
