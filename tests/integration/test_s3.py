@@ -106,6 +106,9 @@ def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
                 **s3_bucket_config,
             )
         ],
+        options={
+            "dif_candidates": True,
+        },
         **MACHO_HELLO_DATA,
     )
 

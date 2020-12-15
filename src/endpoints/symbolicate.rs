@@ -10,7 +10,9 @@ use serde::Deserialize;
 use crate::actors::symbolication::SymbolicateStacktraces;
 use crate::app::{ServiceApp, ServiceState};
 use crate::sources::SourceConfig;
-use crate::types::{RawObjectInfo, RawStacktrace, Scope, Signal, SymbolicationResponse};
+use crate::types::{
+    RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
+};
 use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
 /// Query parameters of the symbolication request.
@@ -44,6 +46,8 @@ struct SymbolicationRequestBody {
     pub stacktraces: Vec<RawStacktrace>,
     #[serde(default)]
     pub modules: Vec<RawObjectInfo>,
+    #[serde(default)]
+    pub options: Option<RequestOptions>,
 }
 
 fn symbolicate_frames(
@@ -72,6 +76,7 @@ fn symbolicate_frames(
             stacktraces: body.stacktraces,
             modules: body.modules.into_iter().map(From::from).collect(),
             scope: params.scope,
+            options: body.options.unwrap_or_default(),
         };
 
         let request_id = state.symbolication().symbolicate_stacktraces(message);

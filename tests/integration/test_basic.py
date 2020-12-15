@@ -1,6 +1,9 @@
-import pytest
-import time
+import copy
 import threading
+import time
+
+import pytest
+
 
 WINDOWS_DATA = {
     "signal": None,
@@ -164,6 +167,9 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
                 "is_public": is_public,
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
     )
 
     # i = 0: Cache miss
@@ -242,6 +248,9 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
                 "is_public": is_public,
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
     )
 
     service = symbolicator(cache_dir=None)
@@ -284,6 +293,9 @@ def test_sources_filetypes(symbolicator, hitcounter):
                 "url": f"{hitcounter.url}/msdl/",
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -311,6 +323,9 @@ def test_unknown_source_config(symbolicator, hitcounter):
                 "not-a-field": "more unknown fields",
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -346,6 +361,9 @@ def test_timeouts(symbolicator, hitcounter):
                         "url": f"{hitcounter.url}/msdl/",
                     }
                 ],
+                options={
+                    "dif_candidates": True,
+                },
                 **WINDOWS_DATA,
             )
             response = service.post("/symbolicate?timeout=1", json=input)
@@ -390,6 +408,9 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                 "token": "123abc",  # only relevant for sentry type
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -416,6 +437,9 @@ def test_malformed_objects(symbolicator, hitcounter):
                 "url": f"{hitcounter.url}/garbage_data/",
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -449,6 +473,9 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
                 "url": f"{hitcounter.url}/msdl/",
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -471,6 +498,9 @@ def test_redirects(symbolicator, hitcounter):
                 "url": f"{hitcounter.url}/redirect/msdl/",
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -501,6 +531,9 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
                 "url": f"{url}/msdl/",
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
         **WINDOWS_DATA,
     )
 
@@ -513,3 +546,32 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
     else:
         assert not hitcounter.hits
         assert response.json() == MISSING_FILE
+
+
+def test_no_dif_candidates(symbolicator, hitcounter):
+    # Asserts that disabling requesting for DIF candidates info works.
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    request_data = dict(
+        **WINDOWS_DATA,
+        sources=[
+            {
+                "type": "http",
+                "id": "microsoft",
+                "layout": {"type": "symstore"},
+                "filters": {"filetypes": ["pdb", "pe"]},
+                "url": f"{hitcounter.url}/msdl/",
+            }
+        ],
+    )
+
+    response = service.post("/symbolicate", json=request_data)
+    response.raise_for_status()
+
+    success_response = copy.deepcopy(SUCCESS_WINDOWS)
+    for module in success_response["modules"]:
+        del module["candidates"]
+
+    assert hitcounter.hits
+    assert response.json() == success_response

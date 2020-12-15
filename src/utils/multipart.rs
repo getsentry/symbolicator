@@ -4,6 +4,7 @@ use bytes::{Bytes, BytesMut};
 use futures01::{Future, Stream};
 
 use crate::sources::SourceConfig;
+use crate::types::RequestData;
 
 const MAX_SOURCES_SIZE: usize = 1_000_000;
 
@@ -45,4 +46,12 @@ pub fn read_multipart_sources(
         read_multipart_data(field, MAX_SOURCES_SIZE)
             .and_then(|data| Ok(serde_json::from_slice(&data)?)),
     )
+}
+
+pub fn read_multipart_request_data(
+    field: multipart::Field<Payload>,
+) -> ResponseFuture<RequestData, Error> {
+    let fut = read_multipart_data(field, MAX_SOURCES_SIZE)
+        .and_then(|data| Ok(serde_json::from_slice(&data)?));
+    Box::new(fut)
 }

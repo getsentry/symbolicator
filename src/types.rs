@@ -115,6 +115,38 @@ impl fmt::Display for Scope {
     }
 }
 
+/// Extra JSON request data for multipart requests.
+///
+/// Multipart requests like `/minidump` and `/applecrashreport` often need some extra
+/// request data together with their main data payload which is included as a JSON-formatted
+/// multi-part.  This can represent this data.
+///
+/// This is meant to be extensible, it is conceivable that the existing `sources` mutli-part
+/// would merge into this one at some point.
+#[derive(Debug, Deserialize)]
+pub struct RequestData {
+    /// Common symbolication per-request options.
+    #[serde(default)]
+    pub options: RequestOptions,
+}
+
+/// Common options for all symbolication API requests.
+///
+/// These options control some features which control the symbolication and general request
+/// handling behaviour.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RequestOptions {
+    /// Whether to return detailed information on DIF object candidates.
+    ///
+    /// Symbolication requires DIF object files and which ones selected and not selected
+    /// influences the quality of symbolication.  Enabling this will return extra
+    /// information in the modules list section of the response detailing all DIF objects
+    /// considered, any problems with them and what they were used for.  See the
+    /// [`ObjectCandidate`] struct for which extra information is returned for DIF objects.
+    #[serde(default)]
+    pub dif_candidates: bool,
+}
+
 /// A map of register values.
 pub type Registers = BTreeMap<String, HexValue>;
 
@@ -719,6 +751,18 @@ pub struct CompletedSymbolicationResponse {
 
     /// A list of images, extended with status information.
     pub modules: Vec<CompleteObjectInfo>,
+}
+
+impl CompletedSymbolicationResponse {
+    /// Clears out all the information about the DIF object candidates in the modules list.
+    ///
+    /// This will avoid this from being serialised as the DIF object candidates list is not
+    /// serialised when it is empty.
+    pub fn clear_dif_candidates(&mut self) {
+        for module in self.modules.iter_mut() {
+            module.candidates.clear()
+        }
+    }
 }
 
 /// Information about the operating system.

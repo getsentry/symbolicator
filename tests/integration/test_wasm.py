@@ -91,6 +91,9 @@ def test_basic_wasm(symbolicator, hitcounter):
                 "is_public": False,
             }
         ],
+        options={
+            "dif_candidates": True,
+        },
     )
 
     service = symbolicator()

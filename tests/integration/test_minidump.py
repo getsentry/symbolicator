@@ -895,7 +895,14 @@ def test_basic(symbolicator, hitcounter):
                             "is_public": True,
                         }
                     ]
-                )
+                ),
+                "request_data": json.dumps(
+                    {
+                        "options": {
+                            "dif_candidates": True,
+                        },
+                    },
+                ),
             },
         )
         response.raise_for_status()
