@@ -1,5 +1,5 @@
 ---
-minVersion: "0.13.3"
+minVersion: "0.14.0"
 github:
   owner: getsentry
   repo: symbolicator
