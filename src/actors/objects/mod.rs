@@ -20,8 +20,8 @@ use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
-use crate::sources::{FileType, SourceConfig, SourceFileId};
-use crate::types::{ObjectFeatures, ObjectId, Scope};
+use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
+use crate::types::{ObjectCandidate, ObjectDownloadInfo, ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -115,6 +115,21 @@ impl From<debuginfo::ObjectError> for ObjectError {
     }
 }
 
+/// Wrapper around [`ObjectError`] to also pass the file information along.
+///
+/// Because of the requirement of [`CacheItemRequest`] to impl `From<io::Error>` it can not
+/// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this
+/// along some errors, so we use this wrapper.
+#[derive(Debug)]
+struct CacheLookupError {
+    /// The [`SourceId`] of the object which caused the [`ObjectError`] while being fetched.
+    source_id: SourceId,
+    /// The [`SourceLocation`] of the object which caused the [`ObjectError`] while being fetched.
+    source_location: SourceLocation,
+    /// The wrapped [`ObjectError`] which occurred while fetching the object file.
+    error: Arc<ObjectError>,
+}
+
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]
 struct FetchFileMetaRequest {
@@ -168,9 +183,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()))
             .map_err(ObjectError::Caching)
-            .and_then(move |data| {
-                if data.status == CacheStatus::Positive {
-                    if let Ok(object) = Object::parse(&data.data) {
+            .and_then(move |object_handle: Arc<ObjectHandle>| {
+                if object_handle.status == CacheStatus::Positive {
+                    if let Ok(object) = Object::parse(&object_handle.data) {
                         let mut new_cache = fs::File::create(path)?;
 
                         let meta = ObjectFeatures {
@@ -185,7 +200,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                     }
                 }
 
-                Ok(data.status)
+                Ok(object_handle.status)
             });
 
         Box::new(result)
@@ -206,7 +221,19 @@ impl CacheItemRequest for FetchFileMetaRequest {
         data: ByteView<'static>,
         _: CachePath,
     ) -> Self::Item {
-        let features = serde_json::from_slice(&data).unwrap_or_default();
+        // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
+        // get the malformed marker.
+        let features = match status {
+            CacheStatus::Positive => serde_json::from_slice(&data).unwrap_or_else(|err| {
+                log::error!(
+                    "Failed to load positive ObjectFileMeta cache for {:?}: {:?}",
+                    self.get_cache_key(),
+                    err
+                );
+                Default::default()
+            }),
+            _ => Default::default(),
+        };
 
         ObjectFileMeta {
             request: self.clone(),
@@ -218,7 +245,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
 }
 
 impl CacheItemRequest for FetchFileDataRequest {
-    type Item = ObjectFile;
+    type Item = ObjectHandle;
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
@@ -348,7 +375,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         data: ByteView<'static>,
         _: CachePath,
     ) -> Self::Item {
-        let object = ObjectFile {
+        let object = ObjectHandle {
             object_id: self.0.object_id.clone(),
             scope,
 
@@ -367,7 +394,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 }
 
-pub struct ObjectFileBytes(pub Arc<ObjectFile>);
+pub struct ObjectFileBytes(pub Arc<ObjectHandle>);
 
 impl AsRef<[u8]> for ObjectFileBytes {
     fn as_ref(&self) -> &[u8] {
@@ -397,8 +424,11 @@ impl ObjectFileMeta {
 }
 
 /// Handle to local cache file of an object.
+///
+/// This handle contains some information identifying the object it is for as well as the
+/// cache information.
 #[derive(Debug, Clone)]
-pub struct ObjectFile {
+pub struct ObjectHandle {
     object_id: ObjectId,
     scope: Scope,
 
@@ -406,11 +436,15 @@ pub struct ObjectFile {
     cache_key: CacheKey,
 
     /// The mmapped object.
+    ///
+    /// This only contains the object **if** [`ObjectHandle::status`] is
+    /// [`CacheStatus::Positive`], otherwise it will contain an empty string or the special
+    /// malformed marker.
     data: ByteView<'static>,
     status: CacheStatus,
 }
 
-impl ObjectFile {
+impl ObjectHandle {
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -444,7 +478,7 @@ impl ObjectFile {
     }
 }
 
-impl WriteSentryScope for ObjectFile {
+impl WriteSentryScope for ObjectHandle {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.write_sentry_scope(scope);
         self.file_id.write_sentry_scope(scope);
@@ -499,6 +533,20 @@ pub enum ObjectPurpose {
     Source,
 }
 
+/// The response for [`ObjectsActor::find`].
+///
+/// The found object is in the `meta` field with other DIFs considered in the `candidates`
+/// field.
+#[derive(Debug, Clone, Default)]
+pub struct FoundObject {
+    /// If a matching object was found its [`ObjectFileMeta`] will be provided here,
+    /// otherwise this will be `None`.
+    pub meta: Option<Arc<ObjectFileMeta>>,
+    /// This is a list of some meta information on all objects which have been considered
+    /// for this object.  It could be populated even if no matching object is found.
+    pub candidates: Vec<ObjectCandidate>,
+}
+
 impl ObjectsActor {
     /// Returns the requested object file.
     ///
@@ -507,7 +555,7 @@ impl ObjectsActor {
     pub fn fetch(
         &self,
         shallow_file: Arc<ObjectFileMeta>,
-    ) -> impl Future<Item = Arc<ObjectFile>, Error = ObjectError> {
+    ) -> impl Future<Item = Arc<ObjectHandle>, Error = ObjectError> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
             .map_err(ObjectError::Caching)
@@ -525,7 +573,7 @@ impl ObjectsActor {
     pub fn find(
         &self,
         request: FindObject,
-    ) -> impl Future<Item = Option<Arc<ObjectFileMeta>>, Error = ObjectError> {
+    ) -> impl Future<Item = FoundObject, Error = ObjectError> {
         let FindObject {
             filetypes,
             scope,
@@ -550,7 +598,11 @@ impl ObjectsActor {
                             // the search by debug/code id. We do not surface those errors to the
                             // user (instead we default to an empty search result) and only report
                             // them internally.
-                            log::error!("Failed to download from {}: {}", type_name, LogError(&e));
+                            log::error!(
+                                "Failed to fetch file list from {}: {}",
+                                type_name,
+                                LogError(&e)
+                            );
                             Ok(Vec::new())
                         })
                 })
@@ -568,6 +620,8 @@ impl ObjectsActor {
 
         let file_metas = file_ids.and_then(move |file_ids| {
             future::join_all(file_ids.into_iter().map(move |file_id| {
+                let source_id = file_id.source_id().to_owned();
+                let source_location = file_id.location();
                 let request = FetchFileMetaRequest {
                     scope: if file_id.source().is_public() {
                         Scope::Global
@@ -583,7 +637,11 @@ impl ObjectsActor {
 
                 meta_cache
                     .compute_memoized(request)
-                    .map_err(ObjectError::Caching)
+                    .map_err(move |error| CacheLookupError {
+                        source_id,
+                        source_location,
+                        error,
+                    })
                     // Errors from a file download should not make the entire join_all fail. We
                     // collect a Vec<Result> and surface the original error to the user only when
                     // we have no successful downloads.
@@ -593,57 +651,94 @@ impl ObjectsActor {
             }))
         });
 
-        file_metas.and_then(move |responses: Vec<Result<Arc<ObjectFileMeta>, _>>|
-                                                 -> Result<Option<Arc<ObjectFileMeta>>, _> {
-            responses
-                .into_iter()
-                .filter(|response| match response {
-                    // Make sure we only return objects which provide the requested info
-                    Ok(object_meta) => {
-                        if object_meta.status == CacheStatus::Positive {
-                            // object_meta.features is meaningless when CacheStatus != Positive
-                            match purpose {
-                                ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
-                                ObjectPurpose::Debug => {
-                                    object_meta.features.has_debug_info
-                                        || object_meta.features.has_symbols
-                                }
-                                ObjectPurpose::Source => object_meta.features.has_sources,
+        file_metas.and_then(
+            move |responses: Vec<Result<Arc<ObjectFileMeta>, CacheLookupError>>|
+                                 -> Result<FoundObject, ObjectError> {
+                let mut candidates: Vec<ObjectCandidate> = Vec::new();
+                responses
+                    .into_iter()
+                    .map(|response| {
+                        match response {
+                            Ok(obj_meta) => {
+                                let download = match obj_meta.status {
+                                    CacheStatus::Positive => ObjectDownloadInfo::Ok {
+                                        features: obj_meta.features()
+                                    },
+                                    CacheStatus::Negative => ObjectDownloadInfo::NotFound,
+                                    CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                                };
+                                candidates.push(ObjectCandidate {
+                                    source: obj_meta.request.file_id.source_id().clone(),
+                                    location: obj_meta.request.file_id.location(),
+                                    download,
+                                    unwind: Default::default(),
+                                    debug: Default::default(),
+                                });
+                                Ok(obj_meta)
                             }
-                        } else {
-                            true
+                            Err(wrapped_error) => {
+                                candidates.push(ObjectCandidate {
+                                    source: wrapped_error.source_id,
+                                    location: wrapped_error.source_location,
+                                    download: ObjectDownloadInfo::Error {
+                                        details: wrapped_error.error.to_string(),
+                                    },
+                                    unwind: Default::default(),
+                                    debug: Default::default(),
+                                });
+                                Err(ObjectError::Caching(wrapped_error.error))
+                            }
                         }
-                    }
-                    Err(_) => true,
-                })
-                .enumerate()
-                .min_by_key(|(i, response)| {
-                    // The sources are ordered in priority, so for the same quality of
-                    // object file prefer a file from an earlier source using the index `i`
-                    // provided by enumerate.
-
-                    // Prefer files that contain an object over unparseable files
-                    let object_meta = match response {
-                        Ok(object_meta) => object_meta,
-                        Err(e) => {
-                            log::debug!("Failed to download: {:#?}", e);
-                            return (3, *i);
+                    })
+                    .filter(|response| match response {
+                        // Make sure we only return objects which provide the requested info
+                        Ok(object_meta) => {
+                            if object_meta.status == CacheStatus::Positive {
+                                // object_meta.features is meaningless when CacheStatus != Positive
+                                match purpose {
+                                    ObjectPurpose::Unwind => object_meta.features.has_unwind_info,
+                                    ObjectPurpose::Debug => {
+                                        object_meta.features.has_debug_info
+                                            || object_meta.features.has_symbols
+                                    }
+                                    ObjectPurpose::Source => object_meta.features.has_sources,
+                                }
+                            } else {
+                                true
+                            }
                         }
-                    };
+                        Err(_) => true,
+                    })
+                    .enumerate()
+                    .min_by_key(|(i, response)| {
+                        // The sources are ordered in priority, so for the same quality of
+                        // object file prefer a file from an earlier source using the index `i`
+                        // provided by enumerate.
 
-                    // Prefer object files with debug/unwind info over object files without
-                    let score = match purpose {
-                        ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
-                        ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
-                        ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
-                        ObjectPurpose::Source if object_meta.features.has_sources => 0,
-                        _ => 2,
-                    };
-                    (score, *i)
-                })
-                .map(|(_i, response)| response)
-                .transpose()
-        })
+                        // Prefer files that contain an object over unparseable files
+                        let object_meta = match response {
+                            Ok(object_meta) => object_meta,
+                            Err(e) => {
+                                log::debug!("Failed to download: {:#?}", e);
+                                return (3, *i);
+                            }
+                        };
+
+                        // Prefer object files with debug/unwind info over object files without
+                        let score = match purpose {
+                            ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
+                            ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
+                            ObjectPurpose::Debug if object_meta.features.has_symbols => 1,
+                            ObjectPurpose::Source if object_meta.features.has_sources => 0,
+                            _ => 2,
+                        };
+                        (score, *i)
+                    })
+                    .map(|(_i, response)| response)
+                    .transpose()
+                    .map(|meta| FoundObject { meta, candidates })
+            },
+        )
     }
 }
 

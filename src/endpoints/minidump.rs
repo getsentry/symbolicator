@@ -11,15 +11,18 @@ use crate::actors::symbolication::SymbolicationActor;
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::sources::SourceConfig;
-use crate::types::{RequestId, Scope, SymbolicationResponse};
+use crate::types::{RequestId, RequestOptions, Scope, SymbolicationResponse};
 use crate::utils::futures::ThreadPool;
-use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
+use crate::utils::multipart::{
+    read_multipart_file, read_multipart_request_options, read_multipart_sources,
+};
 use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
 #[derive(Debug, Default)]
 struct MinidumpRequest {
     sources: Option<Vec<SourceConfig>>,
     minidump: Option<Bytes>,
+    options: RequestOptions,
 }
 
 fn handle_multipart_item(
@@ -49,6 +52,13 @@ fn handle_multipart_item(
         Some("upload_file_minidump") => {
             let future = read_multipart_file(field).map(move |minidump| {
                 request.minidump = Some(minidump);
+                request
+            });
+            Box::new(future)
+        }
+        Some("options") => {
+            let future = read_multipart_request_options(field).map(move |options| {
+                request.options = options;
                 request
             });
             Box::new(future)
@@ -94,7 +104,7 @@ fn process_minidump(
         .sources
         .ok_or_else(|| error::ErrorBadRequest("missing sources"))?;
 
-    Ok(symbolication.process_minidump(scope, minidump, sources))
+    Ok(symbolication.process_minidump(scope, minidump, sources, request.options))
 }
 
 fn handle_minidump_request(

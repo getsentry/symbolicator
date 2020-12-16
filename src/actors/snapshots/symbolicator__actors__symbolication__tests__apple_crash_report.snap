@@ -124,6 +124,19 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
     image_addr: 0x10864e000
     image_size: 108797951
+    candidates:
+      - source: local
+        location: 2D90/3291/397D/3D14/BFCA/52C7FB8C5E00
+        download:
+          status: notfound
+      - source: local
+        location: 2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.app
+        download:
+          status: notfound
+      - source: local
+        location: YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym
+        download:
+          status: notfound
   - debug_status: unused
     features:
       has_debug_info: false

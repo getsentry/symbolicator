@@ -11,15 +11,18 @@ use crate::actors::symbolication::SymbolicationActor;
 use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::sources::SourceConfig;
-use crate::types::{RequestId, Scope, SymbolicationResponse};
+use crate::types::{RequestId, RequestOptions, Scope, SymbolicationResponse};
 use crate::utils::futures::ThreadPool;
-use crate::utils::multipart::{read_multipart_file, read_multipart_sources};
+use crate::utils::multipart::{
+    read_multipart_file, read_multipart_request_options, read_multipart_sources,
+};
 use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
 #[derive(Debug, Default)]
 struct AppleCrashReportRequest {
     sources: Option<Vec<SourceConfig>>,
     apple_crash_report: Option<Bytes>,
+    options: RequestOptions,
 }
 
 fn handle_multipart_item(
@@ -49,6 +52,13 @@ fn handle_multipart_item(
         Some("apple_crash_report") => {
             let future = read_multipart_file(field).map(move |apple_crash_report| {
                 request.apple_crash_report = Some(apple_crash_report);
+                request
+            });
+            Box::new(future)
+        }
+        Some("options") => {
+            let future = read_multipart_request_options(field).map(move |options| {
+                request.options = options;
                 request
             });
             Box::new(future)
@@ -87,7 +97,7 @@ fn process_apple_crash_report(
         .sources
         .ok_or_else(|| error::ErrorBadRequest("missing sources"))?;
 
-    Ok(symbolication.process_apple_crash_report(scope, report, sources))
+    Ok(symbolication.process_apple_crash_report(scope, report, sources, request.options))
 }
 
 fn handle_apple_crash_report_request(

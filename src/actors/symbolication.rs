@@ -40,7 +40,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
     ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
-    RequestId, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
+    RequestId, RequestOptions, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::addr::AddrMode;
 use crate::utils::futures::{CallOnDrop, ThreadPool};
@@ -427,7 +427,8 @@ impl SourceLookup {
                     })
                     .compat()
                     .await
-                    .unwrap_or(None);
+                    .unwrap_or_default()
+                    .meta;
 
                 entry.source_object = match opt_object_file_meta {
                     None => None,
@@ -671,6 +672,10 @@ impl SymCacheLookup {
                 if let Some(ref symcache) = symcache {
                     entry.object_info.arch = symcache.arch();
                     entry.object_info.features.merge(symcache.features());
+
+                    let mut difs = Vec::new();
+                    difs.extend_from_slice(&symcache.candidates());
+                    entry.object_info.candidates = difs; // TODO(flub): merge!
                 }
 
                 entry.symcache = symcache;
@@ -964,7 +969,7 @@ fn symbolicate_stacktrace(
     stacktrace
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 /// A request for symbolication of multiple stack traces.
 pub struct SymbolicateStacktraces {
     /// The scope of this request which determines access to cached files.
@@ -988,6 +993,9 @@ pub struct SymbolicateStacktraces {
     /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
     /// be symbolicated as it is not clear which debug file to load.
     pub modules: Vec<CompleteObjectInfo>,
+
+    /// Options that came with this request, see [`RequestOptions`].
+    pub options: RequestOptions,
 }
 
 /// Run future with a timeout, instrumented with metrics.
@@ -1024,12 +1032,19 @@ impl SymbolicationActor {
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let serialize_dif_candidates = request.options.dif_candidates;
         measure_task_timeout(
             "symbolicate",
             self.do_symbolicate_impl(request),
             Duration::from_secs(3600),
         )
         .await
+        .map(|mut response| {
+            if !serialize_dif_candidates {
+                response.clear_dif_candidates();
+            }
+            response
+        })
     }
 
     async fn do_symbolicate_impl(
@@ -1430,6 +1445,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
         cfi_results: Vec<CfiCacheResult>,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let mut unwind_statuses = BTreeMap::new();
@@ -1660,6 +1676,7 @@ impl SymbolicationActor {
                 sources,
                 signal: None,
                 stacktraces,
+                options,
             };
 
             Ok((request, minidump_state))
@@ -1682,6 +1699,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
+        options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
             let sources: Arc<[SourceConfig]> = Arc::from(sources);
@@ -1694,7 +1712,7 @@ impl SymbolicationActor {
                 .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
                 .await?;
 
-            self.stackwalk_minidump_with_cfi(scope, minidump, sources, cfi_caches)
+            self.stackwalk_minidump_with_cfi(scope, minidump, sources, options, cfi_caches)
                 .await
         };
 
@@ -1706,10 +1724,11 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
+        options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
             .clone()
-            .do_stackwalk_minidump(scope, minidump, sources)
+            .do_stackwalk_minidump(scope, minidump, sources, options)
             .await?;
 
         let mut response = self.do_symbolicate(request).await?;
@@ -1723,9 +1742,11 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
+        options: RequestOptions,
     ) -> RequestId {
         self.create_symbolication_request(
-            self.clone().do_process_minidump(scope, minidump, sources),
+            self.clone()
+                .do_process_minidump(scope, minidump, sources, options),
         )
     }
 }
@@ -1783,6 +1804,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump: Bytes,
         sources: Vec<SourceConfig>,
+        options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
             let report = AppleCrashReport::from_reader(minidump.into_buf())?;
@@ -1835,6 +1857,7 @@ impl SymbolicationActor {
                 sources: Arc::from(sources),
                 signal: None,
                 stacktraces,
+                options,
             };
 
             let mut system_info = SystemInfo {
@@ -1894,9 +1917,10 @@ impl SymbolicationActor {
         scope: Scope,
         report: Bytes,
         sources: Vec<SourceConfig>,
+        options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
-            .parse_apple_crash_report(scope, report, sources)
+            .parse_apple_crash_report(scope, report, sources, options)
             .await?;
         let mut response = self.do_symbolicate(request).await?;
 
@@ -1909,11 +1933,13 @@ impl SymbolicationActor {
         scope: Scope,
         apple_crash_report: Bytes,
         sources: Vec<SourceConfig>,
+        options: RequestOptions,
     ) -> RequestId {
         self.create_symbolication_request(self.clone().do_process_apple_crash_report(
             scope,
             apple_crash_report,
             sources,
+            options,
         ))
     }
 }
@@ -2028,6 +2054,9 @@ mod tests {
                 code_file: None,
                 debug_file: None,
             })],
+            options: RequestOptions {
+                dif_candidates: true,
+            },
         }
     }
 
@@ -2092,7 +2121,14 @@ mod tests {
         let minidump = Bytes::from(fs::read(path)?);
         let response = test::block_fn01(|| {
             let symbolication = service.symbolication();
-            let request_id = symbolication.process_minidump(Scope::Global, minidump, vec![source]);
+            let request_id = symbolication.process_minidump(
+                Scope::Global,
+                minidump,
+                vec![source],
+                RequestOptions {
+                    dif_candidates: true,
+                },
+            );
             service.symbolication().get_response(request_id, None)
         })?;
 
@@ -2135,6 +2171,9 @@ mod tests {
                 Scope::Global,
                 report_file,
                 vec![source],
+                RequestOptions {
+                    dif_candidates: true,
+                },
             );
 
             service.symbolication().get_response(request_id, None)

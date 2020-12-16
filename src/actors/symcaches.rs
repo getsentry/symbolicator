@@ -13,11 +13,11 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, ObjectError, ObjectFile, ObjectFileMeta, ObjectPurpose, ObjectsActor,
+    FindObject, FoundObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
-use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
+use crate::types::{ObjectCandidate, ObjectFeatures, ObjectId, ObjectType, Scope};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -75,6 +75,7 @@ pub struct SymCacheFile {
     features: ObjectFeatures,
     status: CacheStatus,
     arch: Arch,
+    candidates: Arc<[ObjectCandidate]>,
 }
 
 impl SymCacheFile {
@@ -97,6 +98,11 @@ impl SymCacheFile {
     pub fn features(&self) -> ObjectFeatures {
         self.features
     }
+
+    /// Returns the list of DIFs which were searched for this symcache.
+    pub fn candidates(&self) -> Arc<[ObjectCandidate]> {
+        self.candidates.clone()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -105,6 +111,7 @@ struct FetchSymCacheInternal {
     objects_actor: ObjectsActor,
     object_meta: Arc<ObjectFileMeta>,
     threadpool: ThreadPool,
+    candidates: Arc<[ObjectCandidate]>,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -185,6 +192,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             features: self.object_meta.features(),
             status,
             arch,
+            candidates: self.candidates.clone(),
         }
     }
 }
@@ -203,7 +211,7 @@ impl SymCacheActor {
         &self,
         request: FetchSymCache,
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
-        let object = self
+        let find_result_future = self
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
@@ -222,35 +230,38 @@ impl SymCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.and_then(move |object| {
-            object
-                .map(move |object| {
-                    Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
-                        request,
-                        objects_actor: objects,
-                        object_meta: object,
-                        threadpool,
+        find_result_future.and_then(move |find_result: FoundObject| {
+            let FoundObject { meta, candidates } = find_result;
+            let candidates: Arc<[ObjectCandidate]> = Arc::from(candidates);
+            meta.map(clone!(candidates, |object_meta| {
+                Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
+                    request,
+                    objects_actor: objects,
+                    object_meta,
+                    threadpool,
+                    candidates,
+                }))
+            }))
+            .unwrap_or_else(move || {
+                Either::B(
+                    Ok(Arc::new(SymCacheFile {
+                        object_type,
+                        identifier,
+                        scope,
+                        data: ByteView::from_slice(b""),
+                        features: ObjectFeatures::default(),
+                        status: CacheStatus::Negative,
+                        arch: Arch::Unknown,
+                        candidates,
                     }))
-                })
-                .unwrap_or_else(move || {
-                    Either::B(
-                        Ok(Arc::new(SymCacheFile {
-                            object_type,
-                            identifier,
-                            scope,
-                            data: ByteView::from_slice(b""),
-                            features: ObjectFeatures::default(),
-                            status: CacheStatus::Negative,
-                            arch: Arch::Unknown,
-                        }))
-                        .into_future(),
-                    )
-                })
+                    .into_future(),
+                )
+            })
         })
     }
 }
 
-fn write_symcache(path: &Path, object: &ObjectFile) -> Result<(), SymCacheError> {
+fn write_symcache(path: &Path, object: &ObjectHandle) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
         object.write_sentry_scope(scope);

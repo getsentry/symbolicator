@@ -2,9 +2,13 @@
 
 ## 0.3.2
 
+### Features
+
+- Symbolication responses include download information about all DIF object files which were looked up on the available object sources. ([#309](https://github.com/getsentry/symbolicator/pull/309))
+
 ### Bug Fixes
 
-- Ensure deserialisation. ([#314](https://github.com/getsentry/symbolicator/pull/314))
+- Ensure deserialisation works for objects passed through procspawn. ([#314](https://github.com/getsentry/symbolicator/pull/314))
 
 ### Tools
 

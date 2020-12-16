@@ -20,6 +20,7 @@ use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
+use crate::sources::{SourceId, SourceLocation};
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
@@ -112,6 +113,38 @@ impl fmt::Display for Scope {
             Scope::Scoped(ref scope) => f.write_str(&scope),
         }
     }
+}
+
+/// Extra JSON request data for multipart requests.
+///
+/// Multipart requests like `/minidump` and `/applecrashreport` often need some extra
+/// request data together with their main data payload which is included as a JSON-formatted
+/// multi-part.  This can represent this data.
+///
+/// This is meant to be extensible, it is conceivable that the existing `sources` mutli-part
+/// would merge into this one at some point.
+#[derive(Debug, Deserialize)]
+pub struct RequestData {
+    /// Common symbolication per-request options.
+    #[serde(default)]
+    pub options: RequestOptions,
+}
+
+/// Common options for all symbolication API requests.
+///
+/// These options control some features which control the symbolication and general request
+/// handling behaviour.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RequestOptions {
+    /// Whether to return detailed information on DIF object candidates.
+    ///
+    /// Symbolication requires DIF object files and which ones selected and not selected
+    /// influences the quality of symbolication.  Enabling this will return extra
+    /// information in the modules list section of the response detailing all DIF objects
+    /// considered, any problems with them and what they were used for.  See the
+    /// [`ObjectCandidate`] struct for which extra information is returned for DIF objects.
+    #[serde(default)]
+    pub dif_candidates: bool,
 }
 
 /// A map of register values.
@@ -434,9 +467,129 @@ impl ObjectFeatures {
     }
 }
 
+/// Information about a Debug Information File in the [`CompleteObjectInfo`].
+///
+/// All DIFs are backed by an [`ObjectHandle`](crate::actors::objects::ObjectHandle).  But we
+/// may not have been able to get hold of this object file.  We still want to describe the
+/// relevant DIF however.
+///
+/// Currently has no [`ObjectId`] attached and the parent container is expected to know
+/// which ID this DIF info was for.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ObjectCandidate {
+    /// The ID of the object source where this DIF was expected to be found.
+    ///
+    /// This refers back to the IDs of sources in the symbolication requests, as well as any
+    /// globally configured sources from symbolicator's configuration.
+    ///
+    /// Generally this is a short readable string.
+    pub source: SourceId,
+    /// The location of this DIF on the object source.
+    ///
+    /// This will generally be some sort of path name or key, if you know the type of object
+    /// source this may give you an idea of where this DIF was expected to be found.
+    pub location: SourceLocation,
+    /// Information about fetching or downloading this DIF object.
+    ///
+    /// This section is always present and will at least have a `status` field.
+    pub download: ObjectDownloadInfo,
+    /// Information about any unwind info in this DIF object.
+    ///
+    /// This section is only present if this DIF object was used for unwinding by the
+    /// symbolication request.
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
+    pub unwind: ObjectUseInfo,
+    /// Information about any debug info this DIF object may have.
+    ///
+    /// This section is only present if this DIF object was used for symbol lookups by the
+    /// symbolication request.
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
+    pub debug: ObjectUseInfo,
+}
+
+/// Information about downloading of a DIF object.
+///
+/// This is part of the larger [`ObjectCandidate`] struct.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ObjectDownloadInfo {
+    /// The DIF object was downloaded successfully.
+    ///
+    /// The `features` field describes which [`ObjectFeatures`] the object is expected to
+    /// provide, though whether these are actually usable has not yet been verified.
+    Ok { features: ObjectFeatures },
+    /// The DIF object could not be parsed after downloading.
+    ///
+    /// This is only a basic validity check of whether the container of the object file can
+    /// be parsed.  Actually using the object for CFI or symbols might result in more
+    /// detailed problems, see [`ObjectUseInfo`] for more on this.
+    Malformed,
+    /// Symbolicator had insufficient permissions to download the DIF object.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    NoPerm { details: String },
+    /// The DIF object was not found.
+    ///
+    /// This is considered a *regular notfound* where the object was simply not available at
+    /// the source expected to provde this DIF.  Thus no further details are available.
+    NotFound,
+    /// An error occurred during downloading of this DIF object.
+    ///
+    /// This is mostly an internal error from symbolicator which is considered transient.
+    /// The next attempt to access this DIF object will retry the download.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Error { details: String },
+}
+
+/// Information about the use of a DIF object.
+///
+/// This information is applicable to both "unwind" and "debug" use cases, in each case the
+/// object needs to be processed a little more than just the downloaded artifact and we may
+/// need to report some status on this.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ObjectUseInfo {
+    /// The DIF object was successfully used to provide the required information.
+    ///
+    /// This means the object was used for CFI when used for [`ObjectCandidate::unwind`]
+    Ok,
+    /// The DIF object contained malformed data which could not be used.
+    Malformed,
+    /// An error occurred when attempting to use this DIF object.
+    ///
+    /// This is mostly an internal error from symbolicator which is considered transient.
+    /// The next attempt to access this DIF object will retry using this DIF object.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Error { details: String },
+    /// Internal state, this is not serialised.
+    ///
+    /// This enum is not serialised into its parent object when it is set to this value.
+    None,
+}
+
+impl Default for ObjectUseInfo {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl ObjectUseInfo {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 /// Normalized [`RawObjectInfo`] with status attached.
 ///
-/// `RawObjectInfo` is what the user sends and [`CompleteObjectInfo`] is what the user gets.
+/// This describes an object in the modules list of a response to a symbolication request.
+///
+/// [`RawObjectInfo`] is what the user sends and [`CompleteObjectInfo`] is what the user
+/// gets.
 #[derive(Debug, Clone, Serialize, Eq, PartialEq, Deserialize)]
 pub struct CompleteObjectInfo {
     /// Status for fetching the file with debug info.
@@ -455,6 +608,18 @@ pub struct CompleteObjectInfo {
     /// More information on the object file.
     #[serde(flatten)]
     pub raw: RawObjectInfo,
+
+    /// More information about the DIF files which were consulted for this object file.
+    ///
+    /// For stackwalking and symbolication we need various Debug Information Files about
+    /// this module.  We look for these DIF files in various locations, this describes all
+    /// the DIF files we looked up and what we know about them, how we used them.  It can be
+    /// helpful to understand what information was available or missing and for which
+    /// reasons.
+    ///
+    /// This list is not serialised if it is empty.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub candidates: Vec<ObjectCandidate>,
 }
 
 impl CompleteObjectInfo {
@@ -509,6 +674,7 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             features: ObjectFeatures::default(),
             arch: Arch::Unknown,
             raw,
+            candidates: Vec::new(),
         }
     }
 }
@@ -585,6 +751,18 @@ pub struct CompletedSymbolicationResponse {
 
     /// A list of images, extended with status information.
     pub modules: Vec<CompleteObjectInfo>,
+}
+
+impl CompletedSymbolicationResponse {
+    /// Clears out all the information about the DIF object candidates in the modules list.
+    ///
+    /// This will avoid this from being serialised as the DIF object candidates list is not
+    /// serialised when it is empty.
+    pub fn clear_dif_candidates(&mut self) {
+        for module in self.modules.iter_mut() {
+            module.candidates.clear()
+        }
+    }
 }
 
 /// Information about the operating system.
