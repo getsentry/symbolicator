@@ -418,6 +418,7 @@ impl SourceLookup {
                 }
 
                 let opt_object_file_meta = objects
+                    .clone()
                     .find(FindObject {
                         filetypes: FileType::sources(),
                         purpose: ObjectPurpose::Source,

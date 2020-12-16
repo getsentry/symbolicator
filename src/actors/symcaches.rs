@@ -242,6 +242,7 @@ impl SymCacheActor {
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
         let find_result_future = self
             .objects
+            .clone()
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
@@ -249,6 +250,7 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
+            .boxed_local()
             .compat()
             .map_err(|e| Arc::new(SymCacheError::Fetching(e)));
 

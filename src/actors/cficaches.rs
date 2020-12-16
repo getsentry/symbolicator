@@ -202,6 +202,7 @@ impl CfiCacheActor {
     ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
         let object = self
             .objects
+            .clone()
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
@@ -219,7 +220,7 @@ impl CfiCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.compat().and_then(move |object| {
+        object.boxed_local().compat().and_then(move |object| {
             object
                 .meta
                 .map(move |object_meta| {

@@ -3,6 +3,8 @@
 //! This implements a cache holding the content of object files.  It does this by
 //! implementing the [`CacheItemRequest`] trait for a [`FetchFileDataRequest`] which can be
 //! used with a [`Cacher`] to make a filesystem based cache.
+//!
+//! [`Cacher`]: crate::actors::common::cache::Cacher
 
 use std::cmp;
 use std::fs;

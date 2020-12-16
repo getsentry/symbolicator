@@ -132,10 +132,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
         serde_json::from_slice::<ObjectFeatures>(data).is_ok()
     }
 
-    /// Returns the [`ObjectFileMeta`] at the given cache key.
+    /// Returns the [`ObjectMetaHandle`] at the given cache key.
     ///
     /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
-    /// returned will contain the default [`ObjectFileMeta::features`].
+    /// returned will contain the default [`ObjectMetaHandle::features`].
     fn load(
         &self,
         scope: Scope,
