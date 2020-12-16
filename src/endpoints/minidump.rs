@@ -14,7 +14,7 @@ use crate::sources::SourceConfig;
 use crate::types::{RequestId, RequestOptions, Scope, SymbolicationResponse};
 use crate::utils::futures::ThreadPool;
 use crate::utils::multipart::{
-    read_multipart_file, read_multipart_request_data, read_multipart_sources,
+    read_multipart_file, read_multipart_request_options, read_multipart_sources,
 };
 use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
@@ -56,9 +56,9 @@ fn handle_multipart_item(
             });
             Box::new(future)
         }
-        Some("request_data") => {
-            let future = read_multipart_request_data(field).map(move |request_data| {
-                request.options = request_data.options;
+        Some("options") => {
+            let future = read_multipart_request_options(field).map(move |options| {
+                request.options = options;
                 request
             });
             Box::new(future)

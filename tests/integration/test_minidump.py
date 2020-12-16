@@ -896,11 +896,9 @@ def test_basic(symbolicator, hitcounter):
                         }
                     ]
                 ),
-                "request_data": json.dumps(
+                "options": json.dumps(
                     {
-                        "options": {
-                            "dif_candidates": True,
-                        },
+                        "dif_candidates": True,
                     },
                 ),
             },
