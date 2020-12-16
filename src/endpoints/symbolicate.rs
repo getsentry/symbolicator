@@ -47,7 +47,7 @@ struct SymbolicationRequestBody {
     #[serde(default)]
     pub modules: Vec<RawObjectInfo>,
     #[serde(default)]
-    pub options: Option<RequestOptions>,
+    pub options: RequestOptions,
 }
 
 fn symbolicate_frames(
@@ -76,7 +76,7 @@ fn symbolicate_frames(
             stacktraces: body.stacktraces,
             modules: body.modules.into_iter().map(From::from).collect(),
             scope: params.scope,
-            options: body.options.unwrap_or_default(),
+            options: body.options,
         };
 
         let request_id = state.symbolication().symbolicate_stacktraces(message);
