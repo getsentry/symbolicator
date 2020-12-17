@@ -1,3 +1,4 @@
+import copy
 import json
 
 MINIDUMP_SUCCESS = {
@@ -896,6 +897,38 @@ def test_basic(symbolicator, hitcounter):
                         }
                     ]
                 ),
+            },
+        )
+        response.raise_for_status()
+
+    expected = copy.deepcopy(MINIDUMP_SUCCESS)
+    for module in expected["modules"]:
+        module.pop("candidates", None)
+
+    assert response.json() == expected
+
+
+def test_candidates(symbolicator, hitcounter):
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    with open("tests/fixtures/windows.dmp", "rb") as f:
+        response = service.post(
+            "/minidump",
+            files={"upload_file_minidump": f},
+            data={
+                "sources": json.dumps(
+                    [
+                        {
+                            "type": "http",
+                            "id": "microsoft",
+                            "layout": {"type": "symstore"},
+                            "filters": {"filetypes": ["pdb", "pe"]},
+                            "url": f"{hitcounter.url}/msdl/",
+                            "is_public": True,
+                        }
+                    ]
+                ),
                 "options": json.dumps(
                     {
                         "dif_candidates": True,
@@ -906,3 +939,20 @@ def test_basic(symbolicator, hitcounter):
         response.raise_for_status()
 
     assert response.json() == MINIDUMP_SUCCESS
+
+
+def test_unknown_field(symbolicator):
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    with open("tests/fixtures/windows.dmp", "rb") as f:
+        response = service.post(
+            "/minidump",
+            files={"upload_file_minidump": f},
+            data={
+                "sources": "[]",
+                "unknown": "value",
+            },
+        )
+
+    assert response.status_code == 200

@@ -1,10 +1,16 @@
 # Changelog
 
-## 0.3.2
+## Unreleased
 
 ### Features
 
 - Symbolication responses include download information about all DIF object files which were looked up on the available object sources. ([#309](https://github.com/getsentry/symbolicator/pull/309))
+
+### Bug Fixes
+
+- Silently ignore unknown fields in minidump and apple crash report requests instead of responding with `400 Bad Request`. ([#321](https://github.com/getsentry/symbolicator/pull/321))
+
+## 0.3.2
 
 ### Bug Fixes
 

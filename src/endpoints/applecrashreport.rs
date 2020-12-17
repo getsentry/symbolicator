@@ -64,8 +64,8 @@ fn handle_multipart_item(
             Box::new(future)
         }
         _ => {
-            let error = error::ErrorBadRequest("unknown formdata field");
-            Box::new(future::err(error))
+            // Always ignore unknown fields.
+            Box::new(future::ok(request))
         }
     }
 }

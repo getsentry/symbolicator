@@ -234,6 +234,20 @@ def test_no_sources(symbolicator, cache_dir_param):
         assert not cache_dir_param.join("symcaches/global").exists()
 
 
+def test_unknown_field(symbolicator, cache_dir_param):
+    service = symbolicator(cache_dir=cache_dir_param)
+    service.wait_healthcheck()
+
+    request = dict(
+        **WINDOWS_DATA,
+        sources=[],  # Disable for faster test result. We don't care about symbolication
+        unknown="value",  # Should be ignored
+    )
+
+    response = service.post("/symbolicate", json=request)
+    assert response.status_code == 200
+
+
 @pytest.mark.parametrize("is_public", [True, False])
 def test_lookup_deduplication(symbolicator, hitcounter, is_public):
     input = dict(

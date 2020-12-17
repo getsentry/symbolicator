@@ -271,3 +271,20 @@ def test_basic(symbolicator, hitcounter):
     pprint(response.json())
 
     assert response.json() == APPLE_CRASH_REPORT_SUCCESS
+
+
+def test_unknown_field(symbolicator):
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    with open("tests/fixtures/apple_crash_report.txt", "rb") as f:
+        response = service.post(
+            "/applecrashreport",
+            files={"apple_crash_report": f},
+            data={
+                "sources": "[]",
+                "unknown": "value",
+            },
+        )
+
+    assert response.status_code == 200
