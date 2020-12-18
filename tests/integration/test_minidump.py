@@ -335,12 +335,7 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb",
-                    "download": {"status": "notfound"},
-                },
-                {
-                    "source": "microsoft",
-                    "location": "crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_",
+                    "location": "crash.exe/5AB380779000/crash.ex_",
                     "download": {"status": "notfound"},
                 },
                 {
@@ -350,7 +345,12 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "source": "microsoft",
-                    "location": "crash.exe/5AB380779000/crash.ex_",
+                    "location": "crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_",
+                    "download": {"status": "notfound"},
+                },
+                {
+                    "source": "microsoft",
+                    "location": "crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb",
                     "download": {"status": "notfound"},
                 },
             ],
@@ -374,21 +374,8 @@ MINIDUMP_SUCCESS = {
             "type": "pe",
             "candidates": [
                 {
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                    "location": "dbghelp.pdb/9C2A902B6FDF40AD8308588A41D572A01/dbghelp.pdb",
-                    "source": "microsoft",
-                },
-                {
                     "download": {"status": "notfound"},
-                    "location": "dbghelp.pdb/9C2A902B6FDF40AD8308588A41D572A01/dbghelp.pd_",
+                    "location": "dbghelp.dll/57898E12145000/dbghelp.dl_",
                     "source": "microsoft",
                 },
                 {
@@ -406,7 +393,21 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "download": {"status": "notfound"},
-                    "location": "dbghelp.dll/57898E12145000/dbghelp.dl_",
+                    "location": "dbghelp.pdb/9C2A902B6FDF40AD8308588A41D572A01/dbghelp.pd_",
+                    "source": "microsoft",
+                },
+                {
+                    "debug": {"status": "ok"},
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "dbghelp.pdb/9C2A902B6FDF40AD8308588A41D572A01/dbghelp.pdb",
                     "source": "microsoft",
                 },
             ],
@@ -466,21 +467,8 @@ MINIDUMP_SUCCESS = {
             "image_size": 151_552,
             "candidates": [
                 {
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                    "location": "dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb",
-                    "source": "microsoft",
-                },
-                {
                     "download": {"status": "notfound"},
-                    "location": "dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_",
+                    "location": "dbgcore.dll/57898DAB25000/dbgcore.dl_",
                     "source": "microsoft",
                 },
                 {
@@ -498,7 +486,21 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "download": {"status": "notfound"},
-                    "location": "dbgcore.dll/57898DAB25000/dbgcore.dl_",
+                    "location": "dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_",
+                    "source": "microsoft",
+                },
+                {
+                    "debug": {"status": "ok"},
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb",
                     "source": "microsoft",
                 },
             ],
@@ -631,21 +633,8 @@ MINIDUMP_SUCCESS = {
             "type": "pe",
             "candidates": [
                 {
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                    "location": "wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb",
-                    "source": "microsoft",
-                },
-                {
                     "download": {"status": "notfound"},
-                    "location": "wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_",
+                    "location": "kernel32.dll/590285E9e0000/kernel32.dl_",
                     "source": "microsoft",
                 },
                 {
@@ -663,7 +652,21 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "download": {"status": "notfound"},
-                    "location": "kernel32.dll/590285E9e0000/kernel32.dl_",
+                    "location": "wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_",
+                    "source": "microsoft",
+                },
+                {
+                    "debug": {"status": "ok"},
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "location": "wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb",
                     "source": "microsoft",
                 },
             ],
@@ -706,20 +709,7 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb",
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                },
-                {
-                    "source": "microsoft",
-                    "location": "wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_",
+                    "location": "rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_",
                     "download": {"status": "notfound"},
                 },
                 {
@@ -737,8 +727,22 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "source": "microsoft",
-                    "location": "rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_",
+                    "location": "wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_",
                     "download": {"status": "notfound"},
+                },
+                {
+                    "source": "microsoft",
+                    "location": "wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb",
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "debug": {"status": "ok"},
                 },
             ],
         },
@@ -780,21 +784,8 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pdb",
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                },
-                {
+                    "location": "KERNELBASE.dll/59BF2BCF1a1000/KERNELBASE.dl_",
                     "download": {"status": "notfound"},
-                    "location": "wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pd_",
-                    "source": "microsoft",
                 },
                 {
                     "source": "microsoft",
@@ -810,9 +801,23 @@ MINIDUMP_SUCCESS = {
                     },
                 },
                 {
-                    "source": "microsoft",
-                    "location": "KERNELBASE.dll/59BF2BCF1a1000/KERNELBASE.dl_",
                     "download": {"status": "notfound"},
+                    "location": "wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pd_",
+                    "source": "microsoft",
+                },
+                {
+                    "source": "microsoft",
+                    "location": "wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pdb",
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "debug": {"status": "ok"},
                 },
             ],
         },
@@ -836,20 +841,7 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb",
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                },
-                {
-                    "source": "microsoft",
-                    "location": "wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_",
+                    "location": "ntdll.dll/59B0D8F3183000/ntdll.dl_",
                     "download": {"status": "notfound"},
                 },
                 {
@@ -867,8 +859,22 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "source": "microsoft",
-                    "location": "ntdll.dll/59B0D8F3183000/ntdll.dl_",
+                    "location": "wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_",
                     "download": {"status": "notfound"},
+                },
+                {
+                    "source": "microsoft",
+                    "location": "wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb",
+                    "download": {
+                        "features": {
+                            "has_debug_info": True,
+                            "has_sources": False,
+                            "has_symbols": True,
+                            "has_unwind_info": True,
+                        },
+                        "status": "ok",
+                    },
+                    "debug": {"status": "ok"},
                 },
             ],
         },

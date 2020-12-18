@@ -46,6 +46,8 @@ MACHO_SUCCESS = {
             "type": "macho",
             "candidates": [
                 {
+                    "source": "s3",
+                    "location": "_.dwarf/mach-uuid-sym-502fc0a51ec13e479998684fa139dca7/_.dwarf",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -55,8 +57,7 @@ MACHO_SUCCESS = {
                         },
                         "status": "ok",
                     },
-                    "location": "_.dwarf/mach-uuid-sym-502fc0a51ec13e479998684fa139dca7/_.dwarf",
-                    "source": "s3",
+                    "debug": {"status": "ok"},
                 },
             ],
         }

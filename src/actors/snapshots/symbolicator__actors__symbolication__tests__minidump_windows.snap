@@ -170,6 +170,18 @@ modules:
     image_size: 36864
     candidates:
       - source: local
+        location: crash.exe/5AB380779000/crash.ex_
+        download:
+          status: notfound
+      - source: local
+        location: crash.exe/5AB380779000/crash.exe
+        download:
+          status: notfound
+      - source: local
+        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_
+        download:
+          status: notfound
+      - source: local
         location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb
         download:
           status: ok
@@ -178,18 +190,8 @@ modules:
             has_unwind_info: true
             has_symbols: true
             has_sources: false
-      - source: local
-        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_
-        download:
-          status: notfound
-      - source: local
-        location: crash.exe/5AB380779000/crash.exe
-        download:
-          status: notfound
-      - source: local
-        location: crash.exe/5AB380779000/crash.ex_
-        download:
-          status: notfound
+        debug:
+          status: ok
       - source: local
         location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym
         download:
@@ -361,11 +363,7 @@ modules:
     image_size: 917504
     candidates:
       - source: local
-        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb
-        download:
-          status: notfound
-      - source: local
-        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_
+        location: kernel32.dll/590285E9e0000/kernel32.dl_
         download:
           status: notfound
       - source: local
@@ -373,7 +371,11 @@ modules:
         download:
           status: notfound
       - source: local
-        location: kernel32.dll/590285E9e0000/kernel32.dl_
+        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_
+        download:
+          status: notfound
+      - source: local
+        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb
         download:
           status: notfound
       - source: local
@@ -457,11 +459,7 @@ modules:
     image_size: 1585152
     candidates:
       - source: local
-        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb
-        download:
-          status: notfound
-      - source: local
-        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_
+        location: ntdll.dll/59B0D8F3183000/ntdll.dl_
         download:
           status: notfound
       - source: local
@@ -469,7 +467,11 @@ modules:
         download:
           status: notfound
       - source: local
-        location: ntdll.dll/59B0D8F3183000/ntdll.dl_
+        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_
+        download:
+          status: notfound
+      - source: local
+        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb
         download:
           status: notfound
       - source: local

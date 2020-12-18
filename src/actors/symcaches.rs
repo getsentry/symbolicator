@@ -17,7 +17,9 @@ use crate::actors::objects::{
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
-use crate::types::{ObjectCandidate, ObjectFeatures, ObjectId, ObjectType, Scope};
+use crate::types::{
+    AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
+};
 use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
 
@@ -75,7 +77,7 @@ pub struct SymCacheFile {
     features: ObjectFeatures,
     status: CacheStatus,
     arch: Arch,
-    candidates: Arc<[ObjectCandidate]>,
+    candidates: AllObjectCandidates,
 }
 
 impl SymCacheFile {
@@ -100,7 +102,7 @@ impl SymCacheFile {
     }
 
     /// Returns the list of DIFs which were searched for this symcache.
-    pub fn candidates(&self) -> Arc<[ObjectCandidate]> {
+    pub fn candidates(&self) -> AllObjectCandidates {
         self.candidates.clone()
     }
 }
@@ -111,7 +113,7 @@ struct FetchSymCacheInternal {
     objects_actor: ObjectsActor,
     object_meta: Arc<ObjectFileMeta>,
     threadpool: ThreadPool,
-    candidates: Arc<[ObjectCandidate]>,
+    candidates: AllObjectCandidates,
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -184,6 +186,31 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .map(|cache| cache.arch())
             .unwrap_or_default();
 
+        // If self.object_meta.status() was != Positive than that status got passed straight
+        // through to our own `status` argument.
+        let debug = match status {
+            CacheStatus::Positive => ObjectUseInfo::Ok,
+            CacheStatus::Negative => {
+                if self.object_meta.status() == CacheStatus::Positive {
+                    ObjectUseInfo::Error {
+                        details: String::from("Object file no longer available"),
+                    }
+                } else {
+                    // No need to pretend that we were going to use this symcache if the
+                    // original object file was already not there, that status is already
+                    // reported.
+                    ObjectUseInfo::None
+                }
+            }
+            CacheStatus::Malformed => ObjectUseInfo::Malformed,
+        };
+        let mut candidates = self.candidates.clone(); // yuk!
+        candidates.set_debug(
+            self.object_meta.source().clone(),
+            self.object_meta.location(),
+            debug,
+        );
+
         SymCacheFile {
             object_type: self.request.object_type,
             identifier: self.request.identifier.clone(),
@@ -192,7 +219,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             features: self.object_meta.features(),
             status,
             arch,
-            candidates: self.candidates.clone(),
+            candidates,
         }
     }
 }
@@ -232,7 +259,6 @@ impl SymCacheActor {
 
         find_result_future.and_then(move |find_result: FoundObject| {
             let FoundObject { meta, candidates } = find_result;
-            let candidates: Arc<[ObjectCandidate]> = Arc::from(candidates);
             meta.map(clone!(candidates, |object_meta| {
                 Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
                     request,

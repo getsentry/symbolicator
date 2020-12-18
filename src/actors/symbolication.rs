@@ -673,9 +673,7 @@ impl SymCacheLookup {
                     entry.object_info.arch = symcache.arch();
                     entry.object_info.features.merge(symcache.features());
 
-                    let mut difs = Vec::new();
-                    difs.extend_from_slice(&symcache.candidates());
-                    entry.object_info.candidates = difs; // TODO(flub): merge!
+                    entry.object_info.candidates = symcache.candidates(); // TODO(flub): merge!
                 }
 
                 entry.symcache = symcache;
