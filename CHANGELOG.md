@@ -20,6 +20,10 @@
 
 - `wasm-split` now retains all sections. ([#311](https://github.com/getsentry/symbolicator/pull/311))
 
+### Features
+
+- Symbolicator will now track Release Health Sessions for each symbolication request. ([#289](https://github.com/getsentry/symbolicator/pull/289))
+
 ## 0.3.1
 
 ### Features

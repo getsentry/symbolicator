@@ -57,6 +57,7 @@ fn symbolicate_frames(
     request: HttpRequest<ServiceState>,
 ) -> ResponseFuture<Json<SymbolicationResponse>, Error> {
     let hub = Hub::from_request(&request);
+    hub.start_session();
 
     Hub::run(hub, || {
         let params = params.into_inner();
