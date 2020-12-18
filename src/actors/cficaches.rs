@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
@@ -94,7 +94,7 @@ impl CfiCacheFile {
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: ObjectsActor,
-    object_meta: Arc<ObjectFileMeta>,
+    object_meta: Arc<ObjectMetaHandle>,
     threadpool: ThreadPool,
 }
 
@@ -115,6 +115,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
+            .compat()
             .map_err(CfiCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
@@ -201,6 +202,7 @@ impl CfiCacheActor {
     ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
         let object = self
             .objects
+            .clone()
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
@@ -218,7 +220,7 @@ impl CfiCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.and_then(move |object| {
+        object.boxed_local().compat().and_then(move |object| {
             object
                 .meta
                 .map(move |object_meta| {

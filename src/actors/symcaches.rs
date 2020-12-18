@@ -13,7 +13,8 @@ use thiserror::Error;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
-    FindObject, FoundObject, ObjectError, ObjectFileMeta, ObjectHandle, ObjectPurpose, ObjectsActor,
+    FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
+    ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
@@ -111,7 +112,7 @@ impl SymCacheFile {
 struct FetchSymCacheInternal {
     request: FetchSymCache,
     objects_actor: ObjectsActor,
-    object_meta: Arc<ObjectFileMeta>,
+    object_meta: Arc<ObjectMetaHandle>,
     threadpool: ThreadPool,
     candidates: AllObjectCandidates,
 }
@@ -129,6 +130,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
+            .compat()
             .map_err(SymCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
@@ -240,6 +242,7 @@ impl SymCacheActor {
     ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
         let find_result_future = self
             .objects
+            .clone()
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
@@ -247,6 +250,8 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
+            .boxed_local()
+            .compat()
             .map_err(|e| Arc::new(SymCacheError::Fetching(e)));
 
         let symcaches = self.symcaches.clone();

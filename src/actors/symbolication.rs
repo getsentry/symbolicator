@@ -418,6 +418,7 @@ impl SourceLookup {
                 }
 
                 let opt_object_file_meta = objects
+                    .clone()
                     .find(FindObject {
                         filetypes: FileType::sources(),
                         purpose: ObjectPurpose::Source,
@@ -425,23 +426,19 @@ impl SourceLookup {
                         identifier: object_id_from_object_info(&entry.object_info.raw),
                         sources,
                     })
-                    .compat()
                     .await
                     .unwrap_or_default()
                     .meta;
 
                 entry.source_object = match opt_object_file_meta {
                     None => None,
-                    Some(object_file_meta) => objects
-                        .fetch(object_file_meta)
-                        .compat()
-                        .await
-                        .ok()
-                        .and_then(|x| {
+                    Some(object_file_meta) => {
+                        objects.fetch(object_file_meta).await.ok().and_then(|x| {
                             SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
                                 .map(|x| Arc::new(SourceObject(x)))
                                 .ok()
-                        }),
+                        })
+                    }
                 };
 
                 if entry.source_object.is_some() {
