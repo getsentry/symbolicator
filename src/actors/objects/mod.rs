@@ -223,7 +223,7 @@ impl ObjectsActor {
     /// in the metadata cache which usually lives longer.
     ///
     /// TODO(flub): Once all the callers are async/await this should take `&self` again
-    /// instead of requiring `self`.  Helper methods can be changed at this time too.
+    /// instead of requiring `self`.
     pub async fn find(self, request: FindObject) -> Result<FoundObject, ObjectError> {
         let FindObject {
             filetypes,
@@ -233,10 +233,7 @@ impl ObjectsActor {
             purpose,
         } = request;
 
-        let file_ids = self
-            .clone()
-            .list_files(sources, filetypes, &identifier)
-            .await;
+        let file_ids = self.list_files(&sources, filetypes, &identifier).await;
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
         select_meta(file_metas, purpose)
@@ -247,31 +244,24 @@ impl ObjectsActor {
     /// This concurrently contacts all the sources and asks them for the files we should try
     /// to download from them matching the required filetypes and object IDs.  Not all
     /// sources guarantee that the returned files actually exist.
-    ///
-    /// TODO(flub): Once all the callers are async/await this should take `&self` again
-    /// instead of requiring `self`.
-    ///
     // TODO(flub): this function should inline already fetch the meta (what
     // `fetch_file_metas()` does now) for each file.  Currently we synchronise all the
     // futures at the end of the listing for no good reason.
-    async fn list_files(
-        self,
-        sources: Arc<[SourceConfig]>,
+    async fn list_files<'a>(
+        &'a self,
+        sources: &'a [SourceConfig],
         filetypes: &'static [FileType],
-        identifier: &ObjectId,
+        identifier: &'a ObjectId,
     ) -> Vec<SourceFileId> {
         let mut queries = Vec::with_capacity(sources.len());
 
         for source in sources.iter() {
-            let source = source.clone();
-            let identifier = identifier.clone();
             let hub = Arc::new(Hub::new_from_top(Hub::current()));
-            let download_svc = self.download_svc.clone();
 
             let query = async move {
                 let type_name = source.type_name();
-                download_svc
-                    .list_files(source, filetypes, identifier, hub)
+                self.download_svc
+                    .list_files(source.clone(), filetypes, identifier.clone(), hub)
                     .await
                     .unwrap_or_else(|err| {
                         // This basically only happens for the Sentry source type, when doing
