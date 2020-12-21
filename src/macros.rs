@@ -14,6 +14,37 @@ macro_rules! tryf {
     };
 }
 
+/// Same as [`tryf`] but a hack for futures 0.3.  These futures can be replaced with
+/// async/await code and then this hack goes away.
+#[macro_export]
+macro_rules! tryf03 {
+    ($e:expr) => {
+        match $e {
+            Ok(value) => value,
+            Err(e) => {
+                return Box::new(::futures::future::err(::std::convert::From::from(e)))
+                    as Box<dyn ::futures::future::Future<Output = _>>;
+            }
+        }
+    };
+}
+
+/// Same as [`tryf`] but a hack for futures 0.3.  These futures can be replaced with
+/// async/await code and then this hack goes away.
+#[macro_export]
+macro_rules! tryf03pin {
+    ($e:expr) => {
+        match $e {
+            Ok(value) => value,
+            Err(e) => {
+                use ::std::pin::Pin;
+                return Box::pin(::futures::future::err(::std::convert::From::from(e)))
+                    as Pin<Box<dyn ::futures::future::Future<Output = _>>>;
+            }
+        }
+    };
+}
+
 /// Declare a closure that clone specific values before moving them into their bodies. Mainly useful
 /// when using combinator functions such as [`Future::and_then`](futures01::Future::and_then) or
 /// [`Future::map`](futures01::Future::map).

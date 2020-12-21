@@ -4,9 +4,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
-use futures01::future::{Either, Future, IntoFuture};
-use sentry::configure_scope;
+use futures::compat::Future01CompatExt;
+use futures::future::{self, Either};
+use futures::{FutureExt, TryFutureExt};
+use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
     common::ByteView,
     minidump::cfi::{self, CfiCache},
@@ -20,8 +21,8 @@ use crate::actors::objects::{
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
-use crate::utils::futures::ThreadPool;
-use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::sentry::WriteSentryScope;
 
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
@@ -110,17 +111,16 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ///
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
-            .compat()
             .map_err(CfiCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
-            let future = futures01::lazy(move || {
+            let future = future::lazy(move |_| {
                 if object.status() != CacheStatus::Positive {
                     return Ok(object.status());
                 }
@@ -138,21 +138,21 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             });
 
             threadpool
-                .spawn_handle(future.sentry_hub_current().compat())
-                .boxed_local()
-                .compat()
-                .map_err(|_| CfiCacheError::Canceled)
-                .flatten()
+                .spawn_handle(future.bind_hub(Hub::current()))
+                .unwrap_or_else(|_| Err(CfiCacheError::Canceled))
         });
 
         let num_sources = self.request.sources.len();
 
-        Box::new(future_metrics!(
-            "cficaches",
-            Some((Duration::from_secs(1200), CfiCacheError::Timeout)),
-            result,
-            "num_sources" => &num_sources.to_string()
-        ))
+        Box::pin(
+            future_metrics!(
+                "cficaches",
+                Some((Duration::from_secs(1200), CfiCacheError::Timeout)),
+                result.compat(),
+                "num_sources" => &num_sources.to_string()
+            )
+            .compat(),
+        )
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
@@ -199,7 +199,7 @@ impl CfiCacheActor {
     pub fn fetch(
         &self,
         request: FetchCfiCache,
-    ) -> impl Future<Item = Arc<CfiCacheFile>, Error = Arc<CfiCacheError>> {
+    ) -> BoxedFuture<Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>> {
         let object = self
             .objects
             .clone()
@@ -220,20 +220,20 @@ impl CfiCacheActor {
         let identifier = request.identifier.clone();
         let scope = request.scope.clone();
 
-        object.boxed_local().compat().and_then(move |object| {
-            object
-                .meta
-                .map(move |object_meta| {
-                    Either::A(cficaches.compute_memoized(FetchCfiCacheInternal {
-                        request,
-                        objects_actor: objects,
-                        object_meta,
-                        threadpool,
-                    }))
-                })
-                .unwrap_or_else(move || {
-                    Either::B(
-                        Ok(Arc::new(CfiCacheFile {
+        object
+            .and_then(move |object| {
+                object
+                    .meta
+                    .map(move |object_meta| {
+                        Either::Left(cficaches.compute_memoized(FetchCfiCacheInternal {
+                            request,
+                            objects_actor: objects,
+                            object_meta,
+                            threadpool,
+                        }))
+                    })
+                    .unwrap_or_else(move || {
+                        Either::Right(future::ok(Arc::new(CfiCacheFile {
                             object_type,
                             identifier,
                             scope,
@@ -241,11 +241,10 @@ impl CfiCacheActor {
                             features: ObjectFeatures::default(),
                             status: CacheStatus::Negative,
                             path: CachePath::new(),
-                        }))
-                        .into_future(),
-                    )
-                })
-        })
+                        })))
+                    })
+            })
+            .boxed_local()
     }
 }
 

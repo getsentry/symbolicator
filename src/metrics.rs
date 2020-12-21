@@ -126,7 +126,7 @@ macro_rules! future_metrics {
     // Collect generic metrics about a future
     ($task_name:expr, $timeout:expr, $future:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use std::time::Instant;
-        use futures01::future::{self, Either};
+        use futures01::future::{self, Either, Future};
         use tokio::prelude::FutureExt;
 
         let creation_time = Instant::now();
