@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -12,6 +13,16 @@ use tokio::runtime::Runtime as TokioRuntime;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
+
+/// A pinned, boxed future.
+///
+/// This is the type of future that [`futures::FutureExt::boxed`] would return.  This is
+/// pretty boring but clippy quickly complains about type complexity without this.
+///
+/// You would mainly use this if you are dealing with a trait methods which deals with
+/// futures.  Trait methods can not be async/await and using this type in their return value
+/// allows to integrate with async await code.
+pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 /// Enables test mode of all thread pools and remote threads.
 ///

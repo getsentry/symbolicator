@@ -14,11 +14,11 @@ use std::sync::Arc;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 
-use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::sources::{SourceFileId, SourceId, SourceLocation};
 use crate::types::{ObjectFeatures, ObjectId, Scope};
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::{BoxedFuture, ThreadPool};
 
 use super::{FetchFileDataRequest, ObjectError, ObjectHandle};
 

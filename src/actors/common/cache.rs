@@ -2,11 +2,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::future::{self, Future, FutureExt, Shared, TryFutureExt};
+use futures::future::{self, FutureExt, Shared, TryFutureExt};
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -14,13 +13,7 @@ use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
-use crate::utils::futures::CallOnDrop;
-
-/// A pinned, boxed future.
-///
-/// This is the type of future that [`futures::FutureExt::boxed`] would return.  This is
-/// pretty boring but clippy quickly complains about type complexity without this.
-pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
+use crate::utils::futures::{BoxedFuture, CallOnDrop};
 
 /// Result from [`Cacher::compute_memoized`].
 type CacheResult<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;

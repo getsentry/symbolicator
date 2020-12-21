@@ -14,14 +14,14 @@ use symbolic::{
 };
 use thiserror::Error;
 
-use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::{BoxedFuture, ThreadPool};
 use crate::utils::sentry::WriteSentryScope;
 
 /// Errors happening while generating a cficache

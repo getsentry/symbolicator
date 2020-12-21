@@ -11,7 +11,7 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath, Cacher};
+use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
@@ -21,7 +21,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::{BoxedFuture, ThreadPool};
 use crate::utils::sentry::WriteSentryScope;
 
 /// Errors happening while generating a symcache.

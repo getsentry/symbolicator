@@ -20,11 +20,12 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 
-use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath};
+use crate::actors::common::cache::{CacheItemRequest, CachePath};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::services::download::DownloadStatus;
 use crate::sources::SourceFileId;
 use crate::types::{ObjectId, Scope};
+use crate::utils::futures::BoxedFuture;
 use crate::utils::sentry::WriteSentryScope;
 
 use super::meta_cache::FetchFileMetaRequest;
