@@ -9,15 +9,12 @@
 
 use std::fs;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 
-use futures::Future;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 
-use crate::actors::common::cache::Cacher;
-use crate::actors::common::cache::{CacheItemRequest, CachePath};
+use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::sources::{SourceFileId, SourceId, SourceLocation};
 use crate::types::{ObjectFeatures, ObjectId, Scope};
@@ -97,10 +94,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// This returns an error if the download failed.  If the data cache has a
     /// [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] status the same status is
     /// returned.
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Pin<Box<dyn Future<Output = Result<CacheStatus, Self::Error>>>> {
+    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
 

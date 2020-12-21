@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,7 +11,7 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
+use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
@@ -126,10 +125,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Pin<Box<dyn Future<Output = Result<CacheStatus, Self::Error>>>> {
+    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor

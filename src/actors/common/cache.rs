@@ -16,6 +16,12 @@ use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
+/// A pinned, boxed future.
+///
+/// This is the type of future that [`futures::FutureExt::boxed`] would return.  This is
+/// pretty boring but clippy quickly complains about type complexity without this.
+pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
+
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
@@ -127,10 +133,7 @@ pub trait CacheItemRequest: 'static + Send {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Pin<Box<dyn Future<Output = Result<CacheStatus, Self::Error>>>>;
+    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>>;
 
     /// Determines whether this item should be loaded.
     ///
@@ -208,11 +211,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    fn compute(
-        &self,
-        request: T,
-        key: CacheKey,
-    ) -> Pin<Box<dyn Future<Output = Result<T::Item, T::Error>>>> {
+    fn compute(&self, request: T, key: CacheKey) -> BoxedFuture<Result<T::Item, T::Error>> {
         // cache_path is None when caching is disabled.
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
@@ -291,15 +290,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             Ok(())
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
-        // let channel = future::lazy(move |_| slf.compute(request, key))
-        //     .then(move |result| {
-        //         // Drop the token first to evict from the map. This ensures that callers either
-        //         // get a channel that will receive data, or they create a new channel.
-        //         drop(remove_computation_token);
-        //         sender.send(result.map(Arc::new).map_err(Arc::new)).ok();
-        //         future::ok(())
-        //     })
-        //     .bind_hub(Hub::new_from_top(Hub::current()));
 
         // TODO: This spawns into the arbiter of the caller. Consider more explicit resource
         // allocation here to separate CPU intensive work from I/O work.
@@ -323,10 +313,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// occurs the error result is returned, **however** in this case nothing is written
     /// into the cache and the next call to the same cache item will attempt to re-compute
     /// the cache.
-    pub fn compute_memoized(
-        &self,
-        request: T,
-    ) -> Pin<Box<dyn Future<Output = Result<Arc<T::Item>, Arc<T::Error>>>>> {
+    pub fn compute_memoized(&self, request: T) -> BoxedFuture<Result<Arc<T::Item>, Arc<T::Error>>> {
         let key = request.get_cache_key();
         let name = self.config.name();
 
@@ -352,8 +339,6 @@ impl<T: CacheItemRequest> Cacher<T> {
                 io::Error::new(io::ErrorKind::Interrupted, message).into(),
             ))
         });
-        // TODO(flub): what was this cloning??
-        // .and_then(|shared| (*shared).clone());
 
         Box::pin(future)
     }

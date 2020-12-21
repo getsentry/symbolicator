@@ -10,18 +10,17 @@ use std::cmp;
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
-use std::pin::Pin;
 use std::process;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
-use futures::future::{Future, FutureExt, TryFutureExt};
+use futures::future::{FutureExt, TryFutureExt};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 
-use crate::actors::common::cache::{CacheItemRequest, CachePath};
+use crate::actors::common::cache::{BoxedFuture, CacheItemRequest, CachePath};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::services::download::DownloadStatus;
 use crate::sources::SourceFileId;
@@ -126,10 +125,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     ///
     /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
     /// returned.
-    fn compute(
-        &self,
-        path: &Path,
-    ) -> Pin<Box<dyn Future<Output = Result<CacheStatus, Self::Error>>>> {
+    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
