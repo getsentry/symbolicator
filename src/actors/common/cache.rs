@@ -22,7 +22,7 @@ use crate::utils::futures::CallOnDrop;
 /// pretty boring but clippy quickly complains about type complexity without this.
 pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
-/// Result from [`CacheItemRequest::compute_memoised`].
+/// Result from [`Cacher::compute_memoized`].
 type CacheResult<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
