@@ -288,6 +288,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                 Ok(ok) => Ok(Arc::new(ok)),
                 Err(err) => Err(Arc::new(err)),
             };
+            // Drop the token first to evict from the map.  This ensures that callers either
+            // get a channel that will receive data, or they create a new channel.
             drop(remove_computation_token);
             sender.send(result).ok();
             Ok(())
