@@ -8,7 +8,6 @@ use std::time::Duration;
 use futures::compat::Future01CompatExt;
 use futures::future::{self, Either};
 use futures::{Future, FutureExt, TryFutureExt};
-// use futures01::future::{Either, Future, IntoFuture};
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
     common::ByteView,

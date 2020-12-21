@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 use futures::channel::oneshot;
 use futures::future::{self, Future, FutureExt, Shared, TryFutureExt};
-// use futures01::future::{self, Future, Shared};
-// use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
