@@ -1,12 +1,13 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::{compat::Future01CompatExt, FutureExt, TryFutureExt};
-use futures01::future::{Either, Future, IntoFuture};
-use sentry::configure_scope;
+use futures::compat::Future01CompatExt;
+use futures::future::{self, Either, Future, TryFutureExt};
+use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
@@ -22,7 +23,7 @@ use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
 use crate::utils::futures::ThreadPool;
-use crate::utils::sentry::{SentryFutureExt, WriteSentryScope};
+use crate::utils::sentry::WriteSentryScope;
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -125,17 +126,19 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Pin<Box<dyn Future<Output = Result<CacheStatus, Self::Error>>>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
             .fetch(self.object_meta.clone())
-            .compat()
             .map_err(SymCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
-            let future = futures01::lazy(move || {
+            let future = future::lazy(move |_| {
                 if object.status() != CacheStatus::Positive {
                     return Ok(object.status());
                 }
@@ -153,21 +156,21 @@ impl CacheItemRequest for FetchSymCacheInternal {
             });
 
             threadpool
-                .spawn_handle(future.sentry_hub_current().compat())
-                .boxed_local()
-                .compat()
-                .map_err(|_| SymCacheError::Canceled)
-                .flatten()
+                .spawn_handle(future.bind_hub(Hub::current()))
+                .unwrap_or_else(|_| Err(SymCacheError::Canceled))
         });
 
         let num_sources = self.request.sources.len();
 
-        Box::new(future_metrics!(
-            "symcaches",
-            Some((Duration::from_secs(1200), SymCacheError::Timeout)),
-            result,
-            "num_sources" => &num_sources.to_string()
-        ))
+        Box::pin(
+            future_metrics!(
+                "symcaches",
+                Some((Duration::from_secs(1200), SymCacheError::Timeout)),
+                result.compat(),
+                "num_sources" => &num_sources.to_string()
+            )
+            .compat(),
+        )
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
@@ -239,7 +242,7 @@ impl SymCacheActor {
     pub fn fetch(
         &self,
         request: FetchSymCache,
-    ) -> impl Future<Item = Arc<SymCacheFile>, Error = Arc<SymCacheError>> {
+    ) -> impl Future<Output = Result<Arc<SymCacheFile>, Arc<SymCacheError>>> {
         let find_result_future = self
             .objects
             .clone()
@@ -250,8 +253,6 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .boxed_local()
-            .compat()
             .map_err(|e| Arc::new(SymCacheError::Fetching(e)));
 
         let symcaches = self.symcaches.clone();
@@ -265,7 +266,7 @@ impl SymCacheActor {
         find_result_future.and_then(move |find_result: FoundObject| {
             let FoundObject { meta, candidates } = find_result;
             meta.map(clone!(candidates, |object_meta| {
-                Either::A(symcaches.compute_memoized(FetchSymCacheInternal {
+                Either::Left(symcaches.compute_memoized(FetchSymCacheInternal {
                     request,
                     objects_actor: objects,
                     object_meta,
@@ -274,19 +275,16 @@ impl SymCacheActor {
                 }))
             }))
             .unwrap_or_else(move || {
-                Either::B(
-                    Ok(Arc::new(SymCacheFile {
-                        object_type,
-                        identifier,
-                        scope,
-                        data: ByteView::from_slice(b""),
-                        features: ObjectFeatures::default(),
-                        status: CacheStatus::Negative,
-                        arch: Arch::Unknown,
-                        candidates,
-                    }))
-                    .into_future(),
-                )
+                Either::Right(future::ok(Arc::new(SymCacheFile {
+                    object_type,
+                    identifier,
+                    scope,
+                    data: ByteView::from_slice(b""),
+                    features: ObjectFeatures::default(),
+                    status: CacheStatus::Negative,
+                    arch: Arch::Unknown,
+                    candidates,
+                })))
             })
         })
     }

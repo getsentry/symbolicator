@@ -9,9 +9,10 @@
 
 use std::fs;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 
-use futures01::Future;
+use futures::Future;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 
@@ -96,36 +97,43 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// This returns an error if the download failed.  If the data cache has a
     /// [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] status the same status is
     /// returned.
-    fn compute(&self, path: &Path) -> Box<dyn Future<Item = CacheStatus, Error = Self::Error>> {
+    fn compute(
+        &self,
+        path: &Path,
+    ) -> Pin<Box<dyn Future<Output = Result<CacheStatus, Self::Error>>>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
 
         let path = path.to_owned();
-        let result = self
-            .data_cache
-            .compute_memoized(FetchFileDataRequest(self.clone()))
-            .map_err(ObjectError::Caching)
-            .and_then(move |object_handle: Arc<ObjectHandle>| {
-                if object_handle.status == CacheStatus::Positive {
-                    if let Ok(object) = Object::parse(&object_handle.data) {
-                        let mut new_cache = fs::File::create(path)?;
+        let data_cache = self.data_cache.clone();
+        let slf = self.clone();
+        let result = async move {
+            data_cache
+                .compute_memoized(FetchFileDataRequest(slf))
+                .await
+                .map_err(ObjectError::Caching)
+                .and_then(move |object_handle: Arc<ObjectHandle>| {
+                    if object_handle.status == CacheStatus::Positive {
+                        if let Ok(object) = Object::parse(&object_handle.data) {
+                            let mut new_cache = fs::File::create(path)?;
 
-                        let meta = ObjectFeatures {
-                            has_debug_info: object.has_debug_info(),
-                            has_unwind_info: object.has_unwind_info(),
-                            has_symbols: object.has_symbols(),
-                            has_sources: object.has_sources(),
-                        };
+                            let meta = ObjectFeatures {
+                                has_debug_info: object.has_debug_info(),
+                                has_unwind_info: object.has_unwind_info(),
+                                has_symbols: object.has_symbols(),
+                                has_sources: object.has_sources(),
+                            };
 
-                        log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                        serde_json::to_writer(&mut new_cache, &meta)?;
+                            log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
+                            serde_json::to_writer(&mut new_cache, &meta)?;
+                        }
                     }
-                }
 
-                Ok(object_handle.status)
-            });
+                    Ok(object_handle.status)
+                })
+        };
 
-        Box::new(result)
+        Box::pin(result)
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

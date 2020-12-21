@@ -11,13 +11,14 @@ use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
-use futures::{compat::Future01CompatExt, select, FutureExt as _, TryFutureExt};
-use futures01::future::{self, join_all, Future as _, IntoFuture, Shared};
+use futures::compat::Future01CompatExt;
+use futures::{future, select, FutureExt as _, TryFutureExt};
+use futures01::future::{Future as _, Shared};
 use futures01::sync::oneshot;
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
-use sentry::SentryFutureExt;
+use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{
@@ -46,7 +47,6 @@ use crate::types::{
 use crate::utils::addr::AddrMode;
 use crate::utils::futures::{CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
-use crate::utils::sentry::SentryFutureExt as _;
 
 /// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
@@ -468,7 +468,7 @@ impl SourceLookup {
         }
 
         Ok(SourceLookup {
-            inner: futures::future::join_all(futures).await,
+            inner: future::join_all(futures).await,
         })
     }
 
@@ -670,7 +670,6 @@ impl SymCacheLookup {
                         sources,
                         scope,
                     })
-                    .compat()
                     .await;
 
                 let (symcache, status) = match symcache_result {
@@ -698,7 +697,7 @@ impl SymCacheLookup {
         }
 
         Ok(SymCacheLookup {
-            inner: futures::future::join_all(futures).await,
+            inner: future::join_all(futures).await,
         })
     }
 
@@ -1183,7 +1182,7 @@ impl SymbolicationActor {
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
                 // scopes).
                 metric!(counter("symbolication.request_id_unknown") += 1);
-                Box::new(future::ok(None))
+                Box::new(futures01::future::ok(None))
             }
         }
     }
@@ -1414,7 +1413,7 @@ impl SymbolicationActor {
         scope: Scope,
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<Vec<CfiCacheResult>, SymbolicationError> {
+    ) -> Vec<CfiCacheResult> {
         let cficaches = self.cficaches.clone();
 
         let futures = requests
@@ -1427,12 +1426,12 @@ impl SymbolicationActor {
                         sources: sources.clone(),
                         scope: scope.clone(),
                     })
-                    .then(move |result| Ok((code_module_id, result)).into_future())
+                    .then(move |result| future::ready((code_module_id, result)))
                     // Clone hub because of join_all
-                    .sentry_hub_new_from_current()
+                    .bind_hub(Hub::new_from_top(Hub::current()))
             });
 
-        join_all(futures).compat().await
+        future::join_all(futures).await
     }
 
     /// Unwind the stack from a minidump.
@@ -1723,7 +1722,7 @@ impl SymbolicationActor {
 
             let cfi_caches = self
                 .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
-                .await?;
+                .await;
 
             self.stackwalk_minidump_with_cfi(scope, minidump, sources, options, cfi_caches)
                 .await

@@ -59,8 +59,11 @@ impl ThreadPool {
 
     /// Spawn a future on to the thread pool, return a future representing the produced value.
     ///
-    /// The [`SpawnHandle`] returned is a future that is a proxy for future itself. When future
-    /// completes on this thread pool then the SpawnHandle will itself be resolved.
+    /// The [`SpawnHandle`] returned is a future that is a proxy for future itself. When
+    /// future completes on this thread pool then the SpawnHandle will itself be resolved
+    /// and the outcome of the spawned future will be in the `Ok` variant.  If the spawned
+    /// future got cancelled the outcome of this proxy future will resolve into an `Err`
+    /// variant.
     pub fn spawn_handle<F>(&self, future: F) -> SpawnHandle<F::Output>
     where
         F: Future + Send + 'static,

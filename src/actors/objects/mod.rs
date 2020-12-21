@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use ::sentry::Hub;
 use backtrace::Backtrace;
-use futures::compat::Future01CompatExt;
 use futures::future::{self, Future, TryFutureExt};
 use sentry::SentryFutureExt;
 use symbolic::debuginfo;
@@ -208,7 +207,6 @@ impl ObjectsActor {
     ) -> impl Future<Output = Result<Arc<ObjectHandle>, ObjectError>> {
         self.data_cache
             .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
-            .compat()
             .map_err(ObjectError::Caching)
     }
 
@@ -325,7 +323,6 @@ impl ObjectsActor {
                 };
                 meta_cache
                     .compute_memoized(request)
-                    .compat()
                     .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()))
                     .await
                     .map_err(|error| CacheLookupError {
