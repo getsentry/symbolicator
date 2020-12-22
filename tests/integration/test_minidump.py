@@ -44,7 +44,7 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "status": "symbolicated",
-                    "original_index": 4,
+                    "original_index": 3,
                     "instruction_addr": "0x70b7ae3f",
                     "package": "C:\\Windows\\System32\\dbgcore.dll",
                     "symbol": "?DetermineOutputProvider@@YGJPAVMiniDumpAllocationProvider@@PAXQAU_MINIDUMP_CALLBACK_INFORMATION@@PAPAVMiniDumpOutputProvider@@@Z",
@@ -55,7 +55,7 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "status": "symbolicated",
-                    "original_index": 6,
+                    "original_index": 4,
                     "instruction_addr": "0x7584e9bf",
                     "package": "C:\\Windows\\System32\\rpcrt4.dll",
                     "symbol": "?FreeWrapper@@YGXPAX@Z",
@@ -66,21 +66,21 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "instruction_addr": "0x2a3435",
-                    "original_index": 7,
+                    "original_index": 5,
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "status": "missing",
                     "trust": "scan",
                 },
                 {
                     "instruction_addr": "0x2a2d97",
-                    "original_index": 8,
+                    "original_index": 6,
                     "package": "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe",
                     "status": "missing",
                     "trust": "scan",
                 },
                 {
                     "status": "symbolicated",
-                    "original_index": 9,
+                    "original_index": 7,
                     "instruction_addr": "0x750662c3",
                     "package": "C:\\Windows\\System32\\kernel32.dll",
                     "symbol": "@BaseThreadInitThunk@12",
@@ -91,7 +91,7 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "status": "symbolicated",
-                    "original_index": 10,
+                    "original_index": 8,
                     "instruction_addr": "0x771d0f78",
                     "package": "C:\\Windows\\System32\\ntdll.dll",
                     "symbol": "__RtlUserThreadStart@8",
@@ -102,7 +102,7 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "status": "symbolicated",
-                    "original_index": 11,
+                    "original_index": 9,
                     "instruction_addr": "0x771d0f43",
                     "package": "C:\\Windows\\System32\\ntdll.dll",
                     "symbol": "_RtlUserThreadStart@8",
@@ -356,61 +356,22 @@ MINIDUMP_SUCCESS = {
             ],
         },
         {
-            "arch": "x86",
+            "arch": "unknown",
             "code_file": "C:\\Windows\\System32\\dbghelp.dll",
             "code_id": "57898e12145000",
             "debug_file": "dbghelp.pdb",
             "debug_id": "9c2a902b-6fdf-40ad-8308-588a41d572a0-1",
             "image_addr": "0x70850000",
             "image_size": 1_331_200,
-            "debug_status": "found",
+            "debug_status": "unused",
             "features": {
-                "has_debug_info": True,
+                "has_debug_info": False,
                 "has_sources": False,
-                "has_symbols": True,
-                "has_unwind_info": True,
+                "has_symbols": False,
+                "has_unwind_info": False,
             },
             "unwind_status": "unused",
             "type": "pe",
-            "candidates": [
-                {
-                    "download": {"status": "notfound"},
-                    "location": "dbghelp.dll/57898E12145000/dbghelp.dl_",
-                    "source": "microsoft",
-                },
-                {
-                    "download": {
-                        "features": {
-                            "has_debug_info": False,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": False,
-                        },
-                        "status": "ok",
-                    },
-                    "location": "dbghelp.dll/57898E12145000/dbghelp.dll",
-                    "source": "microsoft",
-                },
-                {
-                    "download": {"status": "notfound"},
-                    "location": "dbghelp.pdb/9C2A902B6FDF40AD8308588A41D572A01/dbghelp.pd_",
-                    "source": "microsoft",
-                },
-                {
-                    "debug": {"status": "ok"},
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                    "location": "dbghelp.pdb/9C2A902B6FDF40AD8308588A41D572A01/dbghelp.pdb",
-                    "source": "microsoft",
-                },
-            ],
         },
         {
             "arch": "unknown",

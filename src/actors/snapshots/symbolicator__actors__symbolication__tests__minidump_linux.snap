@@ -52,76 +52,61 @@ stacktraces:
         trust: scan
       - status: missing
         original_index: 3
-        instruction_addr: 0x400000
-        package: /work/linux/build/crash
-        trust: scan
-      - status: missing
-        original_index: 4
         instruction_addr: 0x7f5140cebac6
         package: /lib/x86_64-linux-gnu/ld-2.23.so
         trust: scan
       - status: missing
-        original_index: 5
+        original_index: 4
         instruction_addr: 0x401ec0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 6
+        original_index: 5
         instruction_addr: 0x414c30
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 7
+        original_index: 6
         instruction_addr: 0x7f514017d830
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
       - status: missing
-        original_index: 8
+        original_index: 7
         instruction_addr: 0x401c70
+        package: /work/linux/build/crash
+        trust: scan
+      - status: missing
+        original_index: 8
+        instruction_addr: 0x401dc0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
         original_index: 9
-        instruction_addr: 0x401dc0
-        package: /work/linux/build/crash
-        trust: scan
-      - status: missing
-        original_index: 10
         instruction_addr: 0x401c70
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 11
+        original_index: 10
         instruction_addr: 0x414ca0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 12
+        original_index: 11
         instruction_addr: 0x401dc0
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 13
+        original_index: 12
         instruction_addr: 0x401de9
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 14
-        instruction_addr: 0x7fff5aef1000
-        package: linux-gate.so
-        trust: scan
-      - status: missing
-        original_index: 15
+        original_index: 13
         instruction_addr: 0x400040
         package: /work/linux/build/crash
         trust: scan
       - status: missing
-        original_index: 16
-        instruction_addr: 0x7f5140cdc000
-        package: /lib/x86_64-linux-gnu/ld-2.23.so
-        trust: scan
-      - status: missing
-        original_index: 17
+        original_index: 14
         instruction_addr: 0x401dc0
         package: /work/linux/build/crash
         trust: scan
@@ -270,7 +255,7 @@ modules:
         location: ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so.sym
         download:
           status: notfound
-  - debug_status: missing
+  - debug_status: unused
     unwind_status: unused
     features:
       has_debug_info: false
@@ -285,16 +270,3 @@ modules:
     debug_file: linux-gate.so
     image_addr: 0x7fff5aef1000
     image_size: 8192
-    candidates:
-      - source: local
-        location: 6c/5f1875b9048fb4b8dfd832e74ad31a9aafb38f
-        download:
-          status: notfound
-      - source: local
-        location: 6c/5f1875b9048fb4b8dfd832e74ad31a9aafb38f.debug
-        download:
-          status: notfound
-      - source: local
-        location: linux-gate.so/75185F6C04B9B48FB8DFD832E74AD31A0/linux-gate.so.sym
-        download:
-          status: notfound
