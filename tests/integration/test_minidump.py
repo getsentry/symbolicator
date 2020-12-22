@@ -491,6 +491,7 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "debug": {"status": "ok"},
+                    "unwind": {"status": "ok"},
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -657,6 +658,7 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "debug": {"status": "ok"},
+                    "unwind": {"status": "ok"},
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -743,6 +745,7 @@ MINIDUMP_SUCCESS = {
                         "status": "ok",
                     },
                     "debug": {"status": "ok"},
+                    "unwind": {"status": "ok"},
                 },
             ],
         },
@@ -875,6 +878,7 @@ MINIDUMP_SUCCESS = {
                         "status": "ok",
                     },
                     "debug": {"status": "ok"},
+                    "unwind": {"status": "ok"},
                 },
             ],
         },

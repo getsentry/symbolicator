@@ -32,11 +32,13 @@ impl AllObjectCandidates {
     /// You can only request symcaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
     pub fn set_debug(&mut self, source: SourceId, location: SourceLocation, info: ObjectUseInfo) {
-        match self
-            .0
-            .binary_search_by_key(&(source, location), |candidate| {
-                (candidate.source.clone(), candidate.location.clone())
-            }) {
+        let found_pos = self.0.binary_search_by(|candidate| {
+            candidate
+                .source
+                .cmp(&source)
+                .then(candidate.location.cmp(&location))
+        });
+        match found_pos {
             Ok(index) => {
                 if let Some(mut candidate) = self.0.get_mut(index) {
                     candidate.debug = info;
@@ -51,6 +53,32 @@ impl AllObjectCandidates {
         }
     }
 
+    /// Sets the [`ObjectCandidate::unwind`] field for the specified DIF object.
+    ///
+    /// You can only request cficaches from a DIF object that was already in the metadata
+    /// candidate list, therefore if the candidate is missing it is treated as an error.
+    pub fn set_unwind(&mut self, source: SourceId, location: SourceLocation, info: ObjectUseInfo) {
+        let found_pos = self.0.binary_search_by(|candidate| {
+            candidate
+                .source
+                .cmp(&source)
+                .then(candidate.location.cmp(&location))
+        });
+        match found_pos {
+            Ok(index) => {
+                if let Some(mut candidate) = self.0.get_mut(index) {
+                    candidate.unwind = info;
+                }
+            }
+            Err(_) => {
+                sentry::capture_message(
+                    "Missing ObjectCandidate in AllObjectCandidates::set_unwind",
+                    sentry::Level::Error,
+                );
+            }
+        }
+    }
+
     /// Returns `true` if the collections contains no [`ObjectCandidate`]s.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -59,6 +87,40 @@ impl AllObjectCandidates {
     /// Removes all DIF object from this candidates collection.
     pub fn clear(&mut self) {
         self.0.clear()
+    }
+
+    /// Merge in the other collection of candidates.
+    ///
+    /// If a candidate already existed in the collection all data which is present in both
+    /// will be overwritten by the data in `other`.  Practically that means
+    /// [`ObjectCandidate::download`] will be overwritten by `other` and for
+    /// [`ObjectCandidate::unwind`] and [`ObjectCandidate::debug`] it will be overwritten by
+    /// `other` if they are not [`ObjectUseInfo::None`].
+    pub fn merge(&mut self, other: AllObjectCandidates) {
+        for other_info in other.0 {
+            let found_pos = self.0.binary_search_by(|candidate| {
+                candidate
+                    .source
+                    .cmp(&other_info.source)
+                    .then(candidate.location.cmp(&other_info.location))
+            });
+            match found_pos {
+                Ok(index) => {
+                    if let Some(mut info) = self.0.get_mut(index) {
+                        info.download = other_info.download;
+                        if other_info.unwind != ObjectUseInfo::None {
+                            info.unwind = other_info.unwind;
+                        }
+                        if other_info.debug != ObjectUseInfo::None {
+                            info.debug = other_info.debug;
+                        }
+                    }
+                }
+                Err(index) => {
+                    self.0.insert(index, other_info);
+                }
+            }
+        }
     }
 }
 
@@ -84,5 +146,113 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             raw,
             candidates: AllObjectCandidates::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::types::ObjectDownloadInfo;
+
+    use super::*;
+
+    #[test]
+    fn test_all_object_info_merge_insert_new() {
+        // If a candidate didn't exist yet it should be inserted in order.
+        let src_a = ObjectCandidate {
+            source: SourceId::new("A"),
+            location: SourceLocation::new("a"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::Ok,
+            debug: ObjectUseInfo::Ok,
+        };
+        let src_b = ObjectCandidate {
+            source: SourceId::new("B"),
+            location: SourceLocation::new("b"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::Ok,
+            debug: ObjectUseInfo::Ok,
+        };
+        let src_c = ObjectCandidate {
+            source: SourceId::new("C"),
+            location: SourceLocation::new("c"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::Ok,
+            debug: ObjectUseInfo::Ok,
+        };
+
+        let mut all: AllObjectCandidates = vec![src_a, src_c].into();
+        let other: AllObjectCandidates = vec![src_b].into();
+        all.merge(other);
+        assert_eq!(all.0[0].source, SourceId::new("A"));
+        assert_eq!(all.0[1].source, SourceId::new("B"));
+        assert_eq!(all.0[2].source, SourceId::new("C"));
+    }
+
+    #[test]
+    fn test_all_object_info_merge_overwrite() {
+        let src0 = ObjectCandidate {
+            source: SourceId::new("A"),
+            location: SourceLocation::new("a"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::Ok,
+            debug: ObjectUseInfo::None,
+        };
+        let src1 = ObjectCandidate {
+            source: SourceId::new("A"),
+            location: SourceLocation::new("a"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::Malformed,
+            debug: ObjectUseInfo::Ok,
+        };
+
+        let mut all: AllObjectCandidates = vec![src0].into();
+        assert_eq!(all.0[0].unwind, ObjectUseInfo::Ok);
+        assert_eq!(all.0[0].debug, ObjectUseInfo::None);
+
+        let other: AllObjectCandidates = vec![src1].into();
+        all.merge(other);
+        assert_eq!(all.0[0].unwind, ObjectUseInfo::Malformed);
+        assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
+    }
+
+    #[test]
+    fn test_all_object_info_merge_no_overwrite() {
+        let src0 = ObjectCandidate {
+            source: SourceId::new("A"),
+            location: SourceLocation::new("a"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::Ok,
+            debug: ObjectUseInfo::Ok,
+        };
+        let src1 = ObjectCandidate {
+            source: SourceId::new("A"),
+            location: SourceLocation::new("a"),
+            download: ObjectDownloadInfo::Ok {
+                features: Default::default(),
+            },
+            unwind: ObjectUseInfo::None,
+            debug: ObjectUseInfo::None,
+        };
+
+        let mut all: AllObjectCandidates = vec![src0].into();
+        assert_eq!(all.0[0].unwind, ObjectUseInfo::Ok);
+        assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
+
+        let other: AllObjectCandidates = vec![src1].into();
+        all.merge(other);
+        assert_eq!(all.0[0].unwind, ObjectUseInfo::Ok);
+        assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
     }
 }

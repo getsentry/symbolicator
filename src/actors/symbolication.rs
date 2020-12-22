@@ -686,8 +686,7 @@ impl SymCacheLookup {
                 if let Some(ref symcache) = symcache {
                     entry.object_info.arch = symcache.arch();
                     entry.object_info.features.merge(symcache.features());
-
-                    entry.object_info.candidates = symcache.candidates(); // TODO(flub): merge!
+                    entry.object_info.candidates.merge(symcache.candidates());
                 }
 
                 entry.symcache = symcache;
@@ -1414,22 +1413,28 @@ impl SymbolicationActor {
         requests: Vec<(CodeModuleId, RawObjectInfo)>,
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
-        let cficaches = self.cficaches.clone();
+        let mut futures = Vec::with_capacity(requests.len());
 
-        let futures = requests
-            .into_iter()
-            .map(move |(code_module_id, object_info)| {
-                cficaches
+        for (code_id, object_info) in requests {
+            let sources = sources.clone();
+            let scope = scope.clone();
+
+            let fut = async move {
+                let result = self
+                    .cficaches
                     .fetch(FetchCfiCache {
                         object_type: object_info.ty,
                         identifier: object_id_from_object_info(&object_info),
-                        sources: sources.clone(),
-                        scope: scope.clone(),
+                        sources,
+                        scope,
                     })
-                    .then(move |result| future::ready((code_module_id, result)))
-                    // Clone hub because of join_all
-                    .bind_hub(Hub::new_from_top(Hub::current()))
-            });
+                    .await;
+                (code_id, result)
+            };
+
+            // Clone hub because of join_all concurrency.
+            futures.push(fut.bind_hub(Hub::new_from_top(Hub::current())));
+        }
 
         future::join_all(futures).await
     }
@@ -1463,6 +1468,7 @@ impl SymbolicationActor {
         let mut unwind_statuses = BTreeMap::new();
         let mut object_features = BTreeMap::new();
         let mut frame_info_map = BTreeMap::new();
+        let mut dif_candidates = BTreeMap::new();
 
         // Go through all the modules in the minidump and build a map of the modules with
         // missing or malformed CFI.  ObjectFileStatus::Found is only added when the file is
@@ -1470,7 +1476,10 @@ impl SymbolicationActor {
         // cache files are added to the frame_info_map.
         for (code_module_id, result) in &cfi_results {
             let cache_file = match result {
-                Ok(x) => x,
+                Ok(x) => {
+                    dif_candidates.insert(*code_module_id, x.candidates().clone());
+                    x
+                }
                 Err(e) => {
                     log::debug!("Error while fetching cficache: {}", LogError(e.as_ref()));
                     unwind_statuses.insert(*code_module_id, (&**e).into());
@@ -1510,6 +1519,7 @@ impl SymbolicationActor {
                         unwind_statuses,
                         minidump.clone(),
                         spawn_time,
+                        procspawn::serde::Json(dif_candidates),
                     ),
                     |(
                         frame_info_map,
@@ -1517,8 +1527,11 @@ impl SymbolicationActor {
                         mut unwind_statuses,
                         minidump,
                         spawn_time,
+                        dif_candidates,
                     )|
-                     -> Result<_, ProcessMinidumpError> {
+                        -> Result<_, ProcessMinidumpError> {
+                        let procspawn::serde::Json(mut dif_candidates) = dif_candidates;
+
                         if let Ok(duration) = spawn_time.elapsed() {
                             metric!(timer("minidump.stackwalk.spawn.duration") = duration);
                         }
@@ -1621,6 +1634,15 @@ impl SymbolicationActor {
                                 };
 
                                 info.features.merge(features);
+
+                                if let Some(code_id) = module_id {
+                                    // If we have the same code module mapped into the
+                                    // memory in multiple regions we would only have the
+                                    // candidates filled in for the first one.
+                                    if let Some(candidates) = dif_candidates.remove(&code_id) {
+                                        info.candidates = candidates;
+                                    }
+                                }
 
                                 info
                             })
