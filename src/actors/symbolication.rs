@@ -1476,9 +1476,9 @@ impl SymbolicationActor {
         // cache files are added to the frame_info_map.
         for (code_module_id, result) in &cfi_results {
             let cache_file = match result {
-                Ok(x) => {
-                    dif_candidates.insert(*code_module_id, x.candidates().clone());
-                    x
+                Ok(cfi_cache_file) => {
+                    dif_candidates.insert(*code_module_id, cfi_cache_file.candidates().clone());
+                    cfi_cache_file
                 }
                 Err(e) => {
                     log::debug!("Error while fetching cficache: {}", LogError(e.as_ref()));
