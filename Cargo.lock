@@ -575,9 +575,8 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44919ecaf6f99e8e737bc239408931c9a01e9a6c74814fee8242dd2506b65390"
+version = "0.3.1"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#479281f0c8c2630c5a5a1aeec2ea74ce233d8cc6"
 dependencies = [
  "cfg-if 1.0.0",
  "glob",
@@ -1833,8 +1832,7 @@ dependencies = [
 [[package]]
 name = "msvc-demangler"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6584cf122f02fc0396420a116cd395a9a776ec4347dffe1c5119c3fcc917c060"
+source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#075432259fe0eaac2f3fc225550a4db479bf3c81"
 dependencies = [
  "bitflags",
 ]
@@ -3144,7 +3142,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "8.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=20eb1a90838b438cf17d7322f95f16c38b61f9a6#20eb1a90838b438cf17d7322f95f16c38b61f9a6"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4b9f8f722d40c89fce1daa2e659997717b67cfcf"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3156,7 +3154,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=20eb1a90838b438cf17d7322f95f16c38b61f9a6#20eb1a90838b438cf17d7322f95f16c38b61f9a6"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4b9f8f722d40c89fce1daa2e659997717b67cfcf"
 dependencies = [
  "debugid",
  "memmap",
@@ -3168,7 +3166,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=20eb1a90838b438cf17d7322f95f16c38b61f9a6#20eb1a90838b438cf17d7322f95f16c38b61f9a6"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4b9f8f722d40c89fce1daa2e659997717b67cfcf"
 dependencies = [
  "dmsort",
  "fallible-iterator",
@@ -3195,7 +3193,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=20eb1a90838b438cf17d7322f95f16c38b61f9a6#20eb1a90838b438cf17d7322f95f16c38b61f9a6"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4b9f8f722d40c89fce1daa2e659997717b67cfcf"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3207,7 +3205,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=20eb1a90838b438cf17d7322f95f16c38b61f9a6#20eb1a90838b438cf17d7322f95f16c38b61f9a6"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4b9f8f722d40c89fce1daa2e659997717b67cfcf"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3221,7 +3219,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.0.0"
-source = "git+https://github.com/getsentry/symbolic?rev=20eb1a90838b438cf17d7322f95f16c38b61f9a6#20eb1a90838b438cf17d7322f95f16c38b61f9a6"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4b9f8f722d40c89fce1daa2e659997717b67cfcf"
 dependencies = [
  "dmsort",
  "fnv",
