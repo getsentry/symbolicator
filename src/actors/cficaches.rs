@@ -5,8 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
-use futures::future::{self, Either};
-use futures::{FutureExt, TryFutureExt};
+use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
     common::ByteView,
@@ -20,7 +19,9 @@ use crate::actors::objects::{
 };
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
-use crate::types::{ObjectFeatures, ObjectId, ObjectType, Scope};
+use crate::types::{
+    AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
+};
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 use crate::utils::sentry::WriteSentryScope;
 
@@ -72,6 +73,7 @@ pub struct CfiCacheFile {
     features: ObjectFeatures,
     status: CacheStatus,
     path: CachePath,
+    candidates: AllObjectCandidates,
 }
 
 impl CfiCacheFile {
@@ -89,13 +91,19 @@ impl CfiCacheFile {
     pub fn path(&self) -> &Path {
         self.path.as_ref()
     }
+
+    /// Returns all the DIF object candidates.
+    pub fn candidates(&self) -> &AllObjectCandidates {
+        &self.candidates
+    }
 }
 
 #[derive(Clone, Debug)]
 struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: ObjectsActor,
-    object_meta: Arc<ObjectMetaHandle>,
+    meta_handle: Arc<ObjectMetaHandle>,
+    candidates: AllObjectCandidates,
     threadpool: ThreadPool,
 }
 
@@ -104,7 +112,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     type Error = CfiCacheError;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key()
+        self.meta_handle.cache_key()
     }
 
     /// Extracts the Call Frame Information (CFI) from an object file.
@@ -115,12 +123,12 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         let path = path.to_owned();
         let object = self
             .objects_actor
-            .fetch(self.object_meta.clone())
+            .fetch(self.meta_handle.clone())
             .map_err(CfiCacheError::Fetching);
 
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
-            let future = future::lazy(move |_| {
+            let future = async move {
                 if object.status() != CacheStatus::Positive {
                     return Ok(object.status());
                 }
@@ -135,7 +143,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 };
 
                 Ok(status)
-            });
+            };
 
             threadpool
                 .spawn_handle(future.bind_hub(Hub::current()))
@@ -168,14 +176,22 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         data: ByteView<'static>,
         path: CachePath,
     ) -> Self::Item {
+        let mut candidates = self.candidates.clone();
+        candidates.set_unwind(
+            self.meta_handle.source().clone(),
+            self.meta_handle.location(),
+            ObjectUseInfo::from_derived_status(status, self.meta_handle.status()),
+        );
+
         CfiCacheFile {
             object_type: self.request.object_type,
             identifier: self.request.identifier.clone(),
             scope,
             data,
-            features: self.object_meta.features(),
+            features: self.meta_handle.features(),
             status,
             path,
+            candidates,
         }
     }
 }
@@ -196,11 +212,11 @@ impl CfiCacheActor {
     /// debug filename (the basename).  To do this it looks in the existing cache with the
     /// given scope and if it does not yet exist in cached form will fetch the required DIFs
     /// and compute the required CFI cache file.
-    pub fn fetch(
+    pub async fn fetch(
         &self,
         request: FetchCfiCache,
-    ) -> BoxedFuture<Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>> {
-        let object = self
+    ) -> Result<Arc<CfiCacheFile>, Arc<CfiCacheError>> {
+        let found_result = self
             .objects
             .clone()
             .find(FindObject {
@@ -210,41 +226,32 @@ impl CfiCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Unwind,
             })
-            .map_err(|e| Arc::new(CfiCacheError::Fetching(e)));
+            .map_err(|e| Arc::new(CfiCacheError::Fetching(e)))
+            .await?;
 
-        let cficaches = self.cficaches.clone();
-        let threadpool = self.threadpool.clone();
-        let objects = self.objects.clone();
-
-        let object_type = request.object_type;
-        let identifier = request.identifier.clone();
-        let scope = request.scope.clone();
-
-        object
-            .and_then(move |object| {
-                object
-                    .meta
-                    .map(move |object_meta| {
-                        Either::Left(cficaches.compute_memoized(FetchCfiCacheInternal {
-                            request,
-                            objects_actor: objects,
-                            object_meta,
-                            threadpool,
-                        }))
+        match found_result.meta {
+            Some(meta_handle) => {
+                self.cficaches
+                    .compute_memoized(FetchCfiCacheInternal {
+                        request,
+                        objects_actor: self.objects.clone(),
+                        meta_handle,
+                        threadpool: self.threadpool.clone(),
+                        candidates: found_result.candidates,
                     })
-                    .unwrap_or_else(move || {
-                        Either::Right(future::ok(Arc::new(CfiCacheFile {
-                            object_type,
-                            identifier,
-                            scope,
-                            data: ByteView::from_slice(b""),
-                            features: ObjectFeatures::default(),
-                            status: CacheStatus::Negative,
-                            path: CachePath::new(),
-                        })))
-                    })
-            })
-            .boxed_local()
+                    .await
+            }
+            None => Ok(Arc::new(CfiCacheFile {
+                object_type: request.object_type,
+                identifier: request.identifier,
+                scope: request.scope,
+                data: ByteView::from_slice(b""),
+                features: ObjectFeatures::default(),
+                status: CacheStatus::Negative,
+                path: CachePath::new(),
+                candidates: found_result.candidates,
+            })),
+        }
     }
 }
 

@@ -190,6 +190,8 @@ modules:
             has_unwind_info: true
             has_symbols: true
             has_sources: false
+        unwind:
+          status: ok
         debug:
           status: ok
       - source: local
@@ -256,6 +258,27 @@ modules:
     debug_file: dbgcore.pdb
     image_addr: 0x70b70000
     image_size: 151552
+    candidates:
+      - source: local
+        location: dbgcore.dll/57898DAB25000/dbgcore.dl_
+        download:
+          status: notfound
+      - source: local
+        location: dbgcore.dll/57898DAB25000/dbgcore.dll
+        download:
+          status: notfound
+      - source: local
+        location: dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_
+        download:
+          status: notfound
+      - source: local
+        location: dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb
+        download:
+          status: notfound
+      - source: local
+        location: dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.sym
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -412,6 +435,27 @@ modules:
     debug_file: wrpcrt4.pdb
     image_addr: 0x75810000
     image_size: 790528
+    candidates:
+      - source: local
+        location: rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_
+        download:
+          status: notfound
+      - source: local
+        location: rpcrt4.dll/5A49BB75c1000/rpcrt4.dll
+        download:
+          status: notfound
+      - source: local
+        location: wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_
+        download:
+          status: notfound
+      - source: local
+        location: wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb
+        download:
+          status: notfound
+      - source: local
+        location: wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.sym
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:

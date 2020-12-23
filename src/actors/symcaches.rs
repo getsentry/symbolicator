@@ -187,29 +187,11 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .map(|cache| cache.arch())
             .unwrap_or_default();
 
-        // If self.object_meta.status() was != Positive than that status got passed straight
-        // through to our own `status` argument.
-        let debug = match status {
-            CacheStatus::Positive => ObjectUseInfo::Ok,
-            CacheStatus::Negative => {
-                if self.object_meta.status() == CacheStatus::Positive {
-                    ObjectUseInfo::Error {
-                        details: String::from("Object file no longer available"),
-                    }
-                } else {
-                    // No need to pretend that we were going to use this symcache if the
-                    // original object file was already not there, that status is already
-                    // reported.
-                    ObjectUseInfo::None
-                }
-            }
-            CacheStatus::Malformed => ObjectUseInfo::Malformed,
-        };
         let mut candidates = self.candidates.clone(); // yuk!
         candidates.set_debug(
             self.object_meta.source().clone(),
             self.object_meta.location(),
-            debug,
+            ObjectUseInfo::from_derived_status(status, self.object_meta.status()),
         );
 
         SymCacheFile {
