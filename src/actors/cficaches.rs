@@ -120,44 +120,38 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
-        let objects_actor = self.objects_actor.clone();
-        let meta_handle = self.meta_handle.clone();
-        let threadpool = self.threadpool.clone();
         let path = path.to_owned();
+        let object = self
+            .objects_actor
+            .fetch(self.meta_handle.clone())
+            .map_err(CfiCacheError::Fetching);
 
-        let result = async move {
-            let object_handle = objects_actor
-                .fetch(meta_handle.clone())
-                .await
-                .map_err(CfiCacheError::Fetching)?;
-
+        let threadpool = self.threadpool.clone();
+        let result = object.and_then(move |object| {
             let future = async move {
-                let status = match object_handle.status() {
-                    CacheStatus::Positive => match write_cficache(&path, &*object_handle) {
-                        Ok(()) => CacheStatus::Positive,
-                        Err(err) => {
-                            log::warn!("Could not write cficache: {}", err);
-                            sentry::capture_error(&err);
-                            CacheStatus::Malformed
-                        }
-                    },
-                    cache_status => cache_status,
+                if object.status() != CacheStatus::Positive {
+                    return Ok(object.status());
+                }
+
+                let status = if let Err(e) = write_cficache(&path, &*object) {
+                    log::warn!("Could not write cficache: {}", e);
+                    sentry::capture_error(&e);
+
+                    CacheStatus::Malformed
+                } else {
+                    CacheStatus::Positive
                 };
+
                 Ok(status)
             };
 
-            match threadpool
+            threadpool
                 .spawn_handle(future.bind_hub(Hub::current()))
-                .await
-            {
-                Ok(result) => result,
-                Err(_) => Err(CfiCacheError::Canceled),
-            }
-        }
-        .boxed_local();
+                .unwrap_or_else(|_| Err(CfiCacheError::Canceled))
+        });
 
-        // TODO(flub): Implement future_metrics! in futures 0.3.
         let num_sources = self.request.sources.len();
+
         Box::pin(
             future_metrics!(
                 "cficaches",
