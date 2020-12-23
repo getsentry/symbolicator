@@ -4,6 +4,7 @@
 
 ### Features
 
+- Add NotFound status for sources which didn't provide any DIF object candidates. ([#327](https://github.com/getsentry/symbolicator/pull/327))
 - Symbolication responses include download information about all DIF object files which were looked up on the available object sources. ([#309](https://github.com/getsentry/symbolicator/pull/309) [#316](https://github.com/getsentry/symbolicator/pull/316))
 
 ### Bug Fixes
