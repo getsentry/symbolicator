@@ -176,27 +176,11 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         data: ByteView<'static>,
         path: CachePath,
     ) -> Self::Item {
-        let unwind = match status {
-            CacheStatus::Positive => ObjectUseInfo::Ok,
-            CacheStatus::Negative => {
-                if self.meta_handle.status() == CacheStatus::Positive {
-                    ObjectUseInfo::Error {
-                        details: String::from("Object file no longer available"),
-                    }
-                } else {
-                    // No need to pretend that we were going to use this cficache if the
-                    // original object file was already not there, that status is already
-                    // reported.
-                    ObjectUseInfo::None
-                }
-            }
-            CacheStatus::Malformed => ObjectUseInfo::Malformed,
-        };
         let mut candidates = self.candidates.clone();
         candidates.set_unwind(
             self.meta_handle.source().clone(),
             self.meta_handle.location(),
-            unwind,
+            ObjectUseInfo::from_derived_status(status, self.meta_handle.status()),
         );
 
         CfiCacheFile {

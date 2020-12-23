@@ -1,10 +1,12 @@
 //! Implementations for the types describing DIF object files.
 
+use crate::cache::CacheStatus;
+use crate::sources::{SourceId, SourceLocation};
+
 use super::{
     AllObjectCandidates, Arch, CodeId, CompleteObjectInfo, DebugId, ObjectCandidate,
     ObjectFeatures, ObjectFileStatus, ObjectUseInfo, RawObjectInfo,
 };
-use crate::sources::{SourceId, SourceLocation};
 
 impl Default for ObjectUseInfo {
     fn default() -> Self {
@@ -145,6 +147,35 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             arch: Arch::Unknown,
             raw,
             candidates: AllObjectCandidates::default(),
+        }
+    }
+}
+
+impl ObjectUseInfo {
+    /// Construct [`ObjectUseInfo`] for an object from a derived cache.
+    ///
+    /// The [`ObjectUseInfo`] provides information about items stored in a cache and which
+    /// are derived from an original object cache: the [`symcaches`] and the [`cficaches`].
+    /// These caches have an edge case where if the underlying cache thought the object was
+    /// there but now it could not be fetched again.  This is converted to an error case.
+    ///
+    /// [`symcaches`]: crate::actors::symcaches
+    /// [`cficaches`]: crate::actors::cficaches
+    pub fn from_derived_status(derived: CacheStatus, original: CacheStatus) -> Self {
+        match derived {
+            CacheStatus::Positive => ObjectUseInfo::Ok,
+            CacheStatus::Negative => {
+                if original == CacheStatus::Positive {
+                    ObjectUseInfo::Error {
+                        details: String::from("Object file no longer available"),
+                    }
+                } else {
+                    // If the original cache was already missing then it will already be
+                    // reported and we do not want to report anything.
+                    ObjectUseInfo::None
+                }
+            }
+            CacheStatus::Malformed => ObjectUseInfo::Malformed,
         }
     }
 }
