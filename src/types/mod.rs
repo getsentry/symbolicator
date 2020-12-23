@@ -474,6 +474,14 @@ impl ObjectFeatures {
     }
 }
 
+/// Newtype around a collection of [`ObjectCandidate`] structs.
+///
+/// This abstracts away some common operations needed on this collection.
+///
+/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AllObjectCandidates(Vec<ObjectCandidate>);
+
 /// Information about a Debug Information File in the [`CompleteObjectInfo`].
 ///
 /// All DIFs are backed by an [`ObjectHandle`](crate::actors::objects::ObjectHandle).  But we
@@ -578,14 +586,6 @@ pub enum ObjectUseInfo {
     /// This enum is not serialised into its parent object when it is set to this value.
     None,
 }
-
-/// Newtype around a collection of [`ObjectCandidate`] structs.
-///
-/// This abstracts away some common operations needed on this collection.
-///
-/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AllObjectCandidates(Vec<ObjectCandidate>);
 
 /// Normalized [`RawObjectInfo`] with status attached.
 ///

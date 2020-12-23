@@ -16,7 +16,7 @@ use crate::types::Scope;
 use crate::utils::futures::{BoxedFuture, CallOnDrop};
 
 /// Result from [`Cacher::compute_memoized`].
-type CacheResult<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
+type CacheResultFuture<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
@@ -311,7 +311,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// occurs the error result is returned, **however** in this case nothing is written
     /// into the cache and the next call to the same cache item will attempt to re-compute
     /// the cache.
-    pub fn compute_memoized(&self, request: T) -> CacheResult<T::Item, T::Error> {
+    pub fn compute_memoized(&self, request: T) -> CacheResultFuture<T::Item, T::Error> {
         let key = request.get_cache_key();
         let name = self.config.name();
 
