@@ -120,26 +120,28 @@ impl DownloadService {
     /// The downloaded file is saved into `destination`. The file will be created if it does not
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
-    pub fn download(
+    pub async fn download(
         &self,
         source: SourceFileId,
         destination: PathBuf,
-    ) -> impl Future<Output = Result<DownloadStatus, DownloadError>> {
+    ) -> Result<DownloadStatus, DownloadError> {
         let hub = Hub::current();
-        let slf = self.clone(); // TODO(ja): This clone could be removed with "async-scoped".
 
-        self.worker
-            .spawn(
-                "service.download",
-                Duration::from_secs(300),
-                move || async move {
-                    slf.dispatch_download(source, destination)
-                        .bind_hub(hub)
-                        .await
-                },
-            )
-            // Map all SpawnError variants into DownloadError::Canceled.
-            .map(|o| o.unwrap_or(Err(DownloadError::Canceled)))
+        // TODO(ja): This clone and the async move could be avoided with "async-scoped".
+        let slf = self.clone();
+        let dispatch_job = move || async move {
+            slf.dispatch_download(source, destination)
+                .bind_hub(hub)
+                .await
+        };
+
+        let spawn_result = self
+            .worker
+            .spawn("service.download", Duration::from_secs(300), dispatch_job)
+            .await;
+
+        // Map all SpawnError variants into DownloadError::Canceled.
+        spawn_result.unwrap_or(Err(DownloadError::Canceled))
     }
 
     /// Returns all objects matching the [`ObjectId`] at the source.
@@ -149,36 +151,31 @@ impl DownloadService {
     ///
     /// If the source needs to be contacted to get matching objects this may fail and
     /// returns a [`DownloadError`].
-    pub fn list_files(
+    pub async fn list_files(
         &self,
         source: SourceConfig,
         filetypes: &'static [FileType],
         object_id: ObjectId,
         hub: Arc<Hub>,
-    ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
-        let worker = self.worker.clone();
-        let config = self.config.clone();
-        let gcs = self.gcs.clone(); // TODO(ja): Move Arc to caller, remove clones and make this an async fn.
+    ) -> Result<Vec<SourceFileId>, DownloadError> {
+        match source {
+            SourceConfig::Sentry(cfg) => {
+                let config = self.config.clone();
+                let job =
+                    move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
 
-        async move {
-            match source {
-                SourceConfig::Sentry(cfg) => {
-                    let job =
-                        move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
+                let spawn_result = self
+                    .worker
+                    .spawn("service.download.list_files", Duration::from_secs(30), job)
+                    .await;
 
-                    worker
-                        .spawn("service.download.list_files", Duration::from_secs(30), job)
-                        .await
-                        // Map all SpawnError variants into DownloadError::Canceled
-                        .unwrap_or(Err(DownloadError::Canceled))
-                }
-                SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
-                SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
-                SourceConfig::Gcs(cfg) => Ok(gcs.list_files(cfg, filetypes, object_id)),
-                SourceConfig::Filesystem(cfg) => {
-                    Ok(filesystem::list_files(cfg, filetypes, object_id))
-                }
+                // Map all SpawnError variants into DownloadError::Canceled
+                spawn_result.unwrap_or(Err(DownloadError::Canceled))
             }
+            SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
+            SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
+            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Filesystem(cfg) => Ok(filesystem::list_files(cfg, filetypes, object_id)),
         }
     }
 }
