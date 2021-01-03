@@ -73,26 +73,26 @@ pub enum DownloadStatus {
 ///
 /// The service is rather simple on the outside but will one day control
 /// rate limits and the concurrency it uses.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DownloadService {
     worker: RemoteThread,
     config: Arc<Config>,
-    gcs: Arc<gcs::GcsDownloader>,
+    gcs: gcs::GcsDownloader,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Self {
-        Self {
+    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Arc<Self> {
+        Arc::new(Self {
             worker,
             config,
-            gcs: Arc::new(gcs::GcsDownloader::new()),
-        }
+            gcs: gcs::GcsDownloader::new(),
+        })
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
-        &self,
+        self: Arc<Self>,
         source: SourceFileId,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
@@ -120,24 +120,23 @@ impl DownloadService {
     /// The downloaded file is saved into `destination`. The file will be created if it does not
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
+    //
+    // NB: This takes `Arc<Self>` since it needs to spawn into the worker pool internally. Spawning
+    // requires futures to be `'static`, which means there cannot be any references to an externally
+    // owned downloader.
     pub async fn download(
-        &self,
+        self: Arc<Self>,
         source: SourceFileId,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let hub = Hub::current();
-
-        // TODO(ja): This clone and the async move could be avoided with "async-scoped".
         let slf = self.clone();
-        let dispatch_job = move || async move {
-            slf.dispatch_download(source, destination)
-                .bind_hub(hub)
-                .await
-        };
 
         let spawn_result = self
             .worker
-            .spawn("service.download", Duration::from_secs(300), dispatch_job)
+            .spawn("service.download", Duration::from_secs(300), || {
+                slf.dispatch_download(source, destination).bind_hub(hub)
+            })
             .await;
 
         // Map all SpawnError variants into DownloadError::Canceled.
