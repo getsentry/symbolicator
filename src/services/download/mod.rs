@@ -69,24 +69,6 @@ pub enum DownloadStatus {
     NotFound,
 }
 
-/// Dispatches downloading of the given file to the appropriate source.
-async fn dispatch_download(
-    source: SourceFileId,
-    destination: PathBuf,
-) -> Result<DownloadStatus, DownloadError> {
-    match source {
-        SourceFileId::Sentry(source, loc) => {
-            sentry::download_source(source, loc, destination).await
-        }
-        SourceFileId::Http(source, loc) => http::download_source(source, loc, destination).await,
-        SourceFileId::S3(source, loc) => s3::download_source(source, loc, destination).await,
-        SourceFileId::Gcs(source, loc) => gcs::download_source(source, loc, destination).await,
-        SourceFileId::Filesystem(source, loc) => {
-            filesystem::download_source(source, loc, destination)
-        }
-    }
-}
-
 /// A service which can download files from a [`SourceConfig`].
 ///
 /// The service is rather simple on the outside but will one day control
@@ -95,12 +77,40 @@ async fn dispatch_download(
 pub struct DownloadService {
     worker: RemoteThread,
     config: Arc<Config>,
+    gcs: Arc<gcs::GcsDownloader>,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(worker: RemoteThread, config: Arc<Config>) -> Self {
-        Self { worker, config }
+        Self {
+            worker,
+            config,
+            gcs: Arc::new(gcs::GcsDownloader::new()),
+        }
+    }
+
+    /// Dispatches downloading of the given file to the appropriate source.
+    async fn dispatch_download(
+        &self,
+        source: SourceFileId,
+        destination: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
+        match source {
+            SourceFileId::Sentry(source, loc) => {
+                sentry::download_source(source, loc, destination).await
+            }
+            SourceFileId::Http(source, loc) => {
+                http::download_source(source, loc, destination).await
+            }
+            SourceFileId::S3(source, loc) => s3::download_source(source, loc, destination).await,
+            SourceFileId::Gcs(source, loc) => {
+                self.gcs.download_source(source, loc, destination).await
+            }
+            SourceFileId::Filesystem(source, loc) => {
+                filesystem::download_source(source, loc, destination)
+            }
+        }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -116,11 +126,18 @@ impl DownloadService {
         destination: PathBuf,
     ) -> impl Future<Output = Result<DownloadStatus, DownloadError>> {
         let hub = Hub::current();
+        let slf = self.clone(); // TODO(ja): This clone could be removed with "async-scoped".
 
         self.worker
-            .spawn("service.download", Duration::from_secs(300), move || {
-                dispatch_download(source, destination).bind_hub(hub)
-            })
+            .spawn(
+                "service.download",
+                Duration::from_secs(300),
+                move || async move {
+                    slf.dispatch_download(source, destination)
+                        .bind_hub(hub)
+                        .await
+                },
+            )
             // Map all SpawnError variants into DownloadError::Canceled.
             .map(|o| o.unwrap_or(Err(DownloadError::Canceled)))
     }
@@ -141,6 +158,7 @@ impl DownloadService {
     ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
         let worker = self.worker.clone();
         let config = self.config.clone();
+        let gcs = self.gcs.clone(); // TODO(ja): Move Arc to caller, remove clones and make this an async fn.
 
         async move {
             match source {
@@ -156,7 +174,7 @@ impl DownloadService {
                 }
                 SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
                 SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
-                SourceConfig::Gcs(cfg) => Ok(gcs::list_files(cfg, filetypes, object_id)),
+                SourceConfig::Gcs(cfg) => Ok(gcs.list_files(cfg, filetypes, object_id)),
                 SourceConfig::Filesystem(cfg) => {
                     Ok(filesystem::list_files(cfg, filetypes, object_id))
                 }
