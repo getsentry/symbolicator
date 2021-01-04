@@ -321,6 +321,8 @@ mod tests {
 
     #[test]
     fn test_list_files() {
+        test::setup();
+
         let source = gcs_source(gcs_source_key!());
         let downloader = GcsDownloader::new();
 
@@ -344,6 +346,7 @@ mod tests {
     #[test]
     fn test_download_complete() {
         test::setup();
+
         let source = gcs_source(gcs_source_key!());
         let downloader = GcsDownloader::new();
 
@@ -376,6 +379,8 @@ mod tests {
 
     #[test]
     fn test_download_missing() {
+        test::setup();
+
         let source = gcs_source(gcs_source_key!());
         let downloader = GcsDownloader::new();
 
@@ -395,6 +400,8 @@ mod tests {
 
     #[test]
     fn test_download_invalid_credentials() {
+        test::setup();
+
         let broken_credentials = GcsSourceKey {
             private_key: "".to_owned(),
             client_email: "".to_owned(),
