@@ -69,38 +69,48 @@ pub enum DownloadStatus {
     NotFound,
 }
 
-/// Dispatches downloading of the given file to the appropriate source.
-async fn dispatch_download(
-    source: SourceFileId,
-    destination: PathBuf,
-) -> Result<DownloadStatus, DownloadError> {
-    match source {
-        SourceFileId::Sentry(source, loc) => {
-            sentry::download_source(source, loc, destination).await
-        }
-        SourceFileId::Http(source, loc) => http::download_source(source, loc, destination).await,
-        SourceFileId::S3(source, loc) => s3::download_source(source, loc, destination).await,
-        SourceFileId::Gcs(source, loc) => gcs::download_source(source, loc, destination).await,
-        SourceFileId::Filesystem(source, loc) => {
-            filesystem::download_source(source, loc, destination)
-        }
-    }
-}
-
 /// A service which can download files from a [`SourceConfig`].
 ///
 /// The service is rather simple on the outside but will one day control
 /// rate limits and the concurrency it uses.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DownloadService {
     worker: RemoteThread,
     config: Arc<Config>,
+    gcs: gcs::GcsDownloader,
 }
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Self {
-        Self { worker, config }
+    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Arc<Self> {
+        Arc::new(Self {
+            worker,
+            config,
+            gcs: gcs::GcsDownloader::new(),
+        })
+    }
+
+    /// Dispatches downloading of the given file to the appropriate source.
+    async fn dispatch_download(
+        self: Arc<Self>,
+        source: SourceFileId,
+        destination: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
+        match source {
+            SourceFileId::Sentry(source, loc) => {
+                sentry::download_source(source, loc, destination).await
+            }
+            SourceFileId::Http(source, loc) => {
+                http::download_source(source, loc, destination).await
+            }
+            SourceFileId::S3(source, loc) => s3::download_source(source, loc, destination).await,
+            SourceFileId::Gcs(source, loc) => {
+                self.gcs.download_source(source, loc, destination).await
+            }
+            SourceFileId::Filesystem(source, loc) => {
+                filesystem::download_source(source, loc, destination)
+            }
+        }
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -110,19 +120,27 @@ impl DownloadService {
     /// The downloaded file is saved into `destination`. The file will be created if it does not
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
-    pub fn download(
-        &self,
+    //
+    // NB: This takes `Arc<Self>` since it needs to spawn into the worker pool internally. Spawning
+    // requires futures to be `'static`, which means there cannot be any references to an externally
+    // owned downloader.
+    pub async fn download(
+        self: Arc<Self>,
         source: SourceFileId,
         destination: PathBuf,
-    ) -> impl Future<Output = Result<DownloadStatus, DownloadError>> {
+    ) -> Result<DownloadStatus, DownloadError> {
         let hub = Hub::current();
+        let slf = self.clone();
 
-        self.worker
-            .spawn("service.download", Duration::from_secs(300), move || {
-                dispatch_download(source, destination).bind_hub(hub)
+        let spawn_result = self
+            .worker
+            .spawn("service.download", Duration::from_secs(300), || {
+                slf.dispatch_download(source, destination).bind_hub(hub)
             })
-            // Map all SpawnError variants into DownloadError::Canceled.
-            .map(|o| o.unwrap_or(Err(DownloadError::Canceled)))
+            .await;
+
+        // Map all SpawnError variants into DownloadError::Canceled.
+        spawn_result.unwrap_or(Err(DownloadError::Canceled))
     }
 
     /// Returns all objects matching the [`ObjectId`] at the source.
@@ -132,35 +150,31 @@ impl DownloadService {
     ///
     /// If the source needs to be contacted to get matching objects this may fail and
     /// returns a [`DownloadError`].
-    pub fn list_files(
+    pub async fn list_files(
         &self,
         source: SourceConfig,
         filetypes: &'static [FileType],
         object_id: ObjectId,
         hub: Arc<Hub>,
-    ) -> impl Future<Output = Result<Vec<SourceFileId>, DownloadError>> {
-        let worker = self.worker.clone();
-        let config = self.config.clone();
+    ) -> Result<Vec<SourceFileId>, DownloadError> {
+        match source {
+            SourceConfig::Sentry(cfg) => {
+                let config = self.config.clone();
+                let job =
+                    move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
 
-        async move {
-            match source {
-                SourceConfig::Sentry(cfg) => {
-                    let job =
-                        move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
+                let spawn_result = self
+                    .worker
+                    .spawn("service.download.list_files", Duration::from_secs(30), job)
+                    .await;
 
-                    worker
-                        .spawn("service.download.list_files", Duration::from_secs(30), job)
-                        .await
-                        // Map all SpawnError variants into DownloadError::Canceled
-                        .unwrap_or(Err(DownloadError::Canceled))
-                }
-                SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
-                SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
-                SourceConfig::Gcs(cfg) => Ok(gcs::list_files(cfg, filetypes, object_id)),
-                SourceConfig::Filesystem(cfg) => {
-                    Ok(filesystem::list_files(cfg, filetypes, object_id))
-                }
+                // Map all SpawnError variants into DownloadError::Canceled
+                spawn_result.unwrap_or(Err(DownloadError::Canceled))
             }
+            SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
+            SourceConfig::S3(cfg) => Ok(s3::list_files(cfg, filetypes, object_id)),
+            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Filesystem(cfg) => Ok(filesystem::list_files(cfg, filetypes, object_id)),
         }
     }
 }
