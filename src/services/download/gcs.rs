@@ -273,3 +273,146 @@ impl GcsDownloader {
         .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
+    use crate::test;
+    use crate::types::ObjectType;
+
+    use super::*;
+    use sha1::{Digest as _, Sha1};
+
+    fn gcs_source_key() -> Option<GcsSourceKey> {
+        let private_key = std::env::var("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY").ok()?;
+        let client_email = std::env::var("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL").ok()?;
+
+        if private_key.is_empty() || client_email.is_empty() {
+            None
+        } else {
+            Some(GcsSourceKey {
+                private_key,
+                client_email,
+            })
+        }
+    }
+
+    macro_rules! gcs_source_key {
+        () => {
+            match gcs_source_key() {
+                Some(key) => key,
+                None => {
+                    println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY or SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL");
+                    return;
+                }
+            }
+        }
+    }
+
+    fn gcs_source(source_key: GcsSourceKey) -> Arc<GcsSourceConfig> {
+        Arc::new(GcsSourceConfig {
+            id: SourceId::new("gcs-test"),
+            bucket: "sentryio-system-symbols-0".to_owned(),
+            prefix: "/ios".to_owned(),
+            source_key: Arc::new(source_key),
+            files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
+        })
+    }
+
+    #[test]
+    fn test_list_files() {
+        let source = gcs_source(gcs_source_key!());
+        let downloader = GcsDownloader::new();
+
+        let object_id = ObjectId {
+            code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
+            code_file: Some("/usr/lib/system/libdyld.dylib".to_owned()),
+            debug_id: Some("e514c946-4eed-3be5-943a-2c61d9241fad".parse().unwrap()),
+            debug_file: Some("libdyld.dylib".to_owned()),
+            object_type: ObjectType::Macho,
+        };
+
+        let list = downloader.list_files(source, &[FileType::MachCode], object_id);
+        assert_eq!(list.len(), 1);
+
+        assert_eq!(
+            list[0].location(),
+            SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable")
+        );
+    }
+
+    #[test]
+    fn test_download_complete() {
+        test::setup();
+        let source = gcs_source(gcs_source_key!());
+        let downloader = GcsDownloader::new();
+
+        let tempdir = test::tempdir();
+        let target_path = tempdir.path().join("myfile");
+
+        // Location of /usr/lib/system/libdyld.dylib
+        let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
+
+        let download_status = test::block_fn(|| {
+            downloader.download_source(source, source_location, target_path.clone())
+        })
+        .unwrap();
+
+        assert_eq!(download_status, DownloadStatus::Completed);
+        assert!(target_path.exists());
+
+        let mut digest = Sha1::new();
+        digest.update(std::fs::read(target_path).unwrap());
+        let hash = digest.finalize();
+
+        assert_eq!(
+            hash.as_ref(),
+            [
+                0x20, 0x6e, 0x63, 0xc0, 0x6d, 0xa1, 0x35, 0xbe, 0x18, 0x58, 0xdd, 0xe0, 0x37, 0x78,
+                0xca, 0xf2, 0x5f, 0x84, 0x65, 0xb8,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_download_missing() {
+        let source = gcs_source(gcs_source_key!());
+        let downloader = GcsDownloader::new();
+
+        let tempdir = test::tempdir();
+        let target_path = tempdir.path().join("myfile");
+
+        let source_location = SourceLocation::new("does/not/exist");
+
+        let download_status = test::block_fn(|| {
+            downloader.download_source(source, source_location, target_path.clone())
+        })
+        .unwrap();
+
+        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(!target_path.exists());
+    }
+
+    #[test]
+    fn test_download_invalid_credentials() {
+        let broken_credentials = GcsSourceKey {
+            private_key: "".to_owned(),
+            client_email: "".to_owned(),
+        };
+
+        let source = gcs_source(broken_credentials);
+        let downloader = GcsDownloader::new();
+
+        let tempdir = test::tempdir();
+        let target_path = tempdir.path().join("myfile");
+
+        let source_location = SourceLocation::new("does/not/exist");
+
+        test::block_fn(|| downloader.download_source(source, source_location, target_path.clone()))
+            .expect_err("authentication should fail");
+
+        assert!(!target_path.exists());
+    }
+
+    // TODO: Test credential caching.
+}
