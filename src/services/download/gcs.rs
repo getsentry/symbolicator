@@ -364,17 +364,9 @@ mod tests {
         assert_eq!(download_status, DownloadStatus::Completed);
         assert!(target_path.exists());
 
-        let mut digest = Sha1::new();
-        digest.update(std::fs::read(target_path).unwrap());
-        let hash = digest.finalize();
-
-        assert_eq!(
-            hash.as_ref(),
-            [
-                0x20, 0x6e, 0x63, 0xc0, 0x6d, 0xa1, 0x35, 0xbe, 0x18, 0x58, 0xdd, 0xe0, 0x37, 0x78,
-                0xca, 0xf2, 0x5f, 0x84, 0x65, 0xb8,
-            ]
-        );
+        let hash = Sha1::digest(&std::fs::read(target_path).unwrap());
+        let hash = format!("{:x}", hash);
+        assert_eq!(hash, "206e63c06da135be1858dde03778caf25f8465b8");
     }
 
     #[test]
