@@ -77,6 +77,7 @@ pub enum DownloadStatus {
 pub struct DownloadService {
     worker: RemoteThread,
     config: Arc<Config>,
+    sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
@@ -89,6 +90,7 @@ impl DownloadService {
         Arc::new(Self {
             worker,
             config,
+            sentry: sentry::SentryDownloader::new(),
             http: http::HttpDownloader::new(),
             s3: s3::S3Downloader::new(),
             gcs: gcs::GcsDownloader::new(),
@@ -104,7 +106,7 @@ impl DownloadService {
     ) -> Result<DownloadStatus, DownloadError> {
         match source {
             SourceFileId::Sentry(source, loc) => {
-                sentry::download_source(source, loc, destination).await
+                self.sentry.download_source(source, loc, destination).await
             }
             SourceFileId::Http(source, loc) => {
                 self.http.download_source(source, loc, destination).await
@@ -159,7 +161,7 @@ impl DownloadService {
     /// If the source needs to be contacted to get matching objects this may fail and
     /// returns a [`DownloadError`].
     pub async fn list_files(
-        &self,
+        self: Arc<Self>,
         source: SourceConfig,
         filetypes: &'static [FileType],
         object_id: ObjectId,
@@ -168,8 +170,14 @@ impl DownloadService {
         match source {
             SourceConfig::Sentry(cfg) => {
                 let config = self.config.clone();
-                let job =
-                    move || sentry::list_files(cfg, filetypes, object_id, config).bind_hub(hub);
+                let slf = self.clone();
+
+                let job = move || async move {
+                    slf.sentry
+                        .list_files(cfg, filetypes, object_id, config)
+                        .bind_hub(hub)
+                        .await
+                };
 
                 let spawn_result = self
                     .worker

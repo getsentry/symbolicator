@@ -264,6 +264,7 @@ impl ObjectsActor {
             let query = async move {
                 let type_name = source.type_name();
                 self.download_svc
+                    .clone()
                     .list_files(source.clone(), filetypes, identifier.clone(), hub)
                     .await
                     .unwrap_or_else(|err| {
