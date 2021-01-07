@@ -138,83 +138,85 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_id.write_sentry_scope(scope);
         });
 
+        let file_id = self.0.file_id.clone();
+        let downloader = self.0.download_svc.clone();
         let download_file = tryf03pin!(self.0.data_cache.tempfile());
         let download_dir =
             tryf03pin!(download_file.path().parent().ok_or(ObjectError::NoTempDir)).to_owned();
-        let request = self
-            .0
-            .download_svc
-            .download(self.0.file_id.clone(), download_file.path().to_owned())
-            .map_err(Into::into);
 
-        let result = request.and_then(move |status| {
-            async move {
-                match status {
-                    DownloadStatus::Completed => {
-                        log::trace!("Finished download of {}", cache_key);
-                        let decompress_result =
-                            decompress_object_file(&download_file, tempfile_in(download_dir)?);
+        let future = async move {
+            let status = downloader
+                .download(file_id, download_file.path().to_owned())
+                .await
+                .map_err(Self::Error::from)?;
 
-                        // Treat decompression errors as malformed files. It is more likely that
-                        // the error comes from a corrupt file than a local file system error.
-                        let mut decompressed = match decompress_result {
-                            Ok(decompressed) => decompressed,
-                            Err(_) => return Ok(CacheStatus::Malformed),
-                        };
-
-                        // Seek back to the start and parse this object so we can deal with it.
-                        // Since objects in Sentry (and potentially also other sources) might be
-                        // multi-arch files (e.g. FatMach), we parse as Archive and try to
-                        // extract the wanted file.
-                        decompressed.seek(SeekFrom::Start(0))?;
-                        let view = ByteView::map_file(decompressed)?;
-                        let archive = match Archive::parse(&view) {
-                            Ok(archive) => archive,
-                            Err(_) => {
-                                return Ok(CacheStatus::Malformed);
-                            }
-                        };
-                        let mut persist_file = fs::File::create(&path)?;
-                        if archive.is_multi() {
-                            let object_opt = archive
-                                .objects()
-                                .filter_map(Result::ok)
-                                .find(|object| object_id.match_object(object));
-
-                            let object = match object_opt {
-                                Some(object) => object,
-                                None => {
-                                    if archive.objects().any(|r| r.is_err()) {
-                                        return Ok(CacheStatus::Malformed);
-                                    } else {
-                                        return Ok(CacheStatus::Negative);
-                                    }
-                                }
-                            };
-
-                            io::copy(&mut object.data(), &mut persist_file)?;
-                        } else {
-                            // Attempt to parse the object to capture errors. The result can be
-                            // discarded as the object's data is the entire ByteView.
-                            if archive.object_by_index(0).is_err() {
-                                return Ok(CacheStatus::Malformed);
-                            }
-
-                            io::copy(&mut view.as_ref(), &mut persist_file)?;
-                        }
-
-                        Ok(CacheStatus::Positive)
-                    }
-                    DownloadStatus::NotFound => {
-                        log::debug!("No debug file found for {}", cache_key);
-                        Ok(CacheStatus::Negative)
-                    }
+            match status {
+                DownloadStatus::NotFound => {
+                    log::debug!("No debug file found for {}", cache_key);
+                    return Ok(CacheStatus::Negative);
+                }
+                DownloadStatus::Completed => {
+                    // fall-through
                 }
             }
-            .boxed()
-        });
 
-        let result = result
+            log::trace!("Finished download of {}", cache_key);
+            let decompress_result =
+                decompress_object_file(&download_file, tempfile_in(download_dir)?);
+
+            // Treat decompression errors as malformed files. It is more likely that
+            // the error comes from a corrupt file than a local file system error.
+            let mut decompressed = match decompress_result {
+                Ok(decompressed) => decompressed,
+                Err(_) => return Ok(CacheStatus::Malformed),
+            };
+
+            // Seek back to the start and parse this object so we can deal with it.
+            // Since objects in Sentry (and potentially also other sources) might be
+            // multi-arch files (e.g. FatMach), we parse as Archive and try to
+            // extract the wanted file.
+            decompressed.seek(SeekFrom::Start(0))?;
+            let view = ByteView::map_file(decompressed)?;
+            let archive = match Archive::parse(&view) {
+                Ok(archive) => archive,
+                Err(_) => {
+                    return Ok(CacheStatus::Malformed);
+                }
+            };
+            let mut persist_file = fs::File::create(&path)?;
+            if archive.is_multi() {
+                let object_opt = archive
+                    .objects()
+                    .filter_map(Result::ok)
+                    .find(|object| object_id.match_object(object));
+
+                let object = match object_opt {
+                    Some(object) => object,
+                    None => {
+                        if archive.objects().any(|r| r.is_err()) {
+                            return Ok(CacheStatus::Malformed);
+                        } else {
+                            return Ok(CacheStatus::Negative);
+                        }
+                    }
+                };
+
+                io::copy(&mut object.data(), &mut persist_file)?;
+            } else {
+                // Attempt to parse the object to capture errors. The result can be
+                // discarded as the object's data is the entire ByteView.
+                if archive.object_by_index(0).is_err() {
+                    return Ok(CacheStatus::Malformed);
+                }
+
+                io::copy(&mut view.as_ref(), &mut persist_file)?;
+            }
+
+            Ok(CacheStatus::Positive)
+        };
+
+        let result = future
+            .boxed_local()
             .map_err(|e| {
                 sentry::capture_error(&e);
                 e

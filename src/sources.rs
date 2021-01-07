@@ -434,6 +434,19 @@ pub struct CommonSourceConfig {
     pub is_public: bool,
 }
 
+impl CommonSourceConfig {
+    #[cfg(test)]
+    pub fn with_layout(layout_type: DirectoryLayoutType) -> Self {
+        Self {
+            layout: DirectoryLayout {
+                ty: layout_type,
+                ..DirectoryLayout::default()
+            },
+            ..Self::default()
+        }
+    }
+}
+
 /// Common attributes to make the symbolicator skip/consider sources by certain criteria.
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(default)]

@@ -43,7 +43,7 @@ impl ServiceState {
         let io_threadpool = ThreadPool::new();
         let io_thread = RemoteThread::new();
 
-        let download_svc = Arc::new(DownloadService::new(io_thread, config.clone()));
+        let download_svc = DownloadService::new(io_thread, config.clone());
 
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches

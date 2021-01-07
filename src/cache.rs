@@ -497,14 +497,14 @@ mod tests {
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
-                max_unused_for: Some(Duration::from_millis(10)),
+                max_unused_for: Some(Duration::from_millis(50)),
                 ..Default::default()
             }),
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
-        sleep(Duration::from_millis(11));
+        sleep(Duration::from_millis(100));
 
         File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
         cache.cleanup()?;
@@ -534,14 +534,14 @@ mod tests {
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
-                retry_misses_after: Some(Duration::from_millis(20)),
+                retry_misses_after: Some(Duration::from_millis(50)),
                 ..Default::default()
             }),
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
-        sleep(Duration::from_millis(25));
+        sleep(Duration::from_millis(100));
 
         File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
         cache.cleanup()?;
