@@ -10,8 +10,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ::sentry::{Hub, SentryFutureExt};
-use actix_web::error::PayloadError;
-use failure::Fail;
 use futures::prelude::*;
 use thiserror::Error;
 
@@ -42,8 +40,6 @@ pub enum DownloadError {
     // TODO(ja): Find a better error classification
     #[error("failed to download")]
     Reqwest(#[source] reqwest::Error),
-    #[error("failed to download stream")]
-    Stream(#[source] failure::Compat<PayloadError>),
     #[error("bad file destination")]
     BadDestination(#[source] std::io::Error),
     #[error("failed writing the downloaded file")]
@@ -54,12 +50,6 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
-}
-
-impl DownloadError {
-    pub fn stream(err: PayloadError) -> Self {
-        Self::Stream(err.compat())
-    }
 }
 
 /// Completion status of a successful download request.
