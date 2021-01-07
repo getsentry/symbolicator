@@ -313,6 +313,16 @@ def test_sources_filetypes(symbolicator, hitcounter):
         },
         **WINDOWS_DATA,
     )
+    expected = copy.deepcopy(NO_SOURCES)
+    expected["modules"][0]["candidates"] = [
+        {
+            "source": "microsoft",
+            "location": "*",
+            "download": {
+                "status": "notfound",
+            },
+        }
+    ]
 
     service = symbolicator()
     service.wait_healthcheck()
@@ -320,7 +330,7 @@ def test_sources_filetypes(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == NO_SOURCES
+    assert response.json() == expected
     assert not hitcounter.hits
 
 
@@ -437,7 +447,17 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     response = response.json()
     # TODO(markus): Better error reporting
     if bucket_type == "sentry":
-        assert response == NO_SOURCES
+        expected = copy.deepcopy(NO_SOURCES)
+        expected["modules"][0]["candidates"] = [
+            {
+                "source": "broken",
+                "location": "*",
+                "download": {
+                    "status": "notfound",
+                },
+            }
+        ]
+        assert response == expected
     else:
         assert response == _make_unsuccessful_result(status="missing", source="broken")
 
@@ -493,6 +513,17 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
         },
         **WINDOWS_DATA,
     )
+    if output == NO_SOURCES:
+        output = copy.deepcopy(output)
+        output["modules"][0]["candidates"] = [
+            {
+                "source": "microsoft",
+                "location": "*",
+                "download": {
+                    "status": "notfound",
+                },
+            }
+        ]
 
     service = symbolicator()
     service.wait_healthcheck()

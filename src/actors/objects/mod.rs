@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -234,7 +235,11 @@ impl ObjectsActor {
         let file_ids = self.list_files(&sources, filetypes, &identifier).await;
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
-        select_meta(file_metas, purpose)
+        let candidates = create_candidates(&sources, &file_metas);
+        let meta = select_meta(file_metas, purpose);
+
+        meta.transpose()
+            .map(|meta| FoundObject { meta, candidates })
     }
 
     /// Collect the list of files to download from all the sources.
@@ -348,15 +353,12 @@ impl ObjectsActor {
 fn select_meta(
     all_lookups: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>,
     purpose: ObjectPurpose,
-) -> Result<FoundObject, ObjectError> {
-    type MetaResult = Result<Arc<ObjectMetaHandle>, ObjectError>;
-    let mut candidates: Vec<ObjectCandidate> = Vec::new();
-    let mut selected_meta: Option<MetaResult> = None;
+) -> Option<Result<Arc<ObjectMetaHandle>, ObjectError>> {
+    let mut selected_meta = None;
     let mut selected_quality = u8::MAX;
 
     for meta_lookup in all_lookups {
         // Build up the list of candidates, unwrap our error which carried some info just for that.
-        candidates.push(create_candidate_info(&meta_lookup));
         let meta_lookup =
             meta_lookup.map_err(|wrapped_err| ObjectError::Caching(wrapped_err.error));
 
@@ -378,11 +380,6 @@ fn select_meta(
     }
 
     selected_meta
-        .transpose()
-        .map(|maybe_meta_handle| FoundObject {
-            meta: maybe_meta_handle,
-            candidates: candidates.into(),
-        })
 }
 
 /// Returns a sortable quality measure of this object for the given purpose.
@@ -418,6 +415,43 @@ fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -
     } else {
         true
     }
+}
+
+/// Creates collection of all the DIF object candidates used in the metadata lookups.
+///
+/// If there were any sources which did not return any [`DownloadService::list_files`]
+/// results they will get a [`ObjectDownloadInfo::NotFound`] entry with a location of `*`.
+/// In practice this will only affect the `sentry` source for now as all other sources
+/// always return [`DownloadService::list_files`] results.
+fn create_candidates(
+    sources: &[SourceConfig],
+    lookups: &[Result<Arc<ObjectMetaHandle>, CacheLookupError>],
+) -> AllObjectCandidates {
+    let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len());
+    let mut source_ids: BTreeSet<SourceId> =
+        sources.iter().map(|source| source.id()).cloned().collect();
+
+    for meta_lookup in lookups.iter() {
+        if let Ok(meta_handle) = meta_lookup {
+            let source = meta_handle.request.file_id.source();
+            source_ids.take(source.id());
+        }
+        candidates.push(create_candidate_info(meta_lookup));
+    }
+
+    // Create a NotFound entry for each source from which we did not try and fetch anything.
+    for source_id in source_ids {
+        let info = ObjectCandidate {
+            source: source_id,
+            location: SourceLocation::new("*"),
+            download: ObjectDownloadInfo::NotFound,
+            unwind: Default::default(),
+            debug: Default::default(),
+        };
+        candidates.push(info);
+    }
+
+    candidates.into()
 }
 
 /// Build the [`ObjectCandidate`] info for the provided meta lookup result.
