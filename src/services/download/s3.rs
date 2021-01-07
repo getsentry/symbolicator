@@ -7,12 +7,9 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bytes::BytesMut;
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
-use futures01::Stream;
+use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
-use tokio01::codec::{BytesCodec, FramedRead};
 
 use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
@@ -87,34 +84,17 @@ impl S3Downloader {
 
         let bucket = source.bucket.clone();
         let source_key = &source.source_key;
-        let response = self
+        let result = self
             .get_s3_client(&source_key)
             .get_object(rusoto_s3::GetObjectRequest {
                 key: key.clone(),
                 bucket: bucket.clone(),
                 ..Default::default()
             })
-            .compat()
             .await;
 
-        match response {
-            Ok(mut result) => {
-                let body_read = match result.body.take() {
-                    Some(body) => body.into_async_read(),
-                    None => {
-                        log::debug!("Empty response from s3:{}{}", bucket, &key);
-                        return Ok(DownloadStatus::NotFound);
-                    }
-                };
-
-                let stream = FramedRead::new(body_read, BytesCodec::new())
-                    .map(BytesMut::freeze)
-                    .map_err(DownloadError::Io)
-                    .compat();
-
-                super::download_stream(SourceFileId::S3(source, download_path), stream, destination)
-                    .await
-            }
+        let response = match result {
+            Ok(response) => response,
             Err(err) => {
                 // For missing files, Amazon returns different status codes based on the given
                 // permissions.
@@ -122,9 +102,19 @@ impl S3Downloader {
                 // - If `ListBucket` is premitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
-                Ok(DownloadStatus::NotFound)
+                return Ok(DownloadStatus::NotFound);
             }
-        }
+        };
+
+        let stream = match response.body {
+            Some(body) => body.map_err(DownloadError::Io),
+            None => {
+                log::debug!("Empty response from s3:{}{}", bucket, &key);
+                return Ok(DownloadStatus::NotFound);
+            }
+        };
+
+        super::download_stream(SourceFileId::S3(source, download_path), stream, destination).await
     }
 
     pub fn list_files(

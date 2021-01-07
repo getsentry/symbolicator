@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use ::sentry::{Hub, SentryFutureExt};
 use actix_web::error::PayloadError;
-use bytes::Bytes;
 use failure::Fail;
 use futures::prelude::*;
 use thiserror::Error;
@@ -200,7 +199,7 @@ impl DownloadService {
 /// This is common functionality used by all many downloaders.
 async fn download_stream(
     source: SourceFileId,
-    stream: impl Stream<Item = Result<Bytes, DownloadError>>,
+    stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
