@@ -1,20 +1,14 @@
 use std::collections::VecDeque;
-use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
 use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture, System};
-use actix_web::client::{
-    ClientConnector, ClientConnectorError, ClientRequest, ClientResponse, SendRequestError,
-};
-use actix_web::{http::header, HttpMessage};
-use futures::compat::Future01CompatExt;
+use actix_web::client::ClientConnector;
 use futures01::{future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
 use tokio01::net::{tcp::ConnectFuture, TcpStream};
 use tokio01::timer::Delay;
-use url::Url;
 
 lazy_static::lazy_static! {
     static ref RESERVED_IP_BLOCKS: Vec<Ipv4Network> = vec![
@@ -23,54 +17,6 @@ lazy_static::lazy_static! {
         "192.0.0.0/29", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15",
         "198.51.100.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
     ].into_iter().map(|x| x.parse().unwrap()).collect();
-}
-
-pub async fn follow_redirects<F>(
-    mut url: Url,
-    mut max_redirects: usize,
-    make_request: F,
-) -> Result<ClientResponse, SendRequestError>
-where
-    F: Fn(&str) -> Result<ClientRequest, actix_web::error::Error> + Send,
-{
-    let mut trusted = true;
-
-    loop {
-        let mut request = make_request(url.as_str()).map_err(|err| {
-            let message = format!("Failed creating request: {} (URI: {})", err, url);
-            sentry::capture_message(&message, sentry::Level::Error);
-            SendRequestError::Connector(ClientConnectorError::InvalidUrl)
-        })?;
-
-        if !trusted {
-            let headers = request.headers_mut();
-            headers.remove(header::AUTHORIZATION);
-            headers.remove(header::COOKIE);
-        }
-
-        let response = request.send().compat().await?;
-        if response.status().is_redirection() && max_redirects > 0 {
-            let location = response
-                .headers()
-                .get(header::LOCATION)
-                .and_then(|l| l.to_str().ok());
-
-            if let Some(location) = location {
-                let redirect_url = url.join(location).map_err(|e| {
-                    let message = format!("bad request uri: {}", e);
-                    SendRequestError::Io(io::Error::new(io::ErrorKind::InvalidData, message))
-                })?;
-
-                log::trace!("Following redirect: {:?}", &redirect_url);
-                let is_same_origin = redirect_url.origin() == url.origin();
-                trusted = trusted && is_same_origin;
-                url = redirect_url;
-                max_redirects -= 1;
-                continue;
-            }
-        }
-        return Ok(response);
-    }
 }
 
 /// A [`Resolver`]-like actor for the actix-web http client that refuses to resolve to reserved IP

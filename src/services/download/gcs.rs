@@ -116,11 +116,9 @@ pub struct GcsDownloader {
 
 impl GcsDownloader {
     pub fn new() -> Self {
-        let token_cache = Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE));
-        let client = reqwest::Client::new();
         Self {
-            token_cache,
-            client,
+            token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
+            client: reqwest::Client::new(),
         }
     }
 
