@@ -5,12 +5,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use actix_web::error::JsonPayloadError;
-use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
-use client::SendRequestError;
-use failure::Fail;
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -72,10 +67,8 @@ pub enum GcsError {
     Base64(#[from] base64::DecodeError),
     #[error("failed encoding JWT")]
     Jwt(#[from] jsonwebtoken::errors::Error),
-    #[error("failed to parse JSON response")]
-    Json(#[from] failure::Compat<JsonPayloadError>),
     #[error("failed to send authentication request")]
-    Auth(#[from] failure::Compat<SendRequestError>),
+    Auth(#[source] reqwest::Error),
 }
 
 /// Parses the given private key string into its binary representation.
@@ -118,12 +111,17 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 #[derive(Debug)]
 pub struct GcsDownloader {
     token_cache: Mutex<GcsTokenCache>,
+    client: reqwest::Client,
 }
 
 impl GcsDownloader {
     pub fn new() -> Self {
         let token_cache = Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE));
-        Self { token_cache }
+        let client = reqwest::Client::new();
+        Self {
+            token_cache,
+            client,
+        }
     }
 
     /// Requests a new GCS OAuth token.
@@ -131,28 +129,27 @@ impl GcsDownloader {
         let expires_at = Utc::now() + Duration::minutes(58);
         let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
 
-        let mut builder = client::post("https://www.googleapis.com/oauth2/v4/token");
-        // for some inexplicable reason we otherwise get gzipped data back that actix-web
-        // client has no idea what to do with.
-        builder.header("accept-encoding", "identity");
-        let response = builder
+        let request = self
+            .client
+            .post("https://www.googleapis.com/oauth2/v4/token")
+            // TODO(ja): check if this still holds
+            // for some inexplicable reason we otherwise get gzipped data back that actix-web
+            // client has no idea what to do with.
+            .header("accept-encoding", "identity")
             .form(&OAuth2Grant {
                 grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
                 assertion: auth_jwt,
-            })
-            .unwrap()
-            .send();
+            });
 
-        let response = response.compat().await.map_err(|err| {
+        let response = request.send().await.map_err(|err| {
             log::debug!("Failed to authenticate against gcs: {}", err);
-            err.compat()
+            GcsError::Auth(err)
         })?;
 
         let token = response
             .json::<GcsTokenResponse>()
-            .compat()
             .await
-            .map_err(Fail::compat)?;
+            .map_err(GcsError::Auth)?;
 
         Ok(GcsToken {
             access_token: token.access_token,
@@ -180,19 +177,6 @@ impl GcsDownloader {
         Ok(token)
     }
 
-    /// Requests the given URL from GCS, returning the response.
-    ///
-    /// The response body has not been read.
-    async fn start_request(
-        &self,
-        url: &str,
-        token: &GcsToken,
-    ) -> Result<client::ClientResponse, client::SendRequestError> {
-        let mut builder = client::get(&url);
-        builder.header("authorization", format!("Bearer {}", token.access_token));
-        builder.finish().unwrap().send().compat().await
-    }
-
     pub async fn download_source(
         &self,
         source: Arc<GcsSourceConfig>,
@@ -212,7 +196,13 @@ impl GcsDownloader {
 
         let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
         let response = loop {
-            let result = self.start_request(&url, &token).await;
+            let result = self
+                .client
+                .get(&url)
+                .header("authorization", format!("Bearer {}", token.access_token))
+                .send()
+                .await;
+
             match backoff.next() {
                 Some(duration) if result.is_err() => delay(duration).await,
                 _ => break result,
@@ -223,10 +213,8 @@ impl GcsDownloader {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
-                    let stream = response
-                        .payload()
-                        .compat()
-                        .map(|i| i.map_err(DownloadError::stream));
+                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
+
                     super::download_stream(
                         SourceFileId::Gcs(source, download_path),
                         stream,
