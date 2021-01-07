@@ -144,3 +144,224 @@ impl S3Downloader {
         .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
+    use crate::test;
+    use crate::types::ObjectType;
+
+    use super::*;
+    use sha1::{Digest as _, Sha1};
+
+    const S3_BUCKET: &str = "symbolicator-test";
+
+    fn s3_source_key() -> Option<S3SourceKey> {
+        let access_key = std::env::var("AWS_ACCESS_KEY_ID").ok()?;
+        let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok()?;
+
+        if access_key.is_empty() || secret_key.is_empty() {
+            None
+        } else {
+            Some(S3SourceKey {
+                region: rusoto_core::Region::UsEast1,
+                access_key,
+                secret_key,
+            })
+        }
+    }
+
+    macro_rules! s3_source_key {
+        () => {
+            match s3_source_key() {
+                Some(key) => key,
+                None => {
+                    println!("Skipping due to missing SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID or SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY");
+                    return;
+                }
+            }
+        }
+    }
+
+    fn s3_client(source_key: S3SourceKey) -> rusoto_s3::S3Client {
+        rusoto_s3::S3Client::new_with(
+            rusoto_core::HttpClient::new().expect("create S3 HTTP client"),
+            rusoto_credential::StaticProvider::new_minimal(
+                source_key.access_key,
+                source_key.secret_key,
+            ),
+            source_key.region,
+        )
+    }
+
+    fn gcs_source(source_key: S3SourceKey) -> Arc<S3SourceConfig> {
+        Arc::new(S3SourceConfig {
+            id: SourceId::new("s3-test"),
+            bucket: S3_BUCKET.to_owned(),
+            prefix: String::new(),
+            source_key: Arc::new(source_key),
+            files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
+        })
+    }
+
+    #[test]
+    fn test_list_files() {
+        test::setup();
+
+        let source = gcs_source(s3_source_key!());
+        let downloader = S3Downloader::new();
+
+        let object_id = ObjectId {
+            code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
+            code_file: Some("Foo.app/Contents/Foo".to_owned()),
+            debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".parse().unwrap()),
+            debug_file: Some("Foo".to_owned()),
+            object_type: ObjectType::Macho,
+        };
+
+        let list = downloader.list_files(source, &[FileType::MachDebug], object_id);
+        assert_eq!(list.len(), 1);
+
+        assert_eq!(
+            list[0].location(),
+            SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo")
+        );
+    }
+
+    /// Loads mock data into the S3 test bucket.
+    ///
+    /// This function will exit early if the bucket is already populated. Eventually, this should be
+    /// replaced with a one-off setup script.
+    async fn setup_bucket(source_key: S3SourceKey) {
+        let s3_client = s3_client(source_key);
+
+        let head_result = s3_client
+            .head_bucket(rusoto_s3::HeadBucketRequest {
+                bucket: S3_BUCKET.to_owned(),
+            })
+            .compat()
+            .await;
+
+        match head_result {
+            Ok(_) => return,
+            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadBucketError::NoSuchBucket(_))) => {
+                // fallthrough
+            }
+            Err(rusoto_core::RusotoError::Unknown(err)) if err.status == 404 => {
+                // fallthrough
+            }
+            Err(err) => panic!("failed to check S3 bucket: {:?}", err),
+        }
+
+        s3_client
+            .create_bucket(rusoto_s3::CreateBucketRequest {
+                bucket: S3_BUCKET.to_owned(),
+                ..Default::default()
+            })
+            .compat()
+            .await
+            .unwrap();
+
+        let fixture_data =
+            std::fs::read("tests/fixtures/symbols/502F/C0A5/1EC1/3E47/9998/684FA139DCA7").unwrap();
+
+        s3_client
+            .put_object(rusoto_s3::PutObjectRequest {
+                bucket: S3_BUCKET.to_owned(),
+                body: Some(fixture_data.into()),
+                key: "50/2fc0a51ec13e479998684fa139dca7/debuginfo".to_owned(),
+                ..Default::default()
+            })
+            .compat()
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn test_download_complete() {
+        test::setup();
+
+        let source_key = s3_source_key!();
+
+        test::block_fn(|| async {
+            setup_bucket(source_key.clone()).await;
+
+            let source = gcs_source(source_key);
+            let downloader = S3Downloader::new();
+
+            let tempdir = test::tempdir();
+            let target_path = tempdir.path().join("myfile");
+
+            let source_location =
+                SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
+
+            let download_status = downloader
+                .download_source(source, source_location, target_path.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(download_status, DownloadStatus::Completed);
+            assert!(target_path.exists());
+
+            let hash = Sha1::digest(&std::fs::read(target_path).unwrap());
+            let hash = format!("{:x}", hash);
+            assert_eq!(hash, "e0195c064783997b26d6e2e625da7417d9f63677");
+        });
+    }
+
+    #[test]
+    fn test_download_missing() {
+        test::setup();
+
+        let source_key = s3_source_key!();
+
+        test::block_fn(|| async {
+            setup_bucket(source_key.clone()).await;
+
+            let source = gcs_source(source_key);
+            let downloader = S3Downloader::new();
+
+            let tempdir = test::tempdir();
+            let target_path = tempdir.path().join("myfile");
+
+            let source_location = SourceLocation::new("does/not/exist");
+            let download_status = downloader
+                .download_source(source, source_location, target_path.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(download_status, DownloadStatus::NotFound);
+            assert!(!target_path.exists());
+        });
+    }
+
+    #[test]
+    fn test_download_invalid_credentials() {
+        test::setup();
+
+        let broken_key = S3SourceKey {
+            region: rusoto_core::Region::UsEast1,
+            access_key: "".to_owned(),
+            secret_key: "".to_owned(),
+        };
+
+        test::block_fn(|| async {
+            let source = gcs_source(broken_key);
+            let downloader = S3Downloader::new();
+
+            let tempdir = test::tempdir();
+            let target_path = tempdir.path().join("myfile");
+
+            let source_location = SourceLocation::new("does/not/exist");
+            let download_status = downloader
+                .download_source(source, source_location, target_path.clone())
+                .await
+                .unwrap();
+
+            // We anticipate 403 for regularly missing files if the ListBucket permission is not
+            // granted, therefore return `NotFound` instead of an authentication error.
+            assert_eq!(download_status, DownloadStatus::NotFound);
+            assert!(!target_path.exists());
+        });
+    }
+}

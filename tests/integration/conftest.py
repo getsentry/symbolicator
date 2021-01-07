@@ -6,17 +6,12 @@ import subprocess
 import threading
 import time
 import traceback
-import uuid
 
 import pytest
 import requests
 from pytest_localserver.http import WSGIServer
 
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
-
-AWS_ACCESS_KEY_ID = os.environ.get("SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.environ.get("SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY")
-AWS_REGION_NAME = "us-east-1"
 
 session = requests.session()
 
@@ -266,40 +261,3 @@ def fail_missing_secrets(msg):
         pytest.fail(msg)
     else:
         pytest.skip(msg)
-
-
-@pytest.fixture
-def s3(pytestconfig):
-    """AWS S3 credentials for testing S3 buckets.
-
-    This will skip if the secrets are not in the environment, unless we are running on CI in
-    the getsentry team, in which case it will fail.  When running CI not as part of the
-    getsentry team you do not automatically get access to the configured secrets so skipping
-    is allowed.
-    """
-    if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-        fail_missing_secrets("No AWS credentials")
-    import boto3
-
-    return boto3.resource(
-        "s3",
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    )
-
-
-@pytest.fixture
-def s3_bucket_config(s3):
-    bucket_name = f"symbolicator-test-{uuid.uuid4()}"
-    s3.create_bucket(Bucket=bucket_name)
-
-    yield {
-        "type": "s3",
-        "bucket": bucket_name,
-        "access_key": AWS_ACCESS_KEY_ID,
-        "secret_key": AWS_SECRET_ACCESS_KEY,
-        "region": AWS_REGION_NAME,
-    }
-
-    s3.Bucket(bucket_name).objects.all().delete()
-    s3.Bucket(bucket_name).delete()
