@@ -77,6 +77,7 @@ pub enum DownloadStatus {
 pub struct DownloadService {
     worker: RemoteThread,
     config: Arc<Config>,
+    http: http::HttpDownloader,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
 }
@@ -87,6 +88,7 @@ impl DownloadService {
         Arc::new(Self {
             worker,
             config,
+            http: http::HttpDownloader::new(),
             s3: s3::S3Downloader::new(),
             gcs: gcs::GcsDownloader::new(),
         })
@@ -103,7 +105,7 @@ impl DownloadService {
                 sentry::download_source(source, loc, destination).await
             }
             SourceFileId::Http(source, loc) => {
-                http::download_source(source, loc, destination).await
+                self.http.download_source(source, loc, destination).await
             }
             SourceFileId::S3(source, loc) => {
                 self.s3.download_source(source, loc, destination).await
@@ -175,7 +177,7 @@ impl DownloadService {
                 // Map all SpawnError variants into DownloadError::Canceled
                 spawn_result.unwrap_or(Err(DownloadError::Canceled))
             }
-            SourceConfig::Http(cfg) => Ok(http::list_files(cfg, filetypes, object_id)),
+            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
             SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
             SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
             SourceConfig::Filesystem(cfg) => Ok(filesystem::list_files(cfg, filetypes, object_id)),
