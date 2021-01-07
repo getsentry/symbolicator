@@ -195,7 +195,7 @@ impl RemoteThread {
         enum ChannelMsg<T> {
             Output(T),
             Timeout,
-        };
+        }
         let (tx, rx) = oneshot::channel();
         let creation_time = Instant::now();
         let msg = actix::msgs::Execute::new(move || -> Result<(), ()> {
