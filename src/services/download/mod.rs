@@ -80,6 +80,7 @@ pub struct DownloadService {
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
+    fs: filesystem::FilesystemDownloader,
 }
 
 impl DownloadService {
@@ -91,6 +92,7 @@ impl DownloadService {
             http: http::HttpDownloader::new(),
             s3: s3::S3Downloader::new(),
             gcs: gcs::GcsDownloader::new(),
+            fs: filesystem::FilesystemDownloader::new(),
         })
     }
 
@@ -114,7 +116,7 @@ impl DownloadService {
                 self.gcs.download_source(source, loc, destination).await
             }
             SourceFileId::Filesystem(source, loc) => {
-                filesystem::download_source(source, loc, destination)
+                self.fs.download_source(source, loc, destination)
             }
         }
     }
@@ -180,7 +182,7 @@ impl DownloadService {
             SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
             SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
             SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Filesystem(cfg) => Ok(filesystem::list_files(cfg, filetypes, object_id)),
+            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, filetypes, object_id)),
         }
     }
 }

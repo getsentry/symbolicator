@@ -13,36 +13,48 @@ use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, FilesystemSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
 
-/// Download from a filesystem source.
-pub fn download_source(
-    source: Arc<FilesystemSourceConfig>,
-    location: SourceLocation,
-    dest: PathBuf,
-) -> Result<DownloadStatus, DownloadError> {
-    // All file I/O in this function is blocking!
-    let abspath = source.join_loc(&location);
-    log::debug!("Fetching debug file from {:?}", abspath);
-    match fs::copy(abspath, dest) {
-        Ok(_) => Ok(DownloadStatus::Completed),
-        Err(e) => match e.kind() {
-            io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
-            _ => Err(DownloadError::Io(e)),
-        },
-    }
-}
+/// Downloader implementation that supports the [`FilesystemSourceConfig`] source.
+#[derive(Debug)]
+pub struct FilesystemDownloader {}
 
-pub fn list_files(
-    source: Arc<FilesystemSourceConfig>,
-    filetypes: &'static [FileType],
-    object_id: ObjectId,
-) -> Vec<SourceFileId> {
-    super::SourceLocationIter {
-        filetypes: filetypes.iter(),
-        filters: &source.files.filters,
-        object_id: &object_id,
-        layout: source.files.layout,
-        next: Vec::new(),
+impl FilesystemDownloader {
+    pub fn new() -> Self {
+        Self {}
     }
-    .map(|loc| SourceFileId::Filesystem(source.clone(), loc))
-    .collect()
+
+    /// Download from a filesystem source.
+    pub fn download_source(
+        &self,
+        source: Arc<FilesystemSourceConfig>,
+        location: SourceLocation,
+        dest: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
+        // All file I/O in this function is blocking!
+        let abspath = source.join_loc(&location);
+        log::debug!("Fetching debug file from {:?}", abspath);
+        match fs::copy(abspath, dest) {
+            Ok(_) => Ok(DownloadStatus::Completed),
+            Err(e) => match e.kind() {
+                io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
+                _ => Err(DownloadError::Io(e)),
+            },
+        }
+    }
+
+    pub fn list_files(
+        &self,
+        source: Arc<FilesystemSourceConfig>,
+        filetypes: &'static [FileType],
+        object_id: ObjectId,
+    ) -> Vec<SourceFileId> {
+        super::SourceLocationIter {
+            filetypes: filetypes.iter(),
+            filters: &source.files.filters,
+            object_id: &object_id,
+            layout: source.files.layout,
+            next: Vec::new(),
+        }
+        .map(|loc| SourceFileId::Filesystem(source.clone(), loc))
+        .collect()
+    }
 }
