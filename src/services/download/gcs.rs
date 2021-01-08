@@ -329,9 +329,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_download_complete() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_complete() {
+        test::setup_logging();
 
         let source = gcs_source(gcs_source_key!());
         let downloader = GcsDownloader::new();
@@ -342,10 +342,10 @@ mod tests {
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
 
-        let download_status = test::block_fn(|| {
-            downloader.download_source(source, source_location, target_path.clone())
-        })
-        .unwrap();
+        let download_status = downloader
+            .download_source(source, source_location, target_path.clone())
+            .await
+            .unwrap();
 
         assert_eq!(download_status, DownloadStatus::Completed);
         assert!(target_path.exists());
@@ -355,9 +355,9 @@ mod tests {
         assert_eq!(hash, "206e63c06da135be1858dde03778caf25f8465b8");
     }
 
-    #[test]
-    fn test_download_missing() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_missing() {
+        test::setup_logging();
 
         let source = gcs_source(gcs_source_key!());
         let downloader = GcsDownloader::new();
@@ -367,18 +367,18 @@ mod tests {
 
         let source_location = SourceLocation::new("does/not/exist");
 
-        let download_status = test::block_fn(|| {
-            downloader.download_source(source, source_location, target_path.clone())
-        })
-        .unwrap();
+        let download_status = downloader
+            .download_source(source, source_location, target_path.clone())
+            .await
+            .unwrap();
 
         assert_eq!(download_status, DownloadStatus::NotFound);
         assert!(!target_path.exists());
     }
 
-    #[test]
-    fn test_download_invalid_credentials() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_invalid_credentials() {
+        test::setup_logging();
 
         let broken_credentials = GcsSourceKey {
             private_key: "".to_owned(),
@@ -393,7 +393,9 @@ mod tests {
 
         let source_location = SourceLocation::new("does/not/exist");
 
-        test::block_fn(|| downloader.download_source(source, source_location, target_path.clone()))
+        downloader
+            .download_source(source, source_location, target_path.clone())
+            .await
             .expect_err("authentication should fail");
 
         assert!(!target_path.exists());

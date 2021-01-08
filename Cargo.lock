@@ -3508,6 +3508,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio 0.1.22",
+ "tokio 1.0.1",
  "tokio-retry",
  "url 1.7.2",
  "url_serde",

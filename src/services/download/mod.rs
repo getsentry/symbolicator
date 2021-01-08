@@ -256,9 +256,9 @@ mod tests {
     use crate::test;
     use crate::types::ObjectType;
 
-    #[test]
-    fn test_download() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download() {
+        test::setup_logging();
 
         // test::setup() enables logging, but this test spawns a thread where
         // logging is not captured.  For normal test runs we don't want to
@@ -283,15 +283,15 @@ mod tests {
         let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
-        let ret = test::block_fn(move || async move { service.download(source_id, dest2).await });
-        assert_eq!(ret.unwrap(), DownloadStatus::Completed);
+        let download_status = service.download(source_id, dest2).await.unwrap();
+        assert_eq!(download_status, DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")
     }
 
-    #[test]
-    fn test_list_files() {
-        test::setup();
+    #[tokio::test]
+    async fn test_list_files() {
+        test::setup_logging();
 
         // test::setup() enables logging, but this test spawns a thread where
         // logging is not captured.  For normal test runs we don't want to
@@ -310,13 +310,13 @@ mod tests {
 
         let config = Arc::new(Config::default());
         let svc = DownloadService::new(RemoteThread::new_threaded(), config);
-        let ret = test::block_fn(|| {
-            svc.list_files(source.clone(), FileType::all(), objid, Hub::current())
-        })
-        .unwrap();
+        let file_list = svc
+            .list_files(source.clone(), FileType::all(), objid, Hub::current())
+            .await
+            .unwrap();
 
-        assert!(!ret.is_empty());
-        let item = &ret[0];
+        assert!(!file_list.is_empty());
+        let item = &file_list[0];
         if let SourceFileId::Filesystem(source_cfg, _loc) = item {
             assert_eq!(&source_cfg.id, source.id());
         } else {

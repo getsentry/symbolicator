@@ -69,6 +69,18 @@ impl Drop for Inner {
     }
 }
 
+/// Initializes logging for tests.
+///
+/// The logger only captures logs from the `symbolicator` crate and mutes all other logs (such as
+/// actix or symbolic).
+pub(crate) fn setup_logging() {
+    env_logger::builder()
+        .filter(Some("symbolicator"), LevelFilter::Trace)
+        .is_test(true)
+        .try_init()
+        .ok();
+}
+
 /// Setup the test environment.
 ///
 ///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
@@ -77,11 +89,7 @@ impl Drop for Inner {
 ///    but instead return the futures that are spawned. This allows to capture console output logged
 ///    from spawned tasks.
 pub(crate) fn setup() {
-    env_logger::builder()
-        .filter(Some("symbolicator"), LevelFilter::Trace)
-        .is_test(true)
-        .try_init()
-        .ok();
+    setup_logging();
 
     // Force initialization of the actix system
     SYSTEM.with(|_sys| ());

@@ -125,9 +125,9 @@ mod tests {
     use crate::sources::SourceConfig;
     use crate::test;
 
-    #[test]
-    fn test_download_source() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_source() {
+        test::setup_logging();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();
@@ -140,15 +140,20 @@ mod tests {
         let loc = SourceLocation::new("hello.txt");
 
         let downloader = HttpDownloader::new();
-        let ret = test::block_fn(|| downloader.download_source(http_source, loc, dest.clone()));
-        assert_eq!(ret.unwrap(), DownloadStatus::Completed);
+        let download_status = downloader
+            .download_source(http_source, loc, dest.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(download_status, DownloadStatus::Completed);
+
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
     }
 
-    #[test]
-    fn test_download_source_missing() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_source_missing() {
+        test::setup_logging();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();
@@ -161,8 +166,12 @@ mod tests {
         let loc = SourceLocation::new("i-do-not-exist");
 
         let downloader = HttpDownloader::new();
-        let ret = test::block_fn(|| downloader.download_source(http_source, loc, dest.clone()));
-        assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
+        let download_status = downloader
+            .download_source(http_source, loc, dest)
+            .await
+            .unwrap();
+
+        assert_eq!(download_status, DownloadStatus::NotFound);
     }
 
     #[test]

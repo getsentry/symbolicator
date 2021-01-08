@@ -51,6 +51,7 @@ structopt = "0.3.2"
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.1.0"
 thiserror = "1.0.20"
+tokio = { version = "1.0.1", features = ["rt", "macros"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tokio-retry = "0.2.0"
 url = "1.7.2"
