@@ -192,8 +192,8 @@ mod tests {
         let head_result = s3_client
             .head_bucket(rusoto_s3::HeadBucketRequest {
                 bucket: S3_BUCKET.to_owned(),
+                ..Default::default()
             })
-            .compat()
             .await;
 
         match head_result {
@@ -212,7 +212,6 @@ mod tests {
                 bucket: S3_BUCKET.to_owned(),
                 ..Default::default()
             })
-            .compat()
             .await
             .unwrap();
     }
@@ -230,7 +229,6 @@ mod tests {
                 key: key.clone(),
                 ..Default::default()
             })
-            .compat()
             .await;
 
         match head_result {
@@ -248,7 +246,6 @@ mod tests {
                 key,
                 ..Default::default()
             })
-            .compat()
             .await
             .unwrap();
     }
