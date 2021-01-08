@@ -7,7 +7,7 @@ use failure::{Error, Fail};
 use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
-use tokio::codec::{BytesCodec, FramedRead};
+use tokio01::codec::{BytesCodec, FramedRead};
 
 use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
