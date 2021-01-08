@@ -31,7 +31,7 @@ use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use thiserror::Error;
-use tokio::timer::Delay;
+use tokio01::timer::Delay;
 
 use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
@@ -248,23 +248,25 @@ impl SymbolicationActor {
             .map_err(|_| SymbolicationError::Canceled);
 
         if let Some(timeout) = timeout.map(Duration::from_secs) {
-            Box::new(tokio::timer::Timeout::new(rv, timeout).then(move |result| {
-                match result {
-                    Ok((finished_at, response)) => {
-                        metric!(timer("requests.response_idling") = finished_at.elapsed());
-                        Ok(response)
+            Box::new(
+                tokio01::timer::Timeout::new(rv, timeout).then(move |result| {
+                    match result {
+                        Ok((finished_at, response)) => {
+                            metric!(timer("requests.response_idling") = finished_at.elapsed());
+                            Ok(response)
+                        }
+                        Err(timeout_error) => match timeout_error.into_inner() {
+                            Some(error) => Err(error),
+                            None => Ok(SymbolicationResponse::Pending {
+                                request_id,
+                                // XXX(markus): Probably need a better estimation at some
+                                // point.
+                                retry_after: 30,
+                            }),
+                        },
                     }
-                    Err(timeout_error) => match timeout_error.into_inner() {
-                        Some(error) => Err(error),
-                        None => Ok(SymbolicationResponse::Pending {
-                            request_id,
-                            // XXX(markus): Probably need a better estimation at some
-                            // point.
-                            retry_after: 30,
-                        }),
-                    },
-                }
-            }))
+                }),
+            )
         } else {
             Box::new(rv.then(move |result| {
                 let (finished_at, response) = result?;

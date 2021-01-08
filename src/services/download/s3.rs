@@ -12,7 +12,7 @@ use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures01::Stream;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
-use tokio::codec::{BytesCodec, FramedRead};
+use tokio01::codec::{BytesCodec, FramedRead};
 
 use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};

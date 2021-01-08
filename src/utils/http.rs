@@ -12,8 +12,8 @@ use actix_web::{http::header, HttpMessage};
 use futures::compat::Future01CompatExt;
 use futures01::{future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
-use tokio::net::{tcp::ConnectFuture, TcpStream};
-use tokio::timer::Delay;
+use tokio01::net::{tcp::ConnectFuture, TcpStream};
+use tokio01::timer::Delay;
 use url::Url;
 
 lazy_static::lazy_static! {

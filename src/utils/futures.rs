@@ -8,8 +8,8 @@ use futures::channel::oneshot;
 use futures::compat::Future01CompatExt;
 use futures::{future, FutureExt, TryFutureExt};
 use futures01::future::Future as Future01;
-use tokio::prelude::FutureExt as TokioFutureExt;
-use tokio::runtime::Runtime as TokioRuntime;
+use tokio01::prelude::FutureExt as TokioFutureExt;
+use tokio01::runtime::Runtime as TokioRuntime;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
@@ -61,7 +61,7 @@ impl ThreadPool {
         let inner = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
             None
         } else {
-            let runtime = tokio::runtime::Builder::new().build().unwrap();
+            let runtime = tokio01::runtime::Builder::new().build().unwrap();
             Some(Arc::new(runtime))
         };
 
@@ -210,7 +210,7 @@ impl RemoteThread {
                     .boxed_local()
                     .compat()
                     .timeout(timeout)
-                    .then(move |r: Result<T, tokio::timer::timeout::Error<()>>| {
+                    .then(move |r: Result<T, tokio01::timer::timeout::Error<()>>| {
                         metric!(
                             timer("futures.done") = start_time.elapsed(),
                             "task_name" => task_name,
@@ -287,7 +287,7 @@ impl Drop for CallOnDrop {
 
 /// Delay aka sleep for a given duration
 pub async fn delay(duration: Duration) {
-    tokio::timer::Delay::new(Instant::now() + duration)
+    tokio01::timer::Delay::new(Instant::now() + duration)
         .compat()
         .await
         .ok();
