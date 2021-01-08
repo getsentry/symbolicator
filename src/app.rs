@@ -11,7 +11,7 @@ use crate::actors::{
 use crate::cache::Caches;
 use crate::config::Config;
 use crate::services::download::DownloadService;
-use crate::utils::futures::{RemoteThread, ThreadPool};
+use crate::utils::futures::ThreadPool;
 use crate::utils::http;
 
 /// The shared state for the service.
@@ -41,9 +41,14 @@ impl ServiceState {
 
         let cpu_threadpool = ThreadPool::new();
         let io_threadpool = ThreadPool::new();
-        let io_thread = RemoteThread::new();
+        let io_thread = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_name("symbolicator-download")
+            .enable_all()
+            .build()
+            .unwrap();
 
-        let download_svc = DownloadService::new(io_thread, config.clone());
+        let download_svc = DownloadService::new(Arc::new(io_thread), config.clone());
 
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches

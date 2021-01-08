@@ -22,7 +22,6 @@ use std::sync::Arc;
 
 use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
-use futures::future::{FutureExt, TryFutureExt};
 use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
@@ -128,34 +127,6 @@ where
         let mut inner = cell.borrow_mut();
         inner.set_current();
         inner.runner().block_on(future::lazy(f))
-    })
-}
-
-/// Runs the provided function, blocking the current thread until the result
-/// [`Future`](std::future::Future) completes.
-///
-/// This function can be used to synchronously block the current thread until the provided `Future`
-/// has resolved either successfully or with an error. The result of the future is then returned
-/// from this function call.
-///
-/// This is provided rather than a `block_on`-like interface to avoid accidentally calling a
-/// function which spawns before creating a future, which would attempt to spawn before actix is
-/// initialised.
-///
-/// Note that this function is intended to be used only for testing purpose. This function panics on
-/// nested call.
-pub fn block_fn<F, R, T>(f: F) -> T
-where
-    F: FnOnce() -> R,
-    R: std::future::Future<Output = T>,
-{
-    SYSTEM.with(|cell| {
-        let mut inner = cell.borrow_mut();
-        inner.set_current();
-        inner
-            .runner()
-            .block_on(async move { f().await }.unit_error().boxed_local().compat())
-            .unwrap()
     })
 }
 

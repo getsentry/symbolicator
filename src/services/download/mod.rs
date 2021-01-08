@@ -12,8 +12,9 @@ use std::time::Duration;
 use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
 use thiserror::Error;
+use tokio::runtime::Runtime;
 
-use crate::utils::futures::RemoteThread;
+use crate::utils::futures::{m, measure};
 use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
@@ -67,7 +68,7 @@ pub enum DownloadStatus {
 /// rate limits and the concurrency it uses.
 #[derive(Debug)]
 pub struct DownloadService {
-    worker: RemoteThread,
+    worker: Arc<Runtime>,
     config: Arc<Config>,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
@@ -78,7 +79,7 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(worker: RemoteThread, config: Arc<Config>) -> Arc<Self> {
+    pub fn new(worker: Arc<Runtime>, config: Arc<Config>) -> Arc<Self> {
         Arc::new(Self {
             worker,
             config,
@@ -134,15 +135,16 @@ impl DownloadService {
         let hub = Hub::current();
         let slf = self.clone();
 
-        let spawn_result = self
-            .worker
-            .spawn("service.download", Duration::from_secs(300), || {
-                slf.dispatch_download(source, destination).bind_hub(hub)
-            })
-            .await;
+        let _guard = self.worker.enter();
+        let job = slf.dispatch_download(source, destination).bind_hub(hub);
+        let job = tokio::time::timeout(Duration::from_secs(300), job);
+        let job = measure("service.download", m::timed_result, job);
 
         // Map all SpawnError variants into DownloadError::Canceled.
-        spawn_result.unwrap_or(Err(DownloadError::Canceled))
+        match self.worker.spawn(job).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
+        }
     }
 
     /// Returns all objects matching the [`ObjectId`] at the source.
@@ -164,20 +166,24 @@ impl DownloadService {
                 let config = self.config.clone();
                 let slf = self.clone();
 
-                let job = move || async move {
+                // This `async move` ensures that the `list_files` future completes before `slf`
+                // goes out of scope, which ensures 'static lifetime for `spawn` below.
+                let job = async move {
                     slf.sentry
                         .list_files(cfg, filetypes, object_id, config)
                         .bind_hub(hub)
                         .await
                 };
 
-                let spawn_result = self
-                    .worker
-                    .spawn("service.download.list_files", Duration::from_secs(30), job)
-                    .await;
+                let _guard = self.worker.enter();
+                let job = tokio::time::timeout(Duration::from_secs(30), job);
+                let job = measure("service.download.list_files", m::timed_result, job);
 
-                // Map all SpawnError variants into DownloadError::Canceled
-                spawn_result.unwrap_or(Err(DownloadError::Canceled))
+                // Map all SpawnError variants into DownloadError::Canceled.
+                match self.worker.spawn(job).await {
+                    Ok(Ok(result)) => result,
+                    Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
+                }
             }
             SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
             SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
@@ -256,71 +262,83 @@ mod tests {
     use crate::test;
     use crate::types::ObjectType;
 
-    #[tokio::test]
-    async fn test_download() {
-        test::setup_logging();
+    #[test]
+    fn test_download() {
+        let rt_main = Runtime::new().unwrap();
+        let rt_pool = Arc::new(Runtime::new().unwrap());
 
-        // test::setup() enables logging, but this test spawns a thread where
-        // logging is not captured.  For normal test runs we don't want to
-        // pollute the stdout so silence logs here.  When debugging this test
-        // you may want to temporarily remove this.
-        log::set_max_level(log::LevelFilter::Off);
+        rt_main.block_on(async {
+            test::setup_logging();
 
-        let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path().to_owned();
+            // test::setup() enables logging, but this test spawns a thread where
+            // logging is not captured.  For normal test runs we don't want to
+            // pollute the stdout so silence logs here.  When debugging this test
+            // you may want to temporarily remove this.
+            log::set_max_level(log::LevelFilter::Off);
 
-        let (_srv, source) = test::symbol_server();
-        let source_id = match source {
-            SourceConfig::Http(source) => {
-                SourceFileId::Http(source, SourceLocation::new("hello.txt"))
-            }
-            _ => panic!("unexpected source"),
-        };
+            let tmpfile = tempfile::NamedTempFile::new().unwrap();
+            let dest = tmpfile.path().to_owned();
 
-        let config = Arc::new(Config::default());
+            let (_srv, source) = test::symbol_server();
+            let source_id = match source {
+                SourceConfig::Http(source) => {
+                    SourceFileId::Http(source, SourceLocation::new("hello.txt"))
+                }
+                _ => panic!("unexpected source"),
+            };
 
-        let service = DownloadService::new(RemoteThread::new_threaded(), config);
-        let dest2 = dest.clone();
+            let config = Arc::new(Config::default());
 
-        // Jump through some hoops here, to prove that we can .await the service.
-        let download_status = service.download(source_id, dest2).await.unwrap();
-        assert_eq!(download_status, DownloadStatus::Completed);
-        let content = std::fs::read_to_string(dest).unwrap();
-        assert_eq!(content, "hello world\n")
+            let service = DownloadService::new(rt_pool.clone(), config);
+            let dest2 = dest.clone();
+
+            // Jump through some hoops here, to prove that we can .await the service.
+            let download_status = service.download(source_id, dest2).await.unwrap();
+            assert_eq!(download_status, DownloadStatus::Completed);
+            let content = std::fs::read_to_string(dest).unwrap();
+            assert_eq!(content, "hello world\n")
+        })
     }
 
-    #[tokio::test]
-    async fn test_list_files() {
-        test::setup_logging();
+    #[test]
+    fn test_list_files() {
+        let rt_main = Runtime::new().unwrap();
+        let rt_pool = Arc::new(Runtime::new().unwrap());
 
-        // test::setup() enables logging, but this test spawns a thread where
-        // logging is not captured.  For normal test runs we don't want to
-        // pollute the stdout so silence logs here.  When debugging this test
-        // you may want to temporarily remove this.
-        log::set_max_level(log::LevelFilter::Off);
+        rt_main.block_on(async {
+            test::setup_logging();
 
-        let source = test::local_source();
-        let objid = ObjectId {
-            code_id: Some("5ab380779000".parse().unwrap()),
-            code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
-            debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
-            debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
-            object_type: ObjectType::Pe,
-        };
+            // test::setup() enables logging, but this test spawns a thread where
+            // logging is not captured.  For normal test runs we don't want to
+            // pollute the stdout so silence logs here.  When debugging this test
+            // you may want to temporarily remove this.
+            log::set_max_level(log::LevelFilter::Off);
 
-        let config = Arc::new(Config::default());
-        let svc = DownloadService::new(RemoteThread::new_threaded(), config);
-        let file_list = svc
-            .list_files(source.clone(), FileType::all(), objid, Hub::current())
-            .await
-            .unwrap();
+            let source = test::local_source();
+            let objid = ObjectId {
+                code_id: Some("5ab380779000".parse().unwrap()),
+                code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
+                debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
+                debug_file: Some(
+                    "C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into(),
+                ),
+                object_type: ObjectType::Pe,
+            };
 
-        assert!(!file_list.is_empty());
-        let item = &file_list[0];
-        if let SourceFileId::Filesystem(source_cfg, _loc) = item {
-            assert_eq!(&source_cfg.id, source.id());
-        } else {
-            panic!("Not a filesystem item");
-        }
+            let config = Arc::new(Config::default());
+            let svc = DownloadService::new(rt_pool.clone(), config);
+            let file_list = svc
+                .list_files(source.clone(), FileType::all(), objid, Hub::current())
+                .await
+                .unwrap();
+
+            assert!(!file_list.is_empty());
+            let item = &file_list[0];
+            if let SourceFileId::Filesystem(source_cfg, _loc) = item {
+                assert_eq!(&source_cfg.id, source.id());
+            } else {
+                panic!("Not a filesystem item");
+            }
+        });
     }
 }
