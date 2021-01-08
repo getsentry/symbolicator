@@ -147,18 +147,22 @@ impl S3Downloader {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
     use crate::test;
     use crate::types::ObjectType;
 
     use super::*;
+    use rusoto_s3::S3Client;
     use sha1::{Digest as _, Sha1};
 
+    /// Name of the bucket to create for testing.
     const S3_BUCKET: &str = "symbolicator-test";
 
     fn s3_source_key() -> Option<S3SourceKey> {
-        let access_key = std::env::var("AWS_ACCESS_KEY_ID").ok()?;
-        let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok()?;
+        let access_key = std::env::var("SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID").ok()?;
+        let secret_key = std::env::var("SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY").ok()?;
 
         if access_key.is_empty() || secret_key.is_empty() {
             None
@@ -183,18 +187,7 @@ mod tests {
         }
     }
 
-    fn s3_client(source_key: S3SourceKey) -> rusoto_s3::S3Client {
-        rusoto_s3::S3Client::new_with(
-            rusoto_core::HttpClient::new().expect("create S3 HTTP client"),
-            rusoto_credential::StaticProvider::new_minimal(
-                source_key.access_key,
-                source_key.secret_key,
-            ),
-            source_key.region,
-        )
-    }
-
-    fn gcs_source(source_key: S3SourceKey) -> Arc<S3SourceConfig> {
+    fn s3_source(source_key: S3SourceKey) -> Arc<S3SourceConfig> {
         Arc::new(S3SourceConfig {
             id: SourceId::new("s3-test"),
             bucket: S3_BUCKET.to_owned(),
@@ -204,11 +197,103 @@ mod tests {
         })
     }
 
+    /// Creates an S3 bucket if it does not exist.
+    async fn ensure_bucket(s3_client: &S3Client) {
+        let head_result = s3_client
+            .head_bucket(rusoto_s3::HeadBucketRequest {
+                bucket: S3_BUCKET.to_owned(),
+            })
+            .compat()
+            .await;
+
+        match head_result {
+            Ok(_) => return,
+            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadBucketError::NoSuchBucket(_))) => {
+                // fallthrough
+            }
+            Err(rusoto_core::RusotoError::Unknown(err)) if err.status == 404 => {
+                // fallthrough. rusoto does not seem to detect the 404.
+            }
+            Err(err) => panic!("failed to check S3 bucket: {:?}", err),
+        }
+
+        s3_client
+            .create_bucket(rusoto_s3::CreateBucketRequest {
+                bucket: S3_BUCKET.to_owned(),
+                ..Default::default()
+            })
+            .compat()
+            .await
+            .unwrap();
+    }
+
+    /// Loads a mock fixture into the S3 bucket if it does not exist.
+    async fn ensure_fixture(
+        s3_client: &S3Client,
+        fixture: impl AsRef<Path>,
+        key: impl Into<String>,
+    ) {
+        let key = key.into();
+        let head_result = s3_client
+            .head_object(rusoto_s3::HeadObjectRequest {
+                bucket: S3_BUCKET.to_owned(),
+                key: key.clone(),
+                ..Default::default()
+            })
+            .compat()
+            .await;
+
+        match head_result {
+            Ok(_) => return,
+            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_))) => {
+                // fallthrough
+            }
+            Err(err) => panic!("failed to check S3 object: {:?}", err),
+        }
+
+        s3_client
+            .put_object(rusoto_s3::PutObjectRequest {
+                bucket: S3_BUCKET.to_owned(),
+                body: Some(std::fs::read(fixture).unwrap().into()),
+                key,
+                ..Default::default()
+            })
+            .compat()
+            .await
+            .unwrap();
+    }
+
+    /// Loads mock data into the S3 test bucket.
+    ///
+    /// This performs a series of actions:
+    ///  - If the bucket does not exist, it will be created.
+    ///  - Each file is checked and created if it does not exist.
+    ///
+    /// On error, the function panics with the error message.
+    async fn setup_bucket(source_key: S3SourceKey) {
+        let s3_client = S3Client::new_with(
+            rusoto_core::HttpClient::new().expect("create S3 HTTP client"),
+            rusoto_credential::StaticProvider::new_minimal(
+                source_key.access_key,
+                source_key.secret_key,
+            ),
+            source_key.region,
+        );
+
+        ensure_bucket(&s3_client).await;
+        ensure_fixture(
+            &s3_client,
+            "tests/fixtures/symbols/502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
+            "50/2fc0a51ec13e479998684fa139dca7/debuginfo",
+        )
+        .await;
+    }
+
     #[test]
     fn test_list_files() {
         test::setup();
 
-        let source = gcs_source(s3_source_key!());
+        let source = s3_source(s3_source_key!());
         let downloader = S3Downloader::new();
 
         let object_id = ObjectId {
@@ -228,55 +313,6 @@ mod tests {
         );
     }
 
-    /// Loads mock data into the S3 test bucket.
-    ///
-    /// This function will exit early if the bucket is already populated. Eventually, this should be
-    /// replaced with a one-off setup script.
-    async fn setup_bucket(source_key: S3SourceKey) {
-        let s3_client = s3_client(source_key);
-
-        let head_result = s3_client
-            .head_bucket(rusoto_s3::HeadBucketRequest {
-                bucket: S3_BUCKET.to_owned(),
-            })
-            .compat()
-            .await;
-
-        match head_result {
-            Ok(_) => return,
-            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadBucketError::NoSuchBucket(_))) => {
-                // fallthrough
-            }
-            Err(rusoto_core::RusotoError::Unknown(err)) if err.status == 404 => {
-                // fallthrough
-            }
-            Err(err) => panic!("failed to check S3 bucket: {:?}", err),
-        }
-
-        s3_client
-            .create_bucket(rusoto_s3::CreateBucketRequest {
-                bucket: S3_BUCKET.to_owned(),
-                ..Default::default()
-            })
-            .compat()
-            .await
-            .unwrap();
-
-        let fixture_data =
-            std::fs::read("tests/fixtures/symbols/502F/C0A5/1EC1/3E47/9998/684FA139DCA7").unwrap();
-
-        s3_client
-            .put_object(rusoto_s3::PutObjectRequest {
-                bucket: S3_BUCKET.to_owned(),
-                body: Some(fixture_data.into()),
-                key: "50/2fc0a51ec13e479998684fa139dca7/debuginfo".to_owned(),
-                ..Default::default()
-            })
-            .compat()
-            .await
-            .unwrap();
-    }
-
     #[test]
     fn test_download_complete() {
         test::setup();
@@ -286,7 +322,7 @@ mod tests {
         test::block_fn(|| async {
             setup_bucket(source_key.clone()).await;
 
-            let source = gcs_source(source_key);
+            let source = s3_source(source_key);
             let downloader = S3Downloader::new();
 
             let tempdir = test::tempdir();
@@ -318,7 +354,7 @@ mod tests {
         test::block_fn(|| async {
             setup_bucket(source_key.clone()).await;
 
-            let source = gcs_source(source_key);
+            let source = s3_source(source_key);
             let downloader = S3Downloader::new();
 
             let tempdir = test::tempdir();
@@ -346,7 +382,7 @@ mod tests {
         };
 
         test::block_fn(|| async {
-            let source = gcs_source(broken_key);
+            let source = s3_source(broken_key);
             let downloader = S3Downloader::new();
 
             let tempdir = test::tempdir();
