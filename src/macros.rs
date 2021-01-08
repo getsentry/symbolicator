@@ -37,9 +37,8 @@ macro_rules! tryf03pin {
         match $e {
             Ok(value) => value,
             Err(e) => {
-                use ::std::pin::Pin;
-                return Box::pin(::futures::future::err(::std::convert::From::from(e)))
-                    as Pin<Box<dyn ::futures::future::Future<Output = _>>>;
+                use ::futures::future::FutureExt;
+                return ::futures::future::err(::std::convert::From::from(e)).boxed_local();
             }
         }
     };

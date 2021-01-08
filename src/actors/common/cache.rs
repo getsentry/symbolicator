@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::future::{self, FutureExt, Shared, TryFutureExt};
+use futures::future::{self, BoxFuture, FutureExt, LocalBoxFuture, Shared, TryFutureExt};
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -13,10 +13,10 @@ use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
-use crate::utils::futures::{BoxedFuture, CallOnDrop};
+use crate::utils::futures::CallOnDrop;
 
 /// Result from [`Cacher::compute_memoized`].
-type CacheResultFuture<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
+type CacheResultFuture<'a, T, E> = BoxFuture<'a, Result<Arc<T>, Arc<E>>>;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
@@ -129,7 +129,7 @@ pub trait CacheItemRequest: 'static + Send {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>>;
+    fn compute(&self, path: &Path) -> LocalBoxFuture<'static, Result<CacheStatus, Self::Error>>;
 
     /// Determines whether this item should be loaded.
     ///
@@ -207,7 +207,11 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    fn compute(&self, request: T, key: CacheKey) -> BoxedFuture<Result<T::Item, T::Error>> {
+    fn compute(
+        &self,
+        request: T,
+        key: CacheKey,
+    ) -> LocalBoxFuture<'static, Result<T::Item, T::Error>> {
         // cache_path is None when caching is disabled.
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
@@ -225,44 +229,42 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let temp_file = tryf03pin!(self.tempfile());
 
-        let future =
-            request
-                .compute(temp_file.path())
-                .and_then(move |status: CacheStatus| async move {
-                    if let Some(ref cache_path) = cache_path {
-                        sentry::configure_scope(|scope| {
-                            scope.set_extra(
-                                &format!("cache.{}.cache_path", name),
-                                cache_path.to_string_lossy().into(),
-                            );
-                        });
+        request
+            .compute(temp_file.path())
+            .and_then(move |status: CacheStatus| async move {
+                if let Some(ref cache_path) = cache_path {
+                    sentry::configure_scope(|scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            cache_path.to_string_lossy().into(),
+                        );
+                    });
 
-                        log::trace!("Creating {} at path {:?}", name, cache_path);
+                    log::trace!("Creating {} at path {:?}", name, cache_path);
+                }
+
+                let byteview = ByteView::open(temp_file.path())?;
+
+                metric!(
+                    counter(&format!("caches.{}.file.write", name)) += 1,
+                    "status" => status.as_ref(),
+                );
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                    "hit" => "false"
+                );
+
+                let path = match cache_path {
+                    Some(ref cache_path) => {
+                        status.persist_item(cache_path, temp_file)?;
+                        CachePath::Cached(cache_path.to_path_buf())
                     }
+                    None => CachePath::Temp(temp_file.into_temp_path()),
+                };
 
-                    let byteview = ByteView::open(temp_file.path())?;
-
-                    metric!(
-                        counter(&format!("caches.{}.file.write", name)) += 1,
-                        "status" => status.as_ref(),
-                    );
-                    metric!(
-                        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                        "hit" => "false"
-                    );
-
-                    let path = match cache_path {
-                        Some(ref cache_path) => {
-                            status.persist_item(cache_path, temp_file)?;
-                            CachePath::Cached(cache_path.to_path_buf())
-                        }
-                        None => CachePath::Temp(temp_file.into_temp_path()),
-                    };
-
-                    Ok(request.load(key.scope.clone(), status, byteview, path))
-                });
-
-        Box::pin(future)
+                Ok(request.load(key.scope.clone(), status, byteview, path))
+            })
+            .boxed_local()
     }
 
     /// Creates a shareable channel that computes an item.
@@ -311,7 +313,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// occurs the error result is returned, **however** in this case nothing is written
     /// into the cache and the next call to the same cache item will attempt to re-compute
     /// the cache.
-    pub fn compute_memoized(&self, request: T) -> CacheResultFuture<T::Item, T::Error> {
+    pub fn compute_memoized(&self, request: T) -> CacheResultFuture<'static, T::Item, T::Error> {
         let key = request.get_cache_key();
         let name = self.config.name();
 

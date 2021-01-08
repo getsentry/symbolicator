@@ -14,7 +14,7 @@ use std::process;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
-use futures::future::{FutureExt, TryFutureExt};
+use futures::future::{FutureExt, LocalBoxFuture, TryFutureExt};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -25,7 +25,6 @@ use crate::cache::{CacheKey, CacheStatus};
 use crate::services::download::DownloadStatus;
 use crate::sources::SourceFileId;
 use crate::types::{ObjectId, Scope};
-use crate::utils::futures::BoxedFuture;
 use crate::utils::sentry::WriteSentryScope;
 
 use super::meta_cache::FetchFileMetaRequest;
@@ -126,7 +125,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     ///
     /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
     /// returned.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> LocalBoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
@@ -225,15 +224,14 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let type_name = self.0.file_id.source().type_name();
 
-        Box::pin(
-            future_metrics!(
-                "objects",
-                Some((Duration::from_secs(600), ObjectError::Timeout)),
-                result.compat(),
-                "source_type" => type_name,
-            )
-            .compat(),
+        future_metrics!(
+            "objects",
+            Some((Duration::from_secs(600), ObjectError::Timeout)),
+            result.compat(),
+            "source_type" => type_name,
         )
+        .compat()
+        .boxed_local()
     }
 
     fn load(

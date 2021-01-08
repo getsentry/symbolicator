@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
-use futures::future::{self, Either, Future, TryFutureExt};
+use futures::future::{self, Either, Future, FutureExt, LocalBoxFuture, TryFutureExt};
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
@@ -21,7 +21,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::WriteSentryScope;
 
 /// Errors happening while generating a symcache.
@@ -125,7 +125,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> LocalBoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
@@ -158,15 +158,14 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let num_sources = self.request.sources.len();
 
-        Box::pin(
-            future_metrics!(
-                "symcaches",
-                Some((Duration::from_secs(1200), SymCacheError::Timeout)),
-                result.compat(),
-                "num_sources" => &num_sources.to_string()
-            )
-            .compat(),
+        future_metrics!(
+            "symcaches",
+            Some((Duration::from_secs(1200), SymCacheError::Timeout)),
+            result.compat(),
+            "num_sources" => &num_sources.to_string()
         )
+        .compat()
+        .boxed_local()
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

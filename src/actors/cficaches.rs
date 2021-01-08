@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
+use futures::future::LocalBoxFuture;
 use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
@@ -22,7 +23,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::ThreadPool;
 use crate::utils::sentry::WriteSentryScope;
 
 /// Errors happening while generating a cficache
@@ -119,7 +120,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ///
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> LocalBoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let object = self
             .objects_actor
@@ -152,15 +153,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
         let num_sources = self.request.sources.len();
 
-        Box::pin(
-            future_metrics!(
-                "cficaches",
-                Some((Duration::from_secs(1200), CfiCacheError::Timeout)),
-                result.compat(),
-                "num_sources" => &num_sources.to_string()
-            )
-            .compat(),
+        future_metrics!(
+            "cficaches",
+            Some((Duration::from_secs(1200), CfiCacheError::Timeout)),
+            result.compat(),
+            "num_sources" => &num_sources.to_string()
         )
+        .compat()
+        .boxed_local()
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

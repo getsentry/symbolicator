@@ -11,6 +11,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::future::{FutureExt, LocalBoxFuture};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 
@@ -18,7 +19,7 @@ use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::sources::{SourceFileId, SourceId, SourceLocation};
 use crate::types::{ObjectFeatures, ObjectId, Scope};
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::ThreadPool;
 
 use super::{FetchFileDataRequest, ObjectError, ObjectHandle};
 
@@ -94,14 +95,14 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// This returns an error if the download failed.  If the data cache has a
     /// [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] status the same status is
     /// returned.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> LocalBoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
 
         let path = path.to_owned();
         let data_cache = self.data_cache.clone();
         let slf = self.clone();
-        let result = async move {
+        async move {
             data_cache
                 .compute_memoized(FetchFileDataRequest(slf))
                 .await
@@ -125,9 +126,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
 
                     Ok(object_handle.status)
                 })
-        };
-
-        Box::pin(result)
+        }
+        .boxed_local()
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
