@@ -285,6 +285,30 @@ impl Drop for CallOnDrop {
     }
 }
 
+/// Error returned by [`timeout_compat`].
+#[derive(Debug, PartialEq, thiserror::Error)]
+#[error("deadline has elapsed")]
+pub struct Elapsed(());
+
+/// Require a `Future` to complete before the specified duration has elapsed.
+///
+/// If the future completes before the duration has elapsed, then the completed value is returned.
+/// Otherwise, an error is returned and the future is canceled.
+///
+/// # Compatibility
+///
+/// This is a compatibility shim for the `tokio` 1.0 `timeout` function signature to run on a
+/// `tokio` 0.1 executor.
+pub async fn timeout_compat<F: Future>(duration: Duration, f: F) -> Result<F::Output, Elapsed> {
+    f.unit_error()
+        .boxed_local()
+        .compat()
+        .timeout(duration)
+        .compat()
+        .await
+        .map_err(|_| Elapsed(()))
+}
+
 /// Delay aka sleep for a given duration
 pub async fn delay(duration: Duration) {
     tokio01::timer::Delay::new(Instant::now() + duration)
@@ -293,21 +317,136 @@ pub async fn delay(duration: Duration) {
         .ok();
 }
 
-/// Time a future execution and expose using metrics.
+/// State of the [`MeasureGuard`].
+#[derive(Clone, Copy, Debug)]
+enum MeasureState {
+    /// The future is not ready.
+    Pending,
+    /// The future has terminated with a status.
+    Done(&'static str),
+}
+
+/// A guard to [`measure`] the execution of futures.
+struct MeasureGuard<'a> {
+    state: MeasureState,
+    task_name: &'a str,
+    creation_time: Instant,
+}
+
+impl<'a> MeasureGuard<'a> {
+    /// Creates a new measure guard.
+    pub fn new(task_name: &'a str) -> Self {
+        Self {
+            state: MeasureState::Pending,
+            task_name,
+            creation_time: Instant::now(),
+        }
+    }
+
+    /// Marks the future as started.
+    ///
+    /// By default, the future is waiting to be polled. `start` emits the `futures.wait_time`
+    /// metric.
+    pub fn start(&mut self) {
+        metric!(
+            timer("futures.wait_time") = self.creation_time.elapsed(),
+            "task_name" => self.task_name,
+        );
+    }
+
+    /// Marks the future as terminated and emits the `futures.done` metric.
+    pub fn done(mut self, status: &'static str) {
+        self.state = MeasureState::Done(status);
+    }
+}
+
+impl Drop for MeasureGuard<'_> {
+    fn drop(&mut self) {
+        let status = match self.state {
+            MeasureState::Pending => "canceled",
+            MeasureState::Done(status) => status,
+        };
+
+        metric!(
+            timer("futures.done") = self.creation_time.elapsed(),
+            "task_name" => self.task_name,
+            "status" => status,
+        );
+    }
+}
+
+/// Measures the timing of a future and reports metrics.
 ///
-/// The future is expected to resolve to a Result and the status is logged as well.
-pub async fn time_task<F, T, E>(task_name: &str, future: F) -> F::Output
+/// This function reports two metrics:
+///
+///  - `futures.wait_time`: Time between creation of the future and the first poll.
+///  - `futures.done`: Time between creation of the future and completion.
+///
+/// The metric is tagged with a status derived with the `get_status` function. See the [`m`] module
+/// for status helpers.
+pub fn measure<'a, S, F>(
+    task_name: &'a str,
+    get_status: S,
+    f: F,
+) -> impl Future<Output = F::Output> + 'a
 where
-    F: Future<Output = Result<T, E>>,
+    F: 'a + Future,
+    S: 'a + FnOnce(&F::Output) -> &'static str,
 {
-    let start_time = Instant::now();
-    let ret = future.await;
-    metric!(
-        timer("futures.done") = start_time.elapsed(),
-        "task_name" => task_name,
-        "status" => if ret.is_ok() { "ok" } else {"err"},
-    );
-    ret
+    let mut guard = MeasureGuard::new(task_name);
+
+    async move {
+        guard.start();
+        let output = f.await;
+        guard.done(get_status(&output));
+        output
+    }
+}
+
+/// Status helpers for [`measure`].
+#[allow(dead_code)]
+pub mod m {
+    /// Creates an `"ok"` status for [`measure`](super::measure).
+    pub fn ok<T>(_t: &T) -> &'static str {
+        "ok"
+    }
+
+    /// Creates a status derived from the future's result for [`measure`](super::measure).
+    ///
+    ///  - `"ok"` if the future resolves to `Ok(_)`
+    ///  - `"err"` if the future resolves to `Err(_)`
+    pub fn result<T, E>(result: &Result<T, E>) -> &'static str {
+        match result {
+            Ok(_) => "ok",
+            Err(_) => "err",
+        }
+    }
+
+    /// Creates a status derived from the future's result for [`measure`](super::measure).
+    ///
+    ///  - `"ok"` if the future resolves to `Ok(_)`
+    ///  - `"timeout"` if the future times out
+    pub fn timed<T, TE>(result: &Result<T, TE>) -> &'static str {
+        match result {
+            Ok(_) => "ok",
+            Err(_) => "timeout",
+        }
+    }
+
+    /// Creates a status derived from the future's result for [`measure`](super::measure).
+    ///
+    ///  - `"ok"` if the future resolves to `Ok(_)`
+    ///  - `"err"` if the future resolves to `Err(_)
+    ///  - `"timeout"` if the future times out
+    pub fn timed_result<T, E, TE>(result: &Result<Result<T, E>, TE>) -> &'static str {
+        // TODO: `TE` should be `tokio::time::error::Elapsed`, but since we have to deal with
+        // multiple versions of the timer, we assume that this is never called on other nested
+        // results.
+        match result {
+            Ok(inner) => self::result(inner),
+            Err(_) => "timeout",
+        }
+    }
 }
 
 /// Retry a future 3 times with exponential backoff.
@@ -331,6 +470,16 @@ mod tests {
     use super::*;
 
     use crate::test;
+
+    /// Elaborate executor-neutral way of sleeping in a future
+    async fn sleep(duration: Duration) {
+        let (tx, rx) = oneshot::channel();
+        std::thread::spawn(move || {
+            std::thread::sleep(duration);
+            tx.send(()).ok();
+        });
+        rx.await.ok();
+    }
 
     /// Create a new RemoteThread for testing purposes.
     fn setup_remote_thread() -> RemoteThread {
@@ -358,13 +507,7 @@ mod tests {
     fn test_remote_thread_timeout() {
         let remote = setup_remote_thread();
         let fut = remote.spawn("task", Duration::from_nanos(1), || {
-            // Elaborate executor-neutral way of sleeping in a future
-            let (tx, rx) = oneshot::channel();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_secs(1));
-                tx.send(42).ok();
-            });
-            rx
+            sleep(Duration::from_secs(1))
         });
         let ret = test::block_fn(|| fut);
         assert_eq!(ret, Err(SpawnError::Timeout));
@@ -373,14 +516,8 @@ mod tests {
     #[test]
     fn test_remote_thread_canceled() {
         let remote = setup_remote_thread();
-        let fut = remote.spawn("task", Duration::from_secs(10), || {
-            // Elaborate executor-neutral way of sleeping in a future
-            let (tx, rx) = oneshot::channel();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_secs(10));
-                tx.send(42).ok();
-            });
-            rx
+        let fut = remote.spawn("task", Duration::from_secs(2), || {
+            sleep(Duration::from_secs(1))
         });
         std::mem::drop(remote);
         let ret = test::block_fn(|| fut);
@@ -393,8 +530,25 @@ mod tests {
         let remote0 = setup_remote_thread();
         let remote1 = remote0.clone();
         std::mem::drop(remote0);
-        let fut = remote1.spawn("task", Duration::from_secs(10), || future::ready(42));
+        let fut = remote1.spawn("task", Duration::from_secs(1), || future::ready(42));
         let ret = test::block_fn(|| fut);
         assert_eq!(ret, Ok(42));
+    }
+
+    #[test]
+    fn test_timeout_compat() {
+        test::block_fn(|| async {
+            let long_job = sleep(Duration::from_secs(1));
+            let result: Result<(), Elapsed> =
+                timeout_compat(Duration::from_millis(10), long_job).await;
+            assert_eq!(result, Err(Elapsed(())));
+        });
+
+        test::block_fn(|| async {
+            let long_job = sleep(Duration::from_millis(10));
+            let result: Result<(), Elapsed> =
+                timeout_compat(Duration::from_secs(1), long_job).await;
+            assert_eq!(result, Ok(()));
+        });
     }
 }
