@@ -63,10 +63,7 @@ pub enum DownloadStatus {
 }
 
 fn create_client(config: &Config, trusted: bool) -> reqwest::Client {
-    let builder = reqwest::ClientBuilder::new()
-        .gzip(true)
-        .trust_dns(true)
-        .tcp_keepalive(Duration::from_secs(15));
+    let builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
 
     if !(trusted || config.connect_to_reserved_ips) {
         // TODO(ja): Enforce IP restriction

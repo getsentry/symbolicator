@@ -131,10 +131,6 @@ impl GcsDownloader {
         let request = self
             .client
             .post("https://www.googleapis.com/oauth2/v4/token")
-            // TODO(ja): check if this still holds
-            // for some inexplicable reason we otherwise get gzipped data back that actix-web
-            // client has no idea what to do with.
-            .header("accept-encoding", "identity")
             .form(&OAuth2Grant {
                 grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
                 assertion: auth_jwt,
