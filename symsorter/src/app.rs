@@ -214,8 +214,8 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                     bv,
                     path.file_name().unwrap().to_string_lossy().to_string(),
                 )? {
-                    let mut source_candidates = source_candidates.lock().unwrap();
                     if sort_config.with_sources {
+                        let mut source_candidates = source_candidates.lock().unwrap();
                         if object_kind == ObjectKind::Sources {
                             source_candidates.insert(unified_id.clone(), None);
                         } else if object_kind == ObjectKind::Debug
