@@ -12,7 +12,7 @@ use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
 use futures::compat::Future01CompatExt;
-use futures::{future, select, FutureExt as _, TryFutureExt};
+use futures::{future, FutureExt as _, TryFutureExt};
 use futures01::future::{Future as _, Shared};
 use futures01::sync::oneshot;
 use parking_lot::Mutex;
@@ -45,7 +45,7 @@ use crate::types::{
     RequestId, RequestOptions, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{CallOnDrop, ThreadPool};
+use crate::utils::futures::{m, measure, timeout_compat, CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -1011,53 +1011,24 @@ pub struct SymbolicateStacktraces {
     pub options: RequestOptions,
 }
 
-/// Run future with a timeout, instrumented with metrics.
-///
-/// This polls the [`Future`] to completion and exposes the duration as the `"futures.done"` metric
-/// using `"task_name"` as metric tag. The future will be cancelled if it runs for longer than
-/// `duration` with this status also being represented in the metric.
-async fn measure_task_timeout<T, F>(task_name: &str, future: F, duration: Duration) -> F::Output
-where
-    F: Future<Output = Result<T, SymbolicationError>>,
-{
-    let start_time = Instant::now();
-    let delay = Delay::new(start_time + duration);
-
-    let res = select! {
-        output = future.fuse() => output,
-        _ = delay.compat().fuse() => Err(SymbolicationError::Timeout),
-    };
-    let status = match res {
-        Ok(_) => "ok",
-        Err(SymbolicationError::Timeout) => "timeout",
-        Err(_) => "err",
-    };
-    metric!(
-        timer("futures.done") = start_time.elapsed(),
-        "task_name" => task_name,
-        "status" => status,
-    );
-    res
-}
-
 impl SymbolicationActor {
     async fn do_symbolicate(
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let serialize_dif_candidates = request.options.dif_candidates;
-        measure_task_timeout(
-            "symbolicate",
-            self.do_symbolicate_impl(request),
-            Duration::from_secs(3600),
-        )
-        .await
-        .map(|mut response| {
-            if !serialize_dif_candidates {
-                response.clear_dif_candidates();
-            }
-            response
-        })
+
+        let f = self.do_symbolicate_impl(request);
+        let f = timeout_compat(Duration::from_secs(3600), f);
+        let f = measure("symbolicate", m::timed_result, f);
+
+        let mut response = f.await.unwrap_or(Err(SymbolicationError::Timeout))?;
+
+        if !serialize_dif_candidates {
+            response.clear_dif_candidates();
+        }
+
+        Ok(response)
     }
 
     async fn do_symbolicate_impl(
@@ -1752,7 +1723,9 @@ impl SymbolicationActor {
                 .await
         };
 
-        measure_task_timeout("minidump_stackwalk", future, Duration::from_secs(1200)).await
+        let future = timeout_compat(Duration::from_secs(3600), future);
+        let future = measure("minidump_stackwalk", m::timed_result, future);
+        future.await.unwrap_or(Err(SymbolicationError::Timeout))
     }
 
     async fn do_process_minidump(
@@ -1933,19 +1906,16 @@ impl SymbolicationActor {
             Ok((request, state))
         };
 
-        let request_future = async move {
+        let future = async move {
             self.threadpool
                 .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
                 .await
                 .map_err(|_| SymbolicationError::Canceled)?
         };
 
-        measure_task_timeout(
-            "parse_apple_crash_report",
-            request_future,
-            Duration::from_secs(1200),
-        )
-        .await
+        let future = timeout_compat(Duration::from_secs(1200), future);
+        let future = measure("parse_apple_crash_report", m::timed_result, future);
+        future.await.unwrap_or(Err(SymbolicationError::Timeout))
     }
 
     async fn do_process_apple_crash_report(

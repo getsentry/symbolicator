@@ -24,7 +24,7 @@ use super::{DownloadError, DownloadStatus, USER_AGENT};
 use crate::config::Config;
 use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
 use crate::types::ObjectId;
-use crate::utils::futures as future_utils;
+use crate::utils::futures::{self as future_utils, m, measure};
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
@@ -199,7 +199,7 @@ impl SentryDownloader {
         };
 
         let search = self.cached_sentry_search(query, config);
-        let entries = future_utils::time_task("downloads.sentry.index", search).await?;
+        let entries = measure("downloads.sentry.index", m::result, search).await?;
         let file_ids = entries
             .into_iter()
             .map(|search_result| {
