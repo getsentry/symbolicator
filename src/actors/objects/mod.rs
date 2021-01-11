@@ -126,10 +126,12 @@ impl From<debuginfo::ObjectError> for ObjectError {
 /// [`CacheItemRequest`]: crate::actors::common::cache::CacheItemRequest
 #[derive(Debug)]
 struct CacheLookupError {
-    /// The [`SourceId`] of the object which caused the [`ObjectError`] while being fetched.
-    source_id: SourceId,
-    /// The [`SourceLocation`] of the object which caused the [`ObjectError`] while being fetched.
-    source_location: SourceLocation,
+    /// The object file which was attempted to be fetched.
+    file_source: ObjectFileSource,
+    // /// The [`SourceId`] of the object which caused the [`ObjectError`] while being fetched.
+    // source_id: SourceId,
+    // /// The [`SourceLocation`] of the object which caused the [`ObjectError`] while being fetched.
+    // source_location: SourceLocation,
     /// The wrapped [`ObjectError`] which occurred while fetching the object file.
     error: Arc<ObjectError>,
 }
@@ -299,13 +301,13 @@ impl ObjectsActor {
     /// [`ObjectCandidate`] list.
     async fn fetch_file_metas(
         &self,
-        file_ids: Vec<ObjectFileSource>,
+        file_sources: Vec<ObjectFileSource>,
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
-        let mut queries = Vec::with_capacity(file_ids.len());
+        let mut queries = Vec::with_capacity(file_sources.len());
 
-        for file_id in file_ids {
+        for file_source in file_sources {
             let object_id = identifier.clone();
             let scope = scope.clone();
             let threadpool = self.threadpool.clone();
@@ -314,14 +316,14 @@ impl ObjectsActor {
             let meta_cache = self.meta_cache.clone();
 
             let query = async move {
-                let scope = if file_id.is_public() {
+                let scope = if file_source.is_public() {
                     Scope::Global
                 } else {
                     scope.clone()
                 };
                 let request = FetchFileMetaRequest {
                     scope,
-                    file_source: file_id.clone(),
+                    file_source: file_source.clone(),
                     object_id,
                     threadpool,
                     data_cache,
@@ -331,11 +333,7 @@ impl ObjectsActor {
                     .compute_memoized(request)
                     .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()))
                     .await
-                    .map_err(|error| CacheLookupError {
-                        source_id: file_id.source_id().to_owned(),
-                        source_location: file_id.location(),
-                        error,
-                    })
+                    .map_err(|error| CacheLookupError { file_source, error })
             };
             queries.push(query);
         }
@@ -445,6 +443,7 @@ fn create_candidates(
         let info = ObjectCandidate {
             source: source_id,
             location: SourceLocation::new("*"),
+            uri: String::from("noent://*"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),
@@ -471,19 +470,22 @@ fn create_candidate_info(
             ObjectCandidate {
                 source: meta_handle.request.file_source.source_id().clone(),
                 location: meta_handle.request.file_source.location(),
+                uri: meta_handle.request.file_source.uri(),
                 download,
                 unwind: Default::default(),
                 debug: Default::default(),
             }
         }
-        Err(wrapped_error) => ObjectCandidate {
-            source: wrapped_error.source_id.clone(),
-            location: wrapped_error.source_location.clone(),
-            download: ObjectDownloadInfo::Error {
-                details: wrapped_error.error.to_string(),
-            },
-            unwind: Default::default(),
-            debug: Default::default(),
-        },
+        Err(wrapped_error) => {
+            let details = wrapped_error.error.to_string();
+            ObjectCandidate {
+                source: wrapped_error.file_source.source_id().clone(),
+                location: wrapped_error.file_source.location(),
+                uri: wrapped_error.file_source.uri(),
+                download: ObjectDownloadInfo::Error { details },
+                unwind: Default::default(),
+                debug: Default::default(),
+            }
+        }
     }
 }

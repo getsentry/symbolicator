@@ -1500,6 +1500,8 @@ dependencies = [
  "console 0.12.0",
  "difference",
  "lazy_static",
+ "pest",
+ "pest_derive",
  "serde",
  "serde_json",
  "serde_yaml",

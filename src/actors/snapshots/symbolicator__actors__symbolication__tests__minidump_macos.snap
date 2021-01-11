@@ -74,14 +74,17 @@ modules:
     candidates:
       - source: local
         location: 67E9/247C/814E/392B/A027/DBDE6748FCBF
+        uri: "http://localhost:<port>/download/67E9/247C/814E/392B/A027/DBDE6748FCBF"
         download:
           status: notfound
       - source: local
         location: 67E9/247C/814E/392B/A027/DBDE6748FCBF.app
+        uri: "http://localhost:<port>/download/67E9/247C/814E/392B/A027/DBDE6748FCBF.app"
         download:
           status: notfound
       - source: local
         location: crash/67E9247C814E392BA027DBDE6748FCBF0/crash.sym
+        uri: "http://localhost:<port>/download/crash/67E9247C814E392BA027DBDE6748FCBF0/crash.sym"
         download:
           status: notfound
   - debug_status: unused
@@ -312,14 +315,17 @@ modules:
     candidates:
       - source: local
         location: 9B2A/C56D/107C/3541/A127/9094A751F2C9
+        uri: "http://localhost:<port>/download/9B2A/C56D/107C/3541/A127/9094A751F2C9"
         download:
           status: notfound
       - source: local
         location: 9B2A/C56D/107C/3541/A127/9094A751F2C9.app
+        uri: "http://localhost:<port>/download/9B2A/C56D/107C/3541/A127/9094A751F2C9.app"
         download:
           status: notfound
       - source: local
         location: libdyld.dylib/9B2AC56D107C3541A1279094A751F2C90/libdyld.dylib.sym
+        uri: "http://localhost:<port>/download/libdyld.dylib/9B2AC56D107C3541A1279094A751F2C90/libdyld.dylib.sym"
         download:
           status: notfound
   - debug_status: unused

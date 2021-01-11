@@ -504,6 +504,12 @@ pub struct ObjectCandidate {
     /// This will generally be some sort of path name or key, if you know the type of object
     /// source this may give you an idea of where this DIF was expected to be found.
     pub location: SourceLocation,
+    /// A URI representing the DIF's location.
+    ///
+    /// This is essentially a combination of the [`ObjectCandidate::source`] plus
+    /// [`ObjectCandidate::location`].  There is no guarantee over the scheme or anything of
+    /// this URI, this depends entirely on the source.
+    pub uri: String,
     /// Information about fetching or downloading this DIF object.
     ///
     /// This section is always present and will at least have a `status` field.

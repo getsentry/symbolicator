@@ -192,6 +192,7 @@ mod tests {
         let src_a = ObjectCandidate {
             source: SourceId::new("A"),
             location: SourceLocation::new("a"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -201,6 +202,7 @@ mod tests {
         let src_b = ObjectCandidate {
             source: SourceId::new("B"),
             location: SourceLocation::new("b"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -210,6 +212,7 @@ mod tests {
         let src_c = ObjectCandidate {
             source: SourceId::new("C"),
             location: SourceLocation::new("c"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -230,6 +233,7 @@ mod tests {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
             location: SourceLocation::new("a"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -239,6 +243,7 @@ mod tests {
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
             location: SourceLocation::new("a"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -261,6 +266,7 @@ mod tests {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
             location: SourceLocation::new("a"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -270,6 +276,7 @@ mod tests {
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
             location: SourceLocation::new("a"),
+            uri: String::from("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },

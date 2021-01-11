@@ -127,14 +127,17 @@ modules:
     candidates:
       - source: local
         location: 2D90/3291/397D/3D14/BFCA/52C7FB8C5E00
+        uri: "http://localhost:<port>/download/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00"
         download:
           status: notfound
       - source: local
         location: 2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.app
+        uri: "http://localhost:<port>/download/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.app"
         download:
           status: notfound
       - source: local
         location: YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym
+        uri: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym"
         download:
           status: notfound
   - debug_status: unused
