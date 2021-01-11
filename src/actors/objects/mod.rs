@@ -128,10 +128,6 @@ impl From<debuginfo::ObjectError> for ObjectError {
 struct CacheLookupError {
     /// The object file which was attempted to be fetched.
     file_source: ObjectFileSource,
-    // /// The [`SourceId`] of the object which caused the [`ObjectError`] while being fetched.
-    // source_id: SourceId,
-    // /// The [`SourceLocation`] of the object which caused the [`ObjectError`] while being fetched.
-    // source_location: SourceLocation,
     /// The wrapped [`ObjectError`] which occurred while fetching the object file.
     error: Arc<ObjectError>,
 }
