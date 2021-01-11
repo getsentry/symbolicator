@@ -62,16 +62,6 @@ pub enum DownloadStatus {
     NotFound,
 }
 
-fn create_client(config: &Config, trusted: bool) -> reqwest::Client {
-    let builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
-
-    if !(trusted || config.connect_to_reserved_ips) {
-        // TODO(ja): Enforce IP restriction
-    }
-
-    builder.build().unwrap()
-}
-
 /// A service which can download files from a [`SourceConfig`].
 ///
 /// The service is rather simple on the outside but will one day control
@@ -90,8 +80,8 @@ pub struct DownloadService {
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(worker: Arc<Runtime>, config: Arc<Config>) -> Arc<Self> {
-        let trusted_client = create_client(&config, true);
-        let restricted_client = create_client(&config, false);
+        let trusted_client = crate::utils::http::create_client(&config, true);
+        let restricted_client = crate::utils::http::create_client(&config, false);
 
         Arc::new(Self {
             worker,

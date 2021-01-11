@@ -1,14 +1,8 @@
-use std::collections::VecDeque;
-use std::net::{IpAddr, SocketAddr};
-use std::time::Duration;
+use std::net::IpAddr;
 
-use actix::actors::resolver::{Connect, Resolve, Resolver, ResolverError};
-use actix::{clock, Actor, Addr, Context, Handler, ResponseFuture, System};
-use actix_web::client::ClientConnector;
-use futures01::{future::Either, Async, Future, IntoFuture, Poll};
 use ipnetwork::Ipv4Network;
-use tokio01::net::{tcp::ConnectFuture, TcpStream};
-use tokio01::timer::Delay;
+
+use crate::config::Config;
 
 lazy_static::lazy_static! {
     static ref RESERVED_IP_BLOCKS: Vec<Ipv4Network> = vec![
@@ -19,131 +13,38 @@ lazy_static::lazy_static! {
     ].into_iter().map(|x| x.parse().unwrap()).collect();
 }
 
-/// A [`Resolver`]-like actor for the actix-web http client that refuses to resolve to reserved IP
-/// addresses.
-pub struct SafeResolver(Addr<Resolver>);
+fn is_external_ip(ip: std::net::IpAddr) -> bool {
+    let addr = match ip {
+        IpAddr::V4(x) => x,
+        IpAddr::V6(_) => {
+            // We don't know what is an internal service in IPv6 and what is not. Just
+            // bail out. This effectively means that we don't support IPv6.
+            return false;
+        }
+    };
 
-impl Default for SafeResolver {
-    fn default() -> Self {
-        SafeResolver(Resolver::default().start())
-    }
-}
-
-impl Actor for SafeResolver {
-    type Context = Context<Self>;
-}
-
-impl Handler<Connect> for SafeResolver {
-    type Result = ResponseFuture<TcpStream, ResolverError>;
-
-    fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
-        let Connect {
-            name,
-            port,
-            timeout,
-        } = msg;
-
-        let fut = self
-            .0
-            .send(Resolve { name, port })
-            .map_err(|mailbox_e| ResolverError::Resolver(mailbox_e.to_string()))
-            .flatten()
-            .and_then(move |mut addrs| {
-                addrs.retain(|addr| {
-                    let addr = match addr.ip() {
-                        IpAddr::V4(x) => x,
-                        IpAddr::V6(_) => {
-                            // We don't know what is an internal service in IPv6 and what is not. Just
-                            // bail out. This effectively means that we don't support IPv6.
-                            return false;
-                        }
-                    };
-
-                    for network in &*RESERVED_IP_BLOCKS {
-                        if network.contains(addr) {
-                            metric!(counter("http.blocked_ip") += 1);
-                            log::debug!(
-                                "Blocked attempt to connect to reserved IP address: {}",
-                                addr
-                            );
-                            return false;
-                        }
-                    }
-
-                    true
-                });
-
-                if addrs.is_empty() {
-                    Either::A(
-                        Err(ResolverError::InvalidInput(
-                            "Blocked attempt to connect to reserved IP addresses",
-                        ))
-                        .into_future(),
-                    )
-                } else {
-                    Either::B(TcpConnector::with_timeout(addrs, timeout))
-                }
-            });
-
-        Box::new(fut)
-    }
-}
-
-/// Tcp stream connector, copied from [`actix::actors::resolver::TcpConnector`]. The only change is
-/// that this one implements [`Future`] while the original only implements [`actix::ActorFuture`].
-struct TcpConnector {
-    addrs: VecDeque<SocketAddr>,
-    timeout: Delay,
-    stream: Option<ConnectFuture>,
-}
-
-impl TcpConnector {
-    pub fn with_timeout(addrs: VecDeque<SocketAddr>, timeout: Duration) -> TcpConnector {
-        TcpConnector {
-            addrs,
-            stream: None,
-            timeout: Delay::new(clock::now() + timeout),
+    for network in &*RESERVED_IP_BLOCKS {
+        if network.contains(addr) {
+            metric!(counter("http.blocked_ip") += 1);
+            log::debug!(
+                "Blocked attempt to connect to reserved IP address: {}",
+                addr
+            );
+            return false;
         }
     }
+
+    true
 }
 
-impl Future for TcpConnector {
-    type Item = TcpStream;
-    type Error = ResolverError;
+pub fn create_client(config: &Config, trusted: bool) -> reqwest::Client {
+    let mut builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // timeout
-        if let Ok(Async::Ready(_)) = self.timeout.poll() {
-            return Err(ResolverError::Timeout);
-        }
-
-        // connect
-        loop {
-            if let Some(new) = self.stream.as_mut() {
-                match new.poll() {
-                    Ok(Async::Ready(sock)) => return Ok(Async::Ready(sock)),
-                    Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    Err(err) => {
-                        if self.addrs.is_empty() {
-                            return Err(ResolverError::IoError(err));
-                        }
-                    }
-                }
-            }
-
-            // try to connect
-            let addr = self.addrs.pop_front().unwrap();
-            self.stream = Some(TcpStream::connect(&addr));
-        }
+    if !(trusted || config.connect_to_reserved_ips) {
+        builder = builder.ip_filter(is_external_ip);
     }
-}
 
-pub fn start_safe_connector() {
-    let connector = ClientConnector::default()
-        .resolver(SafeResolver::default().start().recipient())
-        .start();
-
-    System::with_current(|sys| sys.registry().set(connector));
+    builder.build().unwrap()
 }
 
 #[cfg(test)]
@@ -152,16 +53,70 @@ mod tests {
 
     use crate::test;
 
-    #[test]
-    fn test_local_connection() {
+    #[tokio::test]
+    async fn test_untrusted_client() {
         test::setup();
-        start_safe_connector();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));
         });
 
-        let response = test::block_fn01(|| server.get().finish().unwrap().send());
-        assert!(response.is_err());
+        let config = Config {
+            connect_to_reserved_ips: false,
+            ..Config::default()
+        };
+
+        let result = create_client(&config, false) // untrusted
+            .get(&server.url("/"))
+            .send()
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_untrusted_client_allowed() {
+        test::setup();
+
+        let server = test::TestServer::new(|app| {
+            app.resource("/", |resource| resource.f(|_| "OK"));
+        });
+
+        let config = Config {
+            connect_to_reserved_ips: true,
+            ..Config::default()
+        };
+
+        let response = create_client(&config, false) // untrusted
+            .get(&server.url("/"))
+            .send()
+            .await
+            .unwrap();
+
+        let text = response.text().await.unwrap();
+        assert_eq!(text, "OK");
+    }
+
+    #[tokio::test]
+    async fn test_trusted() {
+        test::setup();
+
+        let server = test::TestServer::new(|app| {
+            app.resource("/", |resource| resource.f(|_| "OK"));
+        });
+
+        let config = Config {
+            connect_to_reserved_ips: false,
+            ..Config::default()
+        };
+
+        let response = create_client(&config, true) // trusted
+            .get(&server.url("/"))
+            .send()
+            .await
+            .unwrap();
+
+        let text = response.text().await.unwrap();
+        assert_eq!(text, "OK");
     }
 }

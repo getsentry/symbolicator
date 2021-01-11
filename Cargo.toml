@@ -39,7 +39,7 @@ parking_lot = "0.10.0"
 pretty_env_logger = "0.4.0"
 procspawn = { version = "0.9.0", features = ["backtrace", "json"] }
 regex = "1.3.3"
-reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
+reqwest = { git = "https://github.com/jan-auer/reqwest", branch = "hack/restricted-connector", features = ["gzip", "json", "stream", "trust-dns"] }
 rusoto_core = "0.46.0"
 rusoto_credential = "0.46.0"
 rusoto_s3 = "0.46.0"

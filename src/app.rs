@@ -12,7 +12,6 @@ use crate::cache::Caches;
 use crate::config::Config;
 use crate::services::download::DownloadService;
 use crate::utils::futures::ThreadPool;
-use crate::utils::http;
 
 /// The shared state for the service.
 #[derive(Clone, Debug)]
@@ -34,10 +33,6 @@ pub struct ServiceState {
 impl ServiceState {
     pub fn create(config: Config) -> Result<Self> {
         let config = Arc::new(config);
-
-        if !config.connect_to_reserved_ips {
-            http::start_safe_connector();
-        }
 
         let cpu_threadpool = ThreadPool::new();
         let io_threadpool = ThreadPool::new();
