@@ -14,7 +14,7 @@ use crate::actors::common::cache::Cacher;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService};
-use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
+use crate::sources::{FileType, ObjectFileSource, SourceConfig, SourceId, SourceLocation};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 
@@ -255,7 +255,7 @@ impl ObjectsActor {
         sources: &'a [SourceConfig],
         filetypes: &'static [FileType],
         identifier: &'a ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         let mut queries = Vec::with_capacity(sources.len());
 
         for source in sources.iter() {
@@ -299,7 +299,7 @@ impl ObjectsActor {
     /// [`ObjectCandidate`] list.
     async fn fetch_file_metas(
         &self,
-        file_ids: Vec<SourceFileId>,
+        file_ids: Vec<ObjectFileSource>,
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
@@ -314,14 +314,14 @@ impl ObjectsActor {
             let meta_cache = self.meta_cache.clone();
 
             let query = async move {
-                let scope = if file_id.source().is_public() {
+                let scope = if file_id.is_public() {
                     Scope::Global
                 } else {
                     scope.clone()
                 };
                 let request = FetchFileMetaRequest {
                     scope,
-                    file_id: file_id.clone(),
+                    file_source: file_id.clone(),
                     object_id,
                     threadpool,
                     data_cache,
@@ -434,8 +434,8 @@ fn create_candidates(
 
     for meta_lookup in lookups.iter() {
         if let Ok(meta_handle) = meta_lookup {
-            let source = meta_handle.request.file_id.source();
-            source_ids.take(source.id());
+            let source_id = meta_handle.request.file_source.source_id();
+            source_ids.take(source_id);
         }
         candidates.push(create_candidate_info(meta_lookup));
     }
@@ -469,8 +469,8 @@ fn create_candidate_info(
                 CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {
-                source: meta_handle.request.file_id.source_id().clone(),
-                location: meta_handle.request.file_id.location(),
+                source: meta_handle.request.file_source.source_id().clone(),
+                location: meta_handle.request.file_source.location(),
                 download,
                 unwind: Default::default(),
                 debug: Default::default(),

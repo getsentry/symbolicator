@@ -22,13 +22,15 @@ use url::Url;
 
 use super::{DownloadError, DownloadStatus, USER_AGENT};
 use crate::config::Config;
-use crate::sources::{FileType, SentryFileId, SentrySourceConfig, SourceFileId};
+use crate::sources::{
+    FileType, ObjectFileSource, SentryFileId, SentryObjectFileSource, SentrySourceConfig,
+};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
-    id: String,
+    id: SentryFileId,
     // TODO: Add more fields
 }
 
@@ -173,7 +175,7 @@ impl SentryDownloader {
         _filetypes: &'static [FileType],
         object_id: ObjectId,
         config: Arc<Config>,
-    ) -> Result<Vec<SourceFileId>, DownloadError> {
+    ) -> Result<Vec<ObjectFileSource>, DownloadError> {
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -203,7 +205,7 @@ impl SentryDownloader {
         let file_ids = entries
             .into_iter()
             .map(|search_result| {
-                SourceFileId::Sentry(source.clone(), SentryFileId::new(search_result.id))
+                SentryObjectFileSource::new(source.clone(), search_result.id).into()
             })
             .collect();
 
@@ -212,13 +214,13 @@ impl SentryDownloader {
 
     pub async fn download_source(
         &self,
-        source: Arc<SentrySourceConfig>,
-        file_id: SentryFileId,
+        file_source: SentryObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let download_url = source.download_url(&file_id);
+        let download_url = file_source.url();
         log::debug!("Fetching debug file from {}", download_url);
-        let response = future_utils::retry(|| self.start_request(&source, &download_url)).await;
+        let response =
+            future_utils::retry(|| self.start_request(&file_source.source, &download_url)).await;
 
         match response {
             Ok(response) => {
@@ -228,12 +230,8 @@ impl SentryDownloader {
                         .payload()
                         .compat()
                         .map(|i| i.map_err(DownloadError::stream));
-                    super::download_stream(
-                        SourceFileId::Sentry(source, file_id),
-                        stream,
-                        destination,
-                    )
-                    .await
+                    super::download_stream(ObjectFileSource::from(file_source), stream, destination)
+                        .await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",

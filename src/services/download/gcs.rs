@@ -19,7 +19,9 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use super::{DownloadError, DownloadStatus};
-use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
+use crate::sources::{
+    FileType, GcsObjectFileSource, GcsSourceConfig, GcsSourceKey, ObjectFileSource,
+};
 use crate::types::ObjectId;
 use crate::utils::futures::delay;
 
@@ -195,18 +197,24 @@ impl GcsDownloader {
 
     pub async fn download_source(
         &self,
-        source: Arc<GcsSourceConfig>,
-        download_path: SourceLocation,
+        file_source: GcsObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let key = source.get_key(&download_path);
-        log::debug!("Fetching from GCS: {} (from {})", &key, source.bucket);
-        let token = self.get_token(&source.source_key).await?;
+        let key = file_source.key();
+        log::debug!(
+            "Fetching from GCS: {} (from {})",
+            &key,
+            file_source.source.bucket
+        );
+        let token = self.get_token(&file_source.source.source_key).await?;
         log::debug!("Got valid GCS token: {:?}", &token);
 
         let url = format!(
             "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
-            percent_encode(source.bucket.as_bytes(), PATH_SEGMENT_ENCODE_SET),
+            percent_encode(
+                file_source.source.bucket.as_bytes(),
+                PATH_SEGMENT_ENCODE_SET
+            ),
             percent_encode(key.as_bytes(), PATH_SEGMENT_ENCODE_SET),
         );
 
@@ -222,22 +230,21 @@ impl GcsDownloader {
         match response {
             Ok(response) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
+                    log::trace!(
+                        "Success hitting GCS {} (from {})",
+                        &key,
+                        &file_source.source.bucket
+                    );
                     let stream = response
                         .payload()
                         .compat()
                         .map(|i| i.map_err(DownloadError::stream));
-                    super::download_stream(
-                        SourceFileId::Gcs(source, download_path),
-                        stream,
-                        destination,
-                    )
-                    .await
+                    super::download_stream(file_source.into(), stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
-                        source.bucket,
+                        &file_source.source.bucket,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
@@ -247,7 +254,7 @@ impl GcsDownloader {
                 log::trace!(
                     "Skipping response from GCS {} (from {}): {} ({:?})",
                     &key,
-                    source.bucket,
+                    &file_source.source.bucket,
                     &e,
                     &e
                 );
@@ -261,7 +268,7 @@ impl GcsDownloader {
         source: Arc<GcsSourceConfig>,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -269,14 +276,14 @@ impl GcsDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| SourceFileId::Gcs(source.clone(), loc))
+        .map(|loc| GcsObjectFileSource::new(source.clone(), loc).into())
         .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
+    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId, SourceLocation};
     use crate::test;
     use crate::types::ObjectType;
 
@@ -355,11 +362,11 @@ mod tests {
 
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
+        let file_source = GcsObjectFileSource::new(source, source_location).into();
 
-        let download_status = test::block_fn(|| {
-            downloader.download_source(source, source_location, target_path.clone())
-        })
-        .unwrap();
+        let download_status =
+            test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
+                .unwrap();
 
         assert_eq!(download_status, DownloadStatus::Completed);
         assert!(target_path.exists());
@@ -380,11 +387,11 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
+        let file_source = GcsObjectFileSource::new(source, source_location).into();
 
-        let download_status = test::block_fn(|| {
-            downloader.download_source(source, source_location, target_path.clone())
-        })
-        .unwrap();
+        let download_status =
+            test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
+                .unwrap();
 
         assert_eq!(download_status, DownloadStatus::NotFound);
         assert!(!target_path.exists());
@@ -406,8 +413,9 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
+        let file_source = GcsObjectFileSource::new(source, source_location).into();
 
-        test::block_fn(|| downloader.download_source(source, source_location, target_path.clone()))
+        test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
             .expect_err("authentication should fail");
 
         assert!(!target_path.exists());

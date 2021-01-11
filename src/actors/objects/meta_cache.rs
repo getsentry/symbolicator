@@ -16,7 +16,7 @@ use symbolic::debuginfo::Object;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
-use crate::sources::{SourceFileId, SourceId, SourceLocation};
+use crate::sources::{ObjectFileSource, SourceId, SourceLocation};
 use crate::types::{ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 
@@ -28,7 +28,7 @@ pub(super) struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     pub(super) scope: Scope,
     /// Source-type specific attributes.
-    pub(super) file_id: SourceFileId,
+    pub(super) file_source: ObjectFileSource,
     pub(super) object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
@@ -60,11 +60,11 @@ impl ObjectMetaHandle {
     }
 
     pub fn source(&self) -> &SourceId {
-        self.request.file_id.source_id()
+        self.request.file_source.source_id()
     }
 
     pub fn location(&self) -> SourceLocation {
-        self.request.file_id.location()
+        self.request.file_source.location()
     }
 
     pub fn status(&self) -> CacheStatus {
@@ -78,7 +78,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
 
     fn get_cache_key(&self) -> CacheKey {
         CacheKey {
-            cache_key: self.file_id.cache_key(),
+            cache_key: self.file_source.cache_key(),
             scope: self.scope.clone(),
         }
     }

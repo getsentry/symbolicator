@@ -15,7 +15,7 @@ use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
 use super::{DownloadError, DownloadStatus};
-use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
+use crate::sources::{FileType, ObjectFileSource, S3ObjectFileSource, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
@@ -78,15 +78,14 @@ impl S3Downloader {
 
     pub async fn download_source(
         &self,
-        source: Arc<S3SourceConfig>,
-        download_path: SourceLocation,
+        file_source: S3ObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let key = source.get_key(&download_path);
-        log::debug!("Fetching from s3: {} (from {})", &key, source.bucket);
+        let key = file_source.key();
+        let bucket = file_source.bucket();
+        log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
-        let bucket = source.bucket.clone();
-        let source_key = &source.source_key;
+        let source_key = &file_source.source.source_key;
         let response = self
             .get_s3_client(&source_key)
             .get_object(rusoto_s3::GetObjectRequest {
@@ -112,8 +111,7 @@ impl S3Downloader {
                     .map_err(DownloadError::Io)
                     .compat();
 
-                super::download_stream(SourceFileId::S3(source, download_path), stream, destination)
-                    .await
+                super::download_stream(file_source.into(), stream, destination).await
             }
             Err(err) => {
                 // For missing files, Amazon returns different status codes based on the given
@@ -132,7 +130,7 @@ impl S3Downloader {
         source: Arc<S3SourceConfig>,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -140,7 +138,7 @@ impl S3Downloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| SourceFileId::S3(source.clone(), loc))
+        .map(|loc| S3ObjectFileSource::new(source.clone(), loc).into())
         .collect()
     }
 }

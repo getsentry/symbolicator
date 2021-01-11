@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::{DownloadError, DownloadStatus};
-use crate::sources::{FileType, FilesystemSourceConfig, SourceFileId, SourceLocation};
+use crate::sources::{
+    FileType, FilesystemObjectFileSource, FilesystemSourceConfig, ObjectFileSource,
+};
 use crate::types::ObjectId;
 
 /// Downloader implementation that supports the [`FilesystemSourceConfig`] source.
@@ -25,12 +27,11 @@ impl FilesystemDownloader {
     /// Download from a filesystem source.
     pub fn download_source(
         &self,
-        source: Arc<FilesystemSourceConfig>,
-        location: SourceLocation,
+        file_source: FilesystemObjectFileSource,
         dest: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         // All file I/O in this function is blocking!
-        let abspath = source.join_loc(&location);
+        let abspath = file_source.path();
         log::debug!("Fetching debug file from {:?}", abspath);
         match fs::copy(abspath, dest) {
             Ok(_) => Ok(DownloadStatus::Completed),
@@ -46,7 +47,7 @@ impl FilesystemDownloader {
         source: Arc<FilesystemSourceConfig>,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -54,7 +55,7 @@ impl FilesystemDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| SourceFileId::Filesystem(source.clone(), loc))
+        .map(|loc| FilesystemObjectFileSource::new(source.clone(), loc).into())
         .collect()
     }
 }

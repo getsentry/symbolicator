@@ -1,5 +1,6 @@
 //! Download sources types and related implementations.
 
+use anyhow::{Error, Result};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -124,14 +125,10 @@ impl fmt::Display for SourceLocation {
 }
 
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct SentryFileId(String);
 
 impl SentryFileId {
-    pub fn new(id: impl Into<String>) -> Self {
-        SentryFileId(id.into())
-    }
-
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -155,14 +152,6 @@ pub struct SentrySourceConfig {
 
     /// Bearer authorization token.
     pub token: String,
-}
-
-impl SentrySourceConfig {
-    pub fn download_url(&self, file_id: &SentryFileId) -> Url {
-        let mut url = self.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.0);
-        url
-    }
 }
 
 /// Configuration for symbol server HTTP endpoints.
@@ -196,46 +185,74 @@ pub struct FilesystemSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-impl FilesystemSourceConfig {
-    pub fn join_loc(&self, loc: &SourceLocation) -> PathBuf {
-        self.path.join(&loc.0)
+/// Represents a single object file stored on a source.
+///
+/// This joins the file location together with a [`SourceConfig`] and thus provides all
+/// information to retrieve the object file from its source.
+#[derive(Debug, Clone)]
+pub enum ObjectFileSource {
+    Sentry(SentryObjectFileSource),
+    Http(HttpObjectFileSource),
+    S3(S3ObjectFileSource),
+    Gcs(GcsObjectFileSource),
+    Filesystem(FilesystemObjectFileSource),
+}
+
+impl fmt::Display for ObjectFileSource {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ObjectFileSource::Sentry(ref s) => {
+                write!(f, "Sentry source '{}' file id '{}'", s.source.id, s.file_id)
+            }
+            ObjectFileSource::Http(ref s) => {
+                write!(f, "HTTP source '{}' location '{}'", s.source.id, s.location)
+            }
+            ObjectFileSource::S3(ref s) => {
+                write!(f, "S3 source '{}' location '{}'", s.source.id, s.location)
+            }
+            ObjectFileSource::Gcs(ref s) => {
+                write!(f, "GCS source '{}' location '{}'", s.source.id, s.location)
+            }
+            ObjectFileSource::Filesystem(ref s) => {
+                write!(
+                    f,
+                    "Filesystem source '{}' location '{}'",
+                    s.source.id, s.location
+                )
+            }
+        }
     }
 }
 
-/// This uniquely identifies a file on a source and how to download it.
-///
-/// This is a combination of the [`SourceConfig`], which describes a download
-/// source and how to download rom it, with an identifier describing a single
-/// file in that source.
-#[derive(Debug, Clone)]
-pub enum SourceFileId {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId),
-    Http(Arc<HttpSourceConfig>, SourceLocation),
-    S3(Arc<S3SourceConfig>, SourceLocation),
-    Gcs(Arc<GcsSourceConfig>, SourceLocation),
-    Filesystem(Arc<FilesystemSourceConfig>, SourceLocation),
-}
-
-impl SourceFileId {
-    pub fn source(&self) -> SourceConfig {
-        match *self {
-            SourceFileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            SourceFileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            SourceFileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            SourceFileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-            SourceFileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
+impl ObjectFileSource {
+    /// Whether debug files from this source may be shared.
+    pub fn is_public(&self) -> bool {
+        match self {
+            ObjectFileSource::Sentry(_) => false,
+            ObjectFileSource::Http(ref x) => x.source.files.is_public,
+            ObjectFileSource::S3(ref x) => x.source.files.is_public,
+            ObjectFileSource::Gcs(ref x) => x.source.files.is_public,
+            ObjectFileSource::Filesystem(ref x) => x.source.files.is_public,
         }
     }
 
     pub fn cache_key(&self) -> String {
         match self {
-            SourceFileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::Sentry(ref source, ref file_id) => {
-                format!("{}.{}.sentryinternal", source.id, file_id.0)
+            ObjectFileSource::Sentry(ref x) => {
+                format!("{}.{}.sentryinternal", x.source.id, x.file_id)
             }
-            SourceFileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
+            ObjectFileSource::Http(ref x) => {
+                format!("{}.{}", x.source.id, x.location)
+            }
+            ObjectFileSource::S3(ref x) => {
+                format!("{}.{}", x.source.id, x.location)
+            }
+            ObjectFileSource::Gcs(ref x) => {
+                format!("{}.{}", x.source.id, x.location)
+            }
+            ObjectFileSource::Filesystem(ref x) => {
+                format!("{}.{}", x.source.id, x.location)
+            }
         }
     }
 
@@ -245,11 +262,21 @@ impl SourceFileId {
     /// configuration which are available to all requests.
     pub fn source_id(&self) -> &SourceId {
         match self {
-            SourceFileId::Sentry(ref cfg, _) => &cfg.id,
-            SourceFileId::Http(ref cfg, _) => &cfg.id,
-            SourceFileId::S3(ref cfg, _) => &cfg.id,
-            SourceFileId::Gcs(ref cfg, _) => &cfg.id,
-            SourceFileId::Filesystem(ref cfg, _) => &cfg.id,
+            ObjectFileSource::Sentry(ref x) => &x.source.id,
+            ObjectFileSource::Http(ref x) => &x.source.id,
+            ObjectFileSource::S3(ref x) => &x.source.id,
+            ObjectFileSource::Gcs(ref x) => &x.source.id,
+            ObjectFileSource::Filesystem(ref x) => &x.source.id,
+        }
+    }
+
+    pub fn source_type_name(&self) -> &'static str {
+        match *self {
+            ObjectFileSource::Sentry(..) => "sentry",
+            ObjectFileSource::S3(..) => "s3",
+            ObjectFileSource::Gcs(..) => "gcs",
+            ObjectFileSource::Http(..) => "http",
+            ObjectFileSource::Filesystem(..) => "filesystem",
         }
     }
 
@@ -262,37 +289,212 @@ impl SourceFileId {
     /// specific type.
     pub fn location(&self) -> SourceLocation {
         match self {
-            SourceFileId::Sentry(_, ref sentry_id) => SourceLocation::new(sentry_id.as_str()),
-            SourceFileId::Http(_, ref loc) => loc.clone(),
-            SourceFileId::S3(_, ref loc) => loc.clone(),
-            SourceFileId::Gcs(_, ref loc) => loc.clone(),
-            SourceFileId::Filesystem(_, ref loc) => loc.clone(),
+            ObjectFileSource::Sentry(ref x) => SourceLocation::new(x.file_id.as_str()),
+            ObjectFileSource::Http(ref x) => x.location.clone(),
+            ObjectFileSource::S3(ref x) => x.location.clone(),
+            ObjectFileSource::Gcs(ref x) => x.location.clone(),
+            ObjectFileSource::Filesystem(ref x) => x.location.clone(),
         }
     }
-}
 
-impl WriteSentryScope for SourceFileId {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        self.source().write_sentry_scope(scope);
-    }
-}
-
-impl fmt::Display for SourceFileId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    /// Returns a URI for the location of the object file.
+    ///
+    /// There is no guarantee about any format of this URI, for some sources it could be
+    /// very abstract.  In general the source should try and producde a URI which can be
+    /// used directly into the source-specific tooling.  E.g. for an HTTP source this would
+    /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
+    pub fn uri(&self) -> String {
         match self {
-            SourceFileId::Sentry(cfg, id) => {
-                write!(f, "Sentry source '{}' file id '{}'", cfg.id, id)
-            }
-            SourceFileId::Http(cfg, loc) => {
-                write!(f, "HTTP source '{}' location '{}'", cfg.id, loc)
-            }
-            SourceFileId::S3(cfg, loc) => write!(f, "S3 source '{}' location '{}'", cfg.id, loc),
-            SourceFileId::Gcs(cfg, loc) => write!(f, "GCS source '{}' location '{}'", cfg.id, loc),
-            SourceFileId::Filesystem(cfg, loc) => {
-                write!(f, "Filesystem source '{}' location '{}'", cfg.id, loc)
-            }
+            ObjectFileSource::Sentry(ref file_source) => file_source.url().as_str().to_string(),
+            ObjectFileSource::Http(ref file_source) => match file_source.url() {
+                Ok(url) => url.as_str().to_string(),
+                Err(_) => String::new(),
+            },
+            ObjectFileSource::S3(ref file_source) => file_source.uri(),
+            ObjectFileSource::Gcs(ref file_source) => file_source.uri(),
+            ObjectFileSource::Filesystem(ref file_source) => file_source.uri(),
         }
     }
+}
+
+impl WriteSentryScope for ObjectFileSource {
+    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+        scope.set_tag("source.id", self.source_id());
+        scope.set_tag("source.type", self.source_type_name());
+        scope.set_tag("source.is_public", self.is_public());
+    }
+}
+
+impl From<SentryObjectFileSource> for ObjectFileSource {
+    fn from(source: SentryObjectFileSource) -> Self {
+        Self::Sentry(source)
+    }
+}
+
+impl From<HttpObjectFileSource> for ObjectFileSource {
+    fn from(source: HttpObjectFileSource) -> Self {
+        Self::Http(source)
+    }
+}
+
+impl From<S3ObjectFileSource> for ObjectFileSource {
+    fn from(source: S3ObjectFileSource) -> Self {
+        Self::S3(source)
+    }
+}
+
+impl From<GcsObjectFileSource> for ObjectFileSource {
+    fn from(source: GcsObjectFileSource) -> Self {
+        Self::Gcs(source)
+    }
+}
+
+impl From<FilesystemObjectFileSource> for ObjectFileSource {
+    fn from(source: FilesystemObjectFileSource) -> Self {
+        Self::Filesystem(source)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SentryObjectFileSource {
+    pub source: Arc<SentrySourceConfig>,
+    pub file_id: SentryFileId,
+}
+
+impl SentryObjectFileSource {
+    pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId) -> Self {
+        Self { source, file_id }
+    }
+
+    /// Returns the URL from which to download this object file.
+    pub fn url(&self) -> Url {
+        let mut url = self.source.url.clone();
+        url.query_pairs_mut().append_pair("id", &self.file_id.0);
+        url
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpObjectFileSource {
+    pub source: Arc<HttpSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl HttpObjectFileSource {
+    pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the URL from which to download this object file.
+    pub fn url(&self) -> Result<Url> {
+        join_url_encoded(&self.source.url, &self.location)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct S3ObjectFileSource {
+    pub source: Arc<S3SourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl S3ObjectFileSource {
+    pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the S3 key.
+    ///
+    /// This is equivalent to the pathname within the bucket.
+    pub fn key(&self) -> String {
+        join_prefix_location(&self.source.prefix, &self.location)
+    }
+
+    /// Returns the S3 bucket name.
+    pub fn bucket(&self) -> String {
+        self.source.bucket.clone()
+    }
+
+    /// Returns the `s3://` URI from which to download this object file.
+    pub fn uri(&self) -> String {
+        format!(
+            "s3://{bucket}/{key}",
+            bucket = &self.source.bucket,
+            key = self.key()
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GcsObjectFileSource {
+    pub source: Arc<GcsSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl GcsObjectFileSource {
+    pub fn new(source: Arc<GcsSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the S3 key.
+    ///
+    /// This is equivalent to the pathname within the bucket.
+    pub fn key(&self) -> String {
+        join_prefix_location(&self.source.prefix, &self.location)
+    }
+
+    /// Returns the `gs://` URI from which to download this object file.
+    pub fn uri(&self) -> String {
+        format!(
+            "gs://{bucket}/{key}",
+            bucket = &self.source.bucket,
+            key = self.key()
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FilesystemObjectFileSource {
+    pub source: Arc<FilesystemSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl FilesystemObjectFileSource {
+    pub fn new(source: Arc<FilesystemSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the path from which to fetch this object file.
+    pub fn path(&self) -> PathBuf {
+        self.source.path.join(&self.location.0)
+    }
+
+    /// Returns the `file://` URI from which to fetch this object file.
+    ///
+    /// This is a quick-and-dirty approximation, not fully RFC8089-compliant.  E.g. we do
+    /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
+    /// [`FilesystemObjectFile::path`] if the actual file location is needed.
+    pub fn uri(&self) -> String {
+        format!("file:///{path}", path = self.path().display())
+    }
+}
+
+/// Joins the relative path to the given URL.
+///
+/// As opposed to [`Url::join`], this only supports relative paths. Each segment of the path is
+/// percent-encoded. Empty segments are skipped, for example, `foo//bar` is collapsed to `foo/bar`.
+///
+/// The base URL is treated as directory. If it does not end with a slash, then a slash is
+/// automatically appended.
+///
+/// Returns `Err` if the URL is cannot-be-a-base.
+fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url> {
+    let mut joined = base.clone();
+    joined
+        .path_segments_mut()
+        .map_err(|_| Error::msg("URL cannot-be-a-base"))?
+        .pop_if_empty()
+        .extend(path.segments());
+    Ok(joined)
 }
 
 /// Local helper to deserializes an S3 region string in `S3SourceKey`.
@@ -381,15 +583,6 @@ fn join_prefix_location(prefix: &str, location: &SourceLocation) -> String {
     }
 }
 
-impl GcsSourceConfig {
-    /// Return the bucket's key for the required file.
-    ///
-    /// This key identifies the file in the bucket.
-    pub fn get_key(&self, location: &SourceLocation) -> String {
-        join_prefix_location(&self.prefix, location)
-    }
-}
-
 /// Configuration for S3 symbol buckets.
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceConfig {
@@ -409,15 +602,6 @@ pub struct S3SourceConfig {
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
-}
-
-impl S3SourceConfig {
-    /// Return the bucket's key for the required file.
-    ///
-    /// This key identifies the file in the bucket.
-    pub fn get_key(&self, location: &SourceLocation) -> String {
-        join_prefix_location(&self.prefix, location)
-    }
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
@@ -643,8 +827,61 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_id = SentryFileId("abc123".into());
-        let url = source.download_url(&file_id);
+        let file_source =
+            SentryObjectFileSource::new(Arc::new(source), SentryFileId("abc123".into()));
+        let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
+    }
+
+    #[test]
+    fn test_join_empty() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("")).unwrap();
+        assert_eq!(joined, "https://example.org/base".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_space() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo bar")).unwrap();
+        assert_eq!(
+            joined,
+            "https://example.org/base/foo%20bar".parse().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_join_multiple() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo/bar")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo/bar".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_trailing_slash() {
+        let base = Url::parse("https://example.org/base/").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_leading_slash() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("/foo")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_multi_slash() {
+        let base = Url::parse("https://example.org/base").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo//bar")).unwrap();
+        assert_eq!(joined, "https://example.org/base/foo/bar".parse().unwrap());
+    }
+
+    #[test]
+    fn test_join_absolute() {
+        let base = Url::parse("https://example.org/").unwrap();
+        let joined = join_url_encoded(&base, &SourceLocation::new("foo")).unwrap();
+        assert_eq!(joined, "https://example.org/foo".parse().unwrap());
     }
 }
