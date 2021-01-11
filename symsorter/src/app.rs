@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use console::style;
+use rayon::prelude::*;
 use serde::Serialize;
-use serde_json;
 use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
@@ -169,28 +170,25 @@ fn process_file(
     Ok(rv)
 }
 
-fn sort_files<'a, I: Iterator<Item = &'a Path>>(
-    sort_config: &SortConfig,
-    paths: I,
-) -> Result<(usize, usize)> {
+fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
     let mut source_bundles_created = 0;
-    let mut source_candidates: HashMap<String, Option<PathBuf>> = HashMap::new();
-    let mut bundle_meta = BundleMeta {
-        name: sort_config.bundle_id.to_string(),
-        timestamp: Utc::now(),
-        debug_ids: vec![],
-    };
+    let source_candidates = Mutex::new(HashMap::<String, Option<PathBuf>>::new());
+    let debug_ids = Mutex::new(Vec::new());
 
-    for path in paths {
-        for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
-            if !entry.metadata().ok().map_or(false, |x| x.is_file()) {
-                continue;
-            }
+    log!("{}", style("Sorting debug information files").bold());
 
+    paths
+        .into_iter()
+        .map(WalkDir::new)
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.metadata().ok().map_or(false, |x| x.is_file()))
+        .par_bridge()
+        .map(|entry| {
             let path = entry.path();
             let bv = match ByteView::open(path) {
                 Ok(bv) => bv,
-                Err(_) => continue,
+                Err(_) => return Ok(()),
             };
 
             // zip archive
@@ -201,7 +199,7 @@ fn sort_files<'a, I: Iterator<Item = &'a Path>>(
                     let name = zip_file.name().rsplit('/').next().unwrap().to_string();
                     let bv = ByteView::read(zip_file)?;
                     if Archive::peek(&bv) != FileFormat::Unknown {
-                        bundle_meta.debug_ids.extend(
+                        debug_ids.lock().unwrap().extend(
                             process_file(&sort_config, bv, name)?
                                 .into_iter()
                                 .map(|x| x.0),
@@ -217,6 +215,7 @@ fn sort_files<'a, I: Iterator<Item = &'a Path>>(
                     path.file_name().unwrap().to_string_lossy().to_string(),
                 )? {
                     if sort_config.with_sources {
+                        let mut source_candidates = source_candidates.lock().unwrap();
                         if object_kind == ObjectKind::Sources {
                             source_candidates.insert(unified_id.clone(), None);
                         } else if object_kind == ObjectKind::Debug
@@ -225,34 +224,51 @@ fn sort_files<'a, I: Iterator<Item = &'a Path>>(
                             source_candidates.insert(unified_id.clone(), Some(path.to_path_buf()));
                         }
                     }
-                    bundle_meta.debug_ids.push(unified_id);
+                    debug_ids.lock().unwrap().push(unified_id);
                 }
             }
-        }
-    }
 
-    // we have some sources we want to build
+            Ok(())
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     if sort_config.with_sources {
         log!("{}", style("Creating source bundles").bold());
-        for (unified_id, path) in source_candidates.into_iter() {
-            if let Some(path) = path {
-                if let Some(source_bundle) = create_source_bundle(&path, &unified_id)? {
-                    bundle_meta.debug_ids.extend(
-                        process_file(
-                            &sort_config,
-                            source_bundle,
-                            path.file_name().unwrap().to_string_lossy().to_string(),
-                        )?
-                        .into_iter()
-                        .map(|x| x.0),
-                    );
-                    source_bundles_created += 1;
-                }
-            }
-        }
+        source_bundles_created = source_candidates
+            .into_inner()
+            .unwrap()
+            .into_par_iter()
+            .filter_map(|(id, path)| Some((id, path?)))
+            .map(|(unified_id, path)| -> Result<usize> {
+                let source_bundle = match create_source_bundle(&path, &unified_id)? {
+                    Some(source_bundle) => source_bundle,
+                    None => return Ok(0),
+                };
+
+                let processed_objects = process_file(
+                    &sort_config,
+                    source_bundle,
+                    path.file_name().unwrap().to_string_lossy().to_string(),
+                )?;
+
+                debug_ids
+                    .lock()
+                    .unwrap()
+                    .extend(processed_objects.into_iter().map(|x| x.0));
+
+                Ok(1)
+            })
+            .reduce(|| Ok(0), |sum, res| Ok(sum? + res?))?
     }
 
-    // write bundle meta
+    log!("{}", style("Writing bundle meta data").bold());
+
+    let bundle_meta = BundleMeta {
+        name: sort_config.bundle_id.clone(),
+        timestamp: Utc::now(),
+        debug_ids: debug_ids.into_inner().unwrap(),
+    };
+
     let bundle_meta_filename = RunConfig::get()
         .output
         .join("bundles")
@@ -285,8 +301,6 @@ fn execute() -> Result<()> {
         log!();
     }
 
-    log!("{}", style("Sorting debug information files").bold());
-
     let mut debug_files = 0;
     let mut source_bundles = 0;
     let mut sort_config = SortConfig {
@@ -296,11 +310,11 @@ fn execute() -> Result<()> {
     };
 
     if cli.multiple_bundles {
-        for path in cli.input.iter() {
+        for path in cli.input.into_iter() {
             sort_config.bundle_id = make_bundle_id(&path.file_name().unwrap().to_string_lossy());
             log!("[bundle: {}]", style(&sort_config.bundle_id).dim());
             let (debug_files_sorted, source_bundles_created) =
-                sort_files(&sort_config, Some(path.as_path()).into_iter())?;
+                sort_files(&sort_config, vec![path])?;
             debug_files += debug_files_sorted;
             source_bundles *= source_bundles_created;
         }
@@ -308,8 +322,7 @@ fn execute() -> Result<()> {
         let bundle_id = cli.bundle_id.unwrap();
         anyhow::ensure!(is_bundle_id(&bundle_id), "Invalid bundle id");
         sort_config.bundle_id = bundle_id;
-        let (debug_files_sorted, source_bundles_created) =
-            sort_files(&sort_config, cli.input.iter().map(|x| x.as_path()))?;
+        let (debug_files_sorted, source_bundles_created) = sort_files(&sort_config, cli.input)?;
         debug_files += debug_files_sorted;
         source_bundles *= source_bundles_created;
     }
