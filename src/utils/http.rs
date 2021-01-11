@@ -55,7 +55,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_untrusted_client() {
-        test::setup();
+        test::setup_logging();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));
@@ -75,8 +75,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_untrusted_client_loopback() {
+        test::setup_logging();
+
+        let server = test::TestServer::new(|app| {
+            app.resource("/", |resource| resource.f(|_| "OK"));
+        });
+
+        let config = Config {
+            connect_to_reserved_ips: false,
+            ..Config::default()
+        };
+
+        let result = create_client(&config, false) // untrusted
+            .get(&format!("http://127.0.0.1:{}/", server.addr().port()))
+            .send()
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn test_untrusted_client_allowed() {
-        test::setup();
+        test::setup_logging();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));
@@ -99,7 +120,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_trusted() {
-        test::setup();
+        test::setup_logging();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));

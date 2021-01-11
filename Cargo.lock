@@ -2809,7 +2809,7 @@ dependencies = [
 [[package]]
 name = "reqwest"
 version = "0.11.0"
-source = "git+https://github.com/jan-auer/reqwest?branch=hack/restricted-connector#c5c1cdac52659666f412983785b5d1bb808067d1"
+source = "git+https://github.com/jan-auer/reqwest?tag=v0.11.0#62edd49dd1eb0ab54b43d315c6c6ebb17ef15b99"
 dependencies = [
  "async-compression",
  "base64 0.13.0",

@@ -137,6 +137,8 @@ impl DownloadService {
         let hub = Hub::current();
         let slf = self.clone();
 
+        // NB: Enter the tokio 1 runtime, which is required to create the timeout.
+        // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
         let _guard = self.worker.enter();
         let job = slf.dispatch_download(source, destination).bind_hub(hub);
         let job = tokio::time::timeout(Duration::from_secs(300), job);
@@ -177,6 +179,8 @@ impl DownloadService {
                         .await
                 };
 
+                // NB: Enter the tokio 1 runtime, which is required to create the timeout.
+                // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
                 let _guard = self.worker.enter();
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
                 let job = measure("service.download.list_files", m::timed_result, job);
@@ -289,7 +293,10 @@ mod tests {
                 _ => panic!("unexpected source"),
             };
 
-            let config = Arc::new(Config::default());
+            let config = Arc::new(Config {
+                connect_to_reserved_ips: true,
+                ..Config::default()
+            });
 
             let service = DownloadService::new(rt_pool.clone(), config);
             let dest2 = dest.clone();
