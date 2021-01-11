@@ -472,7 +472,7 @@ impl FilesystemObjectFileSource {
     ///
     /// This is a quick-and-dirty approximation, not fully RFC8089-compliant.  E.g. we do
     /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
-    /// [`FilesystemObjectFile::path`] if the actual file location is needed.
+    /// [`FilesystemObjectFileSource::path`] if the actual file location is needed.
     pub fn uri(&self) -> String {
         format!("file:///{path}", path = self.path().display())
     }

@@ -135,7 +135,7 @@ mod tests {
             _ => panic!("unexpected source"),
         };
         let loc = SourceLocation::new("hello.txt");
-        let file_source = HttpObjectFileSource::new(http_source, loc).into();
+        let file_source = HttpObjectFileSource::new(http_source, loc);
 
         let downloader = HttpDownloader::new();
         let ret = test::block_fn(|| downloader.download_source(file_source, dest.clone()));
@@ -157,7 +157,7 @@ mod tests {
             _ => panic!("unexpected source"),
         };
         let loc = SourceLocation::new("i-do-not-exist");
-        let file_source = HttpObjectFileSource::new(http_source, loc).into();
+        let file_source = HttpObjectFileSource::new(http_source, loc);
 
         let downloader = HttpDownloader::new();
         let ret = test::block_fn(|| downloader.download_source(file_source, dest.clone()));

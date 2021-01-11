@@ -362,7 +362,7 @@ mod tests {
 
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
-        let file_source = GcsObjectFileSource::new(source, source_location).into();
+        let file_source = GcsObjectFileSource::new(source, source_location);
 
         let download_status =
             test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
@@ -387,7 +387,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = GcsObjectFileSource::new(source, source_location).into();
+        let file_source = GcsObjectFileSource::new(source, source_location);
 
         let download_status =
             test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
@@ -413,7 +413,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = GcsObjectFileSource::new(source, source_location).into();
+        let file_source = GcsObjectFileSource::new(source, source_location);
 
         test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
             .expect_err("authentication should fail");
