@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use futures::prelude::*;
-use reqwest::header;
+use reqwest::{header, Client};
 use url::Url;
 
 use super::{DownloadError, DownloadStatus, USER_AGENT};
@@ -35,14 +35,12 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
 /// Downloader implementation that supports the [`HttpSourceConfig`] source.
 #[derive(Debug)]
 pub struct HttpDownloader {
-    client: reqwest::Client,
+    client: Client,
 }
 
 impl HttpDownloader {
-    pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-        }
+    pub fn new(client: Client) -> Self {
+        Self { client }
     }
 
     pub async fn download_source(
@@ -139,7 +137,7 @@ mod tests {
         };
         let loc = SourceLocation::new("hello.txt");
 
-        let downloader = HttpDownloader::new();
+        let downloader = HttpDownloader::new(Client::new());
         let download_status = downloader
             .download_source(http_source, loc, dest.clone())
             .await
@@ -165,7 +163,7 @@ mod tests {
         };
         let loc = SourceLocation::new("i-do-not-exist");
 
-        let downloader = HttpDownloader::new();
+        let downloader = HttpDownloader::new(Client::new());
         let download_status = downloader
             .download_source(http_source, loc, dest)
             .await

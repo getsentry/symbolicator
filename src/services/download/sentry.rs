@@ -61,10 +61,9 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new() -> Self {
+    pub fn new(client: reqwest::Client) -> Self {
         Self {
-            // TODO(ja): Bypass IP restriction
-            client: reqwest::Client::new(),
+            client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
         }
     }

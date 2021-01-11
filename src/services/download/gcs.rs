@@ -8,6 +8,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
 use parking_lot::Mutex;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -115,10 +116,10 @@ pub struct GcsDownloader {
 }
 
 impl GcsDownloader {
-    pub fn new() -> Self {
+    pub fn new(client: Client) -> Self {
         Self {
             token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
-            client: reqwest::Client::new(),
+            client,
         }
     }
 
@@ -310,7 +311,7 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let object_id = ObjectId {
             code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
@@ -334,7 +335,7 @@ mod tests {
         test::setup_logging();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -360,7 +361,7 @@ mod tests {
         test::setup_logging();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -386,7 +387,7 @@ mod tests {
         };
 
         let source = gcs_source(broken_credentials);
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
