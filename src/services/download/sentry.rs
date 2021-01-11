@@ -38,7 +38,6 @@ type SentryIndexCache = lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>
 /// Errors happening while fetching data from Sentry.
 #[derive(Debug, Error)]
 pub enum SentryError {
-    // TODO(ja): Find better errors here
     #[error("failed sending request to Sentry")]
     Reqwest(#[from] reqwest::Error),
 
