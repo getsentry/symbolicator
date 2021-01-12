@@ -7,12 +7,9 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bytes::BytesMut;
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
-use futures01::Stream;
+use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
-use tokio01::codec::{BytesCodec, FramedRead};
 
 use super::{DownloadError, DownloadStatus};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
@@ -87,34 +84,17 @@ impl S3Downloader {
 
         let bucket = source.bucket.clone();
         let source_key = &source.source_key;
-        let response = self
+        let result = self
             .get_s3_client(&source_key)
             .get_object(rusoto_s3::GetObjectRequest {
                 key: key.clone(),
                 bucket: bucket.clone(),
                 ..Default::default()
             })
-            .compat()
             .await;
 
-        match response {
-            Ok(mut result) => {
-                let body_read = match result.body.take() {
-                    Some(body) => body.into_async_read(),
-                    None => {
-                        log::debug!("Empty response from s3:{}{}", bucket, &key);
-                        return Ok(DownloadStatus::NotFound);
-                    }
-                };
-
-                let stream = FramedRead::new(body_read, BytesCodec::new())
-                    .map(BytesMut::freeze)
-                    .map_err(DownloadError::Io)
-                    .compat();
-
-                super::download_stream(SourceFileId::S3(source, download_path), stream, destination)
-                    .await
-            }
+        let response = match result {
+            Ok(response) => response,
             Err(err) => {
                 // For missing files, Amazon returns different status codes based on the given
                 // permissions.
@@ -122,9 +102,19 @@ impl S3Downloader {
                 // - If `ListBucket` is premitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
-                Ok(DownloadStatus::NotFound)
+                return Ok(DownloadStatus::NotFound);
             }
-        }
+        };
+
+        let stream = match response.body {
+            Some(body) => body.map_err(DownloadError::Io),
+            None => {
+                log::debug!("Empty response from s3:{}{}", bucket, &key);
+                return Ok(DownloadStatus::NotFound);
+            }
+        };
+
+        super::download_stream(SourceFileId::S3(source, download_path), stream, destination).await
     }
 
     pub fn list_files(
@@ -202,8 +192,8 @@ mod tests {
         let head_result = s3_client
             .head_bucket(rusoto_s3::HeadBucketRequest {
                 bucket: S3_BUCKET.to_owned(),
+                ..Default::default()
             })
-            .compat()
             .await;
 
         match head_result {
@@ -222,7 +212,6 @@ mod tests {
                 bucket: S3_BUCKET.to_owned(),
                 ..Default::default()
             })
-            .compat()
             .await
             .unwrap();
     }
@@ -240,7 +229,6 @@ mod tests {
                 key: key.clone(),
                 ..Default::default()
             })
-            .compat()
             .await;
 
         match head_result {
@@ -258,7 +246,6 @@ mod tests {
                 key,
                 ..Default::default()
             })
-            .compat()
             .await
             .unwrap();
     }
@@ -291,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_list_files() {
-        test::setup();
+        test::setup_logging();
 
         let source = s3_source(s3_source_key!());
         let downloader = S3Downloader::new();
@@ -313,91 +300,81 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_download_complete() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_complete() {
+        test::setup_logging();
 
         let source_key = s3_source_key!();
+        setup_bucket(source_key.clone()).await;
 
-        test::block_fn(|| async {
-            setup_bucket(source_key.clone()).await;
+        let source = s3_source(source_key);
+        let downloader = S3Downloader::new();
 
-            let source = s3_source(source_key);
-            let downloader = S3Downloader::new();
+        let tempdir = test::tempdir();
+        let target_path = tempdir.path().join("myfile");
 
-            let tempdir = test::tempdir();
-            let target_path = tempdir.path().join("myfile");
+        let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
 
-            let source_location =
-                SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
+        let download_status = downloader
+            .download_source(source, source_location, target_path.clone())
+            .await
+            .unwrap();
 
-            let download_status = downloader
-                .download_source(source, source_location, target_path.clone())
-                .await
-                .unwrap();
+        assert_eq!(download_status, DownloadStatus::Completed);
+        assert!(target_path.exists());
 
-            assert_eq!(download_status, DownloadStatus::Completed);
-            assert!(target_path.exists());
-
-            let hash = Sha1::digest(&std::fs::read(target_path).unwrap());
-            let hash = format!("{:x}", hash);
-            assert_eq!(hash, "e0195c064783997b26d6e2e625da7417d9f63677");
-        });
+        let hash = Sha1::digest(&std::fs::read(target_path).unwrap());
+        let hash = format!("{:x}", hash);
+        assert_eq!(hash, "e0195c064783997b26d6e2e625da7417d9f63677");
     }
 
-    #[test]
-    fn test_download_missing() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_missing() {
+        test::setup_logging();
 
         let source_key = s3_source_key!();
+        setup_bucket(source_key.clone()).await;
 
-        test::block_fn(|| async {
-            setup_bucket(source_key.clone()).await;
+        let source = s3_source(source_key);
+        let downloader = S3Downloader::new();
 
-            let source = s3_source(source_key);
-            let downloader = S3Downloader::new();
+        let tempdir = test::tempdir();
+        let target_path = tempdir.path().join("myfile");
 
-            let tempdir = test::tempdir();
-            let target_path = tempdir.path().join("myfile");
+        let source_location = SourceLocation::new("does/not/exist");
+        let download_status = downloader
+            .download_source(source, source_location, target_path.clone())
+            .await
+            .unwrap();
 
-            let source_location = SourceLocation::new("does/not/exist");
-            let download_status = downloader
-                .download_source(source, source_location, target_path.clone())
-                .await
-                .unwrap();
-
-            assert_eq!(download_status, DownloadStatus::NotFound);
-            assert!(!target_path.exists());
-        });
+        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(!target_path.exists());
     }
 
-    #[test]
-    fn test_download_invalid_credentials() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_invalid_credentials() {
+        test::setup_logging();
 
         let broken_key = S3SourceKey {
             region: rusoto_core::Region::UsEast1,
             access_key: "".to_owned(),
             secret_key: "".to_owned(),
         };
+        let source = s3_source(broken_key);
+        let downloader = S3Downloader::new();
 
-        test::block_fn(|| async {
-            let source = s3_source(broken_key);
-            let downloader = S3Downloader::new();
+        let tempdir = test::tempdir();
+        let target_path = tempdir.path().join("myfile");
 
-            let tempdir = test::tempdir();
-            let target_path = tempdir.path().join("myfile");
+        let source_location = SourceLocation::new("does/not/exist");
+        let download_status = downloader
+            .download_source(source, source_location, target_path.clone())
+            .await
+            .unwrap();
 
-            let source_location = SourceLocation::new("does/not/exist");
-            let download_status = downloader
-                .download_source(source, source_location, target_path.clone())
-                .await
-                .unwrap();
-
-            // We anticipate 403 for regularly missing files if the ListBucket permission is not
-            // granted, therefore return `NotFound` instead of an authentication error.
-            assert_eq!(download_status, DownloadStatus::NotFound);
-            assert!(!target_path.exists());
-        });
+        // We anticipate 403 for regularly missing files if the ListBucket permission is not
+        // granted, therefore return `NotFound` instead of an authentication error.
+        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(!target_path.exists());
     }
 }

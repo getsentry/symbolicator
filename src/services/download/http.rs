@@ -4,22 +4,15 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
-use actix_web::http::header;
-use actix_web::{client, HttpMessage};
-use futures::compat::Stream01CompatExt;
 use futures::prelude::*;
+use reqwest::{header, Client};
 use url::Url;
 
 use super::{DownloadError, DownloadStatus, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig, SourceFileId, SourceLocation};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
-use crate::utils::http;
-
-/// The maximum number of redirects permitted by a remote symbol server.
-const MAX_HTTP_REDIRECTS: usize = 10;
 
 /// Joins the relative path to the given URL.
 ///
@@ -41,39 +34,13 @@ fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url, ()> {
 
 /// Downloader implementation that supports the [`HttpSourceConfig`] source.
 #[derive(Debug)]
-pub struct HttpDownloader {}
+pub struct HttpDownloader {
+    client: Client,
+}
 
 impl HttpDownloader {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    /// Start a request to the web server.
-    ///
-    /// This initiates the request, when the future resolves the headers will have been
-    /// retrieved but not the entire payload.
-    async fn start_request(
-        &self,
-        source: &HttpSourceConfig,
-        url: Url,
-    ) -> Result<client::ClientResponse, client::SendRequestError> {
-        http::follow_redirects(url, MAX_HTTP_REDIRECTS, move |url| {
-            let mut builder = client::get(url);
-            for (key, value) in source.headers.iter() {
-                if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                    builder.header(key, value.as_str());
-                }
-            }
-            builder.header(header::USER_AGENT, USER_AGENT);
-            // This timeout is for the entire HTTP download *including* the response stream
-            // itself, in contrast to what the Actix-Web docs say. We have tested this
-            // manually.
-            //
-            // The intent is to disable the timeout entirely, but there is no API for that.
-            builder.timeout(Duration::from_secs(9999));
-            builder.finish()
-        })
-        .await
+    pub fn new(client: Client) -> Self {
+        Self { client }
     }
 
     pub async fn download_source(
@@ -88,18 +55,27 @@ impl HttpDownloader {
             Ok(x) => x,
             Err(_) => return Ok(DownloadStatus::NotFound),
         };
+
         log::debug!("Fetching debug file from {}", download_url);
-        let response =
-            future_utils::retry(|| self.start_request(&source, download_url.clone())).await;
+        let response = future_utils::retry(|| {
+            let mut builder = self.client.get(download_url.as_str());
+
+            for (key, value) in source.headers.iter() {
+                if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                    builder = builder.header(key, value.as_str());
+                }
+            }
+
+            builder.header(header::USER_AGENT, USER_AGENT).send()
+        })
+        .await;
 
         match response {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = response
-                        .payload()
-                        .compat()
-                        .map(|i| i.map_err(DownloadError::stream));
+                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
+
                     super::download_stream(
                         SourceFileId::Http(source, download_path),
                         stream,
@@ -147,9 +123,9 @@ mod tests {
     use crate::sources::SourceConfig;
     use crate::test;
 
-    #[test]
-    fn test_download_source() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_source() {
+        test::setup_logging();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();
@@ -161,16 +137,21 @@ mod tests {
         };
         let loc = SourceLocation::new("hello.txt");
 
-        let downloader = HttpDownloader::new();
-        let ret = test::block_fn(|| downloader.download_source(http_source, loc, dest.clone()));
-        assert_eq!(ret.unwrap(), DownloadStatus::Completed);
+        let downloader = HttpDownloader::new(Client::new());
+        let download_status = downloader
+            .download_source(http_source, loc, dest.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(download_status, DownloadStatus::Completed);
+
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
     }
 
-    #[test]
-    fn test_download_source_missing() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_source_missing() {
+        test::setup_logging();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();
@@ -182,9 +163,13 @@ mod tests {
         };
         let loc = SourceLocation::new("i-do-not-exist");
 
-        let downloader = HttpDownloader::new();
-        let ret = test::block_fn(|| downloader.download_source(http_source, loc, dest.clone()));
-        assert_eq!(ret.unwrap(), DownloadStatus::NotFound);
+        let downloader = HttpDownloader::new(Client::new());
+        let download_status = downloader
+            .download_source(http_source, loc, dest)
+            .await
+            .unwrap();
+
+        assert_eq!(download_status, DownloadStatus::NotFound);
     }
 
     #[test]

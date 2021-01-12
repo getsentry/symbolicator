@@ -8,15 +8,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix::{Actor, Addr};
-use actix_web::client::{ClientConnector, ClientResponse, SendRequestError};
-use actix_web::error::JsonPayloadError;
-use actix_web::http::StatusCode;
-use actix_web::{client, HttpMessage};
-use failure::Fail;
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
+use reqwest::StatusCode;
 use thiserror::Error;
 use url::Url;
 
@@ -44,18 +38,15 @@ type SentryIndexCache = lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>
 /// Errors happening while fetching data from Sentry.
 #[derive(Debug, Error)]
 pub enum SentryError {
-    #[error("failed parsing JSON response from Sentry")]
-    Parsing(#[from] failure::Compat<JsonPayloadError>),
-
     #[error("failed sending request to Sentry")]
-    SendRequest(#[from] failure::Compat<SendRequestError>),
+    Reqwest(#[from] reqwest::Error),
 
     #[error("bad status code from Sentry: {0}")]
     BadStatusCode(StatusCode),
 }
 
 pub struct SentryDownloader {
-    connector: Addr<ClientConnector>,
+    client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
 }
 
@@ -69,32 +60,11 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new() -> Self {
+    pub fn new(client: reqwest::Client) -> Self {
         Self {
-            connector: ClientConnector::default().start(),
+            client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
         }
-    }
-
-    async fn start_request(
-        &self,
-        source: &SentrySourceConfig,
-        url: &Url,
-    ) -> Result<ClientResponse, SendRequestError> {
-        // The timeout is for the entire HTTP download *including* the response stream itself,
-        // in contrast to what the Actix-Web docs say. We have tested this manually.
-        //
-        // The intent is to disable the timeout entirely, but there is no API for that.
-        client::get(url)
-            .with_connector(self.connector.clone())
-            .header("User-Agent", USER_AGENT)
-            .header("Authorization", format!("Bearer {}", &source.token))
-            .timeout(Duration::from_secs(9999))
-            .finish()
-            .unwrap()
-            .send()
-            .compat()
-            .await
     }
 
     /// Make a request to sentry, parse the result as a JSON SearchResult list.
@@ -102,25 +72,18 @@ impl SentryDownloader {
         &self,
         query: &SearchQuery,
     ) -> Result<Vec<SearchResult>, SentryError> {
-        let response = client::get(&query.index_url)
-            .with_connector(self.connector.clone())
+        let response = self
+            .client
+            .get(query.index_url.as_str())
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", &query.token))
-            .finish()
-            .unwrap()
             .send()
-            .compat()
-            .await
-            .map_err(Fail::compat)?;
+            .await?;
 
         if response.status().is_success() {
             log::trace!("Success fetching index from Sentry");
-            response
-                .json()
-                .compat()
-                .await
-                .map_err(|e| Fail::compat(e).into())
+            Ok(response.json().await?)
         } else {
             log::warn!("Sentry returned status code {}", response.status());
             Err(SentryError::BadStatusCode(response.status()))
@@ -218,16 +181,21 @@ impl SentryDownloader {
     ) -> Result<DownloadStatus, DownloadError> {
         let download_url = source.download_url(&file_id);
         log::debug!("Fetching debug file from {}", download_url);
-        let response = future_utils::retry(|| self.start_request(&source, &download_url)).await;
+        let result = future_utils::retry(|| {
+            self.client
+                .get(download_url.as_str())
+                .header("User-Agent", USER_AGENT)
+                .header("Authorization", format!("Bearer {}", &source.token))
+                .send()
+        })
+        .await;
 
-        match response {
+        match result {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = response
-                        .payload()
-                        .compat()
-                        .map(|i| i.map_err(DownloadError::stream));
+                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
+
                     super::download_stream(
                         SourceFileId::Sentry(source, file_id),
                         stream,
