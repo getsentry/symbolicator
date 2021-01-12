@@ -18,15 +18,50 @@ use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::{DownloadError, DownloadStatus};
-use crate::sources::{
-    FileType, GcsObjectFileSource, GcsSourceConfig, GcsSourceKey, ObjectFileSource,
-};
-use crate::types::ObjectId;
+use super::locations::{join_prefix_location, SourceLocation};
+use super::{DownloadError, DownloadStatus, ObjectFileSource};
+use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
+use crate::types::{ObjectFileSourceURI, ObjectId};
 use crate::utils::futures::delay;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+
+/// The GCS-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct GcsObjectFileSource {
+    pub source: Arc<GcsSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl From<GcsObjectFileSource> for ObjectFileSource {
+    fn from(source: GcsObjectFileSource) -> Self {
+        Self::Gcs(source)
+    }
+}
+
+impl GcsObjectFileSource {
+    pub fn new(source: Arc<GcsSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the S3 key.
+    ///
+    /// This is equivalent to the pathname within the bucket.
+    pub fn key(&self) -> String {
+        join_prefix_location(&self.source.prefix, &self.location)
+    }
+
+    /// Returns the `gs://` URI from which to download this object file.
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        format!(
+            "gs://{bucket}/{key}",
+            bucket = &self.source.bucket,
+            key = self.key()
+        )
+        .into()
+    }
+}
 
 /// Maximum number of cached GCS OAuth tokens.
 ///
@@ -283,11 +318,13 @@ impl GcsDownloader {
 
 #[cfg(test)]
 mod tests {
-    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId, SourceLocation};
+    use super::super::locations::SourceLocation;
+    use super::*;
+
+    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
     use crate::test;
     use crate::types::ObjectType;
 
-    use super::*;
     use sha1::{Digest as _, Sha1};
 
     fn gcs_source_key() -> Option<GcsSourceKey> {

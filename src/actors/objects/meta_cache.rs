@@ -16,7 +16,8 @@ use symbolic::debuginfo::Object;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
-use crate::sources::{ObjectFileSource, SourceId};
+use crate::services::download::ObjectFileSource;
+use crate::sources::SourceId;
 use crate::types::{ObjectFeatures, ObjectFileSourceURI, ObjectId, Scope};
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 

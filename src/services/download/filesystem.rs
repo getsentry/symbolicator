@@ -9,11 +9,43 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::{DownloadError, DownloadStatus};
-use crate::sources::{
-    FileType, FilesystemObjectFileSource, FilesystemSourceConfig, ObjectFileSource,
-};
-use crate::types::ObjectId;
+use super::locations::SourceLocation;
+use super::{DownloadError, DownloadStatus, ObjectFileSource};
+use crate::sources::{FileType, FilesystemSourceConfig};
+use crate::types::{ObjectFileSourceURI, ObjectId};
+
+/// Filesystem-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct FilesystemObjectFileSource {
+    pub source: Arc<FilesystemSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl From<FilesystemObjectFileSource> for ObjectFileSource {
+    fn from(source: FilesystemObjectFileSource) -> Self {
+        Self::Filesystem(source)
+    }
+}
+
+impl FilesystemObjectFileSource {
+    pub fn new(source: Arc<FilesystemSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the path from which to fetch this object file.
+    pub fn path(&self) -> PathBuf {
+        self.source.path.join(&self.location.path())
+    }
+
+    /// Returns the `file://` URI from which to fetch this object file.
+    ///
+    /// This is a quick-and-dirty approximation, not fully RFC8089-compliant.  E.g. we do
+    /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
+    /// [`FilesystemObjectFileSource::path`] if the actual file location is needed.
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        format!("file:///{path}", path = self.path().display()).into()
+    }
+}
 
 /// Downloader implementation that supports the [`FilesystemSourceConfig`] source.
 #[derive(Debug)]

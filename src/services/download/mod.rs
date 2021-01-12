@@ -22,14 +22,14 @@ use crate::utils::paths::get_directory_paths;
 mod filesystem;
 mod gcs;
 mod http;
+mod locations;
 mod s3;
 mod sentry;
 
 use crate::config::Config;
-pub use crate::sources::{
-    DirectoryLayout, FileType, ObjectFileSource, SourceConfig, SourceFilters, SourceLocation,
-};
+pub use crate::sources::{DirectoryLayout, FileType, SourceConfig, SourceFilters};
 pub use crate::types::ObjectId;
+pub use locations::{ObjectFileSource, SourceLocation};
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -249,9 +249,10 @@ impl Iterator for SourceLocationIter<'_> {
 mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
+    use super::http::HttpObjectFileSource;
     use super::*;
 
-    use crate::sources::{HttpObjectFileSource, SourceConfig};
+    use crate::sources::SourceConfig;
     use crate::test;
     use crate::types::ObjectType;
 

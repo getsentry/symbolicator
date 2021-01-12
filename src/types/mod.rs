@@ -528,6 +528,8 @@ pub struct ObjectCandidate {
 /// you need the actual [`ObjectFileSource`].  The purpose of this URI is to be able to
 /// display to a user who might be able to use this in other tools.  E.g. for an S3 source
 /// this could be an `s3://` URI etc.
+///
+/// [`ObjectFileSource`]: crate::services::download::ObjectFileSource
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct ObjectFileSourceURI(String);
 

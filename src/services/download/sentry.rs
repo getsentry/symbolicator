@@ -17,16 +17,55 @@ use failure::Fail;
 use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
+use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, USER_AGENT};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, USER_AGENT};
 use crate::config::Config;
-use crate::sources::{
-    FileType, ObjectFileSource, SentryFileId, SentryObjectFileSource, SentrySourceConfig,
-};
-use crate::types::ObjectId;
+use crate::sources::{FileType, SentrySourceConfig};
+use crate::types::{ObjectFileSourceURI, ObjectId};
 use crate::utils::futures as future_utils;
+
+/// The Sentry-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct SentryObjectFileSource {
+    pub source: Arc<SentrySourceConfig>,
+    pub file_id: SentryFileId,
+}
+
+impl From<SentryObjectFileSource> for ObjectFileSource {
+    fn from(source: SentryObjectFileSource) -> Self {
+        Self::Sentry(source)
+    }
+}
+
+impl SentryObjectFileSource {
+    pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId) -> Self {
+        Self { source, file_id }
+    }
+
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        self.url().as_str().into()
+    }
+
+    /// Returns the URL from which to download this object file.
+    pub fn url(&self) -> Url {
+        let mut url = self.source.url.clone();
+        url.query_pairs_mut().append_pair("id", &self.file_id.0);
+        url
+    }
+}
+
+/// An identifier for a file retrievable from a [`SentrySourceConfig`].
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+pub struct SentryFileId(String);
+
+impl fmt::Display for SentryFileId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
@@ -246,5 +285,25 @@ impl SentryDownloader {
                 Ok(DownloadStatus::NotFound) // must be wrong type
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::sources::SourceId;
+
+    #[test]
+    fn test_sentry_source_download_url() {
+        let source = SentrySourceConfig {
+            id: SourceId::new("test"),
+            url: Url::parse("https://example.net/endpoint/").unwrap(),
+            token: "token".into(),
+        };
+        let file_source =
+            SentryObjectFileSource::new(Arc::new(source), SentryFileId("abc123".into()));
+        let url = file_source.url();
+        assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
 }

@@ -14,11 +14,53 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 use tokio::codec::{BytesCodec, FramedRead};
 
-use super::{DownloadError, DownloadStatus};
-use crate::sources::{FileType, ObjectFileSource, S3ObjectFileSource, S3SourceConfig, S3SourceKey};
-use crate::types::ObjectId;
+use super::locations::{join_prefix_location, SourceLocation};
+use super::{DownloadError, DownloadStatus, ObjectFileSource};
+use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
+use crate::types::{ObjectFileSourceURI, ObjectId};
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
+
+/// The S3-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct S3ObjectFileSource {
+    pub source: Arc<S3SourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl From<S3ObjectFileSource> for ObjectFileSource {
+    fn from(source: S3ObjectFileSource) -> Self {
+        Self::S3(source)
+    }
+}
+
+impl S3ObjectFileSource {
+    pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the S3 key.
+    ///
+    /// This is equivalent to the pathname within the bucket.
+    pub fn key(&self) -> String {
+        join_prefix_location(&self.source.prefix, &self.location)
+    }
+
+    /// Returns the S3 bucket name.
+    pub fn bucket(&self) -> String {
+        self.source.bucket.clone()
+    }
+
+    /// Returns the `s3://` URI from which to download this object file.
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        format!(
+            "s3://{bucket}/{key}",
+            bucket = &self.source.bucket,
+            key = self.key()
+        )
+        .into()
+    }
+}
 
 /// Maximum number of cached S3 clients.
 ///

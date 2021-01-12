@@ -8,18 +8,51 @@ use std::time::Duration;
 
 use actix_web::http::header;
 use actix_web::{client, HttpMessage};
+use anyhow::Result;
 use futures::compat::Stream01CompatExt;
 use futures::prelude::*;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, USER_AGENT};
-use crate::sources::{FileType, HttpObjectFileSource, HttpSourceConfig, ObjectFileSource};
-use crate::types::ObjectId;
+use super::locations::join_url_encoded;
+use super::{DownloadError, DownloadStatus, ObjectFileSource, SourceLocation, USER_AGENT};
+use crate::sources::{FileType, HttpSourceConfig};
+use crate::types::{ObjectFileSourceURI, ObjectId};
 use crate::utils::futures as future_utils;
 use crate::utils::http;
 
 /// The maximum number of redirects permitted by a remote symbol server.
 const MAX_HTTP_REDIRECTS: usize = 10;
+
+/// The HTTP-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct HttpObjectFileSource {
+    pub source: Arc<HttpSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl From<HttpObjectFileSource> for ObjectFileSource {
+    fn from(source: HttpObjectFileSource) -> Self {
+        Self::Http(source)
+    }
+}
+
+impl HttpObjectFileSource {
+    pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        match self.url() {
+            Ok(url) => url.as_ref().into(),
+            Err(_) => "".into(),
+        }
+    }
+
+    /// Returns the URL from which to download this object file.
+    pub fn url(&self) -> Result<Url> {
+        join_url_encoded(&self.source.url, &self.location)
+    }
+}
 
 /// Downloader implementation that supports the [`HttpSourceConfig`] source.
 #[derive(Debug)]
@@ -117,9 +150,10 @@ impl HttpDownloader {
 
 #[cfg(test)]
 mod tests {
+    use super::super::locations::SourceLocation;
     use super::*;
 
-    use crate::sources::{SourceConfig, SourceLocation};
+    use crate::sources::SourceConfig;
     use crate::test;
 
     #[test]

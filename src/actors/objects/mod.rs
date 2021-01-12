@@ -13,8 +13,8 @@ use symbolic::debuginfo;
 use crate::actors::common::cache::Cacher;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
-use crate::services::download::{DownloadError, DownloadService};
-use crate::sources::{FileType, ObjectFileSource, SourceConfig, SourceId};
+use crate::services::download::{DownloadError, DownloadService, ObjectFileSource};
+use crate::sources::{FileType, SourceConfig, SourceId};
 use crate::types::{
     AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectFileSourceURI, ObjectId, Scope,
 };
@@ -126,6 +126,8 @@ impl From<debuginfo::ObjectError> for ObjectError {
 /// along some errors, so we use this wrapper.
 ///
 /// [`CacheItemRequest`]: crate::actors::common::cache::CacheItemRequest
+/// [`SourceId`]: crate::sources::SourceId
+/// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Debug)]
 struct CacheLookupError {
     /// The object file which was attempted to be fetched.

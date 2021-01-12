@@ -22,8 +22,7 @@ use tempfile::{tempfile_in, NamedTempFile};
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath};
 use crate::cache::{CacheKey, CacheStatus};
-use crate::services::download::DownloadStatus;
-use crate::sources::ObjectFileSource;
+use crate::services::download::{DownloadStatus, ObjectFileSource};
 use crate::types::{ObjectId, Scope};
 use crate::utils::futures::BoxedFuture;
 use crate::utils::sentry::WriteSentryScope;
