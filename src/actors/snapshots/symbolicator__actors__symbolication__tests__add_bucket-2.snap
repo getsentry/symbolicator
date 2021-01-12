@@ -30,8 +30,7 @@ modules:
     image_size: 4096
     candidates:
       - source: local
-        location: 502F/C0A5/1EC1/3E47/9998/684FA139DCA7
-        uri: "http://localhost:<port>/download/502F/C0A5/1EC1/3E47/9998/684FA139DCA7"
+        location: "http://localhost:<port>/download/502F/C0A5/1EC1/3E47/9998/684FA139DCA7"
         download:
           status: ok
           features:
@@ -42,7 +41,6 @@ modules:
         debug:
           status: ok
       - source: local
-        location: 502F/C0A5/1EC1/3E47/9998/684FA139DCA7.app
-        uri: "http://localhost:<port>/download/502F/C0A5/1EC1/3E47/9998/684FA139DCA7.app"
+        location: "http://localhost:<port>/download/502F/C0A5/1EC1/3E47/9998/684FA139DCA7.app"
         download:
           status: notfound

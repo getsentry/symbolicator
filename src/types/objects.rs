@@ -1,11 +1,13 @@
 //! Implementations for the types describing DIF object files.
 
+use std::fmt;
+
 use crate::cache::CacheStatus;
-use crate::sources::{SourceId, SourceLocation};
+use crate::sources::SourceId;
 
 use super::{
     AllObjectCandidates, Arch, CodeId, CompleteObjectInfo, DebugId, ObjectCandidate,
-    ObjectFeatures, ObjectFileStatus, ObjectUseInfo, RawObjectInfo,
+    ObjectFeatures, ObjectFileSourceURI, ObjectFileStatus, ObjectUseInfo, RawObjectInfo,
 };
 
 impl Default for ObjectUseInfo {
@@ -33,12 +35,17 @@ impl AllObjectCandidates {
     ///
     /// You can only request symcaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_debug(&mut self, source: SourceId, location: SourceLocation, info: ObjectUseInfo) {
+    pub fn set_debug(
+        &mut self,
+        source: SourceId,
+        location: &ObjectFileSourceURI,
+        info: ObjectUseInfo,
+    ) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
                 .cmp(&source)
-                .then(candidate.location.cmp(&location))
+                .then(candidate.location.cmp(location))
         });
         match found_pos {
             Ok(index) => {
@@ -59,12 +66,17 @@ impl AllObjectCandidates {
     ///
     /// You can only request cficaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_unwind(&mut self, source: SourceId, location: SourceLocation, info: ObjectUseInfo) {
+    pub fn set_unwind(
+        &mut self,
+        source: SourceId,
+        location: &ObjectFileSourceURI,
+        info: ObjectUseInfo,
+    ) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
                 .cmp(&source)
-                .then(candidate.location.cmp(&location))
+                .then(candidate.location.cmp(location))
         });
         match found_pos {
             Ok(index) => {
@@ -191,8 +203,7 @@ mod tests {
         // If a candidate didn't exist yet it should be inserted in order.
         let src_a = ObjectCandidate {
             source: SourceId::new("A"),
-            location: SourceLocation::new("a"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -201,8 +212,7 @@ mod tests {
         };
         let src_b = ObjectCandidate {
             source: SourceId::new("B"),
-            location: SourceLocation::new("b"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("b"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -211,8 +221,7 @@ mod tests {
         };
         let src_c = ObjectCandidate {
             source: SourceId::new("C"),
-            location: SourceLocation::new("c"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("c"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -232,8 +241,7 @@ mod tests {
     fn test_all_object_info_merge_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: SourceLocation::new("a"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -242,8 +250,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: SourceLocation::new("a"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -265,8 +272,7 @@ mod tests {
     fn test_all_object_info_merge_no_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: SourceLocation::new("a"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -275,8 +281,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: SourceLocation::new("a"),
-            uri: String::from("uri://dummy"),
+            location: ObjectFileSourceURI::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -292,5 +297,26 @@ mod tests {
         all.merge(other);
         assert_eq!(all.0[0].unwind, ObjectUseInfo::Ok);
         assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
+    }
+}
+
+impl ObjectFileSourceURI {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+}
+
+impl<T> From<T> for ObjectFileSourceURI
+where
+    T: Into<String>,
+{
+    fn from(source: T) -> Self {
+        Self(source.into())
+    }
+}
+
+impl fmt::Display for ObjectFileSourceURI {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

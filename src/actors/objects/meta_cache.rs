@@ -16,8 +16,8 @@ use symbolic::debuginfo::Object;
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
-use crate::sources::{ObjectFileSource, SourceId, SourceLocation};
-use crate::types::{ObjectFeatures, ObjectId, Scope};
+use crate::sources::{ObjectFileSource, SourceId};
+use crate::types::{ObjectFeatures, ObjectFileSourceURI, ObjectId, Scope};
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 
 use super::{FetchFileDataRequest, ObjectError, ObjectHandle};
@@ -59,12 +59,12 @@ impl ObjectMetaHandle {
         self.features
     }
 
-    pub fn source(&self) -> &SourceId {
+    pub fn source_id(&self) -> &SourceId {
         self.request.file_source.source_id()
     }
 
-    pub fn location(&self) -> SourceLocation {
-        self.request.file_source.location()
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        self.request.file_source.uri()
     }
 
     pub fn status(&self) -> CacheStatus {

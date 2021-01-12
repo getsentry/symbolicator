@@ -14,8 +14,10 @@ use crate::actors::common::cache::Cacher;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
 use crate::services::download::{DownloadError, DownloadService};
-use crate::sources::{FileType, ObjectFileSource, SourceConfig, SourceId, SourceLocation};
-use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
+use crate::sources::{FileType, ObjectFileSource, SourceConfig, SourceId};
+use crate::types::{
+    AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectFileSourceURI, ObjectId, Scope,
+};
 use crate::utils::futures::ThreadPool;
 
 use data_cache::FetchFileDataRequest;
@@ -438,8 +440,7 @@ fn create_candidates(
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: SourceLocation::new("*"),
-            uri: String::from("noent://*"),
+            location: ObjectFileSourceURI::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),
@@ -465,8 +466,7 @@ fn create_candidate_info(
             };
             ObjectCandidate {
                 source: meta_handle.request.file_source.source_id().clone(),
-                location: meta_handle.request.file_source.location(),
-                uri: meta_handle.request.file_source.uri(),
+                location: meta_handle.request.file_source.uri(),
                 download,
                 unwind: Default::default(),
                 debug: Default::default(),
@@ -476,8 +476,7 @@ fn create_candidate_info(
             let details = wrapped_error.error.to_string();
             ObjectCandidate {
                 source: wrapped_error.file_source.source_id().clone(),
-                location: wrapped_error.file_source.location(),
-                uri: wrapped_error.file_source.uri(),
+                location: wrapped_error.file_source.uri(),
                 download: ObjectDownloadInfo::Error { details },
                 unwind: Default::default(),
                 debug: Default::default(),

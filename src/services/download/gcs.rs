@@ -344,10 +344,10 @@ mod tests {
         let list = downloader.list_files(source, &[FileType::MachCode], object_id);
         assert_eq!(list.len(), 1);
 
-        assert_eq!(
-            list[0].location(),
-            SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable")
-        );
+        assert!(list[0]
+            .uri()
+            .to_string()
+            .ends_with("e5/14c9464eed3be5943a2c61d9241fad/executable"));
     }
 
     #[test]

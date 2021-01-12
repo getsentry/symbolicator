@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 
-use crate::types::{Glob, ObjectId, ObjectType};
+use crate::types::{Glob, ObjectFileSourceURI, ObjectId, ObjectType};
 use crate::utils::paths;
 use crate::utils::sentry::WriteSentryScope;
 
@@ -127,12 +127,6 @@ impl fmt::Display for SourceLocation {
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct SentryFileId(String);
-
-impl SentryFileId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 
 impl fmt::Display for SentryFileId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -280,36 +274,16 @@ impl ObjectFileSource {
         }
     }
 
-    /// The location of the file on the source, normalised for all sources.
-    ///
-    /// The location is a string who's content is dependent on the source itself, which can
-    /// identify the file on that source.  The underlying type might vary for source types
-    /// however this normalises these all to [`SourceLocation`].  If you working on the
-    /// source itself you should prefer accessing the location directly so you use the
-    /// specific type.
-    pub fn location(&self) -> SourceLocation {
-        match self {
-            ObjectFileSource::Sentry(ref x) => SourceLocation::new(x.file_id.as_str()),
-            ObjectFileSource::Http(ref x) => x.location.clone(),
-            ObjectFileSource::S3(ref x) => x.location.clone(),
-            ObjectFileSource::Gcs(ref x) => x.location.clone(),
-            ObjectFileSource::Filesystem(ref x) => x.location.clone(),
-        }
-    }
-
     /// Returns a URI for the location of the object file.
     ///
     /// There is no guarantee about any format of this URI, for some sources it could be
     /// very abstract.  In general the source should try and producde a URI which can be
     /// used directly into the source-specific tooling.  E.g. for an HTTP source this would
     /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
-    pub fn uri(&self) -> String {
+    pub fn uri(&self) -> ObjectFileSourceURI {
         match self {
-            ObjectFileSource::Sentry(ref file_source) => file_source.url().as_str().to_string(),
-            ObjectFileSource::Http(ref file_source) => match file_source.url() {
-                Ok(url) => url.as_str().to_string(),
-                Err(_) => String::new(),
-            },
+            ObjectFileSource::Sentry(ref file_source) => file_source.uri(),
+            ObjectFileSource::Http(ref file_source) => file_source.uri(),
             ObjectFileSource::S3(ref file_source) => file_source.uri(),
             ObjectFileSource::Gcs(ref file_source) => file_source.uri(),
             ObjectFileSource::Filesystem(ref file_source) => file_source.uri(),
@@ -366,6 +340,10 @@ impl SentryObjectFileSource {
         Self { source, file_id }
     }
 
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        self.url().as_str().into()
+    }
+
     /// Returns the URL from which to download this object file.
     pub fn url(&self) -> Url {
         let mut url = self.source.url.clone();
@@ -383,6 +361,13 @@ pub struct HttpObjectFileSource {
 impl HttpObjectFileSource {
     pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
+    }
+
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        match self.url() {
+            Ok(url) => url.as_ref().into(),
+            Err(_) => "".into(),
+        }
     }
 
     /// Returns the URL from which to download this object file.
@@ -415,12 +400,13 @@ impl S3ObjectFileSource {
     }
 
     /// Returns the `s3://` URI from which to download this object file.
-    pub fn uri(&self) -> String {
+    pub fn uri(&self) -> ObjectFileSourceURI {
         format!(
             "s3://{bucket}/{key}",
             bucket = &self.source.bucket,
             key = self.key()
         )
+        .into()
     }
 }
 
@@ -443,12 +429,13 @@ impl GcsObjectFileSource {
     }
 
     /// Returns the `gs://` URI from which to download this object file.
-    pub fn uri(&self) -> String {
+    pub fn uri(&self) -> ObjectFileSourceURI {
         format!(
             "gs://{bucket}/{key}",
             bucket = &self.source.bucket,
             key = self.key()
         )
+        .into()
     }
 }
 
@@ -473,8 +460,8 @@ impl FilesystemObjectFileSource {
     /// This is a quick-and-dirty approximation, not fully RFC8089-compliant.  E.g. we do
     /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
     /// [`FilesystemObjectFileSource::path`] if the actual file location is needed.
-    pub fn uri(&self) -> String {
-        format!("file:///{path}", path = self.path().display())
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        format!("file:///{path}", path = self.path().display()).into()
     }
 }
 

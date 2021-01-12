@@ -25,7 +25,7 @@ use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
-use crate::sources::{SourceId, SourceLocation};
+use crate::sources::SourceId;
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
@@ -501,15 +501,9 @@ pub struct ObjectCandidate {
     pub source: SourceId,
     /// The location of this DIF on the object source.
     ///
-    /// This will generally be some sort of path name or key, if you know the type of object
-    /// source this may give you an idea of where this DIF was expected to be found.
-    pub location: SourceLocation,
-    /// A URI representing the DIF's location.
-    ///
-    /// This is essentially a combination of the [`ObjectCandidate::source`] plus
-    /// [`ObjectCandidate::location`].  There is no guarantee over the scheme or anything of
-    /// this URI, this depends entirely on the source.
-    pub uri: String,
+    /// This is generally a URI which makes sense for the source type, however no guarantees
+    /// are given and it could be any string.
+    pub location: ObjectFileSourceURI,
     /// Information about fetching or downloading this DIF object.
     ///
     /// This section is always present and will at least have a `status` field.
@@ -527,6 +521,15 @@ pub struct ObjectCandidate {
     #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
     pub debug: ObjectUseInfo,
 }
+
+/// A URI representing an [`ObjectFileSource`].
+///
+/// Note that this does not provide enough information to download the object file, for this
+/// you need the actual [`ObjectFileSource`].  The purpose of this URI is to be able to
+/// display to a user who might be able to use this in other tools.  E.g. for an S3 source
+/// this could be an `s3://` URI etc.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct ObjectFileSourceURI(String);
 
 /// Information about downloading of a DIF object.
 ///

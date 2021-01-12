@@ -2122,7 +2122,7 @@ mod tests {
         })?;
 
         insta::assert_yaml_snapshot!(response, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
 
         let response = test::block_fn01(|| {
@@ -2132,7 +2132,7 @@ mod tests {
         })?;
 
         insta::assert_yaml_snapshot!(response, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
 
         Ok(())
@@ -2153,7 +2153,7 @@ mod tests {
         })?;
 
         insta::assert_yaml_snapshot!(response, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
 
         let response = test::block_fn01(|| {
@@ -2163,7 +2163,7 @@ mod tests {
         })?;
 
         insta::assert_yaml_snapshot!(response, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
 
         Ok(())
@@ -2188,7 +2188,7 @@ mod tests {
         })?;
 
         insta::assert_yaml_snapshot!(response, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
@@ -2198,7 +2198,7 @@ mod tests {
 
         cache_entries.sort();
         insta::assert_yaml_snapshot!(cache_entries, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
 
         Ok(())
@@ -2239,7 +2239,7 @@ mod tests {
         })?;
 
         insta::assert_yaml_snapshot!(response, {
-            ".**.uri" => insta::dynamic_redaction(redact_localhost_port)
+            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
         });
         Ok(())
     }

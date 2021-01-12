@@ -178,8 +178,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ) -> Self::Item {
         let mut candidates = self.candidates.clone();
         candidates.set_unwind(
-            self.meta_handle.source().clone(),
-            self.meta_handle.location(),
+            self.meta_handle.source_id().clone(),
+            &self.meta_handle.uri(),
             ObjectUseInfo::from_derived_status(status, self.meta_handle.status()),
         );
 

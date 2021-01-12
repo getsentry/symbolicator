@@ -128,18 +128,15 @@ modules:
     image_size: 106496
     candidates:
       - source: local
-        location: crash/C0BCC3F19827FE653058404B2831D9E60/crash.sym
-        uri: "http://localhost:<port>/download/crash/C0BCC3F19827FE653058404B2831D9E60/crash.sym"
+        location: "http://localhost:<port>/download/crash/C0BCC3F19827FE653058404B2831D9E60/crash.sym"
         download:
           status: notfound
       - source: local
-        location: f1/c3bcc0279865fe3058404b2831d9e64135386c
-        uri: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c"
+        location: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c"
         download:
           status: notfound
       - source: local
-        location: f1/c3bcc0279865fe3058404b2831d9e64135386c.debug
-        uri: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c.debug"
+        location: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c.debug"
         download:
           status: notfound
   - debug_status: unused
@@ -174,18 +171,15 @@ modules:
     image_size: 1835008
     candidates:
       - source: local
-        location: b5/381a457906d279073822a5ceb24c4bfef94ddb
-        uri: "http://localhost:<port>/download/b5/381a457906d279073822a5ceb24c4bfef94ddb"
+        location: "http://localhost:<port>/download/b5/381a457906d279073822a5ceb24c4bfef94ddb"
         download:
           status: notfound
       - source: local
-        location: b5/381a457906d279073822a5ceb24c4bfef94ddb.debug
-        uri: "http://localhost:<port>/download/b5/381a457906d279073822a5ceb24c4bfef94ddb.debug"
+        location: "http://localhost:<port>/download/b5/381a457906d279073822a5ceb24c4bfef94ddb.debug"
         download:
           status: notfound
       - source: local
-        location: libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.so.sym
-        uri: "http://localhost:<port>/download/libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.so.sym"
+        location: "http://localhost:<port>/download/libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.so.sym"
         download:
           status: notfound
   - debug_status: unused
@@ -250,18 +244,15 @@ modules:
     image_size: 155648
     candidates:
       - source: local
-        location: 5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5
-        uri: "http://localhost:<port>/download/5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5"
+        location: "http://localhost:<port>/download/5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5"
         download:
           status: notfound
       - source: local
-        location: 5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5.debug
-        uri: "http://localhost:<port>/download/5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5.debug"
+        location: "http://localhost:<port>/download/5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5.debug"
         download:
           status: notfound
       - source: local
-        location: ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so.sym
-        uri: "http://localhost:<port>/download/ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so.sym"
+        location: "http://localhost:<port>/download/ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so.sym"
         download:
           status: notfound
   - debug_status: unused
