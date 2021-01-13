@@ -11,9 +11,12 @@ use reqwest::{header, Client};
 use url::Url;
 
 use super::locations::join_url_encoded;
-use super::{DownloadError, DownloadStatus, ObjectFileSource, SourceLocation, USER_AGENT};
+use super::{
+    DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI, SourceLocation,
+    USER_AGENT,
+};
 use crate::sources::{FileType, HttpSourceConfig};
-use crate::types::{ObjectFileSourceURI, ObjectId};
+use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
 
 /// The HTTP-specific [`ObjectFileSource`].

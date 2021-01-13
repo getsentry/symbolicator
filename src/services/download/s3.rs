@@ -12,9 +12,9 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 
 use super::locations::{join_prefix_location, SourceLocation};
-use super::{DownloadError, DownloadStatus, ObjectFileSource};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
-use crate::types::{ObjectFileSourceURI, ObjectId};
+use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 

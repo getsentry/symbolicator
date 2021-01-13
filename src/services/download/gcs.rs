@@ -15,9 +15,9 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
 use super::locations::{join_prefix_location, SourceLocation};
-use super::{DownloadError, DownloadStatus, ObjectFileSource};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
-use crate::types::{ObjectFileSourceURI, ObjectId};
+use crate::types::ObjectId;
 use crate::utils::futures::delay;
 
 /// An LRU cache for GCS OAuth tokens.

@@ -11,8 +11,9 @@ use std::sync::Arc;
 
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, ObjectFileSource};
+use crate::services::download::ObjectFileSourceURI;
 use crate::sources::{FileType, FilesystemSourceConfig};
-use crate::types::{ObjectFileSourceURI, ObjectId};
+use crate::types::ObjectId;
 
 /// Filesystem-specific [`ObjectFileSource`].
 #[derive(Debug, Clone)]

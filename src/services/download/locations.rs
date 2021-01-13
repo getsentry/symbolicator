@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::sources::SourceId;
-use crate::types::ObjectFileSourceURI;
 use crate::utils::sentry::WriteSentryScope;
 
 use super::filesystem::FilesystemObjectFileSource;
@@ -170,6 +169,38 @@ impl WriteSentryScope for ObjectFileSource {
         scope.set_tag("source.id", self.source_id());
         scope.set_tag("source.type", self.source_type_name());
         scope.set_tag("source.is_public", self.is_public());
+    }
+}
+
+/// A URI representing an [`ObjectFileSource`].
+///
+/// Note that this does not provide enough information to download the object file, for this
+/// you need the actual [`ObjectFileSource`].  The purpose of this URI is to be able to
+/// display to a user who might be able to use this in other tools.  E.g. for an S3 source
+/// this could be an `s3://` URI etc.
+///
+/// [`ObjectFileSource`]: crate::services::download::ObjectFileSource
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct ObjectFileSourceURI(String);
+
+impl ObjectFileSourceURI {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+}
+
+impl<T> From<T> for ObjectFileSourceURI
+where
+    T: Into<String>,
+{
+    fn from(source: T) -> Self {
+        Self(source.into())
+    }
+}
+
+impl fmt::Display for ObjectFileSourceURI {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

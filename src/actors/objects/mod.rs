@@ -13,11 +13,11 @@ use symbolic::debuginfo;
 use crate::actors::common::cache::Cacher;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
-use crate::services::download::{DownloadError, DownloadService, ObjectFileSource};
-use crate::sources::{FileType, SourceConfig, SourceId};
-use crate::types::{
-    AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectFileSourceURI, ObjectId, Scope,
+use crate::services::download::{
+    DownloadError, DownloadService, ObjectFileSource, ObjectFileSourceURI,
 };
+use crate::sources::{FileType, SourceConfig, SourceId};
+use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 
 use data_cache::FetchFileDataRequest;

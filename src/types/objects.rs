@@ -1,14 +1,117 @@
 //! Implementations for the types describing DIF object files.
 
-use std::fmt;
+use serde::{Deserialize, Serialize};
 
 use crate::cache::CacheStatus;
+use crate::services::download::ObjectFileSourceURI;
 use crate::sources::SourceId;
 
-use super::{
-    AllObjectCandidates, Arch, CodeId, CompleteObjectInfo, DebugId, ObjectCandidate,
-    ObjectFeatures, ObjectFileSourceURI, ObjectFileStatus, ObjectUseInfo, RawObjectInfo,
-};
+use super::ObjectFeatures;
+
+/// Information about a Debug Information File in the [`CompleteObjectInfo`].
+///
+/// All DIFs are backed by an [`ObjectHandle`](crate::actors::objects::ObjectHandle).  But we
+/// may not have been able to get hold of this object file.  We still want to describe the
+/// relevant DIF however.
+///
+/// Currently has no [`ObjectId`] attached and the parent container is expected to know
+/// which ID this DIF info was for.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ObjectCandidate {
+    /// The ID of the object source where this DIF was expected to be found.
+    ///
+    /// This refers back to the IDs of sources in the symbolication requests, as well as any
+    /// globally configured sources from symbolicator's configuration.
+    ///
+    /// Generally this is a short readable string.
+    pub source: SourceId,
+    /// The location of this DIF on the object source.
+    ///
+    /// This is generally a URI which makes sense for the source type, however no guarantees
+    /// are given and it could be any string.
+    pub location: ObjectFileSourceURI,
+    /// Information about fetching or downloading this DIF object.
+    ///
+    /// This section is always present and will at least have a `status` field.
+    pub download: ObjectDownloadInfo,
+    /// Information about any unwind info in this DIF object.
+    ///
+    /// This section is only present if this DIF object was used for unwinding by the
+    /// symbolication request.
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
+    pub unwind: ObjectUseInfo,
+    /// Information about any debug info this DIF object may have.
+    ///
+    /// This section is only present if this DIF object was used for symbol lookups by the
+    /// symbolication request.
+    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
+    pub debug: ObjectUseInfo,
+}
+
+/// Information about downloading of a DIF object.
+///
+/// This is part of the larger [`ObjectCandidate`] struct.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ObjectDownloadInfo {
+    /// The DIF object was downloaded successfully.
+    ///
+    /// The `features` field describes which [`ObjectFeatures`] the object is expected to
+    /// provide, though whether these are actually usable has not yet been verified.
+    Ok { features: ObjectFeatures },
+    /// The DIF object could not be parsed after downloading.
+    ///
+    /// This is only a basic validity check of whether the container of the object file can
+    /// be parsed.  Actually using the object for CFI or symbols might result in more
+    /// detailed problems, see [`ObjectUseInfo`] for more on this.
+    Malformed,
+    /// Symbolicator had insufficient permissions to download the DIF object.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    NoPerm { details: String },
+    /// The DIF object was not found.
+    ///
+    /// This is considered a *regular notfound* where the object was simply not available at
+    /// the source expected to provde this DIF.  Thus no further details are available.
+    NotFound,
+    /// An error occurred during downloading of this DIF object.
+    ///
+    /// This is mostly an internal error from symbolicator which is considered transient.
+    /// The next attempt to access this DIF object will retry the download.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Error { details: String },
+}
+
+/// Information about the use of a DIF object.
+///
+/// This information is applicable to both "unwind" and "debug" use cases, in each case the
+/// object needs to be processed a little more than just the downloaded artifact and we may
+/// need to report some status on this.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ObjectUseInfo {
+    /// The DIF object was successfully used to provide the required information.
+    ///
+    /// This means the object was used for CFI when used for [`ObjectCandidate::unwind`]
+    Ok,
+    /// The DIF object contained malformed data which could not be used.
+    Malformed,
+    /// An error occurred when attempting to use this DIF object.
+    ///
+    /// This is mostly an internal error from symbolicator which is considered transient.
+    /// The next attempt to access this DIF object will retry using this DIF object.
+    ///
+    /// More details should be available in the `details` field, which is not meant to be
+    /// machine parsable.
+    Error { details: String },
+    /// Internal state, this is not serialised.
+    ///
+    /// This enum is not serialised into its parent object when it is set to this value.
+    None,
+}
 
 impl Default for ObjectUseInfo {
     fn default() -> Self {
@@ -20,6 +123,33 @@ impl ObjectUseInfo {
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
+
+    /// Construct [`ObjectUseInfo`] for an object from a derived cache.
+    ///
+    /// The [`ObjectUseInfo`] provides information about items stored in a cache and which
+    /// are derived from an original object cache: the [`symcaches`] and the [`cficaches`].
+    /// These caches have an edge case where if the underlying cache thought the object was
+    /// there but now it could not be fetched again.  This is converted to an error case.
+    ///
+    /// [`symcaches`]: crate::actors::symcaches
+    /// [`cficaches`]: crate::actors::cficaches
+    pub fn from_derived_status(derived: CacheStatus, original: CacheStatus) -> Self {
+        match derived {
+            CacheStatus::Positive => ObjectUseInfo::Ok,
+            CacheStatus::Negative => {
+                if original == CacheStatus::Positive {
+                    ObjectUseInfo::Error {
+                        details: String::from("Object file no longer available"),
+                    }
+                } else {
+                    // If the original cache was already missing then it will already be
+                    // reported and we do not want to report anything.
+                    ObjectUseInfo::None
+                }
+            }
+            CacheStatus::Malformed => ObjectUseInfo::Malformed,
+        }
+    }
 }
 
 impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
@@ -29,6 +159,14 @@ impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
         Self(source)
     }
 }
+
+/// Newtype around a collection of [`ObjectCandidate`] structs.
+///
+/// This abstracts away some common operations needed on this collection.
+///
+/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AllObjectCandidates(Vec<ObjectCandidate>);
 
 impl AllObjectCandidates {
     /// Sets the [`ObjectCandidate::debug`] field for the specified DIF object.
@@ -124,60 +262,6 @@ impl AllObjectCandidates {
                     self.0.insert(index, other_info);
                 }
             }
-        }
-    }
-}
-
-impl From<RawObjectInfo> for CompleteObjectInfo {
-    fn from(mut raw: RawObjectInfo) -> Self {
-        raw.debug_id = raw
-            .debug_id
-            .filter(|id| !id.is_empty())
-            .and_then(|id| id.parse::<DebugId>().ok())
-            .map(|id| id.to_string());
-
-        raw.code_id = raw
-            .code_id
-            .filter(|id| !id.is_empty())
-            .and_then(|id| id.parse::<CodeId>().ok())
-            .map(|id| id.to_string());
-
-        CompleteObjectInfo {
-            debug_status: ObjectFileStatus::Unused,
-            unwind_status: None,
-            features: ObjectFeatures::default(),
-            arch: Arch::Unknown,
-            raw,
-            candidates: AllObjectCandidates::default(),
-        }
-    }
-}
-
-impl ObjectUseInfo {
-    /// Construct [`ObjectUseInfo`] for an object from a derived cache.
-    ///
-    /// The [`ObjectUseInfo`] provides information about items stored in a cache and which
-    /// are derived from an original object cache: the [`symcaches`] and the [`cficaches`].
-    /// These caches have an edge case where if the underlying cache thought the object was
-    /// there but now it could not be fetched again.  This is converted to an error case.
-    ///
-    /// [`symcaches`]: crate::actors::symcaches
-    /// [`cficaches`]: crate::actors::cficaches
-    pub fn from_derived_status(derived: CacheStatus, original: CacheStatus) -> Self {
-        match derived {
-            CacheStatus::Positive => ObjectUseInfo::Ok,
-            CacheStatus::Negative => {
-                if original == CacheStatus::Positive {
-                    ObjectUseInfo::Error {
-                        details: String::from("Object file no longer available"),
-                    }
-                } else {
-                    // If the original cache was already missing then it will already be
-                    // reported and we do not want to report anything.
-                    ObjectUseInfo::None
-                }
-            }
-            CacheStatus::Malformed => ObjectUseInfo::Malformed,
         }
     }
 }
@@ -287,26 +371,5 @@ mod tests {
         all.merge(other);
         assert_eq!(all.0[0].unwind, ObjectUseInfo::Ok);
         assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
-    }
-}
-
-impl ObjectFileSourceURI {
-    pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
-    }
-}
-
-impl<T> From<T> for ObjectFileSourceURI
-where
-    T: Into<String>,
-{
-    fn from(source: T) -> Self {
-        Self(source.into())
-    }
-}
-
-impl fmt::Display for ObjectFileSourceURI {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }

@@ -15,10 +15,10 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, ObjectFileSource, USER_AGENT};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI, USER_AGENT};
 use crate::config::Config;
 use crate::sources::{FileType, SentrySourceConfig};
-use crate::types::{ObjectFileSourceURI, ObjectId};
+use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, m, measure};
 
 /// The Sentry-specific [`ObjectFileSource`].

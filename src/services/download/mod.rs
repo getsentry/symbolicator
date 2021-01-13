@@ -27,7 +27,7 @@ mod sentry;
 use crate::config::Config;
 pub use crate::sources::{DirectoryLayout, FileType, SourceConfig, SourceFilters};
 pub use crate::types::ObjectId;
-pub use locations::{ObjectFileSource, SourceLocation};
+pub use locations::{ObjectFileSource, ObjectFileSourceURI, SourceLocation};
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
