@@ -20,15 +20,14 @@ use crate::utils::paths::get_directory_paths;
 mod filesystem;
 mod gcs;
 mod http;
+mod locations;
 mod s3;
 mod sentry;
 
 use crate::config::Config;
-pub use crate::sources::{
-    DirectoryLayout, FileType, SentryFileId, SourceConfig, SourceFileId, SourceFilters,
-    SourceLocation,
-};
+pub use crate::sources::{DirectoryLayout, FileType, SourceConfig, SourceFilters};
 pub use crate::types::ObjectId;
+pub use locations::{ObjectFileSource, ObjectFileSourceURI, SourceLocation};
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -96,25 +95,17 @@ impl DownloadService {
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
         self: Arc<Self>,
-        source: SourceFileId,
+        source: ObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         match source {
-            SourceFileId::Sentry(source, loc) => {
-                self.sentry.download_source(source, loc, destination).await
+            ObjectFileSource::Sentry(inner) => {
+                self.sentry.download_source(inner, destination).await
             }
-            SourceFileId::Http(source, loc) => {
-                self.http.download_source(source, loc, destination).await
-            }
-            SourceFileId::S3(source, loc) => {
-                self.s3.download_source(source, loc, destination).await
-            }
-            SourceFileId::Gcs(source, loc) => {
-                self.gcs.download_source(source, loc, destination).await
-            }
-            SourceFileId::Filesystem(source, loc) => {
-                self.fs.download_source(source, loc, destination)
-            }
+            ObjectFileSource::Http(inner) => self.http.download_source(inner, destination).await,
+            ObjectFileSource::S3(inner) => self.s3.download_source(inner, destination).await,
+            ObjectFileSource::Gcs(inner) => self.gcs.download_source(inner, destination).await,
+            ObjectFileSource::Filesystem(inner) => self.fs.download_source(inner, destination),
         }
     }
 
@@ -131,7 +122,7 @@ impl DownloadService {
     // owned downloader.
     pub async fn download(
         self: Arc<Self>,
-        source: SourceFileId,
+        source: ObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let hub = Hub::current();
@@ -164,7 +155,7 @@ impl DownloadService {
         filetypes: &'static [FileType],
         object_id: ObjectId,
         hub: Arc<Hub>,
-    ) -> Result<Vec<SourceFileId>, DownloadError> {
+    ) -> Result<Vec<ObjectFileSource>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
                 let config = self.config.clone();
@@ -203,12 +194,12 @@ impl DownloadService {
 ///
 /// This is common functionality used by all many downloaders.
 async fn download_stream(
-    source: SourceFileId,
+    source: impl Into<ObjectFileSource>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
-    log::trace!("Downloading from {}", source);
+    log::trace!("Downloading from {}", source.into());
     let mut file = File::create(&destination).map_err(DownloadError::BadDestination)?;
     futures::pin_mut!(stream);
 
@@ -262,6 +253,7 @@ impl Iterator for SourceLocationIter<'_> {
 mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
+    use super::http::HttpObjectFileSource;
     use super::*;
 
     use crate::sources::SourceConfig;
@@ -286,9 +278,9 @@ mod tests {
             let dest = tmpfile.path().to_owned();
 
             let (_srv, source) = test::symbol_server();
-            let source_id = match source {
+            let file_source = match source {
                 SourceConfig::Http(source) => {
-                    SourceFileId::Http(source, SourceLocation::new("hello.txt"))
+                    HttpObjectFileSource::new(source, SourceLocation::new("hello.txt")).into()
                 }
                 _ => panic!("unexpected source"),
             };
@@ -302,7 +294,7 @@ mod tests {
             let dest2 = dest.clone();
 
             // Jump through some hoops here, to prove that we can .await the service.
-            let download_status = service.download(source_id, dest2).await.unwrap();
+            let download_status = service.download(file_source, dest2).await.unwrap();
             assert_eq!(download_status, DownloadStatus::Completed);
             let content = std::fs::read_to_string(dest).unwrap();
             assert_eq!(content, "hello world\n")
@@ -343,11 +335,7 @@ mod tests {
 
             assert!(!file_list.is_empty());
             let item = &file_list[0];
-            if let SourceFileId::Filesystem(source_cfg, _loc) = item {
-                assert_eq!(&source_cfg.id, source.id());
-            } else {
-                panic!("Not a filesystem item");
-            }
+            assert_eq!(item.source_id(), source.id());
         });
     }
 }

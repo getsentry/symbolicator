@@ -170,19 +170,19 @@ modules:
     image_size: 36864
     candidates:
       - source: local
-        location: crash.exe/5AB380779000/crash.ex_
+        location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.ex_"
         download:
           status: notfound
       - source: local
-        location: crash.exe/5AB380779000/crash.exe
+        location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.exe"
         download:
           status: notfound
       - source: local
-        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_"
         download:
           status: notfound
       - source: local
-        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb"
         download:
           status: ok
           features:
@@ -195,7 +195,7 @@ modules:
         debug:
           status: ok
       - source: local
-        location: crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym"
         download:
           status: notfound
   - debug_status: unused
@@ -260,23 +260,23 @@ modules:
     image_size: 151552
     candidates:
       - source: local
-        location: dbgcore.dll/57898DAB25000/dbgcore.dl_
+        location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dl_"
         download:
           status: notfound
       - source: local
-        location: dbgcore.dll/57898DAB25000/dbgcore.dll
+        location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dll"
         download:
           status: notfound
       - source: local
-        location: dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_"
         download:
           status: notfound
       - source: local
-        location: dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb"
         download:
           status: notfound
       - source: local
-        location: dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.sym
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.sym"
         download:
           status: notfound
   - debug_status: unused
@@ -386,23 +386,23 @@ modules:
     image_size: 917504
     candidates:
       - source: local
-        location: kernel32.dll/590285E9e0000/kernel32.dl_
+        location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dl_"
         download:
           status: notfound
       - source: local
-        location: kernel32.dll/590285E9e0000/kernel32.dll
+        location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dll"
         download:
           status: notfound
       - source: local
-        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_"
         download:
           status: notfound
       - source: local
-        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb"
         download:
           status: notfound
       - source: local
-        location: wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.sym
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.sym"
         download:
           status: notfound
   - debug_status: unused
@@ -437,23 +437,23 @@ modules:
     image_size: 790528
     candidates:
       - source: local
-        location: rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_
+        location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_"
         download:
           status: notfound
       - source: local
-        location: rpcrt4.dll/5A49BB75c1000/rpcrt4.dll
+        location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dll"
         download:
           status: notfound
       - source: local
-        location: wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_"
         download:
           status: notfound
       - source: local
-        location: wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb"
         download:
           status: notfound
       - source: local
-        location: wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.sym
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.sym"
         download:
           status: notfound
   - debug_status: unused
@@ -503,22 +503,22 @@ modules:
     image_size: 1585152
     candidates:
       - source: local
-        location: ntdll.dll/59B0D8F3183000/ntdll.dl_
+        location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dl_"
         download:
           status: notfound
       - source: local
-        location: ntdll.dll/59B0D8F3183000/ntdll.dll
+        location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dll"
         download:
           status: notfound
       - source: local
-        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_"
         download:
           status: notfound
       - source: local
-        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb"
         download:
           status: notfound
       - source: local
-        location: wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.sym
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.sym"
         download:
           status: notfound

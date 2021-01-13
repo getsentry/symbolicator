@@ -22,8 +22,7 @@ use tempfile::{tempfile_in, NamedTempFile};
 
 use crate::actors::common::cache::{CacheItemRequest, CachePath};
 use crate::cache::{CacheKey, CacheStatus};
-use crate::services::download::DownloadStatus;
-use crate::sources::SourceFileId;
+use crate::services::download::{DownloadStatus, ObjectFileSource};
 use crate::types::{ObjectId, Scope};
 use crate::utils::futures::BoxedFuture;
 use crate::utils::sentry::WriteSentryScope;
@@ -45,7 +44,7 @@ pub struct ObjectHandle {
     pub(super) object_id: ObjectId,
     pub(super) scope: Scope,
 
-    pub(super) file_id: SourceFileId,
+    pub(super) file_source: ObjectFileSource,
     pub(super) cache_key: CacheKey,
 
     /// The mmapped object.
@@ -94,7 +93,7 @@ impl ObjectHandle {
 impl WriteSentryScope for ObjectHandle {
     fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.write_sentry_scope(scope);
-        self.file_id.write_sentry_scope(scope);
+        self.file_source.write_sentry_scope(scope);
 
         scope.set_tag("object_file.scope", self.scope());
 
@@ -135,10 +134,10 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         sentry::configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
-            self.0.file_id.write_sentry_scope(scope);
+            self.0.file_source.write_sentry_scope(scope);
         });
 
-        let file_id = self.0.file_id.clone();
+        let file_id = self.0.file_source.clone();
         let downloader = self.0.download_svc.clone();
         let download_file = tryf03pin!(self.0.data_cache.tempfile());
         let download_dir =
@@ -223,7 +222,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             })
             .bind_hub(Hub::current());
 
-        let type_name = self.0.file_id.source().type_name();
+        let type_name = self.0.file_source.source_type_name();
 
         Box::pin(
             future_metrics!(
@@ -247,7 +246,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             object_id: self.0.object_id.clone(),
             scope,
 
-            file_id: self.0.file_id.clone(),
+            file_source: self.0.file_source.clone(),
             cache_key: self.get_cache_key(),
 
             status,

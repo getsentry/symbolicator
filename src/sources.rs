@@ -1,5 +1,6 @@
 //! Download sources types and related implementations.
 
+use anyhow::Result;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -99,50 +100,6 @@ impl WriteSentryScope for SourceConfig {
     }
 }
 
-/// A location for a file retrievable from many source configs.
-///
-/// It is essentially a `/`-separated string. This is currently used by all sources other than
-/// [`SentrySourceConfig`]. This may change in the future.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct SourceLocation(String);
-
-impl SourceLocation {
-    pub fn new(loc: impl Into<String>) -> Self {
-        SourceLocation(loc.into())
-    }
-
-    /// Return an iterator of the location segments.
-    pub fn segments<'a>(&'a self) -> impl Iterator<Item = &str> + 'a {
-        self.0.split('/').filter(|s| !s.is_empty())
-    }
-}
-
-impl fmt::Display for SourceLocation {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// An identifier for a file retrievable from a [`SentrySourceConfig`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct SentryFileId(String);
-
-impl SentryFileId {
-    pub fn new(id: impl Into<String>) -> Self {
-        SentryFileId(id.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for SentryFileId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 /// Configuration for the Sentry-internal debug files endpoint.
 #[derive(Deserialize, Clone, Debug)]
 pub struct SentrySourceConfig {
@@ -155,14 +112,6 @@ pub struct SentrySourceConfig {
 
     /// Bearer authorization token.
     pub token: String,
-}
-
-impl SentrySourceConfig {
-    pub fn download_url(&self, file_id: &SentryFileId) -> Url {
-        let mut url = self.url.clone();
-        url.query_pairs_mut().append_pair("id", &file_id.0);
-        url
-    }
 }
 
 /// Configuration for symbol server HTTP endpoints.
@@ -194,105 +143,6 @@ pub struct FilesystemSourceConfig {
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
-}
-
-impl FilesystemSourceConfig {
-    pub fn join_loc(&self, loc: &SourceLocation) -> PathBuf {
-        self.path.join(&loc.0)
-    }
-}
-
-/// This uniquely identifies a file on a source and how to download it.
-///
-/// This is a combination of the [`SourceConfig`], which describes a download
-/// source and how to download rom it, with an identifier describing a single
-/// file in that source.
-#[derive(Debug, Clone)]
-pub enum SourceFileId {
-    Sentry(Arc<SentrySourceConfig>, SentryFileId),
-    Http(Arc<HttpSourceConfig>, SourceLocation),
-    S3(Arc<S3SourceConfig>, SourceLocation),
-    Gcs(Arc<GcsSourceConfig>, SourceLocation),
-    Filesystem(Arc<FilesystemSourceConfig>, SourceLocation),
-}
-
-impl SourceFileId {
-    pub fn source(&self) -> SourceConfig {
-        match *self {
-            SourceFileId::Sentry(ref x, ..) => SourceConfig::Sentry(x.clone()),
-            SourceFileId::S3(ref x, ..) => SourceConfig::S3(x.clone()),
-            SourceFileId::Gcs(ref x, ..) => SourceConfig::Gcs(x.clone()),
-            SourceFileId::Http(ref x, ..) => SourceConfig::Http(x.clone()),
-            SourceFileId::Filesystem(ref x, ..) => SourceConfig::Filesystem(x.clone()),
-        }
-    }
-
-    pub fn cache_key(&self) -> String {
-        match self {
-            SourceFileId::Http(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::S3(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::Gcs(ref source, ref path) => format!("{}.{}", source.id, path.0),
-            SourceFileId::Sentry(ref source, ref file_id) => {
-                format!("{}.{}.sentryinternal", source.id, file_id.0)
-            }
-            SourceFileId::Filesystem(ref source, ref path) => format!("{}.{}", source.id, path.0),
-        }
-    }
-
-    /// Returns the ID of the source.
-    ///
-    /// Within one request these IDs should be unique, this includes any sources from the
-    /// configuration which are available to all requests.
-    pub fn source_id(&self) -> &SourceId {
-        match self {
-            SourceFileId::Sentry(ref cfg, _) => &cfg.id,
-            SourceFileId::Http(ref cfg, _) => &cfg.id,
-            SourceFileId::S3(ref cfg, _) => &cfg.id,
-            SourceFileId::Gcs(ref cfg, _) => &cfg.id,
-            SourceFileId::Filesystem(ref cfg, _) => &cfg.id,
-        }
-    }
-
-    /// The location of the file on the source, normalised for all sources.
-    ///
-    /// The location is a string who's content is dependent on the source itself, which can
-    /// identify the file on that source.  The underlying type might vary for source types
-    /// however this normalises these all to [`SourceLocation`].  If you working on the
-    /// source itself you should prefer accessing the location directly so you use the
-    /// specific type.
-    pub fn location(&self) -> SourceLocation {
-        match self {
-            SourceFileId::Sentry(_, ref sentry_id) => SourceLocation::new(sentry_id.as_str()),
-            SourceFileId::Http(_, ref loc) => loc.clone(),
-            SourceFileId::S3(_, ref loc) => loc.clone(),
-            SourceFileId::Gcs(_, ref loc) => loc.clone(),
-            SourceFileId::Filesystem(_, ref loc) => loc.clone(),
-        }
-    }
-}
-
-impl WriteSentryScope for SourceFileId {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
-        self.source().write_sentry_scope(scope);
-    }
-}
-
-impl fmt::Display for SourceFileId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SourceFileId::Sentry(cfg, id) => {
-                write!(f, "Sentry source '{}' file id '{}'", cfg.id, id)
-            }
-            SourceFileId::Http(cfg, loc) => {
-                write!(f, "HTTP source '{}' location '{}'", cfg.id, loc)
-            }
-            SourceFileId::S3(cfg, loc) => write!(f, "S3 source '{}' location '{}'", cfg.id, loc),
-            SourceFileId::Gcs(cfg, loc) => write!(f, "GCS source '{}' location '{}'", cfg.id, loc),
-            SourceFileId::Filesystem(cfg, loc) => {
-                write!(f, "Filesystem source '{}' location '{}'", cfg.id, loc)
-            }
-        }
-    }
 }
 
 /// Local helper to deserializes an S3 region string in `S3SourceKey`.
@@ -372,24 +222,6 @@ pub struct GcsSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-fn join_prefix_location(prefix: &str, location: &SourceLocation) -> String {
-    let trimmed = prefix.trim_matches(&['/'][..]);
-    if trimmed.is_empty() {
-        location.0.clone()
-    } else {
-        format!("{}/{}", trimmed, location.0)
-    }
-}
-
-impl GcsSourceConfig {
-    /// Return the bucket's key for the required file.
-    ///
-    /// This key identifies the file in the bucket.
-    pub fn get_key(&self, location: &SourceLocation) -> String {
-        join_prefix_location(&self.prefix, location)
-    }
-}
-
 /// Configuration for S3 symbol buckets.
 #[derive(Deserialize, Clone, Debug)]
 pub struct S3SourceConfig {
@@ -409,15 +241,6 @@ pub struct S3SourceConfig {
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
-}
-
-impl S3SourceConfig {
-    /// Return the bucket's key for the required file.
-    ///
-    /// This key identifies the file in the bucket.
-    pub fn get_key(&self, location: &SourceLocation) -> String {
-        join_prefix_location(&self.prefix, location)
-    }
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
@@ -614,37 +437,5 @@ impl AsRef<str> for FileType {
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_join_prefix_location() {
-        let key = join_prefix_location(&String::from(""), &SourceLocation::new("spam/ham"));
-        assert_eq!(key, "spam/ham");
-
-        let key = join_prefix_location(&String::from("eggs"), &SourceLocation::new("spam/ham"));
-        assert_eq!(key, "eggs/spam/ham");
-
-        let key = join_prefix_location(&String::from("/eggs/bacon/"), &SourceLocation::new("spam"));
-        assert_eq!(key, "eggs/bacon/spam");
-
-        let key = join_prefix_location(&String::from("//eggs//"), &SourceLocation::new("spam"));
-        assert_eq!(key, "eggs/spam");
-    }
-
-    #[test]
-    fn test_sentry_source_download_url() {
-        let source = SentrySourceConfig {
-            id: SourceId::new("test"),
-            url: Url::parse("https://example.net/endpoint/").unwrap(),
-            token: "token".into(),
-        };
-        let file_id = SentryFileId("abc123".into());
-        let url = source.download_url(&file_id);
-        assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
 }

@@ -11,11 +11,53 @@ use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 
-use super::{DownloadError, DownloadStatus};
-use crate::sources::{FileType, S3SourceConfig, S3SourceKey, SourceFileId, SourceLocation};
+use super::locations::{join_prefix_location, SourceLocation};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
+use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
+
+/// The S3-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct S3ObjectFileSource {
+    pub source: Arc<S3SourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl From<S3ObjectFileSource> for ObjectFileSource {
+    fn from(source: S3ObjectFileSource) -> Self {
+        Self::S3(source)
+    }
+}
+
+impl S3ObjectFileSource {
+    pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the S3 key.
+    ///
+    /// This is equivalent to the pathname within the bucket.
+    pub fn key(&self) -> String {
+        join_prefix_location(&self.source.prefix, &self.location)
+    }
+
+    /// Returns the S3 bucket name.
+    pub fn bucket(&self) -> String {
+        self.source.bucket.clone()
+    }
+
+    /// Returns the `s3://` URI from which to download this object file.
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        format!(
+            "s3://{bucket}/{key}",
+            bucket = &self.source.bucket,
+            key = self.key()
+        )
+        .into()
+    }
+}
 
 /// Maximum number of cached S3 clients.
 ///
@@ -75,15 +117,14 @@ impl S3Downloader {
 
     pub async fn download_source(
         &self,
-        source: Arc<S3SourceConfig>,
-        download_path: SourceLocation,
+        file_source: S3ObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let key = source.get_key(&download_path);
-        log::debug!("Fetching from s3: {} (from {})", &key, source.bucket);
+        let key = file_source.key();
+        let bucket = file_source.bucket();
+        log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
-        let bucket = source.bucket.clone();
-        let source_key = &source.source_key;
+        let source_key = &file_source.source.source_key;
         let result = self
             .get_s3_client(&source_key)
             .get_object(rusoto_s3::GetObjectRequest {
@@ -114,7 +155,7 @@ impl S3Downloader {
             }
         };
 
-        super::download_stream(SourceFileId::S3(source, download_path), stream, destination).await
+        super::download_stream(file_source, stream, destination).await
     }
 
     pub fn list_files(
@@ -122,7 +163,7 @@ impl S3Downloader {
         source: Arc<S3SourceConfig>,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -130,7 +171,7 @@ impl S3Downloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| SourceFileId::S3(source.clone(), loc))
+        .map(|loc| S3ObjectFileSource::new(source.clone(), loc).into())
         .collect()
     }
 }
@@ -294,10 +335,10 @@ mod tests {
         let list = downloader.list_files(source, &[FileType::MachDebug], object_id);
         assert_eq!(list.len(), 1);
 
-        assert_eq!(
-            list[0].location(),
-            SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo")
-        );
+        assert!(list[0]
+            .uri()
+            .to_string()
+            .ends_with("50/2fc0a51ec13e479998684fa139dca7/debuginfo"));
     }
 
     #[tokio::test]
@@ -314,9 +355,10 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
+        let file_source = S3ObjectFileSource::new(source, source_location);
 
         let download_status = downloader
-            .download_source(source, source_location, target_path.clone())
+            .download_source(file_source, target_path.clone())
             .await
             .unwrap();
 
@@ -342,8 +384,10 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
+        let file_source = S3ObjectFileSource::new(source, source_location);
+
         let download_status = downloader
-            .download_source(source, source_location, target_path.clone())
+            .download_source(file_source, target_path.clone())
             .await
             .unwrap();
 
@@ -367,8 +411,10 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
+        let file_source = S3ObjectFileSource::new(source, source_location);
+
         let download_status = downloader
-            .download_source(source, source_location, target_path.clone())
+            .download_source(file_source, target_path.clone())
             .await
             .unwrap();
 

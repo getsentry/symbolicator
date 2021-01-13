@@ -14,13 +14,50 @@ use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::{DownloadError, DownloadStatus};
-use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey, SourceFileId, SourceLocation};
+use super::locations::{join_prefix_location, SourceLocation};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
+use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
 use crate::utils::futures::delay;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+
+/// The GCS-specific [`ObjectFileSource`].
+#[derive(Debug, Clone)]
+pub struct GcsObjectFileSource {
+    pub source: Arc<GcsSourceConfig>,
+    pub location: SourceLocation,
+}
+
+impl From<GcsObjectFileSource> for ObjectFileSource {
+    fn from(source: GcsObjectFileSource) -> Self {
+        Self::Gcs(source)
+    }
+}
+
+impl GcsObjectFileSource {
+    pub fn new(source: Arc<GcsSourceConfig>, location: SourceLocation) -> Self {
+        Self { source, location }
+    }
+
+    /// Returns the S3 key.
+    ///
+    /// This is equivalent to the pathname within the bucket.
+    pub fn key(&self) -> String {
+        join_prefix_location(&self.source.prefix, &self.location)
+    }
+
+    /// Returns the `gs://` URI from which to download this object file.
+    pub fn uri(&self) -> ObjectFileSourceURI {
+        format!(
+            "gs://{bucket}/{key}",
+            bucket = &self.source.bucket,
+            key = self.key()
+        )
+        .into()
+    }
+}
 
 /// Maximum number of cached GCS OAuth tokens.
 ///
@@ -174,18 +211,24 @@ impl GcsDownloader {
 
     pub async fn download_source(
         &self,
-        source: Arc<GcsSourceConfig>,
-        download_path: SourceLocation,
+        file_source: GcsObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let key = source.get_key(&download_path);
-        log::debug!("Fetching from GCS: {} (from {})", &key, source.bucket);
-        let token = self.get_token(&source.source_key).await?;
+        let key = file_source.key();
+        log::debug!(
+            "Fetching from GCS: {} (from {})",
+            &key,
+            file_source.source.bucket
+        );
+        let token = self.get_token(&file_source.source.source_key).await?;
         log::debug!("Got valid GCS token: {:?}", &token);
 
         let url = format!(
             "https://www.googleapis.com/download/storage/v1/b/{}/o/{}?alt=media",
-            percent_encode(source.bucket.as_bytes(), PATH_SEGMENT_ENCODE_SET),
+            percent_encode(
+                file_source.source.bucket.as_bytes(),
+                PATH_SEGMENT_ENCODE_SET
+            ),
             percent_encode(key.as_bytes(), PATH_SEGMENT_ENCODE_SET),
         );
 
@@ -207,20 +250,19 @@ impl GcsDownloader {
         match response {
             Ok(response) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting GCS {} (from {})", &key, source.bucket);
+                    log::trace!(
+                        "Success hitting GCS {} (from {})",
+                        &key,
+                        file_source.source.bucket
+                    );
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(
-                        SourceFileId::Gcs(source, download_path),
-                        stream,
-                        destination,
-                    )
-                    .await
+                    super::download_stream(file_source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
-                        source.bucket,
+                        &file_source.source.bucket,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
@@ -230,7 +272,7 @@ impl GcsDownloader {
                 log::trace!(
                     "Skipping response from GCS {} (from {}): {} ({:?})",
                     &key,
-                    source.bucket,
+                    &file_source.source.bucket,
                     &e,
                     &e
                 );
@@ -244,7 +286,7 @@ impl GcsDownloader {
         source: Arc<GcsSourceConfig>,
         filetypes: &'static [FileType],
         object_id: ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -252,18 +294,20 @@ impl GcsDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| SourceFileId::Gcs(source.clone(), loc))
+        .map(|loc| GcsObjectFileSource::new(source.clone(), loc).into())
         .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::locations::SourceLocation;
+    use super::*;
+
     use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
     use crate::test;
     use crate::types::ObjectType;
 
-    use super::*;
     use sha1::{Digest as _, Sha1};
 
     fn gcs_source_key() -> Option<GcsSourceKey> {
@@ -320,10 +364,10 @@ mod tests {
         let list = downloader.list_files(source, &[FileType::MachCode], object_id);
         assert_eq!(list.len(), 1);
 
-        assert_eq!(
-            list[0].location(),
-            SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable")
-        );
+        assert!(list[0]
+            .uri()
+            .to_string()
+            .ends_with("e5/14c9464eed3be5943a2c61d9241fad/executable"));
     }
 
     #[tokio::test]
@@ -338,9 +382,10 @@ mod tests {
 
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
+        let file_source = GcsObjectFileSource::new(source, source_location);
 
         let download_status = downloader
-            .download_source(source, source_location, target_path.clone())
+            .download_source(file_source, target_path.clone())
             .await
             .unwrap();
 
@@ -363,9 +408,10 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
+        let file_source = GcsObjectFileSource::new(source, source_location);
 
         let download_status = downloader
-            .download_source(source, source_location, target_path.clone())
+            .download_source(file_source, target_path.clone())
             .await
             .unwrap();
 
@@ -389,9 +435,10 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
+        let file_source = GcsObjectFileSource::new(source, source_location);
 
         downloader
-            .download_source(source, source_location, target_path.clone())
+            .download_source(file_source, target_path.clone())
             .await
             .expect_err("authentication should fail");
 
