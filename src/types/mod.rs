@@ -1,15 +1,8 @@
 //! Types for the Symbolicator API.
 //!
-//! This module contains all the types which (de)serialise to/from JSON to make up the
-//! public HTTP API.
-//!
-//! Some types also require `impl` blocks, these live in a sub-module so that the `mod.rs`
-//! file contains only type definitions which are part of the JSON schema.
-//!
-//! Or at least this is what is the desired state.  Currently it also contains some extra
-//! common types as well some types for the public API exist in other places.  There are
-//! also a number of `impl`s which have not yet been moved to a sub-module.  Feel free to
-//! fix this up.
+//! This module contains some types which (de)serialise to/from JSON to make up the public
+//! HTTP API.  Its messy and things probably need a better place and different way to signal
+//! they are part of the public API.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -25,12 +18,13 @@ use symbolic::debuginfo::Object;
 use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
-use crate::sources::{SourceId, SourceLocation};
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 use crate::utils::sentry::WriteSentryScope;
 
 mod objects;
+
+pub use objects::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectUseInfo};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -474,119 +468,6 @@ impl ObjectFeatures {
     }
 }
 
-/// Newtype around a collection of [`ObjectCandidate`] structs.
-///
-/// This abstracts away some common operations needed on this collection.
-///
-/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AllObjectCandidates(Vec<ObjectCandidate>);
-
-/// Information about a Debug Information File in the [`CompleteObjectInfo`].
-///
-/// All DIFs are backed by an [`ObjectHandle`](crate::actors::objects::ObjectHandle).  But we
-/// may not have been able to get hold of this object file.  We still want to describe the
-/// relevant DIF however.
-///
-/// Currently has no [`ObjectId`] attached and the parent container is expected to know
-/// which ID this DIF info was for.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ObjectCandidate {
-    /// The ID of the object source where this DIF was expected to be found.
-    ///
-    /// This refers back to the IDs of sources in the symbolication requests, as well as any
-    /// globally configured sources from symbolicator's configuration.
-    ///
-    /// Generally this is a short readable string.
-    pub source: SourceId,
-    /// The location of this DIF on the object source.
-    ///
-    /// This will generally be some sort of path name or key, if you know the type of object
-    /// source this may give you an idea of where this DIF was expected to be found.
-    pub location: SourceLocation,
-    /// Information about fetching or downloading this DIF object.
-    ///
-    /// This section is always present and will at least have a `status` field.
-    pub download: ObjectDownloadInfo,
-    /// Information about any unwind info in this DIF object.
-    ///
-    /// This section is only present if this DIF object was used for unwinding by the
-    /// symbolication request.
-    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
-    pub unwind: ObjectUseInfo,
-    /// Information about any debug info this DIF object may have.
-    ///
-    /// This section is only present if this DIF object was used for symbol lookups by the
-    /// symbolication request.
-    #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
-    pub debug: ObjectUseInfo,
-}
-
-/// Information about downloading of a DIF object.
-///
-/// This is part of the larger [`ObjectCandidate`] struct.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "status", rename_all = "lowercase")]
-pub enum ObjectDownloadInfo {
-    /// The DIF object was downloaded successfully.
-    ///
-    /// The `features` field describes which [`ObjectFeatures`] the object is expected to
-    /// provide, though whether these are actually usable has not yet been verified.
-    Ok { features: ObjectFeatures },
-    /// The DIF object could not be parsed after downloading.
-    ///
-    /// This is only a basic validity check of whether the container of the object file can
-    /// be parsed.  Actually using the object for CFI or symbols might result in more
-    /// detailed problems, see [`ObjectUseInfo`] for more on this.
-    Malformed,
-    /// Symbolicator had insufficient permissions to download the DIF object.
-    ///
-    /// More details should be available in the `details` field, which is not meant to be
-    /// machine parsable.
-    NoPerm { details: String },
-    /// The DIF object was not found.
-    ///
-    /// This is considered a *regular notfound* where the object was simply not available at
-    /// the source expected to provde this DIF.  Thus no further details are available.
-    NotFound,
-    /// An error occurred during downloading of this DIF object.
-    ///
-    /// This is mostly an internal error from symbolicator which is considered transient.
-    /// The next attempt to access this DIF object will retry the download.
-    ///
-    /// More details should be available in the `details` field, which is not meant to be
-    /// machine parsable.
-    Error { details: String },
-}
-
-/// Information about the use of a DIF object.
-///
-/// This information is applicable to both "unwind" and "debug" use cases, in each case the
-/// object needs to be processed a little more than just the downloaded artifact and we may
-/// need to report some status on this.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "status", rename_all = "lowercase")]
-pub enum ObjectUseInfo {
-    /// The DIF object was successfully used to provide the required information.
-    ///
-    /// This means the object was used for CFI when used for [`ObjectCandidate::unwind`]
-    Ok,
-    /// The DIF object contained malformed data which could not be used.
-    Malformed,
-    /// An error occurred when attempting to use this DIF object.
-    ///
-    /// This is mostly an internal error from symbolicator which is considered transient.
-    /// The next attempt to access this DIF object will retry using this DIF object.
-    ///
-    /// More details should be available in the `details` field, which is not meant to be
-    /// machine parsable.
-    Error { details: String },
-    /// Internal state, this is not serialised.
-    ///
-    /// This enum is not serialised into its parent object when it is set to this value.
-    None,
-}
-
 /// Normalized [`RawObjectInfo`] with status attached.
 ///
 /// This describes an object in the modules list of a response to a symbolication request.
@@ -654,6 +535,31 @@ impl CompleteObjectInfo {
     /// Per definition images at 0 do not support absolute addresses.
     pub fn supports_absolute_addresses(&self) -> bool {
         self.raw.image_addr.0 != 0
+    }
+}
+
+impl From<RawObjectInfo> for CompleteObjectInfo {
+    fn from(mut raw: RawObjectInfo) -> Self {
+        raw.debug_id = raw
+            .debug_id
+            .filter(|id| !id.is_empty())
+            .and_then(|id| id.parse::<DebugId>().ok())
+            .map(|id| id.to_string());
+
+        raw.code_id = raw
+            .code_id
+            .filter(|id| !id.is_empty())
+            .and_then(|id| id.parse::<CodeId>().ok())
+            .map(|id| id.to_string());
+
+        CompleteObjectInfo {
+            debug_status: ObjectFileStatus::Unused,
+            unwind_status: None,
+            features: ObjectFeatures::default(),
+            arch: Arch::Unknown,
+            raw,
+            candidates: AllObjectCandidates::default(),
+        }
     }
 }
 

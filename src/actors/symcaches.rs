@@ -189,8 +189,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let mut candidates = self.candidates.clone(); // yuk!
         candidates.set_debug(
-            self.object_meta.source().clone(),
-            self.object_meta.location(),
+            self.object_meta.source_id().clone(),
+            &self.object_meta.uri(),
             ObjectUseInfo::from_derived_status(status, self.object_meta.status()),
         );
 

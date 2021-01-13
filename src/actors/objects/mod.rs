@@ -13,8 +13,10 @@ use symbolic::debuginfo;
 use crate::actors::common::cache::Cacher;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
-use crate::services::download::{DownloadError, DownloadService};
-use crate::sources::{FileType, SourceConfig, SourceFileId, SourceId, SourceLocation};
+use crate::services::download::{
+    DownloadError, DownloadService, ObjectFileSource, ObjectFileSourceURI,
+};
+use crate::sources::{FileType, SourceConfig, SourceId};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
 use crate::utils::futures::ThreadPool;
 
@@ -124,12 +126,12 @@ impl From<debuginfo::ObjectError> for ObjectError {
 /// along some errors, so we use this wrapper.
 ///
 /// [`CacheItemRequest`]: crate::actors::common::cache::CacheItemRequest
+/// [`SourceId`]: crate::sources::SourceId
+/// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Debug)]
 struct CacheLookupError {
-    /// The [`SourceId`] of the object which caused the [`ObjectError`] while being fetched.
-    source_id: SourceId,
-    /// The [`SourceLocation`] of the object which caused the [`ObjectError`] while being fetched.
-    source_location: SourceLocation,
+    /// The object file which was attempted to be fetched.
+    file_source: ObjectFileSource,
     /// The wrapped [`ObjectError`] which occurred while fetching the object file.
     error: Arc<ObjectError>,
 }
@@ -255,7 +257,7 @@ impl ObjectsActor {
         sources: &'a [SourceConfig],
         filetypes: &'static [FileType],
         identifier: &'a ObjectId,
-    ) -> Vec<SourceFileId> {
+    ) -> Vec<ObjectFileSource> {
         let mut queries = Vec::with_capacity(sources.len());
 
         for source in sources.iter() {
@@ -299,13 +301,13 @@ impl ObjectsActor {
     /// [`ObjectCandidate`] list.
     async fn fetch_file_metas(
         &self,
-        file_ids: Vec<SourceFileId>,
+        file_sources: Vec<ObjectFileSource>,
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
-        let mut queries = Vec::with_capacity(file_ids.len());
+        let mut queries = Vec::with_capacity(file_sources.len());
 
-        for file_id in file_ids {
+        for file_source in file_sources {
             let object_id = identifier.clone();
             let scope = scope.clone();
             let threadpool = self.threadpool.clone();
@@ -314,14 +316,14 @@ impl ObjectsActor {
             let meta_cache = self.meta_cache.clone();
 
             let query = async move {
-                let scope = if file_id.source().is_public() {
+                let scope = if file_source.is_public() {
                     Scope::Global
                 } else {
                     scope.clone()
                 };
                 let request = FetchFileMetaRequest {
                     scope,
-                    file_id: file_id.clone(),
+                    file_source: file_source.clone(),
                     object_id,
                     threadpool,
                     data_cache,
@@ -331,11 +333,7 @@ impl ObjectsActor {
                     .compute_memoized(request)
                     .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()))
                     .await
-                    .map_err(|error| CacheLookupError {
-                        source_id: file_id.source_id().to_owned(),
-                        source_location: file_id.location(),
-                        error,
-                    })
+                    .map_err(|error| CacheLookupError { file_source, error })
             };
             queries.push(query);
         }
@@ -434,8 +432,8 @@ fn create_candidates(
 
     for meta_lookup in lookups.iter() {
         if let Ok(meta_handle) = meta_lookup {
-            let source = meta_handle.request.file_id.source();
-            source_ids.take(source.id());
+            let source_id = meta_handle.request.file_source.source_id();
+            source_ids.take(source_id);
         }
         candidates.push(create_candidate_info(meta_lookup));
     }
@@ -444,7 +442,7 @@ fn create_candidates(
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: SourceLocation::new("*"),
+            location: ObjectFileSourceURI::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),
@@ -469,21 +467,22 @@ fn create_candidate_info(
                 CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {
-                source: meta_handle.request.file_id.source_id().clone(),
-                location: meta_handle.request.file_id.location(),
+                source: meta_handle.request.file_source.source_id().clone(),
+                location: meta_handle.request.file_source.uri(),
                 download,
                 unwind: Default::default(),
                 debug: Default::default(),
             }
         }
-        Err(wrapped_error) => ObjectCandidate {
-            source: wrapped_error.source_id.clone(),
-            location: wrapped_error.source_location.clone(),
-            download: ObjectDownloadInfo::Error {
-                details: wrapped_error.error.to_string(),
-            },
-            unwind: Default::default(),
-            debug: Default::default(),
-        },
+        Err(wrapped_error) => {
+            let details = wrapped_error.error.to_string();
+            ObjectCandidate {
+                source: wrapped_error.file_source.source_id().clone(),
+                location: wrapped_error.file_source.uri(),
+                download: ObjectDownloadInfo::Error { details },
+                unwind: Default::default(),
+                debug: Default::default(),
+            }
+        }
     }
 }

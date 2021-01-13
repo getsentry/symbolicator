@@ -1,6 +1,8 @@
 import copy
 import json
 
+from conftest import assert_symbolication
+
 MINIDUMP_SUCCESS = {
     "status": "completed",
     "timestamp": 1521713273,
@@ -335,22 +337,22 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "crash.exe/5AB380779000/crash.ex_",
+                    "location": "http://127.0.0.1:1234/msdl/crash.exe/5AB380779000/crash.ex_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "crash.exe/5AB380779000/crash.exe",
+                    "location": "http://127.0.0.1:1234/msdl/crash.exe/5AB380779000/crash.exe",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb",
                     "download": {"status": "notfound"},
                 },
             ],
@@ -429,7 +431,7 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "download": {"status": "notfound"},
-                    "location": "dbgcore.dll/57898DAB25000/dbgcore.dl_",
+                    "location": "http://127.0.0.1:1234/msdl/dbgcore.dll/57898DAB25000/dbgcore.dl_",
                     "source": "microsoft",
                 },
                 {
@@ -442,12 +444,12 @@ MINIDUMP_SUCCESS = {
                         },
                         "status": "ok",
                     },
-                    "location": "dbgcore.dll/57898DAB25000/dbgcore.dll",
+                    "location": "http://127.0.0.1:1234/msdl/dbgcore.dll/57898DAB25000/dbgcore.dll",
                     "source": "microsoft",
                 },
                 {
                     "download": {"status": "notfound"},
-                    "location": "dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_",
                     "source": "microsoft",
                 },
                 {
@@ -462,7 +464,7 @@ MINIDUMP_SUCCESS = {
                         },
                         "status": "ok",
                     },
-                    "location": "dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb",
                     "source": "microsoft",
                 },
             ],
@@ -596,7 +598,7 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "download": {"status": "notfound"},
-                    "location": "kernel32.dll/590285E9e0000/kernel32.dl_",
+                    "location": "http://127.0.0.1:1234/msdl/kernel32.dll/590285E9e0000/kernel32.dl_",
                     "source": "microsoft",
                 },
                 {
@@ -609,12 +611,12 @@ MINIDUMP_SUCCESS = {
                         },
                         "status": "ok",
                     },
-                    "location": "kernel32.dll/590285E9e0000/kernel32.dll",
+                    "location": "http://127.0.0.1:1234/msdl/kernel32.dll/590285E9e0000/kernel32.dll",
                     "source": "microsoft",
                 },
                 {
                     "download": {"status": "notfound"},
-                    "location": "wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_",
                     "source": "microsoft",
                 },
                 {
@@ -629,7 +631,7 @@ MINIDUMP_SUCCESS = {
                         },
                         "status": "ok",
                     },
-                    "location": "wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb",
                     "source": "microsoft",
                 },
             ],
@@ -672,12 +674,12 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_",
+                    "location": "http://127.0.0.1:1234/msdl/rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "rpcrt4.dll/5A49BB75c1000/rpcrt4.dll",
+                    "location": "http://127.0.0.1:1234/msdl/rpcrt4.dll/5A49BB75c1000/rpcrt4.dll",
                     "download": {
                         "features": {
                             "has_debug_info": False,
@@ -690,12 +692,12 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "source": "microsoft",
-                    "location": "wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -748,12 +750,12 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "KERNELBASE.dll/59BF2BCF1a1000/KERNELBASE.dl_",
+                    "location": "http://127.0.0.1:1234/msdl/KERNELBASE.dll/59BF2BCF1a1000/KERNELBASE.dl_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "KERNELBASE.dll/59BF2BCF1a1000/KERNELBASE.dll",
+                    "location": "http://127.0.0.1:1234/msdl/KERNELBASE.dll/59BF2BCF1a1000/KERNELBASE.dll",
                     "download": {
                         "features": {
                             "has_debug_info": False,
@@ -766,12 +768,12 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "download": {"status": "notfound"},
-                    "location": "wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pd_",
                     "source": "microsoft",
                 },
                 {
                     "source": "microsoft",
-                    "location": "wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/wkernelbase.pdb/8462294AC645402DAC82A4E95F61DDF91/wkernelbase.pdb",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -805,12 +807,12 @@ MINIDUMP_SUCCESS = {
             "candidates": [
                 {
                     "source": "microsoft",
-                    "location": "ntdll.dll/59B0D8F3183000/ntdll.dl_",
+                    "location": "http://127.0.0.1:1234/msdl/ntdll.dll/59B0D8F3183000/ntdll.dl_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "ntdll.dll/59B0D8F3183000/ntdll.dll",
+                    "location": "http://127.0.0.1:1234/msdl/ntdll.dll/59B0D8F3183000/ntdll.dll",
                     "download": {
                         "features": {
                             "has_debug_info": False,
@@ -823,12 +825,12 @@ MINIDUMP_SUCCESS = {
                 },
                 {
                     "source": "microsoft",
-                    "location": "wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_",
                     "download": {"status": "notfound"},
                 },
                 {
                     "source": "microsoft",
-                    "location": "wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -876,7 +878,7 @@ def test_basic(symbolicator, hitcounter):
     for module in expected["modules"]:
         module.pop("candidates", None)
 
-    assert response.json() == expected
+    assert_symbolication(response.json(), expected)
 
 
 def test_candidates(symbolicator, hitcounter):
@@ -909,7 +911,7 @@ def test_candidates(symbolicator, hitcounter):
         )
         response.raise_for_status()
 
-    assert response.json() == MINIDUMP_SUCCESS
+    assert_symbolication(response.json(), MINIDUMP_SUCCESS)
 
 
 def test_unknown_field(symbolicator):
