@@ -1,6 +1,8 @@
 import collections
+import copy
 import json
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -303,3 +305,33 @@ def s3_bucket_config(s3):
 
     s3.Bucket(bucket_name).objects.all().delete()
     s3.Bucket(bucket_name).delete()
+
+
+def assert_symbolication(output, expected):
+    """Compares symbolication results, with redactions.
+
+    Redactions are necessary to remove random port numbers.
+    """
+    __tracebackhide__ = True
+    output = copy.deepcopy(output)
+    expected = copy.deepcopy(expected)
+
+    # dev.getsentry.net gets mapped to 127.0.0.1, that's ugly but simple to use and is what
+    # it actually resolves to.
+    port_re = re.compile(r"^http://(dev.getsentry.net|localhost|127.0.0.1):[0-9]+")
+    s3_bucket_re = re.compile(r"s3://symbolicator-test-[a-f0-9-]+")
+
+    def redact(d):
+        for module in d.get("modules", []):
+            for candidate in module.get("candidates", []):
+                if "location" in candidate:
+                    candidate["location"] = port_re.sub(
+                        "http://127.0.0.1:<port>", candidate["location"]
+                    )
+                    candidate["location"] = s3_bucket_re.sub(
+                        "s3://symbolicator-tests-<uuid>", candidate["location"]
+                    )
+
+    redact(output)
+    redact(expected)
+    assert output == expected

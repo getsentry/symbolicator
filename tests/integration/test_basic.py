@@ -4,6 +4,8 @@ import time
 
 import pytest
 
+from conftest import assert_symbolication
+
 
 WINDOWS_DATA = {
     "signal": None,
@@ -62,7 +64,7 @@ SUCCESS_WINDOWS = {
             "candidates": [
                 {
                     "download": {"status": "notfound"},
-                    "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                     "source": "microsoft",
                 },
                 {
@@ -76,7 +78,7 @@ SUCCESS_WINDOWS = {
                         },
                         "status": "ok",
                     },
-                    "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
                     "source": "microsoft",
                 },
             ],
@@ -125,12 +127,12 @@ def _make_unsuccessful_result(status, source="microsoft"):
         response["modules"][0]["candidates"] = [
             {
                 "download": {"status": "notfound"},
-                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                 "source": source,
             },
             {
                 "download": {"status": "notfound"},
-                "location": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
                 "source": source,
             },
         ]
@@ -183,7 +185,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
         response = service.post(f"/symbolicate?scope={scope}", json=input)
         response.raise_for_status()
 
-        assert response.json() == SUCCESS_WINDOWS
+        assert_symbolication(response.json(), SUCCESS_WINDOWS)
 
         if cache_dir_param:
             stored_in_scope = "global" if is_public else scope
@@ -228,7 +230,7 @@ def test_no_sources(symbolicator, cache_dir_param):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == NO_SOURCES
+    assert_symbolication(response.json(), NO_SOURCES)
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
@@ -286,7 +288,8 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
     for t in ts:
         t.join()
 
-    assert responses == [SUCCESS_WINDOWS] * 20
+    for response in responses:
+        assert_symbolication(response, SUCCESS_WINDOWS)
 
     assert set(hitcounter.hits) == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
@@ -317,7 +320,7 @@ def test_sources_filetypes(symbolicator, hitcounter):
     expected["modules"][0]["candidates"] = [
         {
             "source": "microsoft",
-            "location": "*",
+            "location": "No object files listed on this source",
             "download": {
                 "status": "notfound",
             },
@@ -330,7 +333,7 @@ def test_sources_filetypes(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == expected
+    assert_symbolication(response.json(), expected)
     assert not hitcounter.hits
 
 
@@ -359,7 +362,16 @@ def test_unknown_source_config(symbolicator, hitcounter):
 
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
-    assert response.json() == UNKNOWN_SOURCE
+
+    expected = copy.deepcopy(UNKNOWN_SOURCE)
+    for module in expected.get("modules", []):
+        for candidate in module.get("candidates", []):
+            if "location" in candidate:
+                candidate["location"] = candidate["location"].replace(
+                    "/msdl/",
+                    "/respond_statuscode/400/",
+                )
+    assert_symbolication(response.json(), expected)
 
 
 def test_timeouts(symbolicator, hitcounter):
@@ -408,7 +420,7 @@ def test_timeouts(symbolicator, hitcounter):
         assert response["status"] == "pending"
         assert response["request_id"] == request_id
 
-    assert responses[-1] == SUCCESS_WINDOWS
+    assert_symbolication(responses[-1], SUCCESS_WINDOWS)
     assert len(responses) > 1
 
     assert hitcounter.hits == {
@@ -451,15 +463,24 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
         expected["modules"][0]["candidates"] = [
             {
                 "source": "broken",
-                "location": "*",
+                "location": "No object files listed on this source",
                 "download": {
                     "status": "notfound",
                 },
             }
         ]
-        assert response == expected
+        assert_symbolication(response, expected)
     else:
-        assert response == _make_unsuccessful_result(status="missing", source="broken")
+        expected = _make_unsuccessful_result(status="missing", source="broken")
+        for module in expected.get("modules", []):
+            for candidate in module.get("candidates", []):
+                if "location" in candidate:
+                    candidate["location"] = candidate["location"].replace(
+                        "/msdl/",
+                        f"/respond_statuscode/{statuscode}/",
+                    )
+
+        assert_symbolication(response, expected)
 
 
 def test_malformed_objects(symbolicator, hitcounter):
@@ -484,7 +505,7 @@ def test_malformed_objects(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
     response = response.json()
-    assert response == MALFORMED_NO_SOURCES
+    assert_symbolication(response, MALFORMED_NO_SOURCES)
 
 
 @pytest.mark.parametrize(
@@ -518,7 +539,7 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
         output["modules"][0]["candidates"] = [
             {
                 "source": "microsoft",
-                "location": "*",
+                "location": "No object files listed on this source",
                 "download": {
                     "status": "notfound",
                 },
@@ -531,7 +552,7 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == output
+    assert_symbolication(response.json(), output)
 
 
 def test_redirects(symbolicator, hitcounter):
@@ -556,7 +577,15 @@ def test_redirects(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert response.json() == SUCCESS_WINDOWS
+    expected = copy.deepcopy(SUCCESS_WINDOWS)
+    for module in expected.get("modules", []):
+        for candidate in module.get("candidates", []):
+            if "location" in candidate:
+                candidate["location"] = candidate["location"].replace(
+                    "/msdl/", "/redirect/msdl/"
+                )
+
+    assert_symbolication(response.json(), expected)
 
 
 @pytest.mark.parametrize("allow_reserved_ip", [True, False])
@@ -588,10 +617,10 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
 
     if allow_reserved_ip:
         assert hitcounter.hits
-        assert response.json() == SUCCESS_WINDOWS
+        assert_symbolication(response.json(), SUCCESS_WINDOWS)
     else:
         assert not hitcounter.hits
-        assert response.json() == MISSING_FILE
+        assert_symbolication(response.json(), MISSING_FILE)
 
 
 def test_no_dif_candidates(symbolicator, hitcounter):
@@ -620,4 +649,4 @@ def test_no_dif_candidates(symbolicator, hitcounter):
         del module["candidates"]
 
     assert hitcounter.hits
-    assert response.json() == success_response
+    assert_symbolication(response.json(), success_response)

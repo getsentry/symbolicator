@@ -2,6 +2,8 @@ import copy
 import uuid
 import pytest
 
+from conftest import assert_symbolication
+
 
 debug_id = uuid.UUID("502fc0a5-1ec1-3e47-9998-684fa139dca7")
 
@@ -47,7 +49,7 @@ MACHO_SUCCESS = {
             "candidates": [
                 {
                     "source": "s3",
-                    "location": "_.dwarf/mach-uuid-sym-502fc0a51ec13e479998684fa139dca7/_.dwarf",
+                    "location": "s3://symbolicator-tests-<uuid>/_.dwarf/mach-uuid-sym-502fc0a51ec13e479998684fa139dca7/_.dwarf",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -124,4 +126,4 @@ def test_s3(symbolicator, hitcounter, s3_bucket_config, s3, casing):
         location = success["modules"][0]["candidates"][0]["location"]
         success["modules"][0]["candidates"][0]["location"] = location.upper()
     else:
-        assert response == MACHO_SUCCESS
+        assert_symbolication(response, MACHO_SUCCESS)

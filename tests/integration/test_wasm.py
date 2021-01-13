@@ -1,3 +1,5 @@
+from conftest import assert_symbolication
+
 WASM_DATA = {
     "stacktraces": [
         {
@@ -34,7 +36,7 @@ SUCCESS_WASM = {
             "candidates": [
                 {
                     "source": "stuff",
-                    "location": "bd/a18fd85d4a4eb893022d6bfad846b1.debug",
+                    "location": "http://127.0.0.1:123/symbols/bd/a18fd85d4a4eb893022d6bfad846b1.debug",
                     "download": {
                         "features": {
                             "has_debug_info": True,
@@ -98,4 +100,4 @@ def test_basic_wasm(symbolicator, hitcounter):
     response = service.post(f"/symbolicate?scope={scope}", json=input)
     response.raise_for_status()
 
-    assert response.json() == SUCCESS_WASM
+    assert_symbolication(response.json(), SUCCESS_WASM)
