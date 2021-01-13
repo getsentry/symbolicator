@@ -16,6 +16,9 @@ use super::ObjectFeatures;
 ///
 /// Currently has no [`ObjectId`] attached and the parent container is expected to know
 /// which ID this DIF info was for.
+///
+/// [`CompleteObjectInfo`]: crate::types::CompleteObjectInfo
+/// [`ObjectId`]: crate::types::ObjectId
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObjectCandidate {
     /// The ID of the object source where this DIF was expected to be found.
