@@ -35,17 +35,12 @@ impl AllObjectCandidates {
     ///
     /// You can only request symcaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_debug(
-        &mut self,
-        source: SourceId,
-        location: &ObjectFileSourceURI,
-        info: ObjectUseInfo,
-    ) {
+    pub fn set_debug(&mut self, source: SourceId, uri: &ObjectFileSourceURI, info: ObjectUseInfo) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
                 .cmp(&source)
-                .then(candidate.location.cmp(location))
+                .then(candidate.location.cmp(uri))
         });
         match found_pos {
             Ok(index) => {
@@ -66,17 +61,12 @@ impl AllObjectCandidates {
     ///
     /// You can only request cficaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_unwind(
-        &mut self,
-        source: SourceId,
-        location: &ObjectFileSourceURI,
-        info: ObjectUseInfo,
-    ) {
+    pub fn set_unwind(&mut self, source: SourceId, uri: &ObjectFileSourceURI, info: ObjectUseInfo) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
                 .cmp(&source)
-                .then(candidate.location.cmp(location))
+                .then(candidate.location.cmp(uri))
         });
         match found_pos {
             Ok(index) => {
