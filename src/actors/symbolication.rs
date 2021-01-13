@@ -2107,6 +2107,16 @@ mod tests {
             .into_owned()
     }
 
+    macro_rules! assert_snapshot {
+        ($e:expr) => {
+            ::insta::assert_yaml_snapshot!($e, {
+                ".**.location" => ::insta::dynamic_redaction(
+                    $crate::actors::symbolication::tests::redact_localhost_port
+                )
+            });
+        }
+    }
+
     #[test]
     fn test_remove_bucket() -> Result<(), SymbolicationError> {
         // Test with sources first, and then without. This test should verify that we do not leak
@@ -2121,9 +2131,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot!(response, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(response);
 
         let response = test::block_fn01(|| {
             let request = get_symbolication_request(vec![]);
@@ -2131,9 +2139,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot!(response, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(response);
 
         Ok(())
     }
@@ -2152,9 +2158,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot!(response, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(response);
 
         let response = test::block_fn01(|| {
             let request = get_symbolication_request(vec![source]);
@@ -2162,9 +2166,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot!(response, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(response);
 
         Ok(())
     }
@@ -2187,9 +2189,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot!(response, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(response);
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
@@ -2197,9 +2197,7 @@ mod tests {
             .collect();
 
         cache_entries.sort();
-        insta::assert_yaml_snapshot!(cache_entries, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(cache_entries);
 
         Ok(())
     }
@@ -2238,9 +2236,7 @@ mod tests {
             service.symbolication().get_response(request_id, None)
         })?;
 
-        insta::assert_yaml_snapshot!(response, {
-            ".**.location" => insta::dynamic_redaction(redact_localhost_port)
-        });
+        assert_snapshot!(response);
         Ok(())
     }
 
