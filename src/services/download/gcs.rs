@@ -5,14 +5,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use actix_web::error::JsonPayloadError;
-use actix_web::{client, HttpMessage};
 use chrono::{DateTime, Duration, Utc};
-use client::SendRequestError;
-use failure::Fail;
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
 use futures::prelude::*;
 use parking_lot::Mutex;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -109,10 +105,8 @@ pub enum GcsError {
     Base64(#[from] base64::DecodeError),
     #[error("failed encoding JWT")]
     Jwt(#[from] jsonwebtoken::errors::Error),
-    #[error("failed to parse JSON response")]
-    Json(#[from] failure::Compat<JsonPayloadError>),
     #[error("failed to send authentication request")]
-    Auth(#[from] failure::Compat<SendRequestError>),
+    Auth(#[source] reqwest::Error),
 }
 
 /// Parses the given private key string into its binary representation.
@@ -155,12 +149,15 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 #[derive(Debug)]
 pub struct GcsDownloader {
     token_cache: Mutex<GcsTokenCache>,
+    client: reqwest::Client,
 }
 
 impl GcsDownloader {
-    pub fn new() -> Self {
-        let token_cache = Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE));
-        Self { token_cache }
+    pub fn new(client: Client) -> Self {
+        Self {
+            token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
+            client,
+        }
     }
 
     /// Requests a new GCS OAuth token.
@@ -168,28 +165,23 @@ impl GcsDownloader {
         let expires_at = Utc::now() + Duration::minutes(58);
         let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
 
-        let mut builder = client::post("https://www.googleapis.com/oauth2/v4/token");
-        // for some inexplicable reason we otherwise get gzipped data back that actix-web
-        // client has no idea what to do with.
-        builder.header("accept-encoding", "identity");
-        let response = builder
+        let request = self
+            .client
+            .post("https://www.googleapis.com/oauth2/v4/token")
             .form(&OAuth2Grant {
                 grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
                 assertion: auth_jwt,
-            })
-            .unwrap()
-            .send();
+            });
 
-        let response = response.compat().await.map_err(|err| {
+        let response = request.send().await.map_err(|err| {
             log::debug!("Failed to authenticate against gcs: {}", err);
-            err.compat()
+            GcsError::Auth(err)
         })?;
 
         let token = response
             .json::<GcsTokenResponse>()
-            .compat()
             .await
-            .map_err(Fail::compat)?;
+            .map_err(GcsError::Auth)?;
 
         Ok(GcsToken {
             access_token: token.access_token,
@@ -217,19 +209,6 @@ impl GcsDownloader {
         Ok(token)
     }
 
-    /// Requests the given URL from GCS, returning the response.
-    ///
-    /// The response body has not been read.
-    async fn start_request(
-        &self,
-        url: &str,
-        token: &GcsToken,
-    ) -> Result<client::ClientResponse, client::SendRequestError> {
-        let mut builder = client::get(&url);
-        builder.header("authorization", format!("Bearer {}", token.access_token));
-        builder.finish().unwrap().send().compat().await
-    }
-
     pub async fn download_source(
         &self,
         file_source: GcsObjectFileSource,
@@ -255,7 +234,13 @@ impl GcsDownloader {
 
         let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
         let response = loop {
-            let result = self.start_request(&url, &token).await;
+            let result = self
+                .client
+                .get(&url)
+                .header("authorization", format!("Bearer {}", token.access_token))
+                .send()
+                .await;
+
             match backoff.next() {
                 Some(duration) if result.is_err() => delay(duration).await,
                 _ => break result,
@@ -268,13 +253,11 @@ impl GcsDownloader {
                     log::trace!(
                         "Success hitting GCS {} (from {})",
                         &key,
-                        &file_source.source.bucket
+                        file_source.source.bucket
                     );
-                    let stream = response
-                        .payload()
-                        .compat()
-                        .map(|i| i.map_err(DownloadError::stream));
-                    super::download_stream(file_source.into(), stream, destination).await
+                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
+
+                    super::download_stream(file_source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
@@ -368,7 +351,7 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let object_id = ObjectId {
             code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
@@ -387,12 +370,12 @@ mod tests {
             .ends_with("e5/14c9464eed3be5943a2c61d9241fad/executable"));
     }
 
-    #[test]
-    fn test_download_complete() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_complete() {
+        test::setup_logging();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -401,9 +384,10 @@ mod tests {
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
         let file_source = GcsObjectFileSource::new(source, source_location);
 
-        let download_status =
-            test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
-                .unwrap();
+        let download_status = downloader
+            .download_source(file_source, target_path.clone())
+            .await
+            .unwrap();
 
         assert_eq!(download_status, DownloadStatus::Completed);
         assert!(target_path.exists());
@@ -413,12 +397,12 @@ mod tests {
         assert_eq!(hash, "206e63c06da135be1858dde03778caf25f8465b8");
     }
 
-    #[test]
-    fn test_download_missing() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_missing() {
+        test::setup_logging();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -426,17 +410,18 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsObjectFileSource::new(source, source_location);
 
-        let download_status =
-            test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
-                .unwrap();
+        let download_status = downloader
+            .download_source(file_source, target_path.clone())
+            .await
+            .unwrap();
 
         assert_eq!(download_status, DownloadStatus::NotFound);
         assert!(!target_path.exists());
     }
 
-    #[test]
-    fn test_download_invalid_credentials() {
-        test::setup();
+    #[tokio::test]
+    async fn test_download_invalid_credentials() {
+        test::setup_logging();
 
         let broken_credentials = GcsSourceKey {
             private_key: "".to_owned(),
@@ -444,7 +429,7 @@ mod tests {
         };
 
         let source = gcs_source(broken_credentials);
-        let downloader = GcsDownloader::new();
+        let downloader = GcsDownloader::new(Client::new());
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -452,7 +437,9 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsObjectFileSource::new(source, source_location);
 
-        test::block_fn(|| downloader.download_source(file_source, target_path.clone()))
+        downloader
+            .download_source(file_source, target_path.clone())
+            .await
             .expect_err("authentication should fail");
 
         assert!(!target_path.exists());
