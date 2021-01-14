@@ -26,10 +26,9 @@ jobs:
           components: clippy
 
       - name: Run clippy ${{ matrix.rust }}
-        uses: actions-rs/clippy-check@v1
+        uses: actions-rs/cargo@v1
         with:
-          name: clippy-${{ matrix.rust }}-periodic
-          token: ${{ secrets.GITHUB_TOKEN }}
+          command: clippy
           args: --all-features --workspace --tests --examples
 
       - uses: actions-rs/cargo@v1
