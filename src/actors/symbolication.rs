@@ -2213,6 +2213,53 @@ mod tests {
     }
 
     #[test]
+    fn test_wasm_payload() -> anyhow::Result<()> {
+        let (service, _cache_dir) = setup_service();
+        let (_symsrv, source) = test::symbol_server();
+
+        let modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[
+              {
+                "type":"wasm",
+                "debug_id":"bda18fd8-5d4a-4eb8-9302-2d6bfad846b1",
+                "code_id":"bda18fd85d4a4eb893022d6bfad846b1",
+                "debug_file":"file://foo.invalid/demo.wasm"
+              }
+            ]"#,
+        )?;
+
+        let stacktraces = serde_json::from_str(
+            r#"[
+              {
+                "frames":[
+                  {
+                    "instruction_addr":"0x8c",
+                    "addr_mode":"rel:0"
+                  }
+                ]
+              }
+            ]"#,
+        )?;
+
+        let request = SymbolicateStacktraces {
+            modules: modules.into_iter().map(From::from).collect(),
+            stacktraces,
+            signal: None,
+            sources: Arc::new([source]),
+            scope: Default::default(),
+            options: Default::default(),
+        };
+
+        let response = test::block_fn01(|| {
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            service.symbolication().get_response(request_id, None)
+        })?;
+
+        insta::assert_yaml_snapshot!(response);
+        Ok(())
+    }
+
+    #[test]
     fn test_symcache_lookup_open_end_addr() {
         test::setup();
 
