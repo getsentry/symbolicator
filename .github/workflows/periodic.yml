@@ -3,7 +3,7 @@ name: Periodic CI
 on:
   schedule:
     - cron: '11 7 * * 1,4'
-  workflow_dispatch
+  workflow_dispatch:
 
 env:
   RUSTFLAGS: -Dwarnings
