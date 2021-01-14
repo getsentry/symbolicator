@@ -1,4 +1,4 @@
-name: Nightly CI
+name: Periodic CI
 
 on:
   schedule:
@@ -8,7 +8,7 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -27,6 +27,7 @@ jobs:
       - name: Run clippy ${{ matrix.rust }}
         uses: actions-rs/clippy-check@v1
         with:
+          name: clippy-${{ matrix.rust }}-periodic
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features --workspace --tests --examples
 
