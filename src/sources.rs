@@ -43,7 +43,7 @@ impl fmt::Display for SourceId {
 /// Sources provide the ability to download Download Information Files (DIF).
 /// Their configuration is a combination of the location of the source plus any
 /// required authentication etc.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
     /// Sentry debug files endpoint.
@@ -101,7 +101,7 @@ impl WriteSentryScope for SourceConfig {
 }
 
 /// Configuration for the Sentry-internal debug files endpoint.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SentrySourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
@@ -115,7 +115,7 @@ pub struct SentrySourceConfig {
 }
 
 /// Configuration for symbol server HTTP endpoints.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HttpSourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
@@ -133,7 +133,7 @@ pub struct HttpSourceConfig {
 }
 
 /// Configuration for reading from the local file system.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FilesystemSourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
@@ -160,7 +160,7 @@ where
 }
 
 /// Amazon S3 authorization information.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
@@ -192,7 +192,7 @@ impl std::hash::Hash for S3SourceKey {
 }
 
 /// GCS authorization information.
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct GcsSourceKey {
     /// Gcs authorization key.
     pub private_key: String,
@@ -202,7 +202,7 @@ pub struct GcsSourceKey {
 }
 
 /// Configuration for a GCS symbol buckets.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GcsSourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
@@ -223,7 +223,7 @@ pub struct GcsSourceConfig {
 }
 
 /// Configuration for S3 symbol buckets.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
@@ -244,7 +244,7 @@ pub struct S3SourceConfig {
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct CommonSourceConfig {
     /// Influence whether this source will be selected
@@ -271,7 +271,7 @@ impl CommonSourceConfig {
 }
 
 /// Common attributes to make the symbolicator skip/consider sources by certain criteria.
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SourceFilters {
     /// File types that are supported by this server.
@@ -296,7 +296,7 @@ impl SourceFilters {
 }
 
 /// Determines how files are named in an external source.
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct DirectoryLayout {
     /// Directory layout of this symbol server.
@@ -322,7 +322,7 @@ impl Default for DirectoryLayout {
 }
 
 /// Known conventions for [`DirectoryLayout`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum DirectoryLayoutType {
     /// Uses conventions of native debuggers.
     #[serde(rename = "native")]
@@ -344,7 +344,7 @@ pub enum DirectoryLayoutType {
     Unified,
 }
 
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FilenameCasing {
     Default,
@@ -358,7 +358,7 @@ impl Default for FilenameCasing {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileType {
     /// Windows/PDB code files
