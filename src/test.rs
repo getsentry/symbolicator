@@ -2,19 +2,22 @@
 //!
 //! When writing tests, keep the following points in mind:
 //!
-//!  - In every test, call [`test::setup`]. This will set up the logger so that all console output
-//!    is captured by the test runner.
+//!  - In every test using the **legacy** runtime, call [`test::setup`]. This will set up the logger
+//!    so that all console output is captured by the test runner and initializes an actix system.
+//!
+//!  - Every other test, annotate with [`tokio::test`] and call [`test::setup_logging`]. This sets
+//!    up the logger for the asynchronous runtime.
 //!
 //!  - When using [`test::tempdir`], make sure that the handle to the temp directory is held for the
 //!    entire lifetime of the test. When dropped too early, this might silently leak the temp
 //!    directory, since symbolicator will create it again lazily after it has been deleted. To avoid
 //!    this, assign it to a variable in the test function (e.g. `let _cache_dir = test::tempdir()`).
 //!
-//!  - When using [`test::symbol_server`], make sure that the server is held until all requests to the
-//!    server have been made. If the server is dropped, the ports remain open and all connections to
-//!    it will time out. To avoid this, assign it to a variable: `let (_server, source) =
-//!    test::symbol_server();`. Alternatively, use [`test::local_source`] to test without HTTP
-//!    connections.
+//!  - When using [`test::symbol_server`], make sure that the server is held until all requests to
+//!    the server have been made. If the server is dropped, the ports remain open and all
+//!    connections to it will time out. To avoid this, assign it to a variable: `let (_server,
+//!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
+//!    HTTP connections.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -25,7 +28,10 @@ use actix_web::fs::StaticFiles;
 use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
-use crate::sources::{FilesystemSourceConfig, HttpSourceConfig, SourceConfig, SourceId};
+use crate::sources::{
+    CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
+    SourceFilters, SourceId,
+};
 
 pub use actix_web::test::*;
 pub use tempfile::TempDir;
@@ -134,12 +140,29 @@ where
 ///
 /// Files are served directly via the local file system without the indirection through a HTTP
 /// symbol server. This is the fastest way for testing, but also avoids certain code paths.
-#[allow(unused)]
 pub(crate) fn local_source() -> SourceConfig {
     SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
         id: SourceId::new("local"),
         path: PathBuf::from(SYMBOLS_PATH),
         files: Default::default(),
+    }))
+}
+
+/// Get bucket configuration for the microsoft symbol server.
+pub(crate) fn microsoft_symsrv() -> SourceConfig {
+    SourceConfig::Http(Arc::new(HttpSourceConfig {
+        id: SourceId::new("microsoft"),
+        url: "https://msdl.microsoft.com/download/symbols/"
+            .parse()
+            .unwrap(),
+        headers: Default::default(),
+        files: CommonSourceConfig {
+            filters: SourceFilters {
+                filetypes: vec![FileType::Pe, FileType::Pdb],
+                ..Default::default()
+            },
+            ..Default::default()
+        },
     }))
 }
 
