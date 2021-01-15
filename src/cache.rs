@@ -22,7 +22,7 @@ use crate::types::Scope;
 /// The malformed state is useful for failed computations that are unlikely to succeed before the
 /// next deploy. For example, symcache writing may fail due to an object file symbolic can't parse
 /// yet.
-pub const MALFORMED_MARKER: &'static [u8] = b"malformed";
+pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CacheStatus {
