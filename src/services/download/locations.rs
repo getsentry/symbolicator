@@ -42,6 +42,39 @@ impl SourceLocation {
     pub fn path(&self) -> &Path {
         &Path::new(&self.0)
     }
+
+    /// Returns this location relative to the given base.
+    ///
+    /// The base may be a filesystem path or a URI prefix. It is always assumed that the base is a
+    /// directory.
+    pub fn prefix(&self, prefix: &str) -> String {
+        let trimmed = prefix.trim_matches(&['/'][..]);
+        if trimmed.is_empty() {
+            self.0.clone()
+        } else {
+            format!("{}/{}", trimmed, self.0)
+        }
+    }
+
+    /// Returns this location joined to the given base URL.
+    ///
+    /// As opposed to [`Url::join`], this only supports relative paths. Each segment of the path is
+    /// percent-encoded. Empty segments are skipped, for example, `foo//bar` is collapsed to
+    /// `foo/bar`.
+    ///
+    /// The base URL is treated as directory. If it does not end with a slash, then a slash is
+    /// automatically appended.
+    ///
+    /// Returns `Err` if the URL is cannot-be-a-base.
+    pub fn to_url(&self, base: &Url) -> Result<Url> {
+        let mut joined = base.clone();
+        joined
+            .path_segments_mut()
+            .map_err(|_| Error::msg("URL cannot-be-a-base"))?
+            .pop_if_empty()
+            .extend(self.segments());
+        Ok(joined)
+    }
 }
 
 impl fmt::Display for SourceLocation {
@@ -204,64 +237,36 @@ impl fmt::Display for ObjectFileSourceURI {
     }
 }
 
-/// Joins the relative path to the given URL.
-///
-/// As opposed to [`Url::join`], this only supports relative paths. Each segment of the path is
-/// percent-encoded. Empty segments are skipped, for example, `foo//bar` is collapsed to `foo/bar`.
-///
-/// The base URL is treated as directory. If it does not end with a slash, then a slash is
-/// automatically appended.
-///
-/// Returns `Err` if the URL is cannot-be-a-base.
-pub fn join_url_encoded(base: &Url, path: &SourceLocation) -> Result<Url> {
-    let mut joined = base.clone();
-    joined
-        .path_segments_mut()
-        .map_err(|_| Error::msg("URL cannot-be-a-base"))?
-        .pop_if_empty()
-        .extend(path.segments());
-    Ok(joined)
-}
-
-pub fn join_prefix_location(prefix: &str, location: &SourceLocation) -> String {
-    let trimmed = prefix.trim_matches(&['/'][..]);
-    if trimmed.is_empty() {
-        location.0.clone()
-    } else {
-        format!("{}/{}", trimmed, location.0)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_join_prefix_location() {
-        let key = join_prefix_location(&String::from(""), &SourceLocation::new("spam/ham"));
+    fn test_location_prefix() {
+        let key = SourceLocation::new("spam/ham").prefix("");
         assert_eq!(key, "spam/ham");
 
-        let key = join_prefix_location(&String::from("eggs"), &SourceLocation::new("spam/ham"));
+        let key = SourceLocation::new("spam/ham").prefix("eggs");
         assert_eq!(key, "eggs/spam/ham");
 
-        let key = join_prefix_location(&String::from("/eggs/bacon/"), &SourceLocation::new("spam"));
+        let key = SourceLocation::new("spam").prefix("/eggs/bacon/");
         assert_eq!(key, "eggs/bacon/spam");
 
-        let key = join_prefix_location(&String::from("//eggs//"), &SourceLocation::new("spam"));
+        let key = SourceLocation::new("spam").prefix("//eggs//");
         assert_eq!(key, "eggs/spam");
     }
 
     #[test]
-    fn test_join_empty() {
+    fn test_location_url_empty() {
         let base = Url::parse("https://example.org/base").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("")).unwrap();
+        let joined = SourceLocation::new("").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/base".parse().unwrap());
     }
 
     #[test]
-    fn test_join_space() {
+    fn test_location_url_space() {
         let base = Url::parse("https://example.org/base").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("foo bar")).unwrap();
+        let joined = SourceLocation::new("foo bar").to_url(&base).unwrap();
         assert_eq!(
             joined,
             "https://example.org/base/foo%20bar".parse().unwrap()
@@ -269,37 +274,37 @@ mod tests {
     }
 
     #[test]
-    fn test_join_multiple() {
+    fn test_location_url_multiple() {
         let base = Url::parse("https://example.org/base").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("foo/bar")).unwrap();
+        let joined = SourceLocation::new("foo/bar").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/base/foo/bar".parse().unwrap());
     }
 
     #[test]
-    fn test_join_trailing_slash() {
+    fn test_location_url_trailing_slash() {
         let base = Url::parse("https://example.org/base/").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("foo")).unwrap();
+        let joined = SourceLocation::new("foo").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/base/foo".parse().unwrap());
     }
 
     #[test]
-    fn test_join_leading_slash() {
+    fn test_location_url_leading_slash() {
         let base = Url::parse("https://example.org/base").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("/foo")).unwrap();
+        let joined = SourceLocation::new("/foo").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/base/foo".parse().unwrap());
     }
 
     #[test]
-    fn test_join_multi_slash() {
+    fn test_location_url_multi_slash() {
         let base = Url::parse("https://example.org/base").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("foo//bar")).unwrap();
+        let joined = SourceLocation::new("foo//bar").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/base/foo/bar".parse().unwrap());
     }
 
     #[test]
-    fn test_join_absolute() {
+    fn test_location_url_absolute() {
         let base = Url::parse("https://example.org/").unwrap();
-        let joined = join_url_encoded(&base, &SourceLocation::new("foo")).unwrap();
+        let joined = SourceLocation::new("foo").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/foo".parse().unwrap());
     }
 }

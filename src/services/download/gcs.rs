@@ -14,7 +14,7 @@ use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::percent_encoding::{percent_encode, PATH_SEGMENT_ENCODE_SET};
 
-use super::locations::{join_prefix_location, SourceLocation};
+use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
@@ -22,6 +22,16 @@ use crate::utils::futures::delay;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+
+/// Maximum number of cached GCS OAuth tokens.
+///
+/// This number defines the size of the internal cache for GCS authentication and should be higher
+/// than expected concurrency across GCS buckets. If this number is too low, the downloader will
+/// re-authenticate between every request.
+///
+/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
+/// metrics.
+const GCS_TOKEN_CACHE_SIZE: usize = 100;
 
 /// The GCS-specific [`ObjectFileSource`].
 #[derive(Debug, Clone)]
@@ -45,29 +55,14 @@ impl GcsObjectFileSource {
     ///
     /// This is equivalent to the pathname within the bucket.
     pub fn key(&self) -> String {
-        join_prefix_location(&self.source.prefix, &self.location)
+        self.location.prefix(&self.source.prefix)
     }
 
     /// Returns the `gs://` URI from which to download this object file.
     pub fn uri(&self) -> ObjectFileSourceURI {
-        format!(
-            "gs://{bucket}/{key}",
-            bucket = &self.source.bucket,
-            key = self.key()
-        )
-        .into()
+        format!("gs://{}/{}", self.source.bucket, self.key()).into()
     }
 }
-
-/// Maximum number of cached GCS OAuth tokens.
-///
-/// This number defines the size of the internal cache for GCS authentication and should be higher
-/// than expected concurrency across GCS buckets. If this number is too low, the downloader will
-/// re-authenticate between every request.
-///
-/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
-/// metrics.
-const GCS_TOKEN_CACHE_SIZE: usize = 100;
 
 #[derive(Serialize)]
 struct JwtClaims {

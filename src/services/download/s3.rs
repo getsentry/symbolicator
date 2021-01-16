@@ -11,12 +11,23 @@ use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 
-use super::locations::{join_prefix_location, SourceLocation};
+use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
+
+/// Maximum number of cached S3 clients.
+///
+/// This number defines the size of the internal cache for S3 clients and should be higher than
+/// expected concurrency across S3 buckets. If this number is too low, the downloader will
+/// re-authenticate between every request.
+///
+/// TODO(ja):
+/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
+/// metrics.
+const S3_CLIENT_CACHE_SIZE: usize = 100;
 
 /// The S3-specific [`ObjectFileSource`].
 #[derive(Debug, Clone)]
@@ -40,7 +51,7 @@ impl S3ObjectFileSource {
     ///
     /// This is equivalent to the pathname within the bucket.
     pub fn key(&self) -> String {
-        join_prefix_location(&self.source.prefix, &self.location)
+        self.location.prefix(&self.source.prefix)
     }
 
     /// Returns the S3 bucket name.
@@ -50,25 +61,9 @@ impl S3ObjectFileSource {
 
     /// Returns the `s3://` URI from which to download this object file.
     pub fn uri(&self) -> ObjectFileSourceURI {
-        format!(
-            "s3://{bucket}/{key}",
-            bucket = &self.source.bucket,
-            key = self.key()
-        )
-        .into()
+        format!("s3://{}/{}", self.source.bucket, self.key()).into()
     }
 }
-
-/// Maximum number of cached S3 clients.
-///
-/// This number defines the size of the internal cache for S3 clients and should be higher than
-/// expected concurrency across S3 buckets. If this number is too low, the downloader will
-/// re-authenticate between every request.
-///
-/// TODO(ja):
-/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
-/// metrics.
-const S3_CLIENT_CACHE_SIZE: usize = 100;
 
 /// Downloader implementation that supports the [`S3SourceConfig`] source.
 pub struct S3Downloader {
