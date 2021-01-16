@@ -115,7 +115,7 @@ impl SentryDownloader {
     ) -> Result<Vec<SearchResult>, SentryError> {
         let response = self
             .client
-            .get(query.index_url.as_str())
+            .get(query.index_url.clone())
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT)
             .header("Authorization", format!("Bearer {}", &query.token))
@@ -223,7 +223,7 @@ impl SentryDownloader {
         log::debug!("Fetching debug file from {}", download_url);
         let result = future_utils::retry(|| {
             self.client
-                .get(download_url.as_str())
+                .get(download_url.clone())
                 .header("User-Agent", USER_AGENT)
                 .header(
                     "Authorization",

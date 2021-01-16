@@ -72,7 +72,7 @@ impl HttpDownloader {
 
         log::debug!("Fetching debug file from {}", download_url);
         let response = future_utils::retry(|| {
-            let mut builder = self.client.get(download_url.as_str());
+            let mut builder = self.client.get(download_url.clone());
 
             for (key, value) in file_source.source.headers.iter() {
                 if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
