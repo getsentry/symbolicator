@@ -8,10 +8,10 @@ stacktraces:
       - status: symbolicated
         original_index: 0
         addr_mode: "rel:0"
-        instruction_addr: 0x8c
+        instruction_addr: "0x8c"
         lang: rust
         symbol: internal_func
-        sym_addr: 0x8b
+        sym_addr: "0x8b"
         function: internal_func
         filename: src/lib.rs
         abs_path: /Users/mitsuhiko/Development/wasm-example/simple/src/lib.rs
@@ -28,4 +28,4 @@ modules:
     code_id: bda18fd85d4a4eb893022d6bfad846b1
     debug_id: bda18fd8-5d4a-4eb8-9302-2d6bfad846b1
     debug_file: "file://foo.invalid/demo.wasm"
-    image_addr: 0x0
+    image_addr: "0x0"

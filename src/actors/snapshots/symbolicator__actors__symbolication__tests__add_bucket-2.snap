@@ -7,10 +7,10 @@ stacktraces:
   - frames:
       - status: symbolicated
         original_index: 0
-        instruction_addr: 0x100000fa0
+        instruction_addr: "0x100000fa0"
         lang: c
         symbol: main
-        sym_addr: 0x100000fa0
+        sym_addr: "0x100000fa0"
         function: main
         filename: hello.c
         abs_path: /tmp/hello.c
@@ -26,7 +26,7 @@ modules:
     type: macho
     code_id: 502fc0a51ec13e479998684fa139dca7
     debug_id: 502fc0a5-1ec1-3e47-9998-684fa139dca7
-    image_addr: 0x100000000
+    image_addr: "0x100000000"
     image_size: 4096
     candidates:
       - source: local
