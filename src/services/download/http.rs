@@ -10,7 +10,6 @@ use futures::prelude::*;
 use reqwest::{header, Client};
 use url::Url;
 
-use super::locations::join_url_encoded;
 use super::{
     DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI, SourceLocation,
     USER_AGENT,
@@ -46,7 +45,7 @@ impl HttpObjectFileSource {
 
     /// Returns the URL from which to download this object file.
     pub fn url(&self) -> Result<Url> {
-        join_url_encoded(&self.source.url, &self.location)
+        self.location.to_url(&self.source.url)
     }
 }
 
