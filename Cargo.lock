@@ -3622,8 +3622,7 @@ dependencies = [
  "tokio 0.1.22",
  "tokio 1.0.1",
  "tokio-retry",
- "url 1.7.2",
- "url_serde",
+ "url 2.2.0",
  "uuid 0.8.1",
  "zstd",
 ]
@@ -4394,16 +4393,6 @@ dependencies = [
  "matches",
  "percent-encoding 2.1.0",
  "serde",
-]
-
-[[package]]
-name = "url_serde"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74e7d099f1ee52f823d4bdd60c93c3602043c728f5db3b97bdb548467f7bddea"
-dependencies = [
- "serde",
- "url 1.7.2",
 ]
 
 [[package]]
