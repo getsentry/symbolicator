@@ -2409,19 +2409,6 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "552840b97013b1a26992c11eac34bdd778e464601a4c2054b5f0bff7c6761293"
-dependencies = [
- "fuchsia-cprng",
- "libc",
- "rand_core 0.3.1",
- "rdrand",
- "winapi 0.3.8",
-]
-
-[[package]]
-name = "rand"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c618c47cd3ebd209790115ab837de41425723956ad3ce2e6a7f09890947cacb9"
@@ -3539,7 +3526,6 @@ dependencies = [
  "thiserror",
  "tokio 0.1.22",
  "tokio 1.0.2",
- "tokio-retry",
  "url 2.2.0",
  "uuid 0.8.2",
  "zstd",
@@ -3851,17 +3837,6 @@ dependencies = [
  "tokio-executor",
  "tokio-io",
  "tokio-sync",
-]
-
-[[package]]
-name = "tokio-retry"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c03755b956458582182941061def32b8123a26c98b08fc6ddcf49ae89d18f33"
-dependencies = [
- "futures 0.1.29",
- "rand 0.4.6",
- "tokio-timer",
 ]
 
 [[package]]
