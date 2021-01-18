@@ -17,7 +17,7 @@ use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
-use crate::utils::futures::{delay, retry};
+use crate::utils::futures as future_utils;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
@@ -226,7 +226,7 @@ impl GcsDownloader {
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&file_source.source.bucket, "o", &key]);
 
-        let response = retry(|| {
+        let response = future_utils::retry(|| {
             self.client
                 .get(url.clone())
                 .header("authorization", format!("Bearer {}", token.access_token))
