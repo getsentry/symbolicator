@@ -52,7 +52,6 @@ tempfile = "3.2.0"
 thiserror = "1.0.23"
 tokio = { version = "1.0.2", features = ["rt", "macros"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
-tokio-retry = "0.2.0"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.6.0"
