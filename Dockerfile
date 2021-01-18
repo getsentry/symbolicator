@@ -34,7 +34,7 @@ RUN sentry-cli --version \
 # Copy the compiled binary to a clean image #
 #############################################
 
-FROM debian:buster-slim
+FROM debian:stretch-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates gosu cabextract \
     && rm -rf /var/lib/apt/lists/*
