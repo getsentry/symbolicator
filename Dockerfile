@@ -1,5 +1,5 @@
 FROM getsentry/sentry-cli:1 AS sentry-cli
-FROM rust:slim-buster AS symbolicator-build
+FROM rust:slim-stretch AS symbolicator-build
 
 WORKDIR /work
 
