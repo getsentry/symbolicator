@@ -10,7 +10,6 @@ use futures::prelude::*;
 use reqwest::{header, Client};
 use url::Url;
 
-use super::locations::join_url_encoded;
 use super::{
     DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI, SourceLocation,
     USER_AGENT,
@@ -46,7 +45,7 @@ impl HttpObjectFileSource {
 
     /// Returns the URL from which to download this object file.
     pub fn url(&self) -> Result<Url> {
-        join_url_encoded(&self.source.url, &self.location)
+        self.location.to_url(&self.source.url)
     }
 }
 
@@ -73,7 +72,7 @@ impl HttpDownloader {
 
         log::debug!("Fetching debug file from {}", download_url);
         let response = future_utils::retry(|| {
-            let mut builder = self.client.get(download_url.as_str());
+            let mut builder = self.client.get(download_url.clone());
 
             for (key, value) in file_source.source.headers.iter() {
                 if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {

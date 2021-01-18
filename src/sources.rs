@@ -107,7 +107,6 @@ pub struct SentrySourceConfig {
     pub id: SourceId,
 
     /// Absolute URL of the endpoint.
-    #[serde(with = "url_serde")]
     pub url: Url,
 
     /// Bearer authorization token.
@@ -121,7 +120,6 @@ pub struct HttpSourceConfig {
     pub id: SourceId,
 
     /// Absolute URL of the symbol server.
-    #[serde(with = "url_serde")]
     pub url: Url,
 
     /// Additional headers to be sent to the symbol server with every request.

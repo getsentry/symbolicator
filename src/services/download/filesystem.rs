@@ -44,7 +44,7 @@ impl FilesystemObjectFileSource {
     /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
     /// [`FilesystemObjectFileSource::path`] if the actual file location is needed.
     pub fn uri(&self) -> ObjectFileSourceURI {
-        format!("file:///{path}", path = self.path().display()).into()
+        format!("file:///{}", self.path().display()).into()
     }
 }
 
