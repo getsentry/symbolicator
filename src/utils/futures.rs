@@ -286,9 +286,9 @@ pub mod m {
 }
 
 /// Retry a future 3 times with exponential backoff.
-pub async fn retry<G, F, T, E>(task_gen: G) -> Result<T, E>
+pub async fn retry<G, F, T, E>(mut task_gen: G) -> Result<T, E>
 where
-    G: Fn() -> F,
+    G: FnMut() -> F,
     F: Future<Output = Result<T, E>>,
 {
     let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);

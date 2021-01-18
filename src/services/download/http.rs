@@ -81,10 +81,9 @@ impl HttpDownloader {
             }
 
             builder.header(header::USER_AGENT, USER_AGENT).send()
-        })
-        .await;
+        });
 
-        match response {
+        match response.await {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);

@@ -230,10 +230,9 @@ impl SentryDownloader {
                     format!("Bearer {}", &file_source.source.token),
                 )
                 .send()
-        })
-        .await;
+        });
 
-        match result {
+        match result.await {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);

@@ -11,14 +11,13 @@ use parking_lot::Mutex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use url::Url;
 
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
-use crate::utils::futures::delay;
+use crate::utils::futures::{delay, retry};
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
@@ -227,22 +226,14 @@ impl GcsDownloader {
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&file_source.source.bucket, "o", &key]);
 
-        let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
-        let response = loop {
-            let result = self
-                .client
+        let response = retry(|| {
+            self.client
                 .get(url.clone())
                 .header("authorization", format!("Bearer {}", token.access_token))
                 .send()
-                .await;
+        });
 
-            match backoff.next() {
-                Some(duration) if result.is_err() => delay(duration).await,
-                _ => break result,
-            }
-        };
-
-        match response {
+        match response.await {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!(
