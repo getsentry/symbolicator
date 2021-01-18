@@ -9,7 +9,6 @@ use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use tokio01::prelude::FutureExt as TokioFutureExt;
 use tokio01::runtime::Runtime as TokioRuntime;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 
 static IS_TEST: AtomicBool = AtomicBool::new(false);
 
@@ -285,18 +284,20 @@ pub mod m {
     }
 }
 
-/// Retry a future 3 times with exponential backoff.
+/// Retry a future 3 times with 20 millisecond delays.
 pub async fn retry<G, F, T, E>(mut task_gen: G) -> Result<T, E>
 where
     G: FnMut() -> F,
     F: Future<Output = Result<T, E>>,
 {
-    let mut backoff = ExponentialBackoff::from_millis(10).map(jitter).take(3);
+    let mut retries = 0;
     loop {
         let result = task_gen().await;
-        match backoff.next() {
-            Some(duration) if result.is_err() => delay(duration).await,
-            _ => break result,
+        if result.is_ok() || retries >= 3 {
+            break result;
         }
+
+        retries += 1;
+        delay(Duration::from_millis(20)).await;
     }
 }
