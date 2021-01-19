@@ -40,7 +40,7 @@ impl SentryObjectFileSource {
     }
 
     pub fn uri(&self) -> ObjectFileSourceURI {
-        self.url().as_str().into()
+        format!("sentry://project_debug_file/{}", self.file_id).into()
     }
 
     /// Returns the URL from which to download this object file.
@@ -263,7 +263,7 @@ mod tests {
     use crate::sources::SourceId;
 
     #[test]
-    fn test_sentry_source_download_url() {
+    fn test_download_url() {
         let source = SentrySourceConfig {
             id: SourceId::new("test"),
             url: Url::parse("https://example.net/endpoint/").unwrap(),
@@ -273,5 +273,21 @@ mod tests {
             SentryObjectFileSource::new(Arc::new(source), SentryFileId("abc123".into()));
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
+    }
+
+    #[test]
+    fn test_uri() {
+        let source = SentrySourceConfig {
+            id: SourceId::new("test"),
+            url: Url::parse("https://example.net/endpoint/").unwrap(),
+            token: "token".into(),
+        };
+        let file_source =
+            SentryObjectFileSource::new(Arc::new(source), SentryFileId("abc123".into()));
+        let uri = file_source.uri();
+        assert_eq!(
+            uri,
+            ObjectFileSourceURI::new("sentry://project_debug_file/abc123")
+        );
     }
 }
