@@ -30,6 +30,10 @@ mod utils;
 #[cfg(test)]
 mod test;
 
+#[cfg(target_os = "linux")]
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 fn main() {
     match cli::execute() {
         Ok(()) => std::process::exit(0),

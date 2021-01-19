@@ -1,5 +1,5 @@
 FROM getsentry/sentry-cli:1 AS sentry-cli
-FROM rust:slim-stretch AS symbolicator-build
+FROM rust:slim-buster AS symbolicator-build
 
 WORKDIR /work
 
@@ -34,7 +34,7 @@ RUN sentry-cli --version \
 # Copy the compiled binary to a clean image #
 #############################################
 
-FROM debian:stretch-slim
+FROM debian:buster-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates gosu cabextract \
     && rm -rf /var/lib/apt/lists/*
