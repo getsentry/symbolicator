@@ -9,10 +9,9 @@ use actix_web::{Error, HttpRequest, HttpResponse};
 use failure::Fail;
 use futures01::future::Future;
 use futures01::Poll;
-
-use sentry::integrations::failure::exception_from_single_fail;
-use sentry::protocol::{ClientSdkPackage, Event};
-use sentry::{Hub, Level, Scope, ScopeGuard};
+use sentry::integrations::backtrace::parse_stacktrace;
+use sentry::protocol::{ClientSdkPackage, Event, Exception};
+use sentry::{parse_type_from_debug, Hub, Level, Scope, ScopeGuard};
 use uuid::Uuid;
 
 pub struct SentryFuture<F> {
@@ -281,5 +280,21 @@ impl ActixWebHubExt for Hub {
             level: Level::Error,
             ..Default::default()
         })
+    }
+}
+
+fn exception_from_single_fail<F: Fail + ?Sized>(
+    f: &F,
+    bt: Option<&failure::Backtrace>,
+) -> Exception {
+    let dbg = format!("{:?}", f);
+    Exception {
+        ty: parse_type_from_debug(&dbg).to_owned(),
+        value: Some(f.to_string()),
+        stacktrace: bt
+            // format the stack trace with alternate debug to get addresses
+            .map(|bt| format!("{:#?}", bt))
+            .and_then(|x| parse_stacktrace(&x)),
+        ..Default::default()
     }
 }

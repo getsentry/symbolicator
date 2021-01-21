@@ -42,7 +42,7 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.46.0"
 rusoto_credential = "0.46.0"
 rusoto_s3 = "0.46.0"
-sentry = { version = "0.21.0", features = ["debug-images", "failure", "log"] }
+sentry = { version = "0.22.0", features = ["debug-images", "log"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
@@ -52,7 +52,6 @@ tempfile = "3.2.0"
 thiserror = "1.0.23"
 tokio = { version = "1.0.2", features = ["rt", "macros"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
-tokio-retry = "0.2.0"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.6.0"
