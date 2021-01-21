@@ -203,7 +203,9 @@ mod tests {
         insta::assert_yaml_snapshot!(response);
     }
 
-    #[tokio::test]
+    // This test is disabled because it locks up on CI. We have not found a way to reproduce this.
+    #[allow(dead_code)]
+    // #[tokio::test]
     async fn test_integration_microsoft() {
         // TODO: Move this test to E2E tests
         test::setup();
