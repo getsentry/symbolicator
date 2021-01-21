@@ -248,23 +248,6 @@ def hitcounter(request):
         yield app
 
 
-def fail_missing_secrets(msg):
-    """Fail or skip the test because of missing secrets.
-
-    Secrets are only guaranteed to be available on CI when the branch being tested is
-    committed to the main getsentry repository.  Especially for forks they are hidden to
-    stop external contributors from stealing the secrets.
-
-    This will call `pytest.skip` if the secrets are missing but this is acceptable because
-    e.g. we're on a developer's machine or on a forked repository.  If running on CI in the
-    main repository this will call `pytest.fail`.
-    """
-    if os.getenv("CI") and os.getenv("GITHUB_BASE_REF") is None:
-        pytest.fail(msg)
-    else:
-        pytest.skip(msg)
-
-
 def assert_symbolication(output, expected):
     """Compares symbolication results, with redactions.
 

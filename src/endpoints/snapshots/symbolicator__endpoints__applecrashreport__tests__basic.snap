@@ -1,0 +1,182 @@
+---
+source: src/endpoints/applecrashreport.rs
+expression: response
+---
+status: completed
+timestamp: 1547055742
+system_info:
+  os_name: macOS
+  os_version: 10.14.0
+  os_build: 18A391
+  cpu_arch: x86_64
+  device_model: "MacBookPro14,3"
+crashed: true
+crash_reason: SIGSEGV
+crash_details: "objc_msgSend() selector name: respondsToSelector:\n  more information here"
+stacktraces:
+  - thread_id: 0
+    is_requesting: false
+    frames:
+      - status: unknown_image
+        original_index: 0
+        instruction_addr: "0x7fff61bc6c2a"
+        package: libsystem_kernel.dylib
+      - status: unknown_image
+        original_index: 1
+        instruction_addr: "0x7fff349f505e"
+        package: CoreFoundation
+      - status: unknown_image
+        original_index: 2
+        instruction_addr: "0x7fff349f45ad"
+        package: CoreFoundation
+      - status: unknown_image
+        original_index: 3
+        instruction_addr: "0x7fff349f3ce4"
+        package: CoreFoundation
+      - status: unknown_image
+        original_index: 4
+        instruction_addr: "0x7fff33c8d895"
+        package: HIToolbox
+      - status: unknown_image
+        original_index: 5
+        instruction_addr: "0x7fff33c8d5cb"
+        package: HIToolbox
+      - status: unknown_image
+        original_index: 6
+        instruction_addr: "0x7fff33c8d348"
+        package: HIToolbox
+      - status: unknown_image
+        original_index: 7
+        instruction_addr: "0x7fff31f4a95b"
+        package: AppKit
+      - status: unknown_image
+        original_index: 8
+        instruction_addr: "0x7fff31f496fa"
+        package: AppKit
+      - status: unknown_image
+        original_index: 9
+        instruction_addr: "0x7fff31f4375d"
+        package: AppKit
+      - status: missing
+        original_index: 10
+        instruction_addr: "0x108b7092b"
+        package: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
+      - status: missing
+        original_index: 11
+        instruction_addr: "0x108b702a6"
+        package: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
+      - status: unknown_image
+        original_index: 12
+        instruction_addr: "0x7fff61a8e085"
+        package: libdyld.dylib
+      - status: unknown_image
+        original_index: 13
+        instruction_addr: "0xea004"
+        package: YetanotherMac
+  - thread_id: 1
+    is_requesting: true
+    registers:
+      cs: "0x2b"
+      fs: "0x0"
+      gs: "0x0"
+      r10: "0x0"
+      r11: "0xffffffff"
+      r12: "0x8"
+      r13: "0x11e800b00"
+      r14: "0x1"
+      r15: "0x0"
+      r8: "0x3"
+      r9: "0x10"
+      rax: "0x20261bb4775b008f"
+      rbp: "0x700015a616d0"
+      rbx: "0x0"
+      rcx: "0x1288266c0"
+      rdi: "0x0"
+      rdx: "0x1"
+      rflags: "0x10206"
+      rip: "0x1090a0132"
+      rsi: "0x0"
+      rsp: "0x700015a613f0"
+    frames:
+      - status: unknown_image
+        original_index: 0
+        instruction_addr: "0x7fff61bc85be"
+        package: libsystem_kernel.dylib
+      - status: unknown_image
+        original_index: 1
+        instruction_addr: "0x7fff61c7f415"
+        package: libsystem_pthread.dylib
+      - status: unknown_image
+        original_index: 2
+        instruction_addr: "0x54485244"
+modules:
+  - debug_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: macho
+    code_id: 2d903291397d3d14bfca52c7fb8c5e00
+    code_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
+    debug_id: 2d903291-397d-3d14-bfca-52c7fb8c5e00
+    debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/MacOS/YetAnotherMac
+    image_addr: "0x10864e000"
+    image_size: 108797951
+  - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: macho
+    code_id: 6deccee4a0523ea4bb67957b06f53ad1
+    code_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3PROFILE.dylib
+    debug_id: 6deccee4-a052-3ea4-bb67-957b06f53ad1
+    debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3PROFILE.dylib
+    image_addr: "0x112bb2000"
+    image_size: 2170879
+  - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: macho
+    code_id: 5e012a646cc536f19b4da0564049169b
+    code_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3CookingPROFILE.dylib
+    debug_id: 5e012a64-6cc5-36f1-9b4d-a0564049169b
+    debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3CookingPROFILE.dylib
+    image_addr: "0x112fc0000"
+    image_size: 221183
+  - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: macho
+    code_id: 9c19854471943de6b67e4cc27eed2eab
+    code_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3CommonPROFILE.dylib
+    debug_id: 9c198544-7194-3de6-b67e-4cc27eed2eab
+    debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPhysX3CommonPROFILE.dylib
+    image_addr: "0x113013000"
+    image_size: 1474559
+  - debug_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: macho
+    code_id: 890f0997f90435449af7cf011f09a06e
+    code_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPxFoundationPROFILE.dylib
+    debug_id: 890f0997-f904-3544-9af7-cf011f09a06e
+    debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPxFoundationPROFILE.dylib
+    image_addr: "0x1131fa000"
+    image_size: 28671

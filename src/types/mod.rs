@@ -71,6 +71,15 @@ impl<'de> Deserialize<'de> for Glob {
     }
 }
 
+impl Serialize for Glob {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0.to_string())
+    }
+}
+
 impl Deref for Glob {
     type Target = glob::Pattern;
 
@@ -336,7 +345,7 @@ impl Default for ObjectType {
 }
 
 /// Information on the symbolication status of this frame.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FrameStatus {
     /// The frame was symbolicated successfully.
@@ -358,7 +367,7 @@ impl Default for FrameStatus {
 }
 
 /// A potentially symbolicated frame in the symbolication response.
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct SymbolicatedFrame {
     /// Symbolication status of this frame.
     pub status: FrameStatus,
@@ -380,7 +389,7 @@ pub struct SymbolicatedFrame {
 ///
 /// Frames in this request may or may not be symbolicated. The status field contains information on
 /// the individual success for each frame.
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompleteStacktrace {
     /// ID of thread that had this stacktrace. Returned when a minidump was processed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -564,7 +573,7 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
 }
 
 /// The response of a symbolication request or poll request.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum SymbolicationResponse {
     /// Symbolication is still running.
@@ -592,7 +601,7 @@ pub enum SymbolicationResponse {
 /// documented at <https://getsentry.github.io/symbolicator/api/response/>.  For the actual
 /// HTTP response this is further wrapped in [`SymbolicationResponse`] which can also return a
 /// pending or failed state etc instead of a result.
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.
     #[serde(

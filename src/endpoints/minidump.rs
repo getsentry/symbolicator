@@ -162,3 +162,102 @@ pub fn configure(app: ServiceApp) -> ServiceApp {
         r.method(Method::POST).with(handle_minidump_request);
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use actix_web::test::TestServer;
+    use reqwest::{multipart, Client, StatusCode};
+
+    use crate::app::ServiceState;
+    use crate::config::Config;
+    use crate::test;
+    use crate::types::SymbolicationResponse;
+
+    #[tokio::test]
+    async fn test_basic() {
+        test::setup();
+
+        let service = ServiceState::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+
+        let file_contents = fs::read("tests/fixtures/windows.dmp").unwrap();
+        let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", "[]");
+
+        let response = Client::new()
+            .post(&server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.text().await.unwrap();
+        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+        insta::assert_yaml_snapshot!(response);
+    }
+
+    // This test is disabled because it locks up on CI. We have not found a way to reproduce this.
+    #[allow(dead_code)]
+    // #[tokio::test]
+    async fn test_integration_microsoft() {
+        // TODO: Move this test to E2E tests
+        test::setup();
+
+        let service = ServiceState::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+        let source = test::microsoft_symsrv();
+
+        let file_contents = fs::read("tests/fixtures/windows.dmp").unwrap();
+        let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", serde_json::to_string(&vec![source]).unwrap())
+            .text("options", r#"{"dif_candidates":true}"#);
+
+        let response = Client::new()
+            .post(&server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.text().await.unwrap();
+        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+        insta::assert_yaml_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn test_unknown_field() {
+        test::setup();
+
+        let service = ServiceState::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+
+        let file_contents = fs::read("tests/fixtures/windows.dmp").unwrap();
+        let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", "[]")
+            .text("unknown", "value");
+
+        let response = Client::new()
+            .post(&server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}

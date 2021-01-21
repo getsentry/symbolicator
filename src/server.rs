@@ -10,7 +10,7 @@ use crate::utils::sentry::SentryMiddleware;
 
 /// Creates the Actix web application with all middlewares.
 #[inline]
-fn create_app(state: ServiceState) -> ServiceApp {
+pub fn create_app(state: ServiceState) -> ServiceApp {
     App::with_state(state)
         .middleware(middlewares::Metrics)
         .middleware(middlewares::ErrorHandlers)

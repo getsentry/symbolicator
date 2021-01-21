@@ -156,3 +156,69 @@ pub fn configure(app: ServiceApp) -> ServiceApp {
             .with(handle_apple_crash_report_request);
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use actix_web::test::TestServer;
+    use reqwest::{multipart, Client, StatusCode};
+
+    use crate::app::ServiceState;
+    use crate::config::Config;
+    use crate::test;
+    use crate::types::SymbolicationResponse;
+
+    #[tokio::test]
+    async fn test_basic() {
+        test::setup();
+
+        let service = ServiceState::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+
+        let file_contents = fs::read("tests/fixtures/apple_crash_report.txt").unwrap();
+        let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
+
+        let form = multipart::Form::new()
+            .part("apple_crash_report", file_part)
+            .text("sources", "[]");
+
+        let response = Client::new()
+            .post(&server.url("/applecrashreport"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.text().await.unwrap();
+        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+        insta::assert_yaml_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn test_unknown_field() {
+        test::setup();
+
+        let service = ServiceState::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+
+        let file_contents = fs::read("tests/fixtures/apple_crash_report.txt").unwrap();
+        let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
+
+        let form = multipart::Form::new()
+            .part("apple_crash_report", file_part)
+            .text("sources", "[]")
+            .text("unknown", "value");
+
+        let response = Client::new()
+            .post(&server.url("/applecrashreport"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}
