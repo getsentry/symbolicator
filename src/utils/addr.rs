@@ -69,6 +69,6 @@ impl<'de> Deserialize<'de> for AddrMode {
         D: Deserializer<'de>,
     {
         let s = Cow::<str>::deserialize(deserializer).map_err(de::Error::custom)?;
-        Ok(AddrMode::from_str(&s).map_err(de::Error::custom)?)
+        AddrMode::from_str(&s).map_err(de::Error::custom)
     }
 }
