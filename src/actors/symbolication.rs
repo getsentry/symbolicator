@@ -1132,7 +1132,8 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
     ) -> Option<SymbolicationResponse> {
-        match self.requests.lock().get(&request_id).cloned() {
+        let channel_opt = self.requests.lock().get(&request_id).cloned();
+        match channel_opt {
             Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
