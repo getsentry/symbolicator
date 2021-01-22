@@ -68,14 +68,26 @@ pub(crate) fn tempdir() -> TempDir {
 ///
 /// Note that this function is intended to be used only for testing purpose. This function panics on
 /// nested call.
-pub fn block_on01<F>(f: F) -> F::Output
+pub async fn spawn_compat<F, T>(f: F) -> T::Output
 where
-    F: Future,
+    F: FnOnce() -> T + Send + 'static,
+    T: Future + 'static,
+    T::Output: Send,
 {
-    let mut runtime = tokio01::runtime::current_thread::Runtime::new().unwrap();
-    runtime
-        .block_on(f.never_error().boxed_local().compat())
-        .unwrap_or_else(|never| match never {})
+    let (sender, receiver) = futures::channel::oneshot::channel();
+
+    std::thread::spawn(|| {
+        let result = tokio01::runtime::current_thread::Runtime::new()
+            .unwrap()
+            .block_on(f().never_error().boxed_local().compat());
+
+        sender.send(result)
+    });
+
+    match receiver.await.unwrap() {
+        Ok(output) => output,
+        Err(never) => match never {},
+    }
 }
 
 /// Get bucket configuration for the local fixtures.
