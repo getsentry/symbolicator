@@ -3,6 +3,7 @@ use actix_web::{
     State,
 };
 use bytes::Bytes;
+use futures::{FutureExt, TryFutureExt};
 use futures01::{future, Future, Stream};
 use sentry::{configure_scope, Hub};
 
@@ -135,12 +136,15 @@ fn handle_apple_crash_report_request(
             .and_then(move |request_id| {
                 symbolication
                     .get_response(request_id, timeout)
+                    .never_error()
+                    .boxed_local()
+                    .compat()
                     .then(|result| match result {
                         Ok(Some(response)) => Ok(Json(response)),
                         Ok(None) => Err(error::ErrorInternalServerError(
                             "symbolication request did not start",
                         )),
-                        Err(error) => Err(error::ErrorInternalServerError(error)),
+                        Err(never) => match never {},
                     })
                     .map_err(Error::from)
             });

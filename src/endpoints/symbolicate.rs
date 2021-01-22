@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use actix_web::{http::Method, HttpRequest, Json, Query, State};
 use failure::Error;
+use futures::{FutureExt, TryFutureExt};
 use futures01::Future;
 use sentry::{configure_scope, Hub};
 use serde::Deserialize;
@@ -86,8 +87,11 @@ fn symbolicate_frames(
         let response = state
             .symbolication()
             .get_response(request_id, timeout)
+            .never_error()
+            .boxed_local()
+            .compat()
             .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
-            .map_err(Error::from);
+            .map_err(|never| match never {});
 
         Box::new(response.sentry_hub_current())
     })
