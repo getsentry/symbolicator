@@ -2,11 +2,8 @@
 //!
 //! When writing tests, keep the following points in mind:
 //!
-//!  - In every test using the **legacy** runtime, call [`test::setup`]. This will set up the logger
-//!    so that all console output is captured by the test runner and initializes an actix system.
-//!
-//!  - Every other test, annotate with [`tokio::test`] and call [`test::setup_logging`]. This sets
-//!    up the logger for the asynchronous runtime.
+//!  - In every test, call [`test::setup`]. This will set up the logger so that all console output
+//!    is captured by the test runner.
 //!
 //!  - When using [`test::tempdir`], make sure that the handle to the temp directory is held for the
 //!    entire lifetime of the test. When dropped too early, this might silently leak the temp
@@ -19,13 +16,10 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use actix::{System, SystemRunner};
 use actix_web::fs::StaticFiles;
-use futures01::{future, IntoFuture};
 use log::LevelFilter;
 
 use crate::sources::{
@@ -38,68 +32,16 @@ pub use tempfile::TempDir;
 
 const SYMBOLS_PATH: &str = "tests/fixtures/symbols";
 
-thread_local! {
-    static SYSTEM: RefCell<Inner> = RefCell::new(Inner::new());
-}
-
-struct Inner {
-    system: Option<System>,
-    runner: Option<SystemRunner>,
-}
-
-impl Inner {
-    fn new() -> Self {
-        let runner = System::new("symbolicator_test");
-        let system = System::current();
-
-        Self {
-            system: Some(system),
-            runner: Some(runner),
-        }
-    }
-
-    fn set_current(&self) {
-        System::set_current(self.system.clone().unwrap());
-    }
-
-    fn runner(&mut self) -> &mut SystemRunner {
-        self.runner.as_mut().unwrap()
-    }
-}
-
-impl Drop for Inner {
-    fn drop(&mut self) {
-        self.system.take();
-        std::mem::forget(self.runner.take().unwrap())
-    }
-}
-
-/// Initializes logging for tests.
+/// Setup the test environment.
 ///
-/// The logger only captures logs from the `symbolicator` crate and mutes all other logs (such as
-/// actix or symbolic).
-pub(crate) fn setup_logging() {
+///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
+///    other logs (such as actix or symbolic).
+pub(crate) fn setup() {
     env_logger::builder()
         .filter(Some("symbolicator"), LevelFilter::Trace)
         .is_test(true)
         .try_init()
         .ok();
-}
-
-/// Setup the test environment.
-///
-///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
-///    other logs (such as actix or symbolic).
-///  - Switches threadpools into test mode: In this mode, threadpools do not actually spawn threads,
-///    but instead return the futures that are spawned. This allows to capture console output logged
-///    from spawned tasks.
-pub(crate) fn setup() {
-    setup_logging();
-
-    // Force initialization of the actix system
-    SYSTEM.with(|_sys| ());
-
-    crate::utils::futures::enable_test_mode();
 }
 
 /// Creates a temporary directory.
@@ -127,13 +69,10 @@ pub(crate) fn tempdir() -> TempDir {
 pub fn block_fn01<F, R>(f: F) -> Result<R::Item, R::Error>
 where
     F: FnOnce() -> R,
-    R: IntoFuture,
+    R: futures01::IntoFuture,
 {
-    SYSTEM.with(|cell| {
-        let mut inner = cell.borrow_mut();
-        inner.set_current();
-        inner.runner().block_on(future::lazy(f))
-    })
+    let mut runtime = tokio01::runtime::current_thread::Runtime::new().unwrap();
+    runtime.block_on(futures01::future::lazy(f))
 }
 
 /// Get bucket configuration for the local fixtures.

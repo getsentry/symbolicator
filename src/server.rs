@@ -1,4 +1,3 @@
-use actix::System;
 use actix_web::{server::HttpServer, App};
 use anyhow::{Context, Result};
 
@@ -20,8 +19,6 @@ pub fn create_app(state: ServiceState) -> ServiceApp {
 
 /// Starts all actors and HTTP server based on loaded config.
 pub fn run(config: Config) -> Result<()> {
-    let sys = System::new("symbolicator");
-
     // Log this metric before actually starting the server. This allows to see restarts even if
     // service creation fails. The HTTP server is bound before the actix system runs.
     metric!(counter("server.starting") += 1);
@@ -33,10 +30,7 @@ pub fn run(config: Config) -> Result<()> {
     HttpServer::new(move || create_app(service.clone()))
         .bind(&bind)
         .context("failed to bind to the port")?
-        .start();
-
-    log::info!("Starting system");
-    sys.run();
+        .run();
     log::info!("System shutdown complete");
 
     Ok(())

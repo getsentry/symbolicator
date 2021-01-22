@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_list_files() {
-        test::setup_logging();
+        test::setup();
 
         let source = s3_source(s3_source_key!());
         let downloader = S3Downloader::new();
@@ -338,7 +338,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_download_complete() {
-        test::setup_logging();
+        test::setup();
 
         let source_key = s3_source_key!();
         setup_bucket(source_key.clone()).await;
@@ -367,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_download_missing() {
-        test::setup_logging();
+        test::setup();
 
         let source_key = s3_source_key!();
         setup_bucket(source_key.clone()).await;
@@ -392,7 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_download_invalid_credentials() {
-        test::setup_logging();
+        test::setup();
 
         let broken_key = S3SourceKey {
             region: rusoto_core::Region::UsEast1,

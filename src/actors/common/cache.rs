@@ -13,7 +13,7 @@ use tempfile::NamedTempFile;
 
 use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
 use crate::types::Scope;
-use crate::utils::futures::{BoxedFuture, CallOnDrop};
+use crate::utils::futures::{spawn_compat, BoxedFuture, CallOnDrop};
 
 /// Result from [`Cacher::compute_memoized`].
 type CacheResultFuture<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
@@ -285,13 +285,12 @@ impl<T: CacheItemRequest> Cacher<T> {
             // get a channel that will receive data, or they create a new channel.
             drop(remove_computation_token);
             sender.send(result).ok();
-            Ok(())
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
 
         // TODO: This spawns into the arbiter of the caller. Consider more explicit resource
         // allocation here to separate CPU intensive work from I/O work.
-        actix::spawn(channel.boxed_local().compat());
+        spawn_compat(channel);
 
         receiver.shared()
     }

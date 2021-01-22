@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -9,8 +8,6 @@ use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use tokio01::prelude::FutureExt as TokioFutureExt;
 use tokio01::runtime::Runtime as TokioRuntime;
-
-static IS_TEST: AtomicBool = AtomicBool::new(false);
 
 /// A pinned, boxed future.
 ///
@@ -21,16 +18,6 @@ static IS_TEST: AtomicBool = AtomicBool::new(false);
 /// futures.  Trait methods can not be async/await and using this type in their return value
 /// allows to integrate with async await code.
 pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
-
-/// Enables test mode of all thread pools and remote threads.
-///
-/// In this mode, futures are not spawned into threads, but instead run on the current thread. This
-/// is useful to ensure deterministic test execution, and also allows to capture console output from
-/// spawned tasks.
-#[cfg(test)]
-pub fn enable_test_mode() {
-    IS_TEST.store(true, Ordering::Relaxed);
-}
 
 /// Error returned from a [`SpawnHandle`] when the thread pool restarts.
 pub use oneshot::Canceled as RemoteCanceled;
@@ -45,7 +32,7 @@ pub use oneshot::Receiver as SpawnHandle;
 /// Work-stealing based thread pool for executing futures.
 #[derive(Clone, Debug)]
 pub struct ThreadPool {
-    inner: Option<Arc<TokioRuntime>>,
+    inner: Arc<TokioRuntime>,
 }
 
 impl ThreadPool {
@@ -55,13 +42,7 @@ impl ThreadPool {
     /// number of threads used per pool so that the pools are less
     /// likely to starve each other.
     pub fn new() -> Self {
-        let inner = if cfg!(test) && IS_TEST.load(Ordering::Relaxed) {
-            None
-        } else {
-            let runtime = tokio01::runtime::Builder::new().build().unwrap();
-            Some(Arc::new(runtime))
-        };
-
+        let inner = Arc::new(tokio01::runtime::Builder::new().build().unwrap());
         ThreadPool { inner }
     }
 
@@ -84,12 +65,7 @@ impl ThreadPool {
             Ok(())
         };
 
-        let compat = spawned.boxed().compat();
-
-        match self.inner {
-            Some(ref runtime) => runtime.executor().spawn(compat),
-            None => actix::spawn(compat),
-        }
+        self.inner.executor().spawn(spawned.boxed().compat());
 
         receiver
     }
@@ -119,6 +95,30 @@ impl Drop for CallOnDrop {
         }
     }
 }
+
+/// Executes a future on the current thread.
+///
+/// The provided future must complete or be canceled before `run` will return. This function will
+/// always spawn on a `CurrentThread` executor and is able to spawn futures that are not `Send`.
+///
+/// # Panics
+///
+/// This function can only be invoked from the context of a `run` call; any other use will result in
+/// a panic.
+///
+/// # Compatibility
+///
+/// This is a compatibility shim for the `tokio` 1.0 `spawn` function signature to run on a `tokio`
+/// 0.1 executor.
+pub fn spawn_compat<F>(future: F)
+where
+    F: Future + 'static,
+{
+    tokio01::runtime::current_thread::spawn(future.map(|_| Ok(())).boxed_local().compat());
+}
+
+/// A compatibility type for asynchronous results based on `futures` 0.1.
+pub type ResponseFuture<I, E> = Box<dyn futures01::Future<Item = I, Error = E>>;
 
 /// Error returned by [`timeout_compat`].
 #[derive(Debug, PartialEq, thiserror::Error)]

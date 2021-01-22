@@ -1,4 +1,3 @@
-use actix::ResponseFuture;
 use actix_web::{
     dev::Payload, error, http::Method, multipart, Error, HttpMessage, HttpRequest, Json, Query,
     State,
@@ -12,7 +11,7 @@ use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::sources::SourceConfig;
 use crate::types::{RequestId, RequestOptions, Scope, SymbolicationResponse};
-use crate::utils::futures::ThreadPool;
+use crate::utils::futures::{ResponseFuture, ThreadPool};
 use crate::utils::multipart::{
     read_multipart_file, read_multipart_request_options, read_multipart_sources,
 };

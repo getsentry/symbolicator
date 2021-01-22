@@ -1,6 +1,5 @@
 use std::io::Cursor;
 
-use actix::ResponseFuture;
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
 use failure::{Error, Fail};
@@ -12,6 +11,7 @@ use tokio01::codec::{BytesCodec, FramedRead};
 use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::Scope;
+use crate::utils::futures::ResponseFuture;
 use crate::utils::paths::parse_symstore_path;
 use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt};
 

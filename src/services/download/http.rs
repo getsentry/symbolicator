@@ -134,7 +134,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_download_source() {
-        test::setup_logging();
+        test::setup();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();
@@ -161,7 +161,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_download_source_missing() {
-        test::setup_logging();
+        test::setup();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path().to_owned();

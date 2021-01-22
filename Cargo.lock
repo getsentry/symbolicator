@@ -3363,7 +3363,6 @@ dependencies = [
 name = "symbolicator"
 version = "0.3.2"
 dependencies = [
- "actix",
  "actix-web",
  "anyhow",
  "apple-crash-report-parser",

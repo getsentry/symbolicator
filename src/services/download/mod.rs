@@ -266,7 +266,7 @@ mod tests {
         let rt_pool = Arc::new(Runtime::new().unwrap());
 
         rt_main.block_on(async {
-            test::setup_logging();
+            test::setup();
 
             // test::setup() enables logging, but this test spawns a thread where
             // logging is not captured.  For normal test runs we don't want to
@@ -307,7 +307,7 @@ mod tests {
         let rt_pool = Arc::new(Runtime::new().unwrap());
 
         rt_main.block_on(async {
-            test::setup_logging();
+            test::setup();
 
             // test::setup() enables logging, but this test spawns a thread where
             // logging is not captured.  For normal test runs we don't want to

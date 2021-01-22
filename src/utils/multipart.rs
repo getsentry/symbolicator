@@ -1,10 +1,11 @@
-use actix::ResponseFuture;
 use actix_web::{dev::Payload, error, multipart, Error};
 use bytes::{Bytes, BytesMut};
 use futures01::{Future, Stream};
 
 use crate::sources::SourceConfig;
 use crate::types::RequestOptions;
+
+use super::futures::ResponseFuture;
 
 const MAX_JSON_SIZE: usize = 1_000_000;
 
