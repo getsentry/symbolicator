@@ -288,8 +288,8 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
 
-        // TODO: This spawns into the arbiter of the caller. Consider more explicit resource
-        // allocation here to separate CPU intensive work from I/O work.
+        // TODO: This spawns into the current_thread runtime of the caller. Consider more explicit
+        // resource allocation here to separate CPU intensive work from I/O work.
         spawn_compat(channel);
 
         receiver.shared()

@@ -330,10 +330,10 @@ impl SymbolicationActor {
         }
         .bind_hub(hub);
 
-        // TODO: This spawns into the arbiter of the caller, which usually is the web handler. This
-        // doesn't block the web request, but it congests the threads that should only do web I/O.
-        // Instead, this should spawn into a dedicated resource (e.g. a threadpool) to keep web
-        // requests flowing while symbolication tasks may backlog.
+        // TODO: This spawns into the current_thread runtime of the caller, which usually is the web
+        // handler. This doesn't block the web request, but it congests the threads that should only
+        // do web I/O. Instead, this should spawn into a dedicated resource (e.g. a threadpool) to
+        // keep web requests flowing while symbolication tasks may backlog.
         spawn_compat(request_future);
 
         request_id
