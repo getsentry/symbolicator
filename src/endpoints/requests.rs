@@ -1,5 +1,6 @@
 use actix_web::{http::Method, HttpResponse, Path, Query, State};
 use failure::Error;
+use futures::{FutureExt, TryFutureExt};
 use futures01::Future;
 use serde::Deserialize;
 
@@ -31,11 +32,14 @@ fn poll_request(
     let future = state
         .symbolication()
         .get_response(path.request_id, query.timeout)
+        .boxed_local()
+        .unit_error()
+        .compat()
         .map(|response_opt| match response_opt {
             Some(response) => HttpResponse::Ok().json(response),
             None => HttpResponse::NotFound().finish(),
         })
-        .map_err(Error::from);
+        .map_err(|_| failure::err_msg("unreachable"));
 
     Box::new(future)
 }

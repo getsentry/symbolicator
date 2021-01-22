@@ -10,10 +10,9 @@ use std::time::{Duration, Instant};
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
+use futures::channel::oneshot;
 use futures::compat::Future01CompatExt;
-use futures::future;
-use futures01::future::{Future as _, Shared};
-use futures01::sync::oneshot;
+use futures::{future, FutureExt as _};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
@@ -44,9 +43,7 @@ use crate::types::{
     RequestId, RequestOptions, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{
-    m, measure, spawn_compat, timeout_compat, CallOnDrop, ResponseFuture, ThreadPool,
-};
+use crate::utils::futures::{m, measure, spawn_compat, timeout_compat, CallOnDrop, ThreadPool};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -92,7 +89,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 }
 
 // We want a shared future here because otherwise polling for a response would hold the global lock.
-type ComputationChannel = Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
+type ComputationChannel = future::Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
 type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
 
@@ -225,55 +222,14 @@ impl SymbolicationActor {
         threadpool: ThreadPool,
         spawnpool: procspawn::Pool,
     ) -> Self {
-        let requests = Arc::new(Mutex::new(BTreeMap::new()));
-
         SymbolicationActor {
             objects,
             symcaches,
             cficaches,
             diagnostics_cache,
             threadpool,
-            requests,
+            requests: Arc::new(Mutex::new(BTreeMap::new())),
             spawnpool: Arc::new(spawnpool),
-        }
-    }
-
-    fn wrap_response_channel(
-        &self,
-        request_id: RequestId,
-        timeout: Option<u64>,
-        channel: ComputationChannel,
-    ) -> ResponseFuture<SymbolicationResponse, SymbolicationError> {
-        let rv = channel
-            .map(|item| (*item).clone())
-            .map_err(|_| SymbolicationError::Canceled);
-
-        if let Some(timeout) = timeout.map(Duration::from_secs) {
-            Box::new(
-                tokio01::timer::Timeout::new(rv, timeout).then(move |result| {
-                    match result {
-                        Ok((finished_at, response)) => {
-                            metric!(timer("requests.response_idling") = finished_at.elapsed());
-                            Ok(response)
-                        }
-                        Err(timeout_error) => match timeout_error.into_inner() {
-                            Some(error) => Err(error),
-                            None => Ok(SymbolicationResponse::Pending {
-                                request_id,
-                                // XXX(markus): Probably need a better estimation at some
-                                // point.
-                                retry_after: 30,
-                            }),
-                        },
-                    }
-                }),
-            )
-        } else {
-            Box::new(rv.then(move |result| {
-                let (finished_at, response) = result?;
-                metric!(timer("requests.response_idling") = finished_at.elapsed());
-                Ok(response)
-            }))
         }
     }
 
@@ -337,6 +293,46 @@ impl SymbolicationActor {
         spawn_compat(request_future);
 
         request_id
+    }
+}
+
+async fn wrap_response_channel(
+    request_id: RequestId,
+    timeout: Option<u64>,
+    channel: ComputationChannel,
+) -> SymbolicationResponse {
+    let channel_result = match timeout {
+        Some(timeout) => {
+            let wrapped_channel = timeout_compat(Duration::from_secs(timeout), channel);
+            match wrapped_channel.await {
+                Ok(outcome) => outcome,
+                Err(_elapsed) => {
+                    return SymbolicationResponse::Pending {
+                        request_id,
+                        // We should estimate this better, but at some point the
+                        // architecture will probably change to pushing results on a
+                        // queue instead of polling so it's unlikely we'll ever do
+                        // better here.
+                        retry_after: 30,
+                    };
+                }
+            }
+        }
+        None => channel.await,
+    };
+    match channel_result {
+        Ok((finished_at, response)) => {
+            metric!(timer("requests.response_idling") = finished_at.elapsed());
+            response
+        }
+        Err(futures::channel::oneshot::Canceled) => {
+            // Double capture: todo(flub): explain why and remove
+            sentry::capture_message(
+                "Symbolication response channel dropped",
+                sentry::Level::Error,
+            );
+            SymbolicationResponse::InternalError
+        }
     }
 }
 
@@ -1015,6 +1011,13 @@ impl SymbolicationActor {
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        #[cfg(test)]
+        {
+            // For test_pending_request we need to yield to the executor because otherwise
+            // the entire symbolication completes without ever yielding.  But we need to
+            // test that responses.
+            crate::utils::futures::delay(std::time::Duration::from_millis(0)).await;
+        }
         let serialize_dif_candidates = request.options.dif_candidates;
 
         let f = self.do_symbolicate_impl(request);
@@ -1137,23 +1140,25 @@ impl SymbolicationActor {
     ///
     /// If the timeout is set and no result is ready within the given time,
     /// [`SymbolicationResponse::Pending`] is returned.
-    pub fn get_response(
-        &self,
+    // TODO(flub): once the callers are updated to be `async fn` this can take `&self` again.
+    pub async fn get_response(
+        self,
         request_id: RequestId,
         timeout: Option<u64>,
-    ) -> ResponseFuture<Option<SymbolicationResponse>, SymbolicationError> {
+    ) -> Option<SymbolicationResponse> {
+        // TODO(flub): Check what callers do with None, might be pointless
         let channel_opt = self.requests.lock().get(&request_id).cloned();
         match channel_opt {
-            Some(channel) => Box::new(
-                self.wrap_response_channel(request_id, timeout, channel)
-                    .map(Some),
-            ),
+            Some(channel) => {
+                let response = wrap_response_channel(request_id, timeout, channel).await;
+                Some(response)
+            }
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
                 // scopes).
                 metric!(counter("symbolication.request_id_unknown") += 1);
-                Box::new(futures01::future::ok(None))
+                None
             }
         }
     }
@@ -2096,21 +2101,21 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let request = get_symbolication_request(vec![source]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        assert_snapshot!(response);
+        assert_snapshot!(response.unwrap());
 
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let request = get_symbolication_request(vec![]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        assert_snapshot!(response);
+        assert_snapshot!(response.unwrap());
 
         Ok(())
     }
@@ -2123,23 +2128,71 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let request = get_symbolication_request(vec![]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        assert_snapshot!(response);
+        assert_snapshot!(response.unwrap());
 
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let request = get_symbolication_request(vec![source]);
             let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        assert_snapshot!(response);
+        assert_snapshot!(response.unwrap());
 
         Ok(())
+    }
+
+    #[test]
+    fn test_pending_request() {
+        // Make sure we can repeatedly poll for the response
+        let (service, _cache_dir) = setup_service();
+
+        let stacktraces = serde_json::from_str(
+            r#"[
+              {
+                "frames":[
+                  {
+                    "instruction_addr":"0x8c",
+                    "addr_mode":"rel:0"
+                  }
+                ]
+              }
+            ]"#,
+        )
+        .unwrap();
+
+        let request = SymbolicateStacktraces {
+            modules: Vec::new(),
+            stacktraces,
+            signal: None,
+            sources: Arc::new([]),
+            scope: Default::default(),
+            options: Default::default(),
+        };
+
+        let response = test::block_on01(async {
+            // Be aware, this spawns the work into a new current thread runtime, which gets
+            // dropped when test::block_on01() returns.
+            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            let response = service
+                .symbolication()
+                .get_response(request_id, Some(0))
+                .await;
+            let request_id = match response.unwrap() {
+                SymbolicationResponse::Pending { request_id, .. } => request_id,
+                response => panic!("Not a pending request: {:#?}", response),
+            };
+            service.symbolication().get_response(request_id, None).await
+        });
+        assert!(matches!(
+            response,
+            Some(SymbolicationResponse::Completed(_))
+        ));
     }
 
     fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
@@ -2147,7 +2200,7 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = Bytes::from(fs::read(path)?);
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let symbolication = service.symbolication();
             let request_id = symbolication.process_minidump(
                 Scope::Global,
@@ -2157,10 +2210,10 @@ mod tests {
                     dif_candidates: true,
                 },
             );
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        assert_snapshot!(response);
+        assert_snapshot!(response.unwrap());
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
@@ -2194,7 +2247,7 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
                 report_file,
@@ -2204,10 +2257,10 @@ mod tests {
                 },
             );
 
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        assert_snapshot!(response);
+        assert_snapshot!(response.unwrap());
         Ok(())
     }
 
@@ -2249,12 +2302,12 @@ mod tests {
             options: Default::default(),
         };
 
-        let response = test::block_fn01(|| {
+        let response = test::block_on01(async {
             let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None)
-        })?;
+            service.symbolication().get_response(request_id, None).await
+        });
 
-        insta::assert_yaml_snapshot!(response);
+        insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())
     }
 

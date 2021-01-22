@@ -16,10 +16,12 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix_web::fs::StaticFiles;
+use futures::{FutureExt, TryFutureExt};
 use log::LevelFilter;
 
 use crate::sources::{
@@ -66,13 +68,14 @@ pub(crate) fn tempdir() -> TempDir {
 ///
 /// Note that this function is intended to be used only for testing purpose. This function panics on
 /// nested call.
-pub fn block_fn01<F, R>(f: F) -> Result<R::Item, R::Error>
+pub fn block_on01<F>(f: F) -> F::Output
 where
-    F: FnOnce() -> R,
-    R: futures01::IntoFuture,
+    F: Future,
 {
     let mut runtime = tokio01::runtime::current_thread::Runtime::new().unwrap();
-    runtime.block_on(futures01::future::lazy(f))
+    runtime
+        .block_on(f.never_error().boxed_local().compat())
+        .unwrap()
 }
 
 /// Get bucket configuration for the local fixtures.
