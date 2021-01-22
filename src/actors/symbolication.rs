@@ -7,12 +7,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix::ResponseFuture;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
 use futures::compat::Future01CompatExt;
-use futures::{future, FutureExt as _, TryFutureExt};
+use futures::future;
 use futures01::future::{Future as _, Shared};
 use futures01::sync::oneshot;
 use parking_lot::Mutex;
@@ -45,7 +44,9 @@ use crate::types::{
     RequestId, RequestOptions, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{m, measure, timeout_compat, CallOnDrop, ThreadPool};
+use crate::utils::futures::{
+    m, measure, spawn_compat, timeout_compat, CallOnDrop, ResponseFuture, ThreadPool,
+};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -324,18 +325,16 @@ impl SymbolicationActor {
                 .compat()
                 .await
                 .ok();
-            drop(token);
-            Ok(())
-        }
-        .bind_hub(hub)
-        .boxed_local()
-        .compat();
 
-        // TODO: This spawns into the arbiter of the caller, which usually is the web handler. This
-        // doesn't block the web request, but it congests the threads that should only do web I/O.
-        // Instead, this should spawn into a dedicated resource (e.g. a threadpool) to keep web
-        // requests flowing while symbolication tasks may backlog.
-        actix::spawn(request_future);
+            drop(token);
+        }
+        .bind_hub(hub);
+
+        // TODO: This spawns into the current_thread runtime of the caller, which usually is the web
+        // handler. This doesn't block the web request, but it congests the threads that should only
+        // do web I/O. Instead, this should spawn into a dedicated resource (e.g. a threadpool) to
+        // keep web requests flowing while symbolication tasks may backlog.
+        spawn_compat(request_future);
 
         request_id
     }

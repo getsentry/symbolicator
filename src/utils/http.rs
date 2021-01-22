@@ -55,7 +55,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_untrusted_client() {
-        test::setup_logging();
+        test::setup();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));
@@ -76,7 +76,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_untrusted_client_loopback() {
-        test::setup_logging();
+        test::setup();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));
@@ -97,7 +97,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_untrusted_client_allowed() {
-        test::setup_logging();
+        test::setup();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));
@@ -120,7 +120,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_trusted() {
-        test::setup_logging();
+        test::setup();
 
         let server = test::TestServer::new(|app| {
             app.resource("/", |resource| resource.f(|_| "OK"));

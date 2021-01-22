@@ -1,4 +1,3 @@
-use actix::ResponseFuture;
 use actix_web::{http::Method, HttpResponse, Path, Query, State};
 use failure::Error;
 use futures01::Future;
@@ -6,6 +5,7 @@ use serde::Deserialize;
 
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::RequestId;
+use crate::utils::futures::ResponseFuture;
 
 /// Path parameters of the symbolication poll request.
 #[derive(Deserialize)]

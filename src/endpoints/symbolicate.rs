@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use actix::ResponseFuture;
 use actix_web::{http::Method, HttpRequest, Json, Query, State};
 use failure::Error;
 use futures01::Future;
@@ -13,6 +12,7 @@ use crate::sources::SourceConfig;
 use crate::types::{
     RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
 };
+use crate::utils::futures::ResponseFuture;
 use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt, WriteSentryScope};
 
 /// Query parameters of the symbolication request.
