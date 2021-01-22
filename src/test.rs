@@ -17,19 +17,21 @@
 //!    HTTP connections.
 
 use std::future::Future;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use actix_web::fs::StaticFiles;
 use futures::{FutureExt, TryFutureExt};
 use log::LevelFilter;
+use reqwest::Url;
+use warp::Filter;
 
 use crate::sources::{
     CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
     SourceFilters, SourceId,
 };
 
-pub use actix_web::test::*;
+pub use actix_web::test::TestServer;
 pub use tempfile::TempDir;
 
 const SYMBOLS_PATH: &str = "tests/fixtures/symbols";
@@ -120,6 +122,65 @@ pub(crate) fn microsoft_symsrv() -> SourceConfig {
     }))
 }
 
+/// Custom version of warp's sealed `IsReject` trait.
+///
+/// This is required to allow the test [`Server`] to spawn a warp server.
+pub(crate) trait IsReject {}
+
+impl IsReject for warp::reject::Rejection {}
+impl IsReject for std::convert::Infallible {}
+
+/// A test server that binds to a random port and serves a web app.
+///
+/// This server requires a `tokio` runtime and is supposed to be run in a `tokio::test`. It
+/// automatically stops serving when dropped.
+#[derive(Debug)]
+pub(crate) struct Server {
+    handle: tokio::task::JoinHandle<()>,
+    socket: SocketAddr,
+}
+
+impl Server {
+    /// Creates a new test server from the given `warp` filter.
+    pub fn new<F>(filter: F) -> Self
+    where
+        F: warp::Filter + Clone + Send + Sync + 'static,
+        F::Extract: warp::reply::Reply,
+        F::Error: IsReject,
+    {
+        let (socket, future) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
+        let handle = tokio::spawn(future);
+
+        Self { handle, socket }
+    }
+
+    /// Returns the socket address that this server listens on.
+    pub fn addr(&self) -> SocketAddr {
+        self.socket
+    }
+
+    /// Returns the port that this server listens on.
+    pub fn port(&self) -> u16 {
+        self.addr().port()
+    }
+
+    /// Returns a full URL pointing to the given path.
+    ///
+    /// This URL uses `localhost` as hostname.
+    pub fn url(&self, path: &str) -> Url {
+        let path = path.trim_start_matches('/');
+        format!("http://localhost:{}/{}", self.port(), path)
+            .parse()
+            .unwrap()
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
 /// Spawn an actual HTTP symbol server for local fixtures.
 ///
 /// The symbol server serves static files from the local symbols fixture location under the
@@ -129,19 +190,16 @@ pub(crate) fn microsoft_symsrv() -> SourceConfig {
 ///
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
 /// permitted, and need to be activated via [`Config::connect_to_reserved_ips`].
-pub(crate) fn symbol_server() -> (TestServer, SourceConfig) {
-    let server = TestServer::new(|app| {
-        app.resource("/download/{tail:.+}", |resource| {
-            resource.h(StaticFiles::new(SYMBOLS_PATH).unwrap())
-        });
-    });
+pub(crate) fn symbol_server() -> (Server, SourceConfig) {
+    let app = warp::path("download").and(warp::fs::dir(SYMBOLS_PATH));
+    let server = Server::new(app);
 
     // The source uses the same identifier ("local") as the local file system source to avoid
     // differences when changing the bucket in tests.
 
     let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("local"),
-        url: server.url("/download/").parse().unwrap(),
+        url: server.url("download/"),
         headers: Default::default(),
         files: Default::default(),
     }));
