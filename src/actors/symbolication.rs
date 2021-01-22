@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
-use futures::compat::Future01CompatExt;
 use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
 use regex::Regex;
@@ -28,7 +27,6 @@ use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use thiserror::Error;
-use tokio01::timer::Delay;
 
 use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
@@ -42,7 +40,9 @@ use crate::types::{
     RequestId, RequestOptions, Scope, Signal, SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{m, measure, spawn_compat, timeout_compat, CallOnDrop, ThreadPool};
+use crate::utils::futures::{
+    delay, m, measure, spawn_compat, timeout_compat, CallOnDrop, ThreadPool,
+};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -276,10 +276,7 @@ impl SymbolicationActor {
 
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
-            Delay::new(Instant::now() + MAX_POLL_DELAY)
-                .compat()
-                .await
-                .ok();
+            delay(MAX_POLL_DELAY).await;
 
             drop(token);
         }
@@ -2075,62 +2072,66 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_remove_bucket() -> Result<(), SymbolicationError> {
+    #[tokio::test]
+    async fn test_remove_bucket() -> Result<(), SymbolicationError> {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let response = test::block_on01(async {
+        let symbolication = service.symbolication();
+        let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![source]);
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None).await
+            let request_id = symbolication.symbolicate_stacktraces(request);
+            symbolication.get_response(request_id, None).await
         });
 
-        assert_snapshot!(response.unwrap());
+        assert_snapshot!(response.await.unwrap());
 
-        let response = test::block_on01(async {
+        let symbolication = service.symbolication();
+        let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![]);
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None).await
+            let request_id = symbolication.symbolicate_stacktraces(request);
+            symbolication.get_response(request_id, None).await
         });
 
-        assert_snapshot!(response.unwrap());
+        assert_snapshot!(response.await.unwrap());
 
         Ok(())
     }
 
-    #[test]
-    fn test_add_bucket() -> anyhow::Result<()> {
+    #[tokio::test]
+    async fn test_add_bucket() -> anyhow::Result<()> {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let response = test::block_on01(async {
+        let symbolication = service.symbolication();
+        let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![]);
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None).await
+            let request_id = symbolication.symbolicate_stacktraces(request);
+            symbolication.get_response(request_id, None).await
         });
 
-        assert_snapshot!(response.unwrap());
+        assert_snapshot!(response.await.unwrap());
 
-        let response = test::block_on01(async {
+        let symbolication = service.symbolication();
+        let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![source]);
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
-            service.symbolication().get_response(request_id, None).await
+            let request_id = symbolication.symbolicate_stacktraces(request);
+            symbolication.get_response(request_id, None).await
         });
 
-        assert_snapshot!(response.unwrap());
+        assert_snapshot!(response.await.unwrap());
 
         Ok(())
     }
 
-    #[test]
-    fn test_get_response_multi() {
+    #[tokio::test]
+    async fn test_get_response_multi() {
         // Make sure we can repeatedly poll for the response
         let (service, _cache_dir) = setup_service();
 
@@ -2157,9 +2158,9 @@ mod tests {
             options: Default::default(),
         };
 
-        test::block_on01(async {
+        test::spawn_compat(move || async move {
             // Be aware, this spawns the work into a new current thread runtime, which gets
-            // dropped when test::block_on01() returns.
+            // dropped when test::spawn_compat() returns.
             let request_id = service.symbolication().symbolicate_stacktraces(request);
 
             for _ in 0..2 {
@@ -2174,15 +2175,16 @@ mod tests {
                 }
             }
         })
+        .await;
     }
 
-    fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
+    async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = Bytes::from(fs::read(path)?);
-        let response = test::block_on01(async {
-            let symbolication = service.symbolication();
+        let symbolication = service.symbolication();
+        let response = test::spawn_compat(move || async move {
             let request_id = symbolication.process_minidump(
                 Scope::Global,
                 minidump,
@@ -2191,10 +2193,10 @@ mod tests {
                     dif_candidates: true,
                 },
             );
-            service.symbolication().get_response(request_id, None).await
+            symbolication.get_response(request_id, None).await
         });
 
-        assert_snapshot!(response.unwrap());
+        assert_snapshot!(response.await.unwrap());
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
@@ -2207,28 +2209,28 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_minidump_windows() -> anyhow::Result<()> {
-        stackwalk_minidump("./tests/fixtures/windows.dmp")
+    #[tokio::test]
+    async fn test_minidump_windows() -> anyhow::Result<()> {
+        stackwalk_minidump("./tests/fixtures/windows.dmp").await
     }
 
-    #[test]
-    fn test_minidump_macos() -> anyhow::Result<()> {
-        stackwalk_minidump("./tests/fixtures/macos.dmp")
+    #[tokio::test]
+    async fn test_minidump_macos() -> anyhow::Result<()> {
+        stackwalk_minidump("./tests/fixtures/macos.dmp").await
     }
 
-    #[test]
-    fn test_minidump_linux() -> anyhow::Result<()> {
-        stackwalk_minidump("./tests/fixtures/linux.dmp")
+    #[tokio::test]
+    async fn test_minidump_linux() -> anyhow::Result<()> {
+        stackwalk_minidump("./tests/fixtures/linux.dmp").await
     }
 
-    #[test]
-    fn test_apple_crash_report() -> anyhow::Result<()> {
+    #[tokio::test]
+    async fn test_apple_crash_report() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
-        let response = test::block_on01(async {
+        let response = test::spawn_compat(move || async move {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
                 report_file,
@@ -2241,12 +2243,12 @@ mod tests {
             service.symbolication().get_response(request_id, None).await
         });
 
-        assert_snapshot!(response.unwrap());
+        assert_snapshot!(response.await.unwrap());
         Ok(())
     }
 
-    #[test]
-    fn test_wasm_payload() -> anyhow::Result<()> {
+    #[tokio::test]
+    async fn test_wasm_payload() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
@@ -2283,12 +2285,12 @@ mod tests {
             options: Default::default(),
         };
 
-        let response = test::block_on01(async {
+        let response = test::spawn_compat(move || async move {
             let request_id = service.symbolication().symbolicate_stacktraces(request);
             service.symbolication().get_response(request_id, None).await
         });
 
-        insta::assert_yaml_snapshot!(response.unwrap());
+        insta::assert_yaml_snapshot!(response.await.unwrap());
         Ok(())
     }
 
