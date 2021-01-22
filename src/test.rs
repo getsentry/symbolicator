@@ -75,7 +75,7 @@ where
     let mut runtime = tokio01::runtime::current_thread::Runtime::new().unwrap();
     runtime
         .block_on(f.never_error().boxed_local().compat())
-        .unwrap()
+        .unwrap_or_else(|never| match never {})
 }
 
 /// Get bucket configuration for the local fixtures.

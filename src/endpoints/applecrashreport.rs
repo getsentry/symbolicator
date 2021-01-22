@@ -136,15 +136,15 @@ fn handle_apple_crash_report_request(
             .and_then(move |request_id| {
                 symbolication
                     .get_response(request_id, timeout)
+                    .never_error()
                     .boxed_local()
-                    .unit_error()
                     .compat()
                     .then(|result| match result {
                         Ok(Some(response)) => Ok(Json(response)),
                         Ok(None) => Err(error::ErrorInternalServerError(
                             "symbolication request did not start",
                         )),
-                        Err(_) => Err(error::ErrorInternalServerError("unreachable")),
+                        Err(never) => match never {},
                     })
                     .map_err(Error::from)
             });

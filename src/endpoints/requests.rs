@@ -32,14 +32,14 @@ fn poll_request(
     let future = state
         .symbolication()
         .get_response(path.request_id, query.timeout)
+        .never_error()
         .boxed_local()
-        .unit_error()
         .compat()
         .map(|response_opt| match response_opt {
             Some(response) => HttpResponse::Ok().json(response),
             None => HttpResponse::NotFound().finish(),
         })
-        .map_err(|_| failure::err_msg("unreachable"));
+        .map_err(|never| match never {});
 
     Box::new(future)
 }

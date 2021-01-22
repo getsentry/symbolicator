@@ -10,9 +10,8 @@ use std::time::{Duration, Instant};
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
-use futures::channel::oneshot;
 use futures::compat::Future01CompatExt;
-use futures::{future, FutureExt as _};
+use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
@@ -301,38 +300,32 @@ async fn wrap_response_channel(
     timeout: Option<u64>,
     channel: ComputationChannel,
 ) -> SymbolicationResponse {
-    let channel_result = match timeout {
-        Some(timeout) => {
-            let wrapped_channel = timeout_compat(Duration::from_secs(timeout), channel);
-            match wrapped_channel.await {
-                Ok(outcome) => outcome,
-                Err(_elapsed) => {
-                    return SymbolicationResponse::Pending {
-                        request_id,
-                        // We should estimate this better, but at some point the
-                        // architecture will probably change to pushing results on a
-                        // queue instead of polling so it's unlikely we'll ever do
-                        // better here.
-                        retry_after: 30,
-                    };
-                }
+    let channel_result = if let Some(timeout) = timeout {
+        match timeout_compat(Duration::from_secs(timeout), channel).await {
+            Ok(outcome) => outcome,
+            Err(_elapsed) => {
+                return SymbolicationResponse::Pending {
+                    request_id,
+                    // We should estimate this better, but at some point the
+                    // architecture will probably change to pushing results on a
+                    // queue instead of polling so it's unlikely we'll ever do
+                    // better here.
+                    retry_after: 30,
+                };
             }
         }
-        None => channel.await,
+    } else {
+        channel.await
     };
+
     match channel_result {
         Ok((finished_at, response)) => {
             metric!(timer("requests.response_idling") = finished_at.elapsed());
             response
         }
-        Err(futures::channel::oneshot::Canceled) => {
-            // Double capture: todo(flub): explain why and remove
-            sentry::capture_message(
-                "Symbolication response channel dropped",
-                sentry::Level::Error,
-            );
-            SymbolicationResponse::InternalError
-        }
+        // If the sender is dropped, this is likely due to a panic that is captured at the source.
+        // Therefore, we do not need to capture an error at this point.
+        Err(_canceled) => SymbolicationResponse::InternalError,
     }
 }
 
@@ -1146,13 +1139,8 @@ impl SymbolicationActor {
         request_id: RequestId,
         timeout: Option<u64>,
     ) -> Option<SymbolicationResponse> {
-        // TODO(flub): Check what callers do with None, might be pointless
-        let channel_opt = self.requests.lock().get(&request_id).cloned();
-        match channel_opt {
-            Some(channel) => {
-                let response = wrap_response_channel(request_id, timeout, channel).await;
-                Some(response)
-            }
+        match self.requests.lock().get(&request_id).cloned() {
+            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to

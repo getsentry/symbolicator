@@ -87,11 +87,11 @@ fn symbolicate_frames(
         let response = state
             .symbolication()
             .get_response(request_id, timeout)
+            .never_error()
             .boxed_local()
-            .unit_error()
             .compat()
             .map(|x| Json(x.expect("Race condition: Inserted request not found!")))
-            .map_err(|_| failure::err_msg("unreachable"));
+            .map_err(|never| match never {});
 
         Box::new(response.sentry_hub_current())
     })
