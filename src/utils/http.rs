@@ -49,6 +49,8 @@ pub fn create_client(config: &Config, trusted: bool) -> reqwest::Client {
 
 #[cfg(test)]
 mod tests {
+    use warp::Filter;
+
     use super::*;
 
     use crate::test;
@@ -57,9 +59,7 @@ mod tests {
     async fn test_untrusted_client() {
         test::setup();
 
-        let server = test::TestServer::new(|app| {
-            app.resource("/", |resource| resource.f(|_| "OK"));
-        });
+        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -67,7 +67,7 @@ mod tests {
         };
 
         let result = create_client(&config, false) // untrusted
-            .get(&server.url("/"))
+            .get(server.url("/"))
             .send()
             .await;
 
@@ -78,9 +78,7 @@ mod tests {
     async fn test_untrusted_client_loopback() {
         test::setup();
 
-        let server = test::TestServer::new(|app| {
-            app.resource("/", |resource| resource.f(|_| "OK"));
-        });
+        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -99,9 +97,7 @@ mod tests {
     async fn test_untrusted_client_allowed() {
         test::setup();
 
-        let server = test::TestServer::new(|app| {
-            app.resource("/", |resource| resource.f(|_| "OK"));
-        });
+        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: true,
@@ -109,7 +105,7 @@ mod tests {
         };
 
         let response = create_client(&config, false) // untrusted
-            .get(&server.url("/"))
+            .get(server.url("/"))
             .send()
             .await
             .unwrap();
@@ -122,9 +118,7 @@ mod tests {
     async fn test_trusted() {
         test::setup();
 
-        let server = test::TestServer::new(|app| {
-            app.resource("/", |resource| resource.f(|_| "OK"));
-        });
+        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -132,7 +126,7 @@ mod tests {
         };
 
         let response = create_client(&config, true) // trusted
-            .get(&server.url("/"))
+            .get(server.url("/"))
             .send()
             .await
             .unwrap();
