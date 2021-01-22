@@ -1004,13 +1004,6 @@ impl SymbolicationActor {
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        #[cfg(test)]
-        {
-            // For test_pending_request we need to yield to the executor because otherwise
-            // the entire symbolication completes without ever yielding.  But we need to
-            // test that responses.
-            crate::utils::futures::delay(std::time::Duration::from_millis(0)).await;
-        }
         let serialize_dif_candidates = request.options.dif_candidates;
 
         let f = self.do_symbolicate_impl(request);
@@ -2136,7 +2129,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pending_request() {
+    fn test_get_response_multi() {
         // Make sure we can repeatedly poll for the response
         let (service, _cache_dir) = setup_service();
 
@@ -2163,24 +2156,23 @@ mod tests {
             options: Default::default(),
         };
 
-        let response = test::block_on01(async {
+        test::block_on01(async {
             // Be aware, this spawns the work into a new current thread runtime, which gets
             // dropped when test::block_on01() returns.
             let request_id = service.symbolication().symbolicate_stacktraces(request);
-            let response = service
-                .symbolication()
-                .get_response(request_id, Some(0))
-                .await;
-            let request_id = match response.unwrap() {
-                SymbolicationResponse::Pending { request_id, .. } => request_id,
-                response => panic!("Not a pending request: {:#?}", response),
-            };
-            service.symbolication().get_response(request_id, None).await
-        });
-        assert!(matches!(
-            response,
-            Some(SymbolicationResponse::Completed(_))
-        ));
+
+            for _ in 0..2 {
+                let response = service
+                    .symbolication()
+                    .get_response(request_id, None)
+                    .await
+                    .unwrap();
+
+                if !matches!(&response, SymbolicationResponse::Completed(_)) {
+                    panic!("Not a complete response: {:#?}", response);
+                }
+            }
+        })
     }
 
     fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
