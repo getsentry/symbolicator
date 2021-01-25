@@ -136,14 +136,6 @@ struct CacheLookupError {
     error: Arc<ObjectError>,
 }
 
-pub struct ObjectFileBytes(pub Arc<ObjectHandle>);
-
-impl AsRef<[u8]> for ObjectFileBytes {
-    fn as_ref(&self) -> &[u8] {
-        &self.0.data
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
