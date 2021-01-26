@@ -8,7 +8,7 @@ use futures01::{future::Either, Future, IntoFuture, Stream};
 use sentry::Hub;
 use tokio01::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::{FindObject, ObjectFileBytes, ObjectPurpose};
+use crate::actors::objects::{FindObject, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::Scope;
 use crate::utils::futures::ResponseFuture;
@@ -86,7 +86,7 @@ fn proxy_symstore_request(
                     if is_head {
                         Ok(response.finish())
                     } else {
-                        let bytes = Cursor::new(ObjectFileBytes(object_file));
+                        let bytes = Cursor::new(object_file.data());
                         let async_bytes = FramedRead::new(bytes, BytesCodec::new())
                             .map(BytesMut::freeze)
                             .map_err(|e| Error::from(e.context("failed to write object")));
