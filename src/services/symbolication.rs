@@ -145,7 +145,7 @@ struct CfiCacheModules {
 }
 
 impl CfiCacheModules {
-    /// Creates a new
+    /// Creates a new CFI cache entries for code modules.
     fn new<'a>(cfi_caches: impl Iterator<Item = &'a CfiCacheResult>) -> Self {
         let inner = cfi_caches
             .map(|(code_id, cache_result)| {
@@ -169,17 +169,14 @@ impl CfiCacheModules {
                             cfi_status,
                             cfi_path,
                             cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
-                            scanned: false,
+                            ..Default::default()
                         }
                     }
                     Err(err) => {
                         log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
                         CfiModule {
-                            features: Default::default(),
                             cfi_status: ObjectFileStatus::from(err.as_ref()),
-                            cfi_path: None,
-                            cfi_candidates: AllObjectCandidates::default(),
-                            scanned: false,
+                            ..Default::default()
                         }
                     }
                 };
@@ -223,10 +220,10 @@ impl CfiCacheModules {
 
     /// Marks a module as scanned for CFI.
     ///
-    /// If during stack unwinding the module was scanned that means we needed its CFI.  We
-    /// need to keep track of this because it may indicate we didn't fetch a CFI file we
-    /// needed, or we thought a CFI module was missing but it wasn't needed.  So this also
-    /// updates the [`CfiModule::cfi_status`] field.
+    /// If during stack unwinding the module was scanned that means we needed its CFI but we
+    /// did not have it.  We need to keep track of this because it may indicate we didn't
+    /// fetch a CFI file we needed, or we thought a CFI module was missing but it wasn't
+    /// needed.  So this also updates the [`CfiModule::cfi_status`] field.
     fn mark_scanned(&mut self, code_id: CodeModuleId) {
         let mut cfi_module = self.inner.entry(code_id).or_insert_with(|| {
             // We report this error once per missing module in a minidump.
@@ -242,6 +239,22 @@ impl CfiCacheModules {
         cfi_module.scanned = true;
     }
 
+    /// Marks a module's CFI as used during stack unwinding.
+    ///
+    /// This will ensure it does not get the [`ObjectFileStatus::Unused`] status in
+    /// [`CfiCacheModules::finalize`].
+    fn mark_used(&mut self, code_id: CodeModuleId) {
+        let mut cfi_module = self.inner.entry(code_id).or_insert_with(|| {
+            // We report this error once per missing module in a minidump.
+            sentry::capture_message("Module marked as used but not found", sentry::Level::Error);
+            CfiModule {
+                cfi_status: ObjectFileStatus::Missing,
+                ..Default::default()
+            }
+        });
+        cfi_module.cfi_used = true;
+    }
+
     /// Processes the [`CfiModule::scanned`] information to update the final module status.
     ///
     /// All modules which were not scanned should have [`ObjectFileStatus::Unused`].  This
@@ -249,7 +262,7 @@ impl CfiCacheModules {
     /// required.
     fn finalize(mut self) -> BTreeMap<CodeModuleId, CfiModule> {
         for cfi_module in self.inner.values_mut() {
-            if !cfi_module.scanned {
+            if !cfi_module.scanned && !cfi_module.cfi_used {
                 cfi_module.cfi_status = ObjectFileStatus::Unused;
             }
         }
@@ -268,8 +281,10 @@ struct CfiModule {
     cfi_path: Option<PathBuf>,
     /// The DIF object candidates for for this module.
     cfi_candidates: AllObjectCandidates,
-    /// Indicates if the module was used for stack scanning.
+    /// Indicates if the module was scanned during stack unwinding.
     scanned: bool,
+    /// Indicates if the CFI for this module was consulted during stack unwinding.
+    cfi_used: bool,
 }
 
 /// Builder object to collect modules from the minidump.
@@ -293,13 +308,23 @@ impl ModuleListBuilder {
         executable_type: ObjectType,
     ) -> Self {
         // Firstly mark modules for which we needed CFI information during unwinding.  This
-        // will insert entries into cfi_cache for modules which were missing.
+        // will insert entries into cfi_caches for modules which were missing.
         for thread in minidump_process_state.threads() {
             for frame_pair in thread.frames().windows(2) {
                 if let [prev_frame, next_frame] = frame_pair {
                     if let Some(code_id) = prev_frame.module().and_then(|m| m.id()) {
-                        if matches!(next_frame.trust(), FrameTrust::Scan | FrameTrust::CFIScan) {
-                            cfi_caches.mark_scanned(code_id);
+                        match next_frame.trust() {
+                            FrameTrust::Scan => {
+                                cfi_caches.mark_scanned(code_id);
+                            }
+                            FrameTrust::CFIScan => {
+                                cfi_caches.mark_scanned(code_id);
+                                cfi_caches.mark_used(code_id);
+                            }
+                            FrameTrust::CFI => {
+                                cfi_caches.mark_used(code_id);
+                            }
+                            _ => (),
                         }
                     }
                 }
@@ -320,8 +345,9 @@ impl ModuleListBuilder {
                 if let Some(code_id) = code_module.id() {
                     match cfi_caches.get(&code_id) {
                         None => {
-                            // If it was not picked up from by initial scan nor marked as
-                            // scanned during stackwalking, it can only be unused.
+                            // If it was not picked up from by initial
+                            // get_referenced_modules nor marked as scanned during
+                            // stackwalking, it can only be unused.
                             obj_info.unwind_status = Some(ObjectFileStatus::Unused);
                         }
                         Some(cfi_module) => {

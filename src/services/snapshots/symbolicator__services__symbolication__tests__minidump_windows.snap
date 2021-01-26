@@ -154,7 +154,7 @@ stacktraces:
         trust: context
 modules:
   - debug_status: found
-    unwind_status: unused
+    unwind_status: found
     features:
       has_debug_info: true
       has_unwind_info: true
