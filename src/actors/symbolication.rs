@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::{Bytes, IntoBuf};
 use chrono::{DateTime, TimeZone, Utc};
@@ -62,8 +63,8 @@ pub enum SymbolicationError {
     #[error("symbolication took too long")]
     Timeout,
 
-    #[error("computation was canceled internally")]
-    Canceled,
+    #[error(transparent)]
+    Failed(#[from] anyhow::Error),
 
     #[error("failed to process minidump")]
     InvalidMinidump(#[from] ProcessMinidumpError),
@@ -72,16 +73,16 @@ pub enum SymbolicationError {
     InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
 }
 
-impl From<&SymbolicationError> for SymbolicationResponse {
-    fn from(err: &SymbolicationError) -> SymbolicationResponse {
-        match err {
+impl SymbolicationError {
+    fn to_symbolication_response(&self) -> SymbolicationResponse {
+        match self {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Canceled => SymbolicationResponse::InternalError,
+            SymbolicationError::Failed(_) => SymbolicationResponse::InternalError,
             SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
-                message: err.to_string(),
+                message: self.to_string(),
             },
             SymbolicationError::InvalidAppleCrashReport(_) => SymbolicationResponse::Failed {
-                message: err.to_string(),
+                message: self.to_string(),
             },
         }
     }
@@ -258,9 +259,7 @@ impl SymbolicationActor {
                     sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))
                 }
-                Err(ref error) => {
-                    sentry::capture_error(error);
-
+                Err(error) => {
                     // a timeout is an abnormal session exit, all other errors are considered "crashed"
                     let status = match &error {
                         SymbolicationError::Timeout => SessionStatus::Abnormal,
@@ -268,7 +267,9 @@ impl SymbolicationActor {
                     };
                     sentry::end_session_with_status(status);
 
-                    error.into()
+                    let response = error.to_symbolication_response();
+                    log::error!("Symbolication error: {:?}", anyhow::Error::new(error));
+                    response
                 }
             };
 
@@ -623,7 +624,7 @@ impl SymCacheLookup {
         self,
         symcache_actor: SymCacheActor,
         request: SymbolicateStacktraces,
-    ) -> Result<Self, SymbolicationError> {
+    ) -> Self {
         let mut referenced_objects = BTreeSet::new();
         let stacktraces = request.stacktraces;
 
@@ -682,9 +683,9 @@ impl SymCacheLookup {
             });
         }
 
-        Ok(SymCacheLookup {
+        SymCacheLookup {
             inner: future::join_all(futures).await,
-        })
+        }
     }
 
     fn lookup_symcache(&self, addr: u64, addr_mode: AddrMode) -> Option<SymCacheLookupResult<'_>> {
@@ -1007,7 +1008,10 @@ impl SymbolicationActor {
         let f = timeout_compat(Duration::from_secs(3600), f);
         let f = measure("symbolicate", m::timed_result, f);
 
-        let mut response = f.await.unwrap_or(Err(SymbolicationError::Timeout))?;
+        let mut response = f
+            .await
+            .map(|res| res.map_err(SymbolicationError::from))
+            .unwrap_or(Err(SymbolicationError::Timeout))?;
 
         if !serialize_dif_candidates {
             response.clear_dif_candidates();
@@ -1019,7 +1023,7 @@ impl SymbolicationActor {
     async fn do_symbolicate_impl(
         self,
         request: SymbolicateStacktraces,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
         let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
         let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
         let stacktraces = request.stacktraces.clone();
@@ -1029,7 +1033,7 @@ impl SymbolicationActor {
 
         let symcache_lookup = symcache_lookup
             .fetch_symcaches(self.symcaches, request)
-            .await?;
+            .await;
 
         let future = async move {
             let stacktraces: Vec<_> = stacktraces
@@ -1073,7 +1077,7 @@ impl SymbolicationActor {
             .threadpool
             .spawn_handle(future.bind_hub(sentry::Hub::current()))
             .await
-            .map_err(|_| SymbolicationError::Canceled)?;
+            .context("Symbolication future cancelled")?;
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
@@ -1108,11 +1112,10 @@ impl SymbolicationActor {
             response
         };
 
-        Ok(self
-            .threadpool
+        self.threadpool
             .spawn_handle(future.bind_hub(sentry::Hub::current()))
             .await
-            .map_err(|_| SymbolicationError::Canceled)?)
+            .context("Source lookup future cancelled")
     }
 
     pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
@@ -1236,7 +1239,7 @@ impl SymbolicationActor {
     async fn get_referenced_modules_from_minidump(
         &self,
         minidump: Bytes,
-    ) -> Result<Vec<(CodeModuleId, RawObjectInfo)>, SymbolicationError> {
+    ) -> Result<Vec<(CodeModuleId, RawObjectInfo)>, anyhow::Error> {
         let pool = self.spawnpool.clone();
         let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = async move {
@@ -1281,7 +1284,7 @@ impl SymbolicationActor {
         self.threadpool
             .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
             .await
-            .map_err(|_| SymbolicationError::Canceled)?
+            .context("Getting minidump referenced modules future cancelled")?
     }
 
     /// Join a procspawn handle with a timeout.
@@ -1295,10 +1298,10 @@ impl SymbolicationActor {
         metric: &str,
         minidump: Bytes,
         minidump_cache: crate::cache::Cache,
-    ) -> Result<T, SymbolicationError>
+    ) -> Result<T, anyhow::Error>
     where
         T: Serialize + DeserializeOwned,
-        E: Into<SymbolicationError> + Serialize + DeserializeOwned,
+        E: Into<anyhow::Error> + Serialize + DeserializeOwned,
     {
         match handle.join_timeout(timeout) {
             Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
@@ -1315,13 +1318,8 @@ impl SymbolicationActor {
                 } else {
                     "unknown"
                 };
-                let kind = if perr.is_timeout() {
-                    SymbolicationError::Timeout
-                } else {
-                    SymbolicationError::Canceled
-                };
                 metric!(counter(metric) += 1, "reason" => reason);
-                if let SymbolicationError::Canceled = kind {
+                if !perr.is_timeout() {
                     Self::save_minidump(minidump, minidump_cache)
                         .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
                         .map(|r| {
@@ -1338,7 +1336,7 @@ impl SymbolicationActor {
                         })
                         .ok();
                 }
-                Err(kind)
+                Err(anyhow::Error::new(perr))
             }
         }
     }
@@ -1420,7 +1418,7 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
         cfi_results: Vec<CfiCacheResult>,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+    ) -> Result<(SymbolicateStacktraces, MinidumpState), anyhow::Error> {
         let mut unwind_statuses = BTreeMap::new();
         let mut object_features = BTreeMap::new();
         let mut frame_info_map = BTreeMap::new();
@@ -1676,7 +1674,7 @@ impl SymbolicationActor {
             .threadpool
             .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
             .await
-            .map_err(|_| SymbolicationError::Canceled)?;
+            .context("Minidump stackwalk future cancelled")?;
 
         // keep the results until symbolication has finished to ensure we don't drop
         // temporary files prematurely.
@@ -1708,7 +1706,10 @@ impl SymbolicationActor {
 
         let future = timeout_compat(Duration::from_secs(3600), future);
         let future = measure("minidump_stackwalk", m::timed_result, future);
-        future.await.unwrap_or(Err(SymbolicationError::Timeout))
+        future
+            .await
+            .map(|ret| ret.map_err(SymbolicationError::from))
+            .unwrap_or(Err(SymbolicationError::Timeout))
     }
 
     async fn do_process_minidump(
@@ -1893,12 +1894,15 @@ impl SymbolicationActor {
             self.threadpool
                 .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
                 .await
-                .map_err(|_| SymbolicationError::Canceled)?
+                .context("Parse applecrashreport future cancelled")
         };
 
         let future = timeout_compat(Duration::from_secs(1200), future);
         let future = measure("parse_apple_crash_report", m::timed_result, future);
-        future.await.unwrap_or(Err(SymbolicationError::Timeout))
+        future
+            .await
+            .map(|res| res.map_err(SymbolicationError::from))
+            .unwrap_or(Err(SymbolicationError::Timeout))?
     }
 
     async fn do_process_apple_crash_report(
