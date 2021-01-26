@@ -267,9 +267,9 @@ impl SymbolicationActor {
                     };
                     sentry::end_session_with_status(status);
 
-                    let ret = error.to_symbolication_response();
+                    let response = error.to_symbolication_response();
                     log::error!("Symbolication error: {:?}", anyhow::Error::new(error));
-                    ret
+                    response
                 }
             };
 
