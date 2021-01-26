@@ -63,8 +63,8 @@ pub enum SymbolicationError {
     #[error("symbolication took too long")]
     Timeout,
 
-    #[error("computation was canceled internally")]
-    Canceled(#[from] anyhow::Error),
+    #[error(transparent)]
+    Failed(#[from] anyhow::Error),
 
     #[error("failed to process minidump")]
     InvalidMinidump(#[from] ProcessMinidumpError),
@@ -77,7 +77,7 @@ impl SymbolicationError {
     fn to_symbolication_response(&self) -> SymbolicationResponse {
         match self {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Canceled(_) => SymbolicationResponse::InternalError,
+            SymbolicationError::Failed(_) => SymbolicationResponse::InternalError,
             SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
                 message: self.to_string(),
             },
