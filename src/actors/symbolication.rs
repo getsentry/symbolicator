@@ -1319,21 +1319,23 @@ impl SymbolicationActor {
                     "unknown"
                 };
                 metric!(counter(metric) += 1, "reason" => reason);
-                Self::save_minidump(minidump, minidump_cache)
-                    .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
-                    .map(|r| {
-                        if let Some(path) = r {
-                            sentry::configure_scope(|scope| {
-                                scope.set_extra(
-                                    "crashed_minidump",
-                                    sentry::protocol::Value::String(
-                                        path.to_string_lossy().to_string(),
-                                    ),
-                                );
-                            });
-                        }
-                    })
-                    .ok();
+                if !perr.is_timeout() {
+                    Self::save_minidump(minidump, minidump_cache)
+                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
+                        .map(|r| {
+                            if let Some(path) = r {
+                                sentry::configure_scope(|scope| {
+                                    scope.set_extra(
+                                        "crashed_minidump",
+                                        sentry::protocol::Value::String(
+                                            path.to_string_lossy().to_string(),
+                                        ),
+                                    );
+                                });
+                            }
+                        })
+                        .ok();
+                }
                 Err(anyhow::Error::new(perr))
             }
         }
