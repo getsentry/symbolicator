@@ -55,6 +55,10 @@ pub enum DownloadError {
 pub enum DownloadStatus {
     /// The download completed successfully and the file at the path can be used.
     Completed,
+    /// Insufficient permissions.
+    ///
+    /// Details about the error will be carried in the associated string.
+    NoPerm(String),
     /// The requested file was not found, there is no useful data at the provided path.
     NotFound,
 }

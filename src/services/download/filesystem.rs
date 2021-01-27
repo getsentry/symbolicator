@@ -70,6 +70,7 @@ impl FilesystemDownloader {
             Ok(_) => Ok(DownloadStatus::Completed),
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
+                io::ErrorKind::PermissionDenied => Ok(DownloadStatus::NoPerm(format!("{}", e))),
                 _ => Err(DownloadError::Io(e)),
             },
         }

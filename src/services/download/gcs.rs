@@ -2,13 +2,14 @@
 //!
 //! Specifically this supports the [`GcsSourceConfig`] source.
 
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
 use parking_lot::Mutex;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
@@ -91,6 +92,13 @@ struct GcsTokenResponse {
 struct GcsToken {
     access_token: String,
     expires_at: DateTime<Utc>,
+}
+
+/// Display is used by [`reqwest::RequestBuilder::bearer_auth`] to get the token.
+impl fmt::Display for GcsToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.access_token)
+    }
 }
 
 #[derive(Debug, Error)]
@@ -216,7 +224,15 @@ impl GcsDownloader {
             &key,
             file_source.source.bucket
         );
-        let token = self.get_token(&file_source.source.source_key).await?;
+        let token = match self.get_token(&file_source.source.source_key).await {
+            Ok(token) => token,
+            Err(err) => {
+                return Ok(DownloadStatus::NoPerm(format!(
+                    "Authentication failure: {}",
+                    err
+                )));
+            }
+        };
         log::debug!("Got valid GCS token");
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
@@ -226,16 +242,13 @@ impl GcsDownloader {
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&file_source.source.bucket, "o", &key]);
 
-        let response = future_utils::retry(|| {
-            self.client
-                .get(url.clone())
-                .header("authorization", format!("Bearer {}", token.access_token))
-                .send()
-        });
+        let request = self.client.get(url).bearer_auth(token);
+        let response = future_utils::retry(|| request.try_clone().unwrap().send());
 
         match response.await {
             Ok(response) => {
-                if response.status().is_success() {
+                let status = response.status();
+                if status.is_success() {
                     log::trace!(
                         "Success hitting GCS {} (from {})",
                         &key,
@@ -244,6 +257,12 @@ impl GcsDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(file_source, stream, destination).await
+                } else if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    Ok(DownloadStatus::NoPerm(format!(
+                        "{} {}",
+                        status.as_str(),
+                        status.canonical_reason().unwrap_or_default()
+                    )))
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
@@ -423,11 +442,12 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsObjectFileSource::new(source, source_location);
 
-        downloader
+        let download_status = downloader
             .download_source(file_source, target_path.clone())
             .await
-            .expect_err("authentication should fail");
+            .unwrap();
 
+        assert!(matches!(download_status, DownloadStatus::NoPerm(_)));
         assert!(!target_path.exists());
     }
 

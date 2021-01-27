@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
+use reqwest::StatusCode;
+use rusoto_core::RusotoError;
 use rusoto_s3::S3;
 
 use super::locations::SourceLocation;
@@ -131,13 +133,39 @@ impl S3Downloader {
 
         let response = match result {
             Ok(response) => response,
+            Err(RusotoError::Credentials(err)) => {
+                return Ok(DownloadStatus::NoPerm(err.message));
+            }
+            Err(RusotoError::Unknown(http_err))
+                if matches!(
+                    http_err.status,
+                    StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+                ) =>
+            {
+                // Note that if we do not have s3:ListBucket permission we might get a 403
+                // Forbidden error rather than a 404, so we could accidentally turn a
+                // DownloadStatus::NotFound into DownloadStatus::NoPerm.  However we also
+                // get 403 for genuine bad credentials, so we must include this.  Our docs
+                // say s3:ListBucket is optional though.
+                return Ok(DownloadStatus::NoPerm(format!(
+                    "{} {}\nIf sentry does not have s3:ListBucket permission the file could be simply not found\n{}",
+                    http_err.status.as_str(),
+                    http_err.status.canonical_reason().unwrap_or_default(),
+                    http_err.body_as_str()
+                )));
+            }
             Err(err) => {
                 // For missing files, Amazon returns different status codes based on the given
                 // permissions.
                 // - To fetch existing objects, `GetObject` is required.
                 // - If `ListBucket` is premitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
-                log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
+                log::debug!(
+                    "Skipping response from s3://{}/{}: {}",
+                    bucket,
+                    &key,
+                    dbg!(err)
+                );
                 return Ok(DownloadStatus::NotFound);
             }
         };
@@ -415,7 +443,7 @@ mod tests {
 
         // We anticipate 403 for regularly missing files if the ListBucket permission is not
         // granted, therefore return `NotFound` instead of an authentication error.
-        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(matches!(download_status, DownloadStatus::NoPerm(_)));
         assert!(!target_path.exists());
     }
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use futures::prelude::*;
-use reqwest::{header, Client};
+use reqwest::{header, Client, StatusCode};
 use url::Url;
 
 use super::{
@@ -71,25 +71,31 @@ impl HttpDownloader {
         };
 
         log::debug!("Fetching debug file from {}", download_url);
-        let response = future_utils::retry(|| {
-            let mut builder = self.client.get(download_url.clone());
+        let mut request = self.client.get(download_url.clone());
 
-            for (key, value) in file_source.source.headers.iter() {
-                if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                    builder = builder.header(key, value.as_str());
-                }
+        for (key, value) in file_source.source.headers.iter() {
+            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                request = request.header(key, value.as_str());
             }
+        }
+        request = request.header(header::USER_AGENT, USER_AGENT);
 
-            builder.header(header::USER_AGENT, USER_AGENT).send()
-        });
+        let response = future_utils::retry(|| request.try_clone().unwrap().send());
 
         match response.await {
             Ok(response) => {
-                if response.status().is_success() {
+                let status = response.status();
+                if status.is_success() {
                     log::trace!("Success hitting {}", download_url);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(file_source, stream, destination).await
+                } else if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    Ok(DownloadStatus::NoPerm(format!(
+                        "{} {}",
+                        status.as_str(),
+                        status.canonical_reason().unwrap_or_default()
+                    )))
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
