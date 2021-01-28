@@ -164,7 +164,7 @@ impl S3Downloader {
                     "Skipping response from s3://{}/{}: {}",
                     bucket,
                     &key,
-                    dbg!(err)
+                    err
                 );
                 return Ok(DownloadStatus::NotFound);
             }
