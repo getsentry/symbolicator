@@ -3,8 +3,6 @@
 //! The sources are described on
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
-use std::fs::File;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +10,8 @@ use std::time::Duration;
 use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
 use thiserror::Error;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 use crate::utils::futures::{m, measure};
 use crate::utils::paths::get_directory_paths;
@@ -104,7 +104,9 @@ impl DownloadService {
             ObjectFileSource::Http(inner) => self.http.download_source(inner, destination).await,
             ObjectFileSource::S3(inner) => self.s3.download_source(inner, destination).await,
             ObjectFileSource::Gcs(inner) => self.gcs.download_source(inner, destination).await,
-            ObjectFileSource::Filesystem(inner) => self.fs.download_source(inner, destination),
+            ObjectFileSource::Filesystem(inner) => {
+                self.fs.download_source(inner, destination).await
+            }
         }
     }
 
@@ -191,22 +193,25 @@ impl DownloadService {
 
 /// Download the source from a stream.
 ///
-/// This is common functionality used by all many downloaders.
+/// This is common functionality used by many downloaders.
 async fn download_stream(
     source: impl Into<ObjectFileSource>,
-    stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
+    mut stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>> + Unpin,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
     log::trace!("Downloading from {}", source.into());
-    let mut file = File::create(&destination).map_err(DownloadError::BadDestination)?;
-    futures::pin_mut!(stream);
+    let mut file = File::create(&destination)
+        .await
+        .map_err(DownloadError::BadDestination)?;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         file.write_all(chunk.as_ref())
+            .await
             .map_err(DownloadError::Write)?;
     }
+    file.flush().await.map_err(DownloadError::Write)?;
     Ok(DownloadStatus::Completed)
 }
 

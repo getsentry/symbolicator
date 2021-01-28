@@ -4,10 +4,11 @@
 //! sources to be present on the local filesystem, usually only used for
 //! testing.
 
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use tokio::fs;
 
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, ObjectFileSource};
@@ -58,7 +59,7 @@ impl FilesystemDownloader {
     }
 
     /// Download from a filesystem source.
-    pub fn download_source(
+    pub async fn download_source(
         &self,
         file_source: FilesystemObjectFileSource,
         dest: PathBuf,
@@ -66,7 +67,7 @@ impl FilesystemDownloader {
         // All file I/O in this function is blocking!
         let abspath = file_source.path();
         log::debug!("Fetching debug file from {:?}", abspath);
-        match fs::copy(abspath, dest) {
+        match fs::copy(abspath, dest).await {
             Ok(_) => Ok(DownloadStatus::Completed),
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
