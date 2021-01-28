@@ -242,8 +242,12 @@ impl GcsDownloader {
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&file_source.source.bucket, "o", &key]);
 
-        let request = self.client.get(url).bearer_auth(token);
-        let response = future_utils::retry(|| request.try_clone().unwrap().send());
+        let response = future_utils::retry(|| {
+            self.client
+                .get(url.clone())
+                .bearer_auth(token.clone())
+                .send()
+        });
 
         match response.await {
             Ok(response) => {

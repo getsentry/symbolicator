@@ -71,16 +71,16 @@ impl HttpDownloader {
         };
 
         log::debug!("Fetching debug file from {}", download_url);
-        let mut request = self.client.get(download_url.clone());
+        let response = future_utils::retry(|| {
+            let mut builder = self.client.get(download_url.clone());
 
-        for (key, value) in file_source.source.headers.iter() {
-            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                request = request.header(key, value.as_str());
+            for (key, value) in file_source.source.headers.iter() {
+                if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                    builder = builder.header(key, value.as_str());
+                }
             }
-        }
-        request = request.header(header::USER_AGENT, USER_AGENT);
-
-        let response = future_utils::retry(|| request.try_clone().unwrap().send());
+            builder.header(header::USER_AGENT, USER_AGENT).send()
+        });
 
         match response.await {
             Ok(response) => {
