@@ -7,6 +7,7 @@ macro_rules! tryf {
         match $e {
             Ok(value) => value,
             Err(e) => {
+                use ::std::boxed::Box;
                 use ::std::pin::Pin;
                 return Box::pin(::futures::future::err(::std::convert::From::from(e)))
                     as Pin<Box<dyn ::futures::future::Future<Output = _>>>;
