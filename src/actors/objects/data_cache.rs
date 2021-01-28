@@ -139,9 +139,9 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let file_id = self.0.file_source.clone();
         let downloader = self.0.download_svc.clone();
-        let download_file = tryf03pin!(self.0.data_cache.tempfile());
+        let download_file = tryf!(self.0.data_cache.tempfile());
         let download_dir =
-            tryf03pin!(download_file.path().parent().ok_or(ObjectError::NoTempDir)).to_owned();
+            tryf!(download_file.path().parent().ok_or(ObjectError::NoTempDir)).to_owned();
 
         let future = async move {
             let status = downloader
