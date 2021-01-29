@@ -12,7 +12,7 @@ use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::sources::SourceConfig;
 use crate::types::{RequestId, RequestOptions, Scope, SymbolicationResponse};
-use crate::utils::futures::{ResponseFuture, ThreadPool};
+use crate::utils::futures::ResponseFuture;
 use crate::utils::multipart::{
     read_multipart_file, read_multipart_request_options, read_multipart_sources,
 };
@@ -26,14 +26,13 @@ struct AppleCrashReportRequest {
 }
 
 fn handle_multipart_item(
-    threadpool: ThreadPool,
     mut request: AppleCrashReportRequest,
     item: multipart::MultipartItem<Payload>,
 ) -> ResponseFuture<AppleCrashReportRequest, Error> {
     let field = match item {
         multipart::MultipartItem::Field(field) => field,
         multipart::MultipartItem::Nested(nested) => {
-            return handle_multipart_stream(threadpool, request, nested);
+            return handle_multipart_stream(request, nested);
         }
     };
 
@@ -71,14 +70,13 @@ fn handle_multipart_item(
 }
 
 fn handle_multipart_stream(
-    threadpool: ThreadPool,
     request: AppleCrashReportRequest,
     stream: multipart::Multipart<Payload>,
 ) -> ResponseFuture<AppleCrashReportRequest, Error> {
     let future = stream
         .map_err(Error::from)
         .fold(request, move |request, item| {
-            handle_multipart_item(threadpool.clone(), request, item)
+            handle_multipart_item(request, item)
         });
 
     Box::new(future)
@@ -116,11 +114,8 @@ fn handle_apple_crash_report_request(
             params.write_sentry_scope(scope);
         });
 
-        let request_future = handle_multipart_stream(
-            state.io_pool(),
-            AppleCrashReportRequest::default(),
-            request.multipart(),
-        );
+        let request_future =
+            handle_multipart_stream(AppleCrashReportRequest::default(), request.multipart());
 
         let SymbolicationRequestQueryParams { scope, timeout } = params;
         let symbolication = state.symbolication();
