@@ -211,7 +211,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // cache_path is None when caching is disabled.
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
-            if let Some(item) = tryf03pin!(self.lookup_cache(&request, &key, &path)) {
+            if let Some(item) = tryf!(self.lookup_cache(&request, &key, &path)) {
                 return Box::pin(future::ok(item));
             }
         }
@@ -223,7 +223,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        let temp_file = tryf03pin!(self.tempfile());
+        let temp_file = tryf!(self.tempfile());
 
         let future =
             request

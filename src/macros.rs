@@ -1,42 +1,13 @@
-/// Same as [`try!`] but to be used in functions that return `Box<dyn Future>` instead of `Result`.
+/// Same as [`try!`] but to be used in functions that return `Pin<Box<dyn Future>>`.
 ///
-/// Useful when calling synchronous (but cheap enough) functions in async code.
+/// When these futures can be replaced with async/await code and then this hack goes away.
 #[macro_export]
 macro_rules! tryf {
     ($e:expr) => {
         match $e {
             Ok(value) => value,
             Err(e) => {
-                return Box::new(::futures01::future::err(::std::convert::From::from(e)))
-                    as Box<dyn ::futures01::future::Future<Item = _, Error = _>>;
-            }
-        }
-    };
-}
-
-/// Same as [`tryf`] but a hack for futures 0.3.  These futures can be replaced with
-/// async/await code and then this hack goes away.
-#[macro_export]
-macro_rules! tryf03 {
-    ($e:expr) => {
-        match $e {
-            Ok(value) => value,
-            Err(e) => {
-                return Box::new(::futures::future::err(::std::convert::From::from(e)))
-                    as Box<dyn ::futures::future::Future<Output = _>>;
-            }
-        }
-    };
-}
-
-/// Same as [`tryf`] but a hack for futures 0.3.  These futures can be replaced with
-/// async/await code and then this hack goes away.
-#[macro_export]
-macro_rules! tryf03pin {
-    ($e:expr) => {
-        match $e {
-            Ok(value) => value,
-            Err(e) => {
+                use ::std::boxed::Box;
                 use ::std::pin::Pin;
                 return Box::pin(::futures::future::err(::std::convert::From::from(e)))
                     as Pin<Box<dyn ::futures::future::Future<Output = _>>>;
