@@ -1686,12 +1686,10 @@ impl SymbolicationActor {
         self,
         scope: Scope,
         minidump: Bytes,
-        sources: Vec<SourceConfig>,
+        sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
-            let sources: Arc<[SourceConfig]> = Arc::from(sources);
-
             let referenced_modules = self
                 .get_referenced_modules_from_minidump(minidump.clone())
                 .await?;
@@ -1716,7 +1714,7 @@ impl SymbolicationActor {
         self,
         scope: Scope,
         minidump: Bytes,
-        sources: Vec<SourceConfig>,
+        sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
@@ -1734,7 +1732,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         minidump: Bytes,
-        sources: Vec<SourceConfig>,
+        sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
         self.create_symbolication_request(
@@ -1796,7 +1794,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         minidump: Bytes,
-        sources: Vec<SourceConfig>,
+        sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
@@ -1847,7 +1845,7 @@ impl SymbolicationActor {
             let request = SymbolicateStacktraces {
                 modules,
                 scope,
-                sources: Arc::from(sources),
+                sources,
                 signal: None,
                 stacktraces,
                 options,
@@ -1909,7 +1907,7 @@ impl SymbolicationActor {
         self,
         scope: Scope,
         report: Bytes,
-        sources: Vec<SourceConfig>,
+        sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
@@ -1925,7 +1923,7 @@ impl SymbolicationActor {
         &self,
         scope: Scope,
         apple_crash_report: Bytes,
-        sources: Vec<SourceConfig>,
+        sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
         self.create_symbolication_request(self.clone().do_process_apple_crash_report(
@@ -2192,7 +2190,7 @@ mod tests {
             let request_id = symbolication.process_minidump(
                 Scope::Global,
                 minidump,
-                vec![source],
+                Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
                 },
@@ -2238,7 +2236,7 @@ mod tests {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
                 report_file,
-                vec![source],
+                Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
                 },
