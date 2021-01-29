@@ -1,58 +1,52 @@
 use actix_web::{dev::Payload, error, multipart, Error};
-use bytes::{Bytes, BytesMut};
-use futures01::{Future, Stream};
+use futures::{compat::Stream01CompatExt, StreamExt};
 
 use crate::sources::SourceConfig;
 use crate::types::RequestOptions;
 
-use super::futures::ResponseFuture;
-
 const MAX_JSON_SIZE: usize = 1_000_000;
 
-pub fn read_multipart_data(
+pub async fn read_multipart_data(
     field: multipart::Field<Payload>,
     max_size: usize,
-) -> ResponseFuture<Vec<u8>, Error> {
-    let future =
-        field
-            .map_err(Error::from)
-            .fold(Vec::with_capacity(512), move |mut body, chunk| {
-                if (body.len() + chunk.len()) > max_size {
-                    Err(error::ErrorBadRequest("payload too large"))
-                } else {
-                    body.extend_from_slice(&chunk);
-                    Ok(body)
-                }
-            });
+) -> Result<Vec<u8>, Error> {
+    let mut body = Vec::with_capacity(512);
+    let mut stream = field.compat();
 
-    Box::new(future)
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+
+        if (body.len() + chunk.len()) > max_size {
+            return Err(error::ErrorBadRequest("payload too large"));
+        }
+
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(body)
 }
 
-pub fn read_multipart_file(
-    field: multipart::Field<Payload>,
-) -> impl Future<Item = Bytes, Error = Error> {
-    field
-        .map_err(Error::from)
-        .fold(BytesMut::new(), |mut bytes, chunk| {
-            bytes.extend_from_slice(&chunk);
-            Ok::<BytesMut, Error>(bytes)
-        })
-        .and_then(|bytes| Ok(bytes.freeze()))
+pub async fn read_multipart_file(field: multipart::Field<Payload>) -> Result<Vec<u8>, Error> {
+    let mut body = Vec::with_capacity(512);
+    let mut stream = field.compat();
+
+    while let Some(chunk) = stream.next().await {
+        body.extend_from_slice(&chunk?);
+    }
+
+    Ok(body)
 }
 
-pub fn read_multipart_sources(
+pub async fn read_multipart_sources(
     field: multipart::Field<Payload>,
-) -> ResponseFuture<Vec<SourceConfig>, Error> {
-    Box::new(
-        read_multipart_data(field, MAX_JSON_SIZE)
-            .and_then(|data| Ok(serde_json::from_slice(&data)?)),
-    )
+) -> Result<Vec<SourceConfig>, Error> {
+    let data = read_multipart_data(field, MAX_JSON_SIZE).await?;
+    Ok(serde_json::from_slice(&data)?)
 }
 
-pub fn read_multipart_request_options(
+pub async fn read_multipart_request_options(
     field: multipart::Field<Payload>,
-) -> ResponseFuture<RequestOptions, Error> {
-    let fut = read_multipart_data(field, MAX_JSON_SIZE)
-        .and_then(|data| Ok(serde_json::from_slice(&data)?));
-    Box::new(fut)
+) -> Result<RequestOptions, Error> {
+    let data = read_multipart_data(field, MAX_JSON_SIZE).await?;
+    Ok(serde_json::from_slice(&data)?)
 }

@@ -3446,7 +3446,6 @@ dependencies = [
  "cadence",
  "chrono",
  "console",
- "crc32fast",
  "env_logger",
  "failure",
  "flate2",

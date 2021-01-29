@@ -42,3 +42,14 @@ macro_rules! clone {
         }
     );
 }
+
+macro_rules! compat_handler {
+    ($func:ident , $($param:ident),*) => {{
+        use ::futures::{FutureExt, TryFutureExt};
+        |__hub: crate::utils::sentry::ActixHub, $($param),*| {
+            ::sentry::SentryFutureExt::bind_hub( $func ( $($param),* ), __hub )
+                .boxed_local()
+                .compat()
+        }
+    }};
+}

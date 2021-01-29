@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use actix_web::middleware::{Finished, Middleware, Response, Started};
-use actix_web::{Error, HttpRequest, HttpResponse};
+use actix_web::{Error, FromRequest, HttpRequest, HttpResponse};
 use failure::Fail;
 use futures01::future::Future;
 use futures01::Poll;
@@ -296,5 +296,23 @@ fn exception_from_single_fail<F: Fail + ?Sized>(
             .map(|bt| format!("{:#?}", bt))
             .and_then(|x| parse_stacktrace(&x)),
         ..Default::default()
+    }
+}
+
+#[derive(Debug)]
+pub struct ActixHub(Arc<Hub>);
+
+impl<S> FromRequest<S> for ActixHub {
+    type Config = ();
+    type Result = Self;
+
+    fn from_request(req: &HttpRequest<S>, _: &Self::Config) -> Self::Result {
+        Self(Hub::from_request(req))
+    }
+}
+
+impl From<ActixHub> for Arc<Hub> {
+    fn from(ah: ActixHub) -> Self {
+        ah.0
     }
 }
