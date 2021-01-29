@@ -117,9 +117,6 @@ where
     tokio01::runtime::current_thread::spawn(future.map(|_| Ok(())).boxed_local().compat());
 }
 
-/// A compatibility type for asynchronous results based on `futures` 0.1.
-pub type ResponseFuture<I, E> = Box<dyn futures01::Future<Item = I, Error = E>>;
-
 /// Error returned by [`timeout_compat`].
 #[derive(Debug, PartialEq, thiserror::Error)]
 #[error("deadline has elapsed")]

@@ -1,107 +1,88 @@
 use std::io::Cursor;
+use std::sync::Arc;
 
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
 use bytes::BytesMut;
-use failure::{Error, Fail};
-use futures::future::{FutureExt, TryFutureExt};
-use futures01::{future::Either, Future, IntoFuture, Stream};
-use sentry::Hub;
+use failure::{Error, ResultExt};
+use futures01::Stream;
 use tokio01::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::{FindObject, ObjectPurpose};
+use crate::actors::objects::{FindObject, ObjectHandle, ObjectPurpose};
 use crate::app::{ServiceApp, ServiceState};
 use crate::types::Scope;
-use crate::utils::futures::ResponseFuture;
 use crate::utils::paths::parse_symstore_path;
-use crate::utils::sentry::{ActixWebHubExt, SentryFutureExt};
 
-fn proxy_symstore_request(
+async fn load_object(state: &ServiceState, path: &str) -> Result<Option<Arc<ObjectHandle>>, Error> {
+    let config = state.config();
+    if !config.symstore_proxy {
+        return Ok(None);
+    }
+
+    let (filetypes, object_id) = match parse_symstore_path(path) {
+        Some(tuple) => tuple,
+        None => return Ok(None),
+    };
+
+    log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
+
+    let found_object = state
+        .objects()
+        .find(FindObject {
+            filetypes,
+            identifier: object_id,
+            sources: config.default_sources(),
+            scope: Scope::Global,
+            purpose: ObjectPurpose::Debug,
+        })
+        .await
+        .context("failed to download object")?;
+
+    let object_meta = match found_object.meta {
+        Some(meta) => meta,
+        None => return Ok(None),
+    };
+
+    let object_handle = state
+        .objects()
+        .fetch(object_meta)
+        .await
+        .context("failed to download object")?;
+
+    if object_handle.has_object() {
+        Ok(Some(object_handle))
+    } else {
+        Ok(None)
+    }
+}
+
+async fn proxy_symstore_request(
     state: State<ServiceState>,
     request: HttpRequest<ServiceState>,
     path: Path<(String,)>,
-) -> ResponseFuture<HttpResponse, Error> {
-    let hub = Hub::from_request(&request);
-
-    let is_head = request.method() == Method::HEAD;
-    let config = state.config();
-
-    if !config.symstore_proxy {
-        return Box::new(Ok(HttpResponse::NotFound().finish()).into_future());
-    }
-
-    let (filetypes, object_id) = match parse_symstore_path(&path.0) {
-        Some(x) => x,
-        None => return Box::new(Ok(HttpResponse::NotFound().finish()).into_future()),
+) -> Result<HttpResponse, Error> {
+    let object_handle = match load_object(&state, &path.0).await? {
+        Some(handle) => handle,
+        None => return Ok(HttpResponse::NotFound().finish()),
     };
 
-    Hub::run(hub, || {
-        log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
+    let mut response = HttpResponse::Ok();
+    response
+        .content_length(object_handle.len() as u64)
+        .header("content-type", "application/octet-stream");
 
-        let object_meta_opt = state
-            .objects()
-            .find(FindObject {
-                filetypes,
-                identifier: object_id,
-                sources: config.default_sources(),
-                scope: Scope::Global,
-                purpose: ObjectPurpose::Debug,
-            })
-            .boxed_local()
-            .compat()
-            .map_err(|e| e.context("failed to download object").into());
+    if request.method() == Method::HEAD {
+        return Ok(response.finish());
+    }
 
-        let object_file_opt = object_meta_opt.and_then(move |object_meta_opt| {
-            if let Some(object_meta) = object_meta_opt.meta {
-                Either::A(
-                    state
-                        .objects()
-                        .fetch(object_meta)
-                        .compat()
-                        .map_err(|e| e.context("failed to download object").into())
-                        .map(Some),
-                )
-            } else {
-                Either::B(Ok(None).into_future())
-            }
-        });
-
-        Box::new(
-            object_file_opt
-                .and_then(move |object_file_opt| {
-                    let object_file = if object_file_opt
-                        .as_ref()
-                        .map(|x| x.has_object())
-                        .unwrap_or(false)
-                    {
-                        object_file_opt.unwrap()
-                    } else {
-                        return Ok(HttpResponse::NotFound().finish());
-                    };
-
-                    let length = object_file.len();
-                    let mut response = HttpResponse::Ok();
-                    response
-                        .content_length(length as u64)
-                        .header("content-type", "application/octet-stream");
-                    if is_head {
-                        Ok(response.finish())
-                    } else {
-                        let bytes = Cursor::new(object_file.data());
-                        let async_bytes = FramedRead::new(bytes, BytesCodec::new())
-                            .map(BytesMut::freeze)
-                            .map_err(|e| Error::from(e.context("failed to write object")));
-                        Ok(response.streaming(async_bytes))
-                    }
-                })
-                .sentry_hub_current(),
-        )
-    })
+    let bytes = Cursor::new(object_handle.data());
+    let async_bytes = FramedRead::new(bytes, BytesCodec::new()).map(BytesMut::freeze);
+    Ok(response.streaming(async_bytes))
 }
 
 pub fn configure(app: ServiceApp) -> ServiceApp {
     app.resource("/symbols/{path:.+}", |r| {
         r.route()
             .filter(pred::Any(pred::Get()).or(pred::Head()))
-            .with(proxy_symstore_request);
+            .with_async(compat_handler!(proxy_symstore_request, s, r, p));
     })
 }
