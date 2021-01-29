@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use actix_web::{error, multipart, Error, HttpMessage, HttpRequest, Json, Query, State};
 use futures::{compat::Stream01CompatExt, StreamExt};
 
@@ -35,7 +33,7 @@ async fn handle_minidump_request(
         let content_disposition = field.content_disposition();
         match content_disposition.as_ref().and_then(|d| d.get_name()) {
             Some("upload_file_minidump") => minidump = Some(read_multipart_file(field).await?),
-            Some("sources") => sources = Arc::from(read_multipart_sources(field).await?),
+            Some("sources") => sources = read_multipart_sources(field).await?.into(),
             Some("options") => options = read_multipart_request_options(field).await?,
             _ => (), // Always ignore unknown fields.
         }
