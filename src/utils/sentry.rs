@@ -71,10 +71,14 @@ pub trait SentryFutureExt: Sized {
 impl<F> SentryFutureExt for F where F: futures01::future::Future {}
 
 /// Write own data to [`sentry::Scope`], only the subset that is considered useful for debugging.
-// Right now, this could have been a simple method, but the idea is that one day we want a custom
-// derive for this.
-pub trait WriteSentryScope {
-    fn write_sentry_scope(&self, scope: &mut Scope);
+pub trait ConfigureScope {
+    /// Writes information to the given scope.
+    fn to_scope(&self, scope: &mut Scope);
+
+    /// Configures the current scope.
+    fn configure_scope(&self) {
+        sentry::configure_scope(|scope| self.to_scope(scope));
+    }
 }
 
 /// Reports certain failures to sentry.

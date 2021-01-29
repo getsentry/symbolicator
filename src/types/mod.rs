@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
-use crate::utils::sentry::WriteSentryScope;
+use crate::utils::sentry::ConfigureScope;
 
 mod objects;
 
@@ -735,8 +735,8 @@ impl ObjectId {
     }
 }
 
-impl WriteSentryScope for ObjectId {
-    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+impl ConfigureScope for ObjectId {
+    fn to_scope(&self, scope: &mut sentry::Scope) {
         scope.set_tag(
             "object_id.code_id",
             self.code_id

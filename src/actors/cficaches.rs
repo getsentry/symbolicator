@@ -23,7 +23,7 @@ use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
 use crate::utils::futures::{BoxedFuture, ThreadPool};
-use crate::utils::sentry::WriteSentryScope;
+use crate::utils::sentry::ConfigureScope;
 
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
@@ -259,13 +259,13 @@ impl CfiCacheActor {
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [symbolic::minidump::cfi::CfiCache].
-fn write_cficache(path: &Path, object_file: &ObjectHandle) -> Result<(), CfiCacheError> {
+fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
-        object_file.write_sentry_scope(scope);
+        object_handle.to_scope(scope);
     });
 
-    let object = object_file
+    let object = object_handle
         .parse()
         .map_err(CfiCacheError::ObjectParsing)?
         .unwrap();
@@ -273,7 +273,7 @@ fn write_cficache(path: &Path, object_file: &ObjectHandle) -> Result<(), CfiCach
     let file = File::create(&path)?;
     let writer = BufWriter::new(file);
 
-    log::debug!("Converting cficache for {}", object_file.cache_key());
+    log::debug!("Converting cficache for {}", object_handle.cache_key());
 
     CfiCache::from_object(&object)?.write_to(writer)?;
 
