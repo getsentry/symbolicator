@@ -196,7 +196,7 @@ impl DownloadService {
 /// This is common functionality used by many downloaders.
 async fn download_stream(
     source: impl Into<ObjectFileSource>,
-    mut stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>> + Unpin,
+    stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
@@ -204,6 +204,7 @@ async fn download_stream(
     let mut file = File::create(&destination)
         .await
         .map_err(DownloadError::BadDestination)?;
+    futures::pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
