@@ -4,7 +4,7 @@
 //! implementing the [`CacheItemRequest`] trait for a [`FetchFileDataRequest`] which can be
 //! used with a [`Cacher`] to make a filesystem based cache.
 //!
-//! [`Cacher`]: crate::actors::common::cache::Cacher
+//! [`Cacher`]: crate::actors::cacher::Cacher
 
 use std::cmp;
 use std::fs;
@@ -20,7 +20,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 
-use crate::actors::common::cache::{CacheItemRequest, CachePath};
+use crate::actors::cacher::{CacheItemRequest, CachePath};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::services::download::{DownloadStatus, ObjectFileSource};
 use crate::types::{ObjectId, Scope};

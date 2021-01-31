@@ -14,7 +14,7 @@ use std::sync::Arc;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 
-use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
+use crate::actors::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::cache::{CacheKey, CacheStatus};
 use crate::services::download::{ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::SourceId;
