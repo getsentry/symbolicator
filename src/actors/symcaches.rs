@@ -22,7 +22,7 @@ use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
 use crate::utils::futures::{BoxedFuture, ThreadPool};
-use crate::utils::sentry::WriteSentryScope;
+use crate::utils::sentry::ConfigureScope;
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -268,13 +268,13 @@ impl SymCacheActor {
     }
 }
 
-fn write_symcache(path: &Path, object: &ObjectHandle) -> Result<(), SymCacheError> {
+fn write_symcache(path: &Path, object_handle: &ObjectHandle) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
-        object.write_sentry_scope(scope);
+        object_handle.to_scope(scope);
     });
 
-    let symbolic_object = object
+    let symbolic_object = object_handle
         .parse()
         .map_err(SymCacheError::ObjectParsing)?
         .unwrap();
@@ -282,7 +282,7 @@ fn write_symcache(path: &Path, object: &ObjectHandle) -> Result<(), SymCacheErro
     let file = File::create(&path)?;
     let mut writer = BufWriter::new(file);
 
-    log::debug!("Converting symcache for {}", object.cache_key());
+    log::debug!("Converting symcache for {}", object_handle.cache_key());
 
     SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
 

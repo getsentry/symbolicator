@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::sources::SourceId;
-use crate::utils::sentry::WriteSentryScope;
+use crate::utils::sentry::ConfigureScope;
 
 use super::filesystem::FilesystemObjectFileSource;
 use super::gcs::GcsObjectFileSource;
@@ -197,8 +197,8 @@ impl ObjectFileSource {
     }
 }
 
-impl WriteSentryScope for ObjectFileSource {
-    fn write_sentry_scope(&self, scope: &mut ::sentry::Scope) {
+impl ConfigureScope for ObjectFileSource {
+    fn to_scope(&self, scope: &mut ::sentry::Scope) {
         scope.set_tag("source.id", self.source_id());
         scope.set_tag("source.type", self.source_type_name());
         scope.set_tag("source.is_public", self.is_public());

@@ -7,7 +7,7 @@ use crate::sources::SourceConfig;
 use crate::types::{
     RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
 };
-use crate::utils::sentry::WriteSentryScope;
+use crate::utils::sentry::ConfigureScope;
 
 /// Query parameters of the symbolication request.
 #[derive(Deserialize)]
@@ -18,8 +18,8 @@ pub struct SymbolicationRequestQueryParams {
     pub scope: Scope,
 }
 
-impl WriteSentryScope for SymbolicationRequestQueryParams {
-    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
+impl ConfigureScope for SymbolicationRequestQueryParams {
+    fn to_scope(&self, scope: &mut sentry::Scope) {
         scope.set_tag("request.scope", &self.scope);
         if let Some(timeout) = self.timeout {
             scope.set_tag("request.timeout", timeout);
@@ -52,7 +52,7 @@ async fn symbolicate_frames(
     sentry::start_session();
 
     let params = params.into_inner();
-    sentry::configure_scope(|scope| params.write_sentry_scope(scope));
+    params.configure_scope();
 
     let body = body.into_inner();
     let sources = match body.sources {

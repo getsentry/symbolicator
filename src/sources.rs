@@ -11,7 +11,6 @@ use url::Url;
 
 use crate::types::{Glob, ObjectId, ObjectType};
 use crate::utils::paths;
-use crate::utils::sentry::WriteSentryScope;
 
 /// An identifier for DIF sources.
 ///
@@ -78,25 +77,6 @@ impl SourceConfig {
             SourceConfig::Http(..) => "http",
             SourceConfig::Filesystem(..) => "filesystem",
         }
-    }
-
-    /// Determines whether debug files from this bucket may be shared.
-    pub fn is_public(&self) -> bool {
-        match *self {
-            SourceConfig::Http(ref x) => x.files.is_public,
-            SourceConfig::S3(ref x) => x.files.is_public,
-            SourceConfig::Gcs(ref x) => x.files.is_public,
-            SourceConfig::Sentry(_) => false,
-            SourceConfig::Filesystem(ref x) => x.files.is_public,
-        }
-    }
-}
-
-impl WriteSentryScope for SourceConfig {
-    fn write_sentry_scope(&self, scope: &mut sentry::Scope) {
-        scope.set_tag("source.id", self.id());
-        scope.set_tag("source.type", self.type_name());
-        scope.set_tag("source.is_public", self.is_public());
     }
 }
 

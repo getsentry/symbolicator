@@ -7,7 +7,7 @@ use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::multipart::{
     read_multipart_file, read_multipart_request_options, read_multipart_sources,
 };
-use crate::utils::sentry::WriteSentryScope;
+use crate::utils::sentry::ConfigureScope;
 
 async fn handle_apple_crash_report_request(
     state: State<ServiceState>,
@@ -17,7 +17,7 @@ async fn handle_apple_crash_report_request(
     sentry::start_session();
 
     let params = params.into_inner();
-    sentry::configure_scope(|scope| params.write_sentry_scope(scope));
+    params.configure_scope();
 
     let mut report = None;
     let mut sources = state.config().default_sources();
