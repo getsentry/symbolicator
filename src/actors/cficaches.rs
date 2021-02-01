@@ -13,7 +13,7 @@ use symbolic::{
 };
 use thiserror::Error;
 
-use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
+use crate::actors::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };

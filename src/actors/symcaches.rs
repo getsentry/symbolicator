@@ -11,7 +11,7 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::actors::common::cache::{CacheItemRequest, CachePath, Cacher};
+use crate::actors::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::actors::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
