@@ -150,7 +150,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                 .map_err(Self::Error::from)?;
 
             match status {
-                DownloadStatus::NotFound => {
+                DownloadStatus::NotFound | DownloadStatus::NoPerm(_) => {
                     log::debug!("No debug file found for {}", cache_key);
                     return Ok(CacheStatus::Negative);
                 }

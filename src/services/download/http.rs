@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use futures::prelude::*;
-use reqwest::{header, Client};
+use reqwest::{header, Client, StatusCode};
 use url::Url;
 
 use super::{
@@ -79,17 +79,23 @@ impl HttpDownloader {
                     builder = builder.header(key, value.as_str());
                 }
             }
-
             builder.header(header::USER_AGENT, USER_AGENT).send()
         });
 
         match response.await {
             Ok(response) => {
-                if response.status().is_success() {
+                let status = response.status();
+                if status.is_success() {
                     log::trace!("Success hitting {}", download_url);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(file_source, stream, destination).await
+                } else if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    Ok(DownloadStatus::NoPerm(format!(
+                        "{} {}",
+                        status.as_str(),
+                        status.canonical_reason().unwrap_or_default()
+                    )))
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
