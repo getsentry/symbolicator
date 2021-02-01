@@ -42,8 +42,7 @@ async fn handle_minidump_request(
     let minidump = minidump.ok_or_else(|| error::ErrorBadRequest("missing minidump"))?;
 
     let symbolication = state.symbolication();
-    let request_id =
-        symbolication.process_minidump(params.scope, minidump.into(), sources, options);
+    let request_id = symbolication.process_minidump(params.scope, minidump, sources, options);
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

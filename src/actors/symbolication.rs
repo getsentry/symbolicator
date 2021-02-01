@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::future::Future;
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
-use bytes::{Bytes, IntoBuf};
+use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
@@ -1276,7 +1276,7 @@ impl SymbolicationActor {
                 spawn_result,
                 Duration::from_secs(20),
                 "minidump.modules.spawn.error",
-                minidump,
+                &minidump,
                 diagnostics_cache,
             )
         };
@@ -1296,7 +1296,7 @@ impl SymbolicationActor {
         handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
         timeout: Duration,
         metric: &str,
-        minidump: Bytes,
+        minidump: &[u8],
         minidump_cache: crate::cache::Cache,
     ) -> Result<T, anyhow::Error>
     where
@@ -1343,7 +1343,7 @@ impl SymbolicationActor {
 
     /// Save a minidump to temporary location.
     fn save_minidump(
-        minidump: Bytes,
+        minidump: &[u8],
         failed_cache: crate::cache::Cache,
     ) -> anyhow::Result<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
@@ -1654,7 +1654,7 @@ impl SymbolicationActor {
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
-                minidump,
+                &minidump,
                 diagnostics_cache,
             )?;
 
@@ -1685,11 +1685,13 @@ impl SymbolicationActor {
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
-        minidump: Bytes,
+        minidump: Vec<u8>,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
+            let minidump = Bytes::from(minidump);
+
             let referenced_modules = self
                 .get_referenced_modules_from_minidump(minidump.clone())
                 .await?;
@@ -1713,7 +1715,7 @@ impl SymbolicationActor {
     async fn do_process_minidump(
         self,
         scope: Scope,
-        minidump: Bytes,
+        minidump: Vec<u8>,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
@@ -1731,7 +1733,7 @@ impl SymbolicationActor {
     pub fn process_minidump(
         &self,
         scope: Scope,
-        minidump: Bytes,
+        minidump: Vec<u8>,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
@@ -1793,12 +1795,12 @@ impl SymbolicationActor {
     async fn parse_apple_crash_report(
         &self,
         scope: Scope,
-        minidump: Bytes,
+        minidump: Vec<u8>,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
-            let report = AppleCrashReport::from_reader(minidump.into_buf())?;
+            let report = AppleCrashReport::from_reader(Cursor::new(minidump))?;
             let mut metadata = report.metadata;
 
             let arch = report
@@ -1906,7 +1908,7 @@ impl SymbolicationActor {
     async fn do_process_apple_crash_report(
         self,
         scope: Scope,
-        report: Bytes,
+        report: Vec<u8>,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
@@ -1922,7 +1924,7 @@ impl SymbolicationActor {
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
-        apple_crash_report: Bytes,
+        apple_crash_report: Vec<u8>,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
@@ -2184,7 +2186,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let minidump = Bytes::from(fs::read(path)?);
+        let minidump = fs::read(path)?;
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request_id = symbolication.process_minidump(
@@ -2231,7 +2233,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = Bytes::from(fs::read("./tests/fixtures/apple_crash_report.txt")?);
+        let report_file = fs::read("./tests/fixtures/apple_crash_report.txt")?;
         let response = test::spawn_compat(move || async move {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,

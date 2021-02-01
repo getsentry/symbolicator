@@ -2,7 +2,6 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
-use bytes::BytesMut;
 use failure::{Error, ResultExt};
 use futures01::Stream;
 use tokio01::codec::{BytesCodec, FramedRead};
@@ -75,7 +74,7 @@ async fn proxy_symstore_request(
     }
 
     let bytes = Cursor::new(object_handle.data());
-    let async_bytes = FramedRead::new(bytes, BytesCodec::new()).map(BytesMut::freeze);
+    let async_bytes = FramedRead::new(bytes, BytesCodec::new()).map(|bytes| bytes.freeze());
     Ok(response.streaming(async_bytes))
 }
 
