@@ -136,9 +136,9 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
     };
 
     let key = key_from_string(&source_key.private_key)?;
-    let pkcs8 = jsonwebtoken::Key::Pkcs8(&key);
+    let key = jsonwebtoken::EncodingKey::from_secret(&key);
 
-    Ok(jsonwebtoken::encode(&header, &jwt_claims, pkcs8)?)
+    Ok(jsonwebtoken::encode(&header, &jwt_claims, &key)?)
 }
 
 /// Downloader implementation that supports the [`GcsSourceConfig`] source.
