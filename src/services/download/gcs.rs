@@ -136,7 +136,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
     };
 
     let key = key_from_string(&source_key.private_key)?;
-    let key = jsonwebtoken::EncodingKey::from_secret(&key);
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(&key)?;
 
     Ok(jsonwebtoken::encode(&header, &jwt_claims, &key)?)
 }
