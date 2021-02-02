@@ -105,24 +105,6 @@ pub enum GcsError {
     Auth(#[source] reqwest::Error),
 }
 
-/// Parses the given private key string into its binary representation.
-///
-/// Returns `Ok` on success. Returns `GcsError::Base64`, if the key cannot be parsed.
-fn key_from_string(mut s: &str) -> Result<Vec<u8>, GcsError> {
-    if s.starts_with("-----BEGIN PRIVATE KEY-----") {
-        s = s.splitn(5, "-----").nth(2).unwrap();
-    }
-
-    let bytes = &s
-        .as_bytes()
-        .iter()
-        .cloned()
-        .filter(|b| !b.is_ascii_whitespace())
-        .collect::<Vec<u8>>();
-
-    Ok(base64::decode(bytes)?)
-}
-
 /// Computes a JWT authentication assertion for the given GCS bucket.
 fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
@@ -135,8 +117,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
         issued_at: Utc::now().timestamp(),
     };
 
-    let key = key_from_string(&source_key.private_key)?;
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(&key)?;
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(source_key.private_key.as_bytes())?;
 
     Ok(jsonwebtoken::encode(&header, &jwt_claims, &key)?)
 }
