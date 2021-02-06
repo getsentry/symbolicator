@@ -1,5 +1,5 @@
 ---
-source: src/actors/symbolication.rs
+source: src/services/symbolication.rs
 expression: cache_entries
 ---
 - local_67E9_247C_814E_392B_A027_DBDE6748FCBF

@@ -1,5 +1,5 @@
 ---
-source: src/actors/symbolication.rs
+source: src/services/symbolication.rs
 expression: cache_entries
 ---
 - local_5d_7b6259552275a3c17bd4c3fd05f5a6bf40caa5

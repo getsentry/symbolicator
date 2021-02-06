@@ -1,7 +1,7 @@
-use actix_web::{Error, HttpResponse, Path, Query, State};
+use actix_web::{App, Error, HttpResponse, Path, Query, State};
 use serde::Deserialize;
 
-use crate::app::{ServiceApp, ServiceState};
+use crate::services::Service;
 use crate::types::RequestId;
 
 /// Path parameters of the symbolication poll request.
@@ -18,7 +18,7 @@ struct PollSymbolicationRequestQueryParams {
 }
 
 async fn poll_request(
-    state: State<ServiceState>,
+    state: State<Service>,
     path: Path<PollSymbolicationRequestPath>,
     query: Query<PollSymbolicationRequestQueryParams>,
 ) -> Result<HttpResponse, Error> {
@@ -36,7 +36,7 @@ async fn poll_request(
     })
 }
 
-pub fn configure(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: App<Service>) -> App<Service> {
     app.resource("/requests/{request_id}", |r| {
         let handler = compat_handler!(poll_request, s, p, q);
         r.get().with_async(handler);

@@ -1,5 +1,5 @@
 ---
-source: src/actors/symbolication.rs
+source: src/services/symbolication.rs
 expression: cache_entries
 ---
 - local_crash_exe_5AB380779000_crash_ex_

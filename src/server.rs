@@ -1,15 +1,15 @@
 use actix_web::{server::HttpServer, App};
 use anyhow::{Context, Result};
 
-use crate::app::{ServiceApp, ServiceState};
 use crate::config::Config;
 use crate::endpoints;
 use crate::middlewares;
+use crate::services::Service;
 use crate::utils::sentry::SentryMiddleware;
 
 /// Creates the Actix web application with all middlewares.
 #[inline]
-pub fn create_app(state: ServiceState) -> ServiceApp {
+pub fn create_app(state: Service) -> App<Service> {
     App::with_state(state)
         .middleware(middlewares::Metrics)
         .middleware(middlewares::ErrorHandlers)
@@ -34,7 +34,7 @@ pub fn run(config: Config) -> Result<()> {
 
     // Enter the tokio runtime before creating the services.
     let _guard = runtime.enter();
-    let service = ServiceState::create(config).context("failed to create service state")?;
+    let service = Service::create(config).context("failed to create service state")?;
 
     log::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))

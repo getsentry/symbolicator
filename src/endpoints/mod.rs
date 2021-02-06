@@ -1,4 +1,6 @@
-use crate::app::ServiceApp;
+use actix_web::App;
+
+use crate::services::Service;
 
 mod applecrashreport;
 mod healthcheck;
@@ -8,7 +10,7 @@ mod requests;
 mod symbolicate;
 
 /// Adds all endpoint routes to the app.
-pub fn configure(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: App<Service>) -> App<Service> {
     app.configure(applecrashreport::configure)
         .configure(healthcheck::configure)
         .configure(minidump::configure)

@@ -1,6 +1,6 @@
 ---
-source: src/actors/symbolication.rs
-expression: response
+source: src/services/symbolication.rs
+expression: response.await.unwrap()
 ---
 status: completed
 timestamp: 1522061032
