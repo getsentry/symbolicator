@@ -1,8 +1,8 @@
-use actix_web::{error, multipart, Error, HttpMessage, HttpRequest, Json, Query, State};
+use actix_web::{error, multipart, App, Error, HttpMessage, HttpRequest, Json, Query, State};
 use futures::{compat::Stream01CompatExt, StreamExt};
 
-use crate::app::{ServiceApp, ServiceState};
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
+use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::multipart::{
     read_multipart_file, read_multipart_request_options, read_multipart_sources,
@@ -10,9 +10,9 @@ use crate::utils::multipart::{
 use crate::utils::sentry::ConfigureScope;
 
 async fn handle_minidump_request(
-    state: State<ServiceState>,
+    state: State<Service>,
     params: Query<SymbolicationRequestQueryParams>,
-    request: HttpRequest<ServiceState>,
+    request: HttpRequest<Service>,
 ) -> Result<Json<SymbolicationResponse>, Error> {
     sentry::start_session();
 
@@ -52,7 +52,7 @@ async fn handle_minidump_request(
     }
 }
 
-pub fn configure(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: App<Service>) -> App<Service> {
     app.resource("/minidump", |r| {
         let handler = compat_handler!(handle_minidump_request, s, p, r);
         r.post().with_async(handler);
@@ -66,8 +66,8 @@ mod tests {
     use actix_web::test::TestServer;
     use reqwest::{multipart, Client, StatusCode};
 
-    use crate::app::ServiceState;
     use crate::config::Config;
+    use crate::services::Service;
     use crate::test;
     use crate::types::SymbolicationResponse;
 
@@ -75,7 +75,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let service = ServiceState::create(Config::default()).unwrap();
+        let service = Service::create(Config::default()).unwrap();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
 
         let file_contents = fs::read("tests/fixtures/windows.dmp").unwrap();
@@ -106,7 +106,7 @@ mod tests {
         // TODO: Move this test to E2E tests
         test::setup();
 
-        let service = ServiceState::create(Config::default()).unwrap();
+        let service = Service::create(Config::default()).unwrap();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
         let source = test::microsoft_symsrv();
 
@@ -136,7 +136,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let service = ServiceState::create(Config::default()).unwrap();
+        let service = Service::create(Config::default()).unwrap();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
 
         let file_contents = fs::read("tests/fixtures/windows.dmp").unwrap();

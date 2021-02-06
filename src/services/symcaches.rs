@@ -11,12 +11,12 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::actors::cacher::{CacheItemRequest, CachePath, Cacher};
-use crate::actors::objects::{
+use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
+use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
 };
-use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,

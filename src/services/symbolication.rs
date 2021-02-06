@@ -29,11 +29,11 @@ use symbolic::minidump::processor::{
 };
 use thiserror::Error;
 
-use crate::actors::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
-use crate::actors::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
-use crate::actors::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
+use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
+use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
@@ -1999,8 +1999,8 @@ mod tests {
 
     use std::fs;
 
-    use crate::app::ServiceState;
     use crate::config::Config;
+    use crate::services::Service;
     use crate::test;
 
     /// Setup tests and create a test service.
@@ -2011,7 +2011,7 @@ mod tests {
     ///
     /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
     /// symbol server to test object file downloads.
-    fn setup_service() -> (ServiceState, test::TempDir) {
+    fn setup_service() -> (Service, test::TempDir) {
         test::setup();
 
         let cache_dir = test::tempdir();
@@ -2021,7 +2021,7 @@ mod tests {
             connect_to_reserved_ips: true,
             ..Default::default()
         };
-        let service = ServiceState::create(config).unwrap();
+        let service = Service::create(config).unwrap();
 
         (service, cache_dir)
     }
@@ -2070,7 +2070,7 @@ mod tests {
         ($e:expr) => {
             ::insta::assert_yaml_snapshot!($e, {
                 ".**.location" => ::insta::dynamic_redaction(
-                    $crate::actors::symbolication::tests::redact_localhost_port
+                    $crate::services::symbolication::tests::redact_localhost_port
                 )
             });
         }

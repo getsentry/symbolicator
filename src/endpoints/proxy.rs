@@ -1,17 +1,17 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use actix_web::{http::Method, pred, HttpRequest, HttpResponse, Path, State};
+use actix_web::{http::Method, pred, App, HttpRequest, HttpResponse, Path, State};
 use failure::{Error, ResultExt};
 use futures01::Stream;
 use tokio01::codec::{BytesCodec, FramedRead};
 
-use crate::actors::objects::{FindObject, ObjectHandle, ObjectPurpose};
-use crate::app::{ServiceApp, ServiceState};
+use crate::services::objects::{FindObject, ObjectHandle, ObjectPurpose};
+use crate::services::Service;
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
 
-async fn load_object(state: &ServiceState, path: &str) -> Result<Option<Arc<ObjectHandle>>, Error> {
+async fn load_object(state: &Service, path: &str) -> Result<Option<Arc<ObjectHandle>>, Error> {
     let config = state.config();
     if !config.symstore_proxy {
         return Ok(None);
@@ -55,8 +55,8 @@ async fn load_object(state: &ServiceState, path: &str) -> Result<Option<Arc<Obje
 }
 
 async fn proxy_symstore_request(
-    state: State<ServiceState>,
-    request: HttpRequest<ServiceState>,
+    state: State<Service>,
+    request: HttpRequest<Service>,
     path: Path<(String,)>,
 ) -> Result<HttpResponse, Error> {
     let object_handle = match load_object(&state, &path.0).await? {
@@ -78,7 +78,7 @@ async fn proxy_symstore_request(
     Ok(response.streaming(async_bytes))
 }
 
-pub fn configure(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: App<Service>) -> App<Service> {
     app.resource("/symbols/{path:.+}", |r| {
         r.route()
             .filter(pred::Any(pred::Get()).or(pred::Head()))

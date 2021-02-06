@@ -1,8 +1,8 @@
-use actix_web::{error, Error, Json, Query, State};
+use actix_web::{error, App, Error, Json, Query, State};
 use serde::Deserialize;
 
-use crate::actors::symbolication::SymbolicateStacktraces;
-use crate::app::{ServiceApp, ServiceState};
+use crate::services::symbolication::SymbolicateStacktraces;
+use crate::services::Service;
 use crate::sources::SourceConfig;
 use crate::types::{
     RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
@@ -45,7 +45,7 @@ struct SymbolicationRequestBody {
 }
 
 async fn symbolicate_frames(
-    state: State<ServiceState>,
+    state: State<Service>,
     params: Query<SymbolicationRequestQueryParams>,
     body: Json<SymbolicationRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, Error> {
@@ -78,7 +78,7 @@ async fn symbolicate_frames(
     }
 }
 
-pub fn configure(app: ServiceApp) -> ServiceApp {
+pub fn configure(app: App<Service>) -> App<Service> {
     app.resource("/symbolicate", |r| {
         r.post().with_async_config(
             compat_handler!(symbolicate_frames, s, p, b),

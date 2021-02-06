@@ -1,4 +1,4 @@
-/// Core logic for cache files. Used by `crate::actors::common::cache`.
+/// Core logic for cache files. Used by `crate::services::common::cache`.
 ///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.

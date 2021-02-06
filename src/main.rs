@@ -13,8 +13,6 @@ mod macros;
 #[macro_use]
 mod metrics;
 
-mod actors;
-mod app;
 mod cache;
 mod cli;
 mod config;

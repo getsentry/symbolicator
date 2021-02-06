@@ -10,7 +10,7 @@ use super::ObjectFeatures;
 
 /// Information about a Debug Information File in the [`CompleteObjectInfo`].
 ///
-/// All DIFs are backed by an [`ObjectHandle`](crate::actors::objects::ObjectHandle).  But we
+/// All DIFs are backed by an [`ObjectHandle`](crate::services::objects::ObjectHandle).  But we
 /// may not have been able to get hold of this object file.  We still want to describe the
 /// relevant DIF however.
 ///
@@ -134,8 +134,8 @@ impl ObjectUseInfo {
     /// These caches have an edge case where if the underlying cache thought the object was
     /// there but now it could not be fetched again.  This is converted to an error case.
     ///
-    /// [`symcaches`]: crate::actors::symcaches
-    /// [`cficaches`]: crate::actors::cficaches
+    /// [`symcaches`]: crate::services::symcaches
+    /// [`cficaches`]: crate::services::cficaches
     pub fn from_derived_status(derived: CacheStatus, original: CacheStatus) -> Self {
         match derived {
             CacheStatus::Positive => ObjectUseInfo::Ok,

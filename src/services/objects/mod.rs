@@ -10,9 +10,9 @@ use futures::future::{self, Future, TryFutureExt};
 use sentry::SentryFutureExt;
 use symbolic::debuginfo;
 
-use crate::actors::cacher::Cacher;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
+use crate::services::cacher::Cacher;
 use crate::services::download::{
     DownloadError, DownloadService, ObjectFileSource, ObjectFileSourceURI,
 };
@@ -125,7 +125,7 @@ impl From<debuginfo::ObjectError> for ObjectError {
 /// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this
 /// along some errors, so we use this wrapper.
 ///
-/// [`CacheItemRequest`]: crate::actors::cacher::CacheItemRequest
+/// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
 /// [`SourceId`]: crate::sources::SourceId
 /// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Debug)]
