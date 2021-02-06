@@ -19,7 +19,7 @@ use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::download::{ObjectFileSource, ObjectFileSourceURI};
 use crate::sources::SourceId;
 use crate::types::{ObjectFeatures, ObjectId, Scope};
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::BoxedFuture;
 
 use super::{FetchFileDataRequest, ObjectError, ObjectHandle};
 
@@ -35,7 +35,6 @@ pub(super) struct FetchFileMetaRequest {
     // XXX: This kind of state is not request data. We should find a different way to get this into
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
-    pub(super) threadpool: ThreadPool,
     pub(super) data_cache: Arc<Cacher<FetchFileDataRequest>>,
     pub(super) download_svc: Arc<crate::services::download::DownloadService>,
 }
