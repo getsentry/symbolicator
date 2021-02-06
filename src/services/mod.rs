@@ -4,8 +4,8 @@
 //! cache management, and symbolication. They are created by the main [`Service`] and can be
 //! accessed via that.
 //!
-//! In general, services are created once in the [`crate::services::ServiceState`] and accessed via
-//! this state.
+//! In general, services are created once in the [`crate::services::Service`] and accessed via this
+//! state.
 //!
 //! The internal services require an asynchronous runtime. For regular scheduling and I/O-intensive
 //! work, services use the common runtime. For CPU intensive workloads, services delegate to a
