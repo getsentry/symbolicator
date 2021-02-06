@@ -65,7 +65,6 @@ impl Service {
         let config = Arc::new(config);
 
         let cpu_pool = ThreadPool::new();
-        let io_pool = ThreadPool::new();
         let spawnpool = procspawn::Pool::new(config.processing_pool_size)
             .context("failed to create process pool")?;
 
@@ -74,12 +73,7 @@ impl Service {
         caches
             .clear_tmp(&config)
             .context("failed to clear tmp caches")?;
-        let objects = ObjectsActor::new(
-            caches.object_meta,
-            caches.objects,
-            io_pool,
-            downloader.clone(),
-        );
+        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
         let symcaches = SymCacheActor::new(caches.symcaches, objects.clone(), cpu_pool.clone());
         let cficaches = CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_pool.clone());
 

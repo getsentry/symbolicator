@@ -18,7 +18,6 @@ use crate::services::download::{
 };
 use crate::sources::{FileType, SourceConfig, SourceId};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
-use crate::utils::futures::ThreadPool;
 
 use data_cache::FetchFileDataRequest;
 use meta_cache::FetchFileMetaRequest;
@@ -140,21 +139,14 @@ struct CacheLookupError {
 pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    threadpool: ThreadPool,
     download_svc: Arc<DownloadService>,
 }
 
 impl ObjectsActor {
-    pub fn new(
-        meta_cache: Cache,
-        data_cache: Cache,
-        threadpool: ThreadPool,
-        download_svc: Arc<DownloadService>,
-    ) -> Self {
+    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache)),
             data_cache: Arc::new(Cacher::new(data_cache)),
-            threadpool,
             download_svc,
         }
     }
@@ -302,7 +294,6 @@ impl ObjectsActor {
         for file_source in file_sources {
             let object_id = identifier.clone();
             let scope = scope.clone();
-            let threadpool = self.threadpool.clone();
             let data_cache = self.data_cache.clone();
             let download_svc = self.download_svc.clone();
             let meta_cache = self.meta_cache.clone();
@@ -317,7 +308,6 @@ impl ObjectsActor {
                     scope,
                     file_source: file_source.clone(),
                     object_id,
-                    threadpool,
                     data_cache,
                     download_svc,
                 };
