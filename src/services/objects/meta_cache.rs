@@ -16,7 +16,7 @@ use symbolic::debuginfo::Object;
 
 use crate::cache::{CacheKey, CacheStatus};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
-use crate::services::download::{ObjectFileSource, ObjectFileSourceURI};
+use crate::services::download::{ObjectFileSource, ObjectFileSourceUri};
 use crate::sources::SourceId;
 use crate::types::{ObjectFeatures, ObjectId, Scope};
 use crate::utils::futures::BoxedFuture;
@@ -63,7 +63,7 @@ impl ObjectMetaHandle {
         self.request.file_source.source_id()
     }
 
-    pub fn uri(&self) -> ObjectFileSourceURI {
+    pub fn uri(&self) -> ObjectFileSourceUri {
         self.request.file_source.uri()
     }
 

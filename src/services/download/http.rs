@@ -11,7 +11,7 @@ use reqwest::{header, Client};
 use url::Url;
 
 use super::{
-    DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI, SourceLocation,
+    DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri, SourceLocation,
     USER_AGENT,
 };
 use crate::sources::{FileType, HttpSourceConfig};
@@ -36,7 +36,7 @@ impl HttpObjectFileSource {
         Self { source, location }
     }
 
-    pub fn uri(&self) -> ObjectFileSourceURI {
+    pub fn uri(&self) -> ObjectFileSourceUri {
         match self.url() {
             Ok(url) => url.as_ref().into(),
             Err(_) => "".into(),

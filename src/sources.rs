@@ -313,7 +313,7 @@ pub enum DirectoryLayoutType {
     SymstoreIndex2,
     /// Uses Microsoft SSQP server conventions.
     #[serde(rename = "ssqp")]
-    SSQP,
+    Ssqp,
     /// Uses [debuginfod](https://www.mankier.com/8/debuginfod) conventions.
     #[serde(rename = "debuginfod")]
     Debuginfod,

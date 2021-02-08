@@ -14,7 +14,7 @@ use thiserror::Error;
 use url::Url;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
@@ -58,7 +58,7 @@ impl GcsObjectFileSource {
     }
 
     /// Returns the `gs://` URI from which to download this object file.
-    pub fn uri(&self) -> ObjectFileSourceURI {
+    pub fn uri(&self) -> ObjectFileSourceUri {
         format!("gs://{}/{}", self.source.bucket, self.key()).into()
     }
 }
