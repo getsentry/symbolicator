@@ -15,7 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI, USER_AGENT};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri, USER_AGENT};
 use crate::config::Config;
 use crate::sources::{FileType, SentrySourceConfig};
 use crate::types::ObjectId;
@@ -39,7 +39,7 @@ impl SentryObjectFileSource {
         Self { source, file_id }
     }
 
-    pub fn uri(&self) -> ObjectFileSourceURI {
+    pub fn uri(&self) -> ObjectFileSourceUri {
         format!("sentry://project_debug_file/{}", self.file_id).into()
     }
 
@@ -287,7 +287,7 @@ mod tests {
         let uri = file_source.uri();
         assert_eq!(
             uri,
-            ObjectFileSourceURI::new("sentry://project_debug_file/abc123")
+            ObjectFileSourceUri::new("sentry://project_debug_file/abc123")
         );
     }
 }

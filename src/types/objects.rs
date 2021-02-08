@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cache::CacheStatus;
-use crate::services::download::ObjectFileSourceURI;
+use crate::services::download::ObjectFileSourceUri;
 use crate::sources::SourceId;
 
 use super::ObjectFeatures;
@@ -32,7 +32,7 @@ pub struct ObjectCandidate {
     ///
     /// This is generally a URI which makes sense for the source type, however no guarantees
     /// are given and it could be any string.
-    pub location: ObjectFileSourceURI,
+    pub location: ObjectFileSourceUri,
     /// Information about fetching or downloading this DIF object.
     ///
     /// This section is always present and will at least have a `status` field.
@@ -176,7 +176,7 @@ impl AllObjectCandidates {
     ///
     /// You can only request symcaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_debug(&mut self, source: SourceId, uri: &ObjectFileSourceURI, info: ObjectUseInfo) {
+    pub fn set_debug(&mut self, source: SourceId, uri: &ObjectFileSourceUri, info: ObjectUseInfo) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
@@ -202,7 +202,7 @@ impl AllObjectCandidates {
     ///
     /// You can only request cficaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_unwind(&mut self, source: SourceId, uri: &ObjectFileSourceURI, info: ObjectUseInfo) {
+    pub fn set_unwind(&mut self, source: SourceId, uri: &ObjectFileSourceUri, info: ObjectUseInfo) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
@@ -280,7 +280,7 @@ mod tests {
         // If a candidate didn't exist yet it should be inserted in order.
         let src_a = ObjectCandidate {
             source: SourceId::new("A"),
-            location: ObjectFileSourceURI::new("a"),
+            location: ObjectFileSourceUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -289,7 +289,7 @@ mod tests {
         };
         let src_b = ObjectCandidate {
             source: SourceId::new("B"),
-            location: ObjectFileSourceURI::new("b"),
+            location: ObjectFileSourceUri::new("b"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -298,7 +298,7 @@ mod tests {
         };
         let src_c = ObjectCandidate {
             source: SourceId::new("C"),
-            location: ObjectFileSourceURI::new("c"),
+            location: ObjectFileSourceUri::new("c"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -318,7 +318,7 @@ mod tests {
     fn test_all_object_info_merge_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: ObjectFileSourceURI::new("a"),
+            location: ObjectFileSourceUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -327,7 +327,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: ObjectFileSourceURI::new("a"),
+            location: ObjectFileSourceUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -349,7 +349,7 @@ mod tests {
     fn test_all_object_info_merge_no_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: ObjectFileSourceURI::new("uri://dummy"),
+            location: ObjectFileSourceUri::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -358,7 +358,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: ObjectFileSourceURI::new("uri://dummy"),
+            location: ObjectFileSourceUri::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },

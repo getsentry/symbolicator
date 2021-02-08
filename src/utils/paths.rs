@@ -383,7 +383,7 @@ pub fn get_directory_paths(
         DirectoryLayoutType::SymstoreIndex2 => get_symstore_index2_path(filetype, identifier)
             .into_iter()
             .collect(),
-        DirectoryLayoutType::SSQP => get_symstore_path(filetype, identifier, true)
+        DirectoryLayoutType::Ssqp => get_symstore_path(filetype, identifier, true)
             .into_iter()
             .collect(),
         DirectoryLayoutType::Debuginfod => get_debuginfod_path(filetype, identifier)

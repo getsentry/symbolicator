@@ -14,7 +14,7 @@ use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
 use crate::services::cacher::Cacher;
 use crate::services::download::{
-    DownloadError, DownloadService, ObjectFileSource, ObjectFileSourceURI,
+    DownloadError, DownloadService, ObjectFileSource, ObjectFileSourceUri,
 };
 use crate::sources::{FileType, SourceConfig, SourceId};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
@@ -424,7 +424,7 @@ fn create_candidates(
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: ObjectFileSourceURI::new("No object files listed on this source"),
+            location: ObjectFileSourceUri::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),

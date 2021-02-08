@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceURI};
+use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
@@ -60,7 +60,7 @@ impl S3ObjectFileSource {
     }
 
     /// Returns the `s3://` URI from which to download this object file.
-    pub fn uri(&self) -> ObjectFileSourceURI {
+    pub fn uri(&self) -> ObjectFileSourceUri {
         format!("s3://{}/{}", self.source.bucket, self.key()).into()
     }
 }
