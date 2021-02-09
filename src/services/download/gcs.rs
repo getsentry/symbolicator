@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
+use jsonwebtoken::EncodingKey;
 use parking_lot::Mutex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -105,6 +106,17 @@ pub enum GcsError {
     Auth(#[source] reqwest::Error),
 }
 
+/// Returns the JWT key parsed from a string.
+///
+/// Because Google provides this key in JSON format a lot of users just copy-paste this key
+/// directly, leaving the escaped newlines from the JSON-encoding in place.  In normal
+/// base64 this should not occur so we pre-process the key to convert these back to real
+/// newlines, ensuring they are in the correct PEM format.
+fn key_from_string(key: &str) -> Result<EncodingKey, jsonwebtoken::errors::Error> {
+    let buffer = key.replace("\\n", "\n");
+    EncodingKey::from_rsa_pem(buffer.as_bytes())
+}
+
 /// Computes a JWT authentication assertion for the given GCS bucket.
 fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
@@ -117,7 +129,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
         issued_at: Utc::now().timestamp(),
     };
 
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(source_key.private_key.as_bytes())?;
+    let key = key_from_string(&source_key.private_key)?;
 
     Ok(jsonwebtoken::encode(&header, &jwt_claims, &key)?)
 }
@@ -410,6 +422,20 @@ mod tests {
             .expect_err("authentication should fail");
 
         assert!(!target_path.exists());
+    }
+
+    #[test]
+    fn test_key_from_string() {
+        let creds = gcs_source_key!();
+
+        let key = key_from_string(&creds.private_key);
+        assert!(key.is_ok());
+
+        let json_key = serde_json::to_string(&creds.private_key).unwrap();
+        let json_like_key = json_key.trim_matches('"');
+
+        let key = key_from_string(json_like_key);
+        assert!(key.is_ok());
     }
 
     // TODO: Test credential caching.
