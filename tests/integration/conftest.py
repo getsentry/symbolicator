@@ -12,6 +12,7 @@ import traceback
 import pytest
 import requests
 from pytest_localserver.http import WSGIServer
+from werkzeug.serving import WSGIRequestHandler
 
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
 
@@ -151,6 +152,11 @@ class HitCounter:
         self.before_request = None
         self._lock = threading.Lock()
         self.errors = []
+
+        # Required for proxying HTTP/1.1 transfer-encoding "chunked" from the microsoft symbol server.
+        # See: https://github.com/hyperium/hyper/blob/48d4594930da4e227039cfa254411b85c98b63c5/src/proto/h1/role.rs#L209
+        WSGIRequestHandler.protocol_version = "HTTP/1.1"
+
         self._server = WSGIServer(application=self._app, threaded=True)
 
     def __enter__(self):
