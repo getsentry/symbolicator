@@ -1,6 +1,6 @@
 [package]
 name = "wasm-split"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Armin Ronacher <armin.ronacher@active-4.com>"]
 edition = "2018"
 
