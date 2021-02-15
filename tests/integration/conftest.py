@@ -3,7 +3,6 @@ import copy
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
 import threading
@@ -98,7 +97,7 @@ class SymbolicatorRunner(threading.Thread):
         port_re = re.compile(r"Starting server on [0-9.]+:([0-9]+)")
         line = self._proc.stdout.readline()
         while line:
-            print(line, end='', file=sys.stderr)
+            print(line, end="", file=sys.stderr)
             if not self._port_event.is_set():
                 match = port_re.search(line)
                 if match:
