@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+- Bump symbolic to fix large public records. ([#385](https://github.com/getsentry/symbolicator/pull/385))
+
 ## 0.3.3
 
 ### Features
