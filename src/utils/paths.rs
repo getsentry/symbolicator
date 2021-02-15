@@ -106,15 +106,13 @@ fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
 
     let debug_file = identifier.debug_file_basename()?;
     let debug_id = identifier.debug_id.as_ref()?;
-
-    let new_debug_file = if debug_file.ends_with(".exe")
-        || debug_file.ends_with(".dll")
-        || debug_file.ends_with(".pdb")
-    {
-        &debug_file[..debug_file.len() - 4]
-    } else {
-        debug_file
-    };
+    let new_debug_file = debug_file
+        .strip_suffix(".exe")
+        .unwrap_or(debug_file)
+        .strip_suffix(".dll")
+        .unwrap_or(debug_file)
+        .strip_suffix(".pdb")
+        .unwrap_or(debug_file);
 
     Some(format!(
         "{}/{}/{}.sym",
