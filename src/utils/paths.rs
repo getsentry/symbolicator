@@ -113,7 +113,7 @@ fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
     {
         &debug_file[..debug_file.len() - 4]
     } else {
-        &debug_file[..]
+        debug_file
     };
 
     Some(format!(
