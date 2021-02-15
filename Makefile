@@ -108,4 +108,4 @@ format-python: .venv/bin/python
 
 .venv/bin/python: Makefile
 	rm -rf .venv
-	virtualenv -p $$SYMBOLICATOR_PYTHON_VERSION .venv
+	$$SYMBOLICATOR_PYTHON_VERSION -m venv .venv
