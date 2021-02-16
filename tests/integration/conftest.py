@@ -3,8 +3,8 @@ import copy
 import json
 import os
 import re
-import socket
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -17,38 +17,6 @@ from werkzeug.serving import WSGIRequestHandler
 SYMBOLICATOR_BIN = [os.environ.get("SYMBOLICATOR_BIN") or "target/debug/symbolicator"]
 
 session = requests.session()
-
-
-@pytest.fixture
-def random_port():
-    def inner():
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("127.0.0.1", 0))
-        s.listen(1)
-        port = s.getsockname()[1]
-        s.close()
-        return port
-
-    return inner
-
-
-@pytest.fixture
-def background_process(request):
-    """Function to run a process in the background.
-
-    All args and kwargs are passed to subprocess.Popen and the process is terminated in the
-    fixture finaliser.
-
-    The return value of the function is the subprocess.Popen object.
-    """
-
-    def inner(*args, **kwargs):
-        p = subprocess.Popen(*args, **kwargs)
-        request.addfinalizer(p.kill)
-        return p
-
-    return inner
 
 
 class Service:
@@ -90,8 +58,56 @@ class Symbolicator(Service):
     pass
 
 
+class SymbolicatorRunner(threading.Thread):
+    """Runs symbolicator on a random port.
+
+    The output is echoed back to the real stderr so that pytest captures the output.
+
+    The `.kill()` method should be registered with pytest's `request.addfinalizer`.
+    """
+
+    def __init__(self, cmd):
+        super().__init__()
+        self.cmd = cmd
+        self._port = None
+        self._port_event = threading.Event()
+        self._proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        )
+        self.start()
+
+    def wait_port(self, timeout=None):
+        """Waits for the port to be known and returns the port.
+
+        If the timeout expires an exception is raised.
+        """
+        if self._port_event.wait(timeout):
+            return self._port
+        else:
+            raise Exception("Timeout expired while waiting for port")
+
+    def kill(self):
+        """Terminates the symbolicator process.
+
+        This does not wait for termination to complete, only starts it.
+        """
+        self._proc.kill()
+
+    def run(self):
+        port_re = re.compile(r"Starting server on [0-9.]+:([0-9]+)")
+        line = self._proc.stdout.readline()
+        while line:
+            print(line, end="", file=sys.stderr)
+            if not self._port_event.is_set():
+                match = port_re.search(line)
+                if match:
+                    self._port = int(match.group(1))
+                    self._port_event.set()
+            line = self._proc.stdout.readline()
+
+
 @pytest.fixture
-def symbolicator(tmpdir, request, random_port, background_process):
+def symbolicator(tmp_path, request):
     """Function to run a symbolicator instance.
 
     All kwargs are written to the config file of the symbolicator instance.
@@ -100,20 +116,21 @@ def symbolicator(tmpdir, request, random_port, background_process):
     """
 
     def inner(**config_data):
-        config = tmpdir.join("config")
-        port = random_port()
-        bind = f"127.0.0.1:{port}"
-
-        config_data["bind"] = bind
+        config_data["bind"] = "127.0.0.1:0"
         config_data["logging"] = {"level": "debug"}
         config_data.setdefault("connect_to_reserved_ips", True)
 
         if config_data.get("cache_dir"):
             config_data["cache_dir"] = str(config_data["cache_dir"])
 
-        config.write(json.dumps(config_data))
-        process = background_process(SYMBOLICATOR_BIN + ["-c", str(config), "run"])
-        return Symbolicator(process=process, port=port)
+        config_path = tmp_path.joinpath("config")
+        with config_path.open("w") as fp:
+            fp.write(json.dumps(config_data))
+
+        proc = SymbolicatorRunner(SYMBOLICATOR_BIN + ["-c", str(config_path), "run"])
+        request.addfinalizer(proc.kill)
+        port = proc.wait_port(timeout=30)
+        return Symbolicator(process=proc._proc, port=port)
 
     return inner
 
