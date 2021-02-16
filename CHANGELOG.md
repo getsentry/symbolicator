@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Bug Fixes
-- Bump symbolic to fix large public records. ([#385](https://github.com/getsentry/symbolicator/pull/385))
+- Bump symbolic to fix large public records. ([#385](https://github.com/getsentry/symbolicator/pull/385), [#387](https://github.com/getsentry/symbolicator/pull/387))
 
 ## 0.3.3
 
