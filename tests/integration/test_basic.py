@@ -146,7 +146,7 @@ NO_SOURCES = _make_unsuccessful_result("missing", source=None)
 UNKNOWN_SOURCE = _make_unsuccessful_result("missing", source="unknown")
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture(params=[True, False], ids=["cachedir", "no_cachedir"])
 def cache_dir_param(tmpdir, request):
     if request.param:
         return tmpdir.mkdir("caches")
@@ -177,8 +177,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
 
     # i = 0: Cache miss
     # i = 1: Cache hit
-    # i = 2: Assert that touching the file during cache hit did not destroy the cache
-    for i in range(3):
+    for i in range(2):
         service = symbolicator(cache_dir=cache_dir_param)
         service.wait_healthcheck()
 
