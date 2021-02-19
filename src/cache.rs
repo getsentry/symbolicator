@@ -265,9 +265,9 @@ impl Cache {
             && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true))
     }
 
-    /// Validates cachefile against expiration config and open a byteview on it.
+    /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
     ///
-    /// Takes care of bumping mtime.
+    /// Takes care of bumping `mtime`.
     pub fn open_cachefile(&self, path: &Path) -> io::Result<Option<ByteView<'static>>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
