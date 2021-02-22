@@ -19,6 +19,7 @@ chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.14.0"
 env_logger = "0.7.1"
 failure = "0.1.8"
+filetime = "0.2.14"
 flate2 = "1.0.19"
 fragile = "1.0.0" # used for vendoring sentry-actix
 futures = { version = "0.3.12", features = ["compat"] }

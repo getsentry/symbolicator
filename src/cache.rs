@@ -2,12 +2,13 @@
 ///
 /// TODO:
 /// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
-use std::fs::{self, read_dir, remove_file, File, OpenOptions};
+use std::fs::{self, read_dir, remove_file, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
+use filetime::FileTime;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
@@ -264,8 +265,9 @@ impl Cache {
             && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true))
     }
 
-    /// Validate cachefile against expiration config and open a byteview on it. Takes care of
-    /// bumping mtime.
+    /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
+    ///
+    /// Takes care of bumping `mtime`.
     pub fn open_cachefile(&self, path: &Path) -> io::Result<Option<ByteView<'static>>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
@@ -274,10 +276,7 @@ impl Cache {
             let should_touch = self.check_expiry(path)?;
 
             if should_touch {
-                OpenOptions::new()
-                    .append(true)
-                    .truncate(false)
-                    .open(&path)?;
+                filetime::set_file_mtime(path, FileTime::now())?;
             }
 
             ByteView::open(path)
@@ -423,6 +422,7 @@ pub fn cleanup(config: Config) -> Result<()> {
 mod tests {
     use super::*;
 
+    use std::convert::TryInto;
     use std::fs::{self, create_dir_all};
     use std::io::Write;
     use std::thread::sleep;
@@ -591,6 +591,39 @@ mod tests {
         basenames.sort();
 
         assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_open_cachefile() -> Result<()> {
+        // Assert that opening a cache touches the mtime but does not invalidate it.
+        let tempdir = tempdir()?;
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Downloaded(Default::default()),
+        )?;
+
+        // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched
+        // if more than an hour old.
+        let path = tempdir.path().join("hello");
+        File::create(&path)?.write_all(b"world")?;
+        let now_unix = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs();
+        let old_mtime_unix = (now_unix - 3600 - 15).try_into()?;
+        filetime::set_file_mtime(&path, FileTime::from_unix_time(old_mtime_unix, 0))?;
+
+        let old_mtime = fs::metadata(&path)?.modified()?;
+
+        // Open it with the cache, check contents and new mtime.
+        let view = cache.open_cachefile(&path)?.expect("No file found");
+        assert_eq!(view.as_slice(), b"world");
+
+        let new_mtime = fs::metadata(&path)?.modified()?;
+        assert!(old_mtime < new_mtime);
 
         Ok(())
     }

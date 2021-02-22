@@ -903,6 +903,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
+name = "filetime"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d34cfa13a63ae058bfa601fe9e313bbdb3746427c1459185464ce0fcf62e1e8"
+dependencies = [
+ "cfg-if 1.0.0",
+ "libc",
+ "redox_syscall 0.2.4",
+ "winapi 0.3.8",
+]
+
+[[package]]
 name = "findshlibs"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3490,6 +3502,7 @@ dependencies = [
  "console",
  "env_logger",
  "failure",
+ "filetime",
  "flate2",
  "fragile",
  "futures 0.1.29",
