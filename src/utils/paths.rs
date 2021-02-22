@@ -509,10 +509,13 @@ pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
     }
 
     for pattern in patterns {
-        for path in [object_id.code_file.as_ref(), object_id.debug_file.as_ref()]
-            .iter()
-            .flatten()
-        {
+        if let Some(ref path) = object_id.code_file {
+            if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
+                return true;
+            }
+        }
+
+        if let Some(ref path) = object_id.debug_file {
             if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
                 return true;
             }
