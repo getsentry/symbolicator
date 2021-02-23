@@ -88,3 +88,95 @@ pub fn configure(app: App<Service>) -> App<Service> {
         );
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use actix_web::test::TestServer;
+    use reqwest::{Client, StatusCode};
+
+    use crate::config::Config;
+    use crate::services::Service;
+    use crate::test;
+    use crate::types::SymbolicationResponse;
+
+    #[tokio::test]
+    async fn test_no_sources() {
+        test::setup();
+
+        let service = Service::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+
+        let payload = r##"{
+            "stacktraces": [
+                {
+                    "registers": {"eip": "0x0000000001509530"},
+                    "frames": [{"instruction_addr": "0x749e8630"}]
+                }
+            ],
+            "modules": [
+                {
+                    "type": "pe",
+                    "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+                    "code_file": "C:\\Windows\\System32\\kernel32.dll",
+                    "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+                    "image_addr": "0x749d0000",
+                    "image_size": 851968
+                }
+            ],
+            "sources": []
+        }"##;
+
+        let response = Client::new()
+            .post(&server.url("/symbolicate"))
+            .header("content-type", "application/json")
+            .body(payload)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.text().await.unwrap();
+        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+        insta::assert_yaml_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn test_unknown_field() {
+        test::setup();
+
+        let service = Service::create(Config::default()).unwrap();
+        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+
+        let payload = r##"{
+            "stacktraces": [
+                {
+                    "registers": {"eip": "0x0000000001509530"},
+                    "frames": [{"instruction_addr": "0x749e8630"}]
+                }
+            ],
+            "modules": [
+                {
+                    "type": "pe",
+                    "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+                    "code_file": "C:\\Windows\\System32\\kernel32.dll",
+                    "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+                    "image_addr": "0x749d0000",
+                    "image_size": 851968
+                }
+            ],
+            "sources": [],
+            "unknown": "value"
+        }"##;
+
+        let response = Client::new()
+            .post(&server.url("/symbolicate"))
+            .header("content-type", "application/json")
+            .body(payload)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}
