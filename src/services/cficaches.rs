@@ -218,7 +218,6 @@ impl CfiCacheActor {
     ) -> Result<Arc<CfiCacheFile>, Arc<CfiCacheError>> {
         let found_result = self
             .objects
-            .clone()
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
