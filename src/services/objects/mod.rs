@@ -206,10 +206,7 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    ///
-    /// TODO(flub): Once all the callers are async/await this should take `&self` again
-    /// instead of requiring `self`.
-    pub async fn find(self, request: FindObject) -> Result<FoundObject, ObjectError> {
+    pub async fn find(&self, request: FindObject) -> Result<FoundObject, ObjectError> {
         let FindObject {
             filetypes,
             scope,

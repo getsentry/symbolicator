@@ -98,8 +98,8 @@ impl Service {
         self.symbolication.clone()
     }
 
-    pub fn objects(&self) -> ObjectsActor {
-        self.objects.clone()
+    pub fn objects(&self) -> &ObjectsActor {
+        &self.objects
     }
 
     pub fn config(&self) -> Arc<Config> {

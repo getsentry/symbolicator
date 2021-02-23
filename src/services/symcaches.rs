@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
-use futures::future::{self, Either, Future, TryFutureExt};
+use futures::future::{self, TryFutureExt};
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
@@ -217,13 +217,12 @@ pub struct FetchSymCache {
 }
 
 impl SymCacheActor {
-    pub fn fetch(
+    pub async fn fetch(
         &self,
         request: FetchSymCache,
-    ) -> impl Future<Output = Result<Arc<SymCacheFile>, Arc<SymCacheError>>> {
-        let find_result_future = self
+    ) -> Result<Arc<SymCacheFile>, Arc<SymCacheError>> {
+        let FoundObject { meta, candidates } = self
             .objects
-            .clone()
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
                 identifier: request.identifier.clone(),
@@ -231,40 +230,32 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .map_err(|e| Arc::new(SymCacheError::Fetching(e)));
+            .await
+            .map_err(|e| Arc::new(SymCacheError::Fetching(e)))?;
 
-        let symcaches = self.symcaches.clone();
-        let threadpool = self.threadpool.clone();
-        let objects = self.objects.clone();
-
-        let object_type = request.object_type;
-        let identifier = request.identifier.clone();
-        let scope = request.scope.clone();
-
-        find_result_future.and_then(move |find_result: FoundObject| {
-            let FoundObject { meta, candidates } = find_result;
-            meta.map(clone!(candidates, |object_meta| {
-                Either::Left(symcaches.compute_memoized(FetchSymCacheInternal {
-                    request,
-                    objects_actor: objects,
-                    object_meta,
-                    threadpool,
-                    candidates,
-                }))
-            }))
-            .unwrap_or_else(move || {
-                Either::Right(future::ok(Arc::new(SymCacheFile {
-                    object_type,
-                    identifier,
-                    scope,
-                    data: ByteView::from_slice(b""),
-                    features: ObjectFeatures::default(),
-                    status: CacheStatus::Negative,
-                    arch: Arch::Unknown,
-                    candidates,
-                })))
-            })
-        })
+        match meta {
+            Some(handle) => {
+                self.symcaches
+                    .compute_memoized(FetchSymCacheInternal {
+                        request,
+                        objects_actor: self.objects.clone(),
+                        object_meta: handle,
+                        threadpool: self.threadpool.clone(),
+                        candidates,
+                    })
+                    .await
+            }
+            None => Ok(Arc::new(SymCacheFile {
+                object_type: request.object_type,
+                identifier: request.identifier,
+                scope: request.scope,
+                data: ByteView::from_slice(b""),
+                features: ObjectFeatures::default(),
+                status: CacheStatus::Negative,
+                arch: Arch::Unknown,
+                candidates,
+            })),
+        }
     }
 }
 
