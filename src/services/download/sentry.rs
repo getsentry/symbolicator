@@ -118,7 +118,7 @@ impl SentryDownloader {
             .get(query.index_url.clone())
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT)
-            .header("Authorization", format!("Bearer {}", &query.token))
+            .bearer_auth(&query.token)
             .send()
             .await?;
 
@@ -219,37 +219,60 @@ impl SentryDownloader {
         file_source: SentryObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let download_url = file_source.url();
-        log::debug!("Fetching debug file from {}", download_url);
-        let result = future_utils::retry(|| {
-            self.client
-                .get(download_url.clone())
-                .header("User-Agent", USER_AGENT)
-                .header(
-                    "Authorization",
-                    format!("Bearer {}", &file_source.source.token),
-                )
-                .send()
-        });
+        match future_utils::retry(|| {
+            self.download_source_once(file_source.clone(), destination.clone())
+        })
+        .await
+        {
+            Ok(status) => {
+                log::debug!(
+                    "Fetched debug file from {}: {:?}",
+                    file_source.url(),
+                    status
+                );
+                Ok(status)
+            }
+            Err(err) => {
+                log::debug!(
+                    "Failed to fetch debug file from {}: {}",
+                    file_source.url(),
+                    err
+                );
+                Err(err)
+            }
+        }
+    }
 
-        match result.await {
+    async fn download_source_once(
+        &self,
+        source: SentryObjectFileSource,
+        destination: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
+        match self
+            .client
+            .get(source.url())
+            .header("User-Agent", USER_AGENT)
+            .bearer_auth(&source.source.token)
+            .send()
+            .await
+        {
             Ok(response) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting {}", download_url);
+                    log::trace!("Success hitting {}", source.url());
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(file_source, stream, destination).await
+                    super::download_stream(source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
-                        download_url,
+                        source.url(),
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }
             }
             Err(e) => {
-                log::trace!("Skipping response from {}: {}", download_url, e);
+                log::trace!("Skipping response from {}: {}", source.url(), e);
                 Ok(DownloadStatus::NotFound) // must be wrong type
             }
         }
