@@ -1273,8 +1273,8 @@ impl SymbolicationActor {
 
             CompletedSymbolicationResponse {
                 signal,
-                modules,
                 stacktraces,
+                modules,
                 ..Default::default()
             }
         };

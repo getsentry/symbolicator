@@ -30,7 +30,7 @@ impl FromStr for HexValue {
         if s.starts_with("0x") || s.starts_with("0X") {
             u64::from_str_radix(&s[2..], 16).map(HexValue)
         } else {
-            u64::from_str_radix(&s, 10).map(HexValue)
+            s.parse().map(HexValue)
         }
     }
 }

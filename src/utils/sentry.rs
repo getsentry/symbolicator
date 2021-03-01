@@ -203,11 +203,9 @@ impl<S: 'static> Middleware<S> for SentryMiddleware {
 
     fn response(&self, req: &HttpRequest<S>, mut resp: HttpResponse) -> Result<Response, Error> {
         if self.capture_server_errors && resp.status().is_server_error() {
-            let event_id = if let Some(error) = resp.error() {
-                Some(Hub::from_request(req).capture_actix_error(error))
-            } else {
-                None
-            };
+            let event_id = resp
+                .error()
+                .map(|error| Hub::from_request(req).capture_actix_error(error));
             match event_id {
                 Some(event_id) if self.emit_header => {
                     resp.headers_mut().insert(
