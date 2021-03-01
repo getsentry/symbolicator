@@ -23,12 +23,9 @@ fn get_gdb_path(identifier: &ObjectId) -> Option<String> {
 }
 
 fn get_mach_uuid(identifier: &ObjectId) -> Option<Uuid> {
-    if let Some(ref code_id) = identifier.code_id {
-        code_id.as_str().parse().ok()
-    } else if let Some(ref debug_id) = identifier.debug_id {
-        Some(debug_id.uuid())
-    } else {
-        None
+    match identifier.code_id {
+        Some(ref code_id) => code_id.as_str().parse().ok(),
+        None => identifier.debug_id.as_ref().map(|debug_id| debug_id.uuid()),
     }
 }
 
