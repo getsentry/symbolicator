@@ -869,6 +869,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "failsafe"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0710501d57ee0ff382c51841154e17bf62397c1517036de644225c8ad58e21eb"
+dependencies = [
+ "futures-core",
+ "parking_lot 0.11.1",
+ "pin-project 0.4.8",
+ "rand 0.7.3",
+]
+
+[[package]]
 name = "failure"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3501,6 +3513,7 @@ dependencies = [
  "chrono",
  "console",
  "env_logger",
+ "failsafe",
  "failure",
  "filetime",
  "flate2",

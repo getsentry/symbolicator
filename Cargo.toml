@@ -18,6 +18,7 @@ cadence = "0.18.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.14.0"
 env_logger = "0.7.1"
+failsafe = "1.0.0"
 failure = "0.1.8"
 filetime = "0.2.14"
 flate2 = "1.0.19"

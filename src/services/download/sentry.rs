@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use failsafe::failure_policy::FailurePolicy;
+use failsafe::futures::CircuitBreaker;
 use futures::prelude::*;
 use parking_lot::Mutex;
 use reqwest::StatusCode;
@@ -67,9 +69,15 @@ struct SearchResult {
     // TODO: Add more fields
 }
 
+/// Local struct to pass the query for [`SentryDownloader::list_files`] around.
+///
+/// This is entirely derived from [`SentrySourceConfig`], having it as a separate struct
+/// allows using it as a key in the [`SentryIndexCache`] LRU cache.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct SearchQuery {
+    /// The URL to request, response is expected to be JSON.
     index_url: Url,
+    /// The Bearer Auth token for the request.
     token: String,
 }
 
@@ -84,11 +92,27 @@ pub enum SentryError {
 
     #[error("bad status code from Sentry: {0}")]
     BadStatusCode(StatusCode),
+
+    #[error("circuit-breaker open")]
+    CircuitBroken,
 }
+
+/// The concrete type of our circuit breaker.
+///
+/// We can not use a <dyn CirctuitBreaker> trait object, which would be more sane, as the
+/// trait is not object safe (it has methods with generic type parameters).
+type CircuitBreakerType = failsafe::StateMachine<
+    failsafe::failure_policy::OrElse<
+        failsafe::failure_policy::ConsecutiveFailures<failsafe::backoff::EqualJittered>,
+        failsafe::failure_policy::SuccessRateOverTimeWindow<failsafe::backoff::EqualJittered>,
+    >,
+    (),
+>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
+    circuit_breaker: CircuitBreakerType,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -102,9 +126,22 @@ impl fmt::Debug for SentryDownloader {
 
 impl SentryDownloader {
     pub fn new(client: reqwest::Client) -> Self {
+        // Circuit-breaker policy: backoff min 1s increasing with jittered exponentially to
+        // max 5s.  Break the circtuit on either 5 consecutive failures or >20% failures
+        // over past 30s (requires min 5 requests in that 30s).
+        let backoff =
+            failsafe::backoff::equal_jittered(Duration::from_secs(1), Duration::from_secs(5));
+        let failure_policy = failsafe::failure_policy::consecutive_failures(5, backoff.clone())
+            .or_else(failsafe::failure_policy::success_rate_over_time_window(
+                0.8,
+                5,
+                Duration::from_secs(30),
+                backoff,
+            ));
         Self {
             client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            circuit_breaker: failsafe::StateMachine::new(failure_policy, ()),
         }
     }
 
@@ -160,7 +197,13 @@ impl SentryDownloader {
             "Fetching list of Sentry debug files from {}",
             &query.index_url
         );
-        let entries = future_utils::retry(|| self.fetch_sentry_json(&query)).await?;
+        let entries =
+            future_utils::retry(|| self.circuit_breaker.call(self.fetch_sentry_json(&query)))
+                .await
+                .map_err(|e| match e {
+                    failsafe::Error::Inner(err) => err,
+                    failsafe::Error::Rejected => SentryError::CircuitBroken,
+                })?;
 
         if cache_duration > Duration::from_secs(0) {
             self.index_cache
@@ -220,7 +263,8 @@ impl SentryDownloader {
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         match future_utils::retry(|| {
-            self.download_source_once(file_source.clone(), destination.clone())
+            self.circuit_breaker
+                .call(self.download_source_once(file_source.clone(), destination.clone()))
         })
         .await
         {
@@ -232,17 +276,23 @@ impl SentryDownloader {
                 );
                 Ok(status)
             }
-            Err(err) => {
+            Err(e) => {
                 log::debug!(
                     "Failed to fetch debug file from {}: {}",
                     file_source.url(),
-                    err
+                    e
                 );
-                Err(err)
+                match e {
+                    failsafe::Error::Inner(err) => Err(err),
+                    failsafe::Error::Rejected => Err(SentryError::CircuitBroken.into()),
+                }
             }
         }
     }
 
+    /// Performs a one-shot download of a file.
+    ///
+    /// No retrying or circuit-breaking.
     async fn download_source_once(
         &self,
         source: SentryObjectFileSource,
