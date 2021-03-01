@@ -219,11 +219,10 @@ impl SentryDownloader {
         file_source: SentryObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        match future_utils::retry(|| {
+        let retries = future_utils::retry(|| {
             self.download_source_once(file_source.clone(), destination.clone())
-        })
-        .await
-        {
+        });
+        match retries.await {
             Ok(status) => {
                 log::debug!(
                     "Fetched debug file from {}: {:?}",
@@ -248,14 +247,13 @@ impl SentryDownloader {
         source: SentryObjectFileSource,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        match self
+        let request = self
             .client
             .get(source.url())
             .header("User-Agent", USER_AGENT)
             .bearer_auth(&source.source.token)
-            .send()
-            .await
-        {
+            .send();
+        match request.await {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", source.url());
