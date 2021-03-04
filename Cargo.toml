@@ -36,7 +36,7 @@ parking_lot = "0.11.1"
 pretty_env_logger = "0.4.0"
 procspawn = { version = "0.9.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
-reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
+reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "native-tls-vendored", "stream", "trust-dns"] }
 rusoto_core = "0.46.0"
 rusoto_credential = "0.46.0"
 rusoto_s3 = "0.46.0"
@@ -53,6 +53,9 @@ tokio01 = { version = "0.1.22", package = "tokio" }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.6.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+jemallocator = "0.3.2"
 
 [dev-dependencies]
 insta = { version = "1.5.2", features = ["redactions"] }
