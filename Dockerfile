@@ -8,10 +8,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Build only dependencies to speed up subsequent builds
-COPY Cargo.toml Cargo.lock build.rs ./
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
-    && cargo build --release --locked
+    && mkdir -p symsorter/src \
+    && echo "fn main() {}" > symsorter/src/main.rs
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY symsorter/Cargo.toml ./symsorter/
+RUN cargo build --release --locked
 
 COPY src ./src/
 COPY .git ./.git/
