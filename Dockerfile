@@ -13,7 +13,7 @@ RUN mkdir -p src \
     && mkdir -p symsorter/src \
     && echo "fn main() {}" > symsorter/src/main.rs
 COPY Cargo.toml Cargo.lock build.rs ./
-COPY ./symsorter/Cargo.toml ./symsorter/
+COPY symsorter/Cargo.toml ./symsorter/
 RUN cargo build --release --locked
 
 COPY src ./src/
