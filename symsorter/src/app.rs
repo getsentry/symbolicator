@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io;
+use std::io::{self, Cursor};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -12,12 +12,14 @@ use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView};
+use symbolic::debuginfo::plist::PList;
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use zstd::stream::copy_encode;
 
 use crate::config::{RunConfig, SortConfig};
+use crate::difs::{self, DifType};
 use crate::utils::{
     create_source_bundle, get_target_filename, get_unified_id, is_bundle_id, make_bundle_id,
 };
@@ -87,12 +89,13 @@ pub struct BundleMeta {
     pub debug_ids: Vec<String>,
 }
 
-fn process_file(
+fn process_archive(
+    archive: Archive,
     sort_config: &SortConfig,
-    bv: ByteView<'static>,
-    filename: String,
+    filename: &str,
+    compression_level: i32,
 ) -> Result<Vec<(String, ObjectKind)>> {
-    let mut rv = vec![];
+    let mut rv = Vec::new();
 
     macro_rules! maybe_ignore_error {
         ($expr:expr) => {
@@ -115,16 +118,6 @@ fn process_file(
         };
     }
 
-    let compression_level = match sort_config.compression_level {
-        0 => 0,
-        1 => 3,
-        2 => 10,
-        3 => 19,
-        _ => 22,
-    };
-    let archive = maybe_ignore_error!(
-        Archive::parse(&bv).map_err(|e| anyhow!("failed to parse archive {}", e))
-    );
     let root = &RunConfig::get().output;
 
     for obj in archive.objects() {
@@ -140,7 +133,7 @@ fn process_file(
         fs::write(&refs_path.join(&sort_config.bundle_id), b"")?;
 
         let meta = DebugIdMeta {
-            name: Some(filename.clone()),
+            name: Some(filename.to_string()),
             arch: Some(obj.arch()),
             file_format: Some(obj.file_format()),
         };
@@ -168,6 +161,118 @@ fn process_file(
     }
 
     Ok(rv)
+}
+
+/// Processes a single file.
+///
+/// Processes a single file, which might be an archive containing multiple files.  Returns a
+/// tuple of `(unified_id, ObjectKind)` for each file processed.
+// TODO(flub): Should return iterator of Result<> instead.
+fn process_file(
+    sort_config: &SortConfig,
+    bv: ByteView<'static>,
+    filename: String,
+) -> Result<Vec<(String, ObjectKind)>> {
+    let compression_level = match sort_config.compression_level {
+        0 => 0,
+        1 => 3,
+        2 => 10,
+        3 => 19,
+        _ => 22,
+    };
+    let root = &RunConfig::get().output;
+
+    let result = match symbolic::debuginfo::peek(&bv, true) {
+        FileFormat::BCSymbolMap => {
+            let unified_id = filename
+                .strip_suffix(".bcsymbolmap")
+                .unwrap()
+                .parse()
+                .unwrap();
+            let new_path = root.join(difs::get_pathname(&unified_id, DifType::BCSymbolMap));
+            fs::create_dir_all(new_path.parent().unwrap())?;
+            log!(
+                "{} ({}, {}) -> {}",
+                style(&filename).dim(),
+                style("aux").yellow(),
+                style("-").yellow(),
+                style(new_path.display()).cyan(),
+            );
+            let mut reader = Cursor::new(bv);
+            let mut writer = fs::File::create(&new_path)?;
+            if compression_level > 0 {
+                copy_encode(&mut reader, &mut writer, compression_level)?;
+            } else {
+                io::copy(&mut reader, &mut writer)?;
+            }
+            Ok(vec![(
+                format!("{:x}", unified_id.to_simple_ref()),
+                ObjectKind::Other,
+            )])
+        }
+        FileFormat::PList => {
+            let unified_id = match filename.strip_suffix(".plist") {
+                Some(stem) => match stem.parse() {
+                    Ok(uuid) => uuid,
+                    Err(_) => {
+                        return Ok(Vec::new());
+                    }
+                },
+                None => {
+                    return Ok(Vec::new());
+                }
+            };
+            let is_plist = match PList::parse(unified_id, &bv) {
+                Ok(plist) => plist.is_bcsymbol_mapping(),
+                Err(_err) => false,
+            };
+            if !is_plist {
+                return Ok(Vec::new());
+            }
+            let new_path = root.join(difs::get_pathname(&unified_id, DifType::PList));
+            fs::create_dir_all(new_path.parent().unwrap())?;
+            log!(
+                "{} ({}, {}) -> {}",
+                style(&filename).dim(),
+                style("aux").yellow(),
+                style("-").yellow(),
+                style(new_path.display()).cyan(),
+            );
+            let mut reader = Cursor::new(bv);
+            let mut writer = fs::File::create(&new_path)?;
+            if compression_level > 0 {
+                copy_encode(&mut reader, &mut writer, compression_level)?;
+            } else {
+                io::copy(&mut reader, &mut writer)?;
+            }
+            Ok(vec![(
+                format!("{:x}", unified_id.to_simple_ref()),
+                ObjectKind::Other,
+            )])
+        }
+        x @ _ if x.is_object() => Archive::parse(&bv)
+            .map_err(|e| anyhow!("failed to parse archive {}", e))
+            .and_then(|archive| {
+                process_archive(archive, sort_config, &filename, compression_level)
+            }),
+        _ => Ok(Vec::new()),
+    };
+    match result {
+        Ok(ret) => Ok(ret),
+        Err(err) => {
+            if RunConfig::get().ignore_errors {
+                eprintln!(
+                    "{}: ignored error {} ({})",
+                    style("error").red().bold(),
+                    err,
+                    style(filename).cyan()
+                );
+                return Ok(Vec::new());
+            } else {
+                return Err(err).context(format!("failed to process file {}", filename));
+            }
+        }
+    }
 }
 
 fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
@@ -208,7 +313,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                 }
 
             // object file directly
-            } else if Archive::peek(&bv) != FileFormat::Unknown {
+            } else if symbolic::debuginfo::peek(&bv, true) != FileFormat::Unknown {
                 for (unified_id, object_kind) in process_file(
                     &sort_config,
                     bv,

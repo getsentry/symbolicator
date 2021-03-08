@@ -807,6 +807,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
+name = "elementtree"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19c5d32d0ab83734d2d7452047ef901c105991044b7b07da30fe82371a149a25"
+dependencies = [
+ "string_cache",
+ "xml-rs",
+]
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1608,6 +1618,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37d572918e350e82412fe766d24b15e6682fb2ed2bbe018280caa810397cb319"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1967,6 +1986,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "new_debug_unreachable"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
+
+[[package]]
 name = "nom"
 version = "4.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2225,6 +2250,17 @@ dependencies = [
 
 [[package]]
 name = "pdb"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b66be5fcea88b52962d3d6fcc5194f1d77666f5aca256926688743a8de1152e4"
+dependencies = [
+ "fallible-iterator",
+ "scroll",
+ "uuid 0.8.2",
+]
+
+[[package]]
+name = "pdb"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13f4d162ecaaa1467de5afbe62d597757b674b51da8bb4e587430c5fdb2af7aa"
@@ -2301,6 +2337,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "phf_shared"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c00cf8b9eafe68dde5e9eaa2cef8ee84a9336a47d566ec55ca16589633b65af7"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
 name = "pin-project"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2369,6 +2414,12 @@ name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
+
+[[package]]
+name = "precomputed-hash"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "pretty_env_logger"
@@ -3351,6 +3402,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "siphasher"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa8f3741c7372e75519bd9346068370c9cdaabcc1f9599cbcf2a2719352286b7"
+
+[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3459,6 +3516,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "string_cache"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ddb1139b5353f96e429e1a5e19fbaf663bddedaa06d1dbd49f82e352601209a"
+dependencies = [
+ "lazy_static",
+ "new_debug_unreachable",
+ "phf_shared",
+ "precomputed-hash",
+ "serde",
+]
+
+[[package]]
 name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3497,13 +3567,32 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.0.5"
+dependencies = [
+ "symbolic-common 8.0.5",
+ "symbolic-debuginfo 8.0.5",
+]
+
+[[package]]
+name = "symbolic"
+version = "8.0.5"
 source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
 dependencies = [
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
+ "symbolic-debuginfo 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
  "symbolic-demangle",
  "symbolic-minidump",
  "symbolic-symcache",
+]
+
+[[package]]
+name = "symbolic-common"
+version = "8.0.5"
+dependencies = [
+ "debugid",
+ "memmap",
+ "serde",
+ "stable_deref_trait",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3521,6 +3610,34 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.0.5"
+dependencies = [
+ "dmsort",
+ "elementtree",
+ "fallible-iterator",
+ "flate2",
+ "gimli",
+ "goblin",
+ "itertools 0.10.0",
+ "lazy_static",
+ "lazycell",
+ "parking_lot 0.11.1",
+ "pdb 0.6.0",
+ "pest",
+ "pest_derive",
+ "regex",
+ "serde",
+ "serde_json",
+ "smallvec 1.5.0",
+ "symbolic-common 8.0.5",
+ "thiserror",
+ "walrus",
+ "wasmparser",
+ "zip",
+]
+
+[[package]]
+name = "symbolic-debuginfo"
+version = "8.0.5"
 source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
 dependencies = [
  "dmsort",
@@ -3531,14 +3648,14 @@ dependencies = [
  "lazy_static",
  "lazycell",
  "parking_lot 0.11.1",
- "pdb",
+ "pdb 0.7.0",
  "pest",
  "pest_derive",
  "regex",
  "serde",
  "serde_json",
  "smallvec 1.5.0",
- "symbolic-common",
+ "symbolic-common 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
  "thiserror",
  "walrus",
  "wasmparser",
@@ -3554,7 +3671,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common",
+ "symbolic-common 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
 ]
 
 [[package]]
@@ -3566,8 +3683,8 @@ dependencies = [
  "lazy_static",
  "regex",
  "serde",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
+ "symbolic-debuginfo 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
  "thiserror",
 ]
 
@@ -3579,8 +3696,8 @@ dependencies = [
  "dmsort",
  "fnv",
  "num",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
+ "symbolic-debuginfo 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
  "thiserror",
 ]
 
@@ -3627,7 +3744,7 @@ dependencies = [
  "serde_yaml",
  "sha-1 0.9.2",
  "structopt",
- "symbolic",
+ "symbolic 8.0.5 (git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes)",
  "tempfile",
  "thiserror",
  "tokio 0.1.22",
@@ -3651,7 +3768,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic",
+ "symbolic 8.0.5",
  "walkdir",
  "zip",
  "zstd",
@@ -4801,6 +4918,6 @@ checksum = "ec24a9273d24437afb8e71b16f3d9a5d569193cccdb7896213b59f552f387674"
 dependencies = [
  "cc",
  "glob",
- "itertools",
+ "itertools 0.9.0",
  "libc",
 ]

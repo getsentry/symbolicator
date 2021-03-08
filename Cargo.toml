@@ -73,3 +73,6 @@ debug = true
 
 [workspace]
 members = ["symsorter"]
+
+[patch.crates-io]
+symbolic = { path = "../symbolic/symbolic" }
