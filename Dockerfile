@@ -17,7 +17,9 @@ COPY symsorter/Cargo.toml ./symsorter/
 RUN cargo build --release --locked
 
 COPY src ./src/
+COPY symsorter/src ./symsorter/src/
 COPY .git ./.git/
+RUN touch src/main.rs symsorter/src/main.rs
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
