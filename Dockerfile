@@ -1,20 +1,25 @@
 FROM getsentry/sentry-cli:1 AS sentry-cli
-FROM rust:slim-stretch AS symbolicator-build
+FROM debian:stretch-slim AS symbolicator-build
 
 WORKDIR /work
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libssl-dev pkg-config git zip \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
     && rm -rf /var/lib/apt/lists/*
 
+ENV CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+
 # Build only dependencies to speed up subsequent builds
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY symsorter/Cargo.toml symsorter/
 RUN mkdir -p src \
     && echo "fn main() {}" > src/main.rs \
     && mkdir -p symsorter/src \
-    && echo "fn main() {}" > symsorter/src/main.rs
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY symsorter/Cargo.toml ./symsorter/
-RUN cargo build --release --locked
+    && echo "fn main() {}" > symsorter/src/main.rs \
+    && cargo build --release --locked
 
 COPY src ./src/
 COPY .git ./.git/
