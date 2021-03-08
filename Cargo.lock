@@ -3411,8 +3411,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "8.0.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#659bf8a45a838519e15eb7c297abd61a4c4862ad"
+version = "8.0.5"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
 dependencies = [
  "debugid",
  "memmap",
@@ -3423,8 +3423,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.0.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#659bf8a45a838519e15eb7c297abd61a4c4862ad"
+version = "8.0.5"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
 dependencies = [
  "dmsort",
  "fallible-iterator",
