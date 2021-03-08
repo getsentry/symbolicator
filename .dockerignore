@@ -4,3 +4,4 @@
 !build.rs
 !Cargo.*
 !docker-entrypoint.sh
+!symsorter/Cargo.*
