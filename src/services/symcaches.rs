@@ -1,11 +1,11 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::compat::Future01CompatExt;
-use futures::future::{self, TryFutureExt};
+use futures::future::{FutureExt, TryFutureExt};
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
@@ -110,11 +110,70 @@ impl SymCacheFile {
 
 #[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
+    /// The external request, as passed into [`SymCacheActor::fetch`].
     request: FetchSymCache,
+
+    /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
+
+    /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
+
+    /// Thread pool on which to spawn the symcache computation.
     threadpool: ThreadPool,
+
+    /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
+    ///
+    /// This needs to be returned back with the symcache result and is only being passed
+    /// through here as callers to the SymCacheActer want to have this info.
     candidates: AllObjectCandidates,
+}
+
+/// Fetches the needed DIF objects and spawns symcache computation.
+///
+/// Required DIF objects are fetched from the objects actor in the current executor, once
+/// DIFs have been retrieved it spawns the symcache computation onto the provided
+/// threadpool.
+///
+/// This is the actual implementation of [`CacheItemRequest::compute`] for
+/// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
+/// code.
+async fn fetch_difs_and_compute_symcache(
+    path: PathBuf,
+    object_meta: Arc<ObjectMetaHandle>,
+    objects_actor: ObjectsActor,
+    threadpool: ThreadPool,
+) -> Result<CacheStatus, SymCacheError> {
+    let object_handle = objects_actor
+        .fetch(object_meta)
+        .await
+        .map_err(SymCacheError::Fetching)?;
+
+    if object_handle.status() != CacheStatus::Positive {
+        return Ok(object_handle.status());
+    }
+
+    // - Check if this is MachO
+    // - If so fetch a PList
+    // - If we get one fetch the BCSymbolMap
+    // - Pass this all to the writer
+
+    let compute_future = async move {
+        let status = match write_symcache(&path, &*object_handle) {
+            Ok(_) => CacheStatus::Positive,
+            Err(err) => {
+                log::warn!("Failed to write symcache: {}", err);
+                sentry::capture_error(&err);
+                CacheStatus::Malformed
+            }
+        };
+        Ok(status)
+    };
+
+    threadpool
+        .spawn_handle(compute_future.bind_hub(Hub::current()))
+        .await
+        .unwrap_or(Err(SymCacheError::Canceled))
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -126,35 +185,12 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
-        let path = path.to_owned();
-        let object = self
-            .objects_actor
-            .fetch(self.object_meta.clone())
-            .map_err(SymCacheError::Fetching);
-
-        let threadpool = self.threadpool.clone();
-        let result = object.and_then(move |object| {
-            let future = future::lazy(move |_| {
-                if object.status() != CacheStatus::Positive {
-                    return Ok(object.status());
-                }
-
-                let status = if let Err(e) = write_symcache(&path, &*object) {
-                    log::warn!("Failed to write symcache: {}", e);
-                    sentry::capture_error(&e);
-
-                    CacheStatus::Malformed
-                } else {
-                    CacheStatus::Positive
-                };
-
-                Ok(status)
-            });
-
-            threadpool
-                .spawn_handle(future.bind_hub(Hub::current()))
-                .unwrap_or_else(|_| Err(SymCacheError::Canceled))
-        });
+        let future = fetch_difs_and_compute_symcache(
+            path.to_owned(),
+            self.object_meta.clone(),
+            self.objects_actor.clone(),
+            self.threadpool.clone(),
+        );
 
         let num_sources = self.request.sources.len();
 
@@ -162,7 +198,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             future_metrics!(
                 "symcaches",
                 Some((Duration::from_secs(1200), SymCacheError::Timeout)),
-                result.compat(),
+                future.boxed_local().compat(),
                 "num_sources" => &num_sources.to_string()
             )
             .compat(),

@@ -190,10 +190,18 @@ impl ObjectsActor {
     /// longer in the cache.
     pub fn fetch(
         &self,
-        shallow_file: Arc<ObjectMetaHandle>,
+        file_handle: Arc<ObjectMetaHandle>,
     ) -> impl Future<Output = Result<Arc<ObjectHandle>, ObjectError>> {
+        let request = FetchFileDataRequest(FetchFileMetaRequest {
+            scope: file_handle.scope.clone(),
+            file_source: file_handle.file_source.clone(),
+            object_id: file_handle.object_id.clone(),
+            data_cache: self.data_cache.clone(),
+            download_svc: self.download_svc.clone(),
+        });
+
         self.data_cache
-            .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
+            .compute_memoized(request)
             .map_err(ObjectError::Caching)
     }
 
@@ -411,7 +419,7 @@ fn create_candidates(
 
     for meta_lookup in lookups.iter() {
         if let Ok(meta_handle) = meta_lookup {
-            let source_id = meta_handle.request.file_source.source_id();
+            let source_id = meta_handle.file_source.source_id();
             source_ids.take(source_id);
         }
         candidates.push(create_candidate_info(meta_lookup));
@@ -446,8 +454,8 @@ fn create_candidate_info(
                 CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {
-                source: meta_handle.request.file_source.source_id().clone(),
-                location: meta_handle.request.file_source.uri(),
+                source: meta_handle.file_source.source_id().clone(),
+                location: meta_handle.file_source.uri(),
                 download,
                 unwind: Default::default(),
                 debug: Default::default(),

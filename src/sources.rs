@@ -361,6 +361,10 @@ pub enum FileType {
     /// Source bundle
     #[serde(rename = "sourcebundle")]
     SourceBundle,
+    /// PropertyList, mapping a dSYM UUID to a BCSymbolMap UUID for MachO.
+    PList,
+    /// BCSymbolMap, de-obfuscates symbol names for MachO.
+    BCSymbolMap,
 }
 
 impl FileType {
@@ -379,6 +383,8 @@ impl FileType {
             WasmDebug,
             Breakpad,
             SourceBundle,
+            PList,
+            BCSymbolMap,
         ]
     }
 
@@ -414,6 +420,8 @@ impl AsRef<str> for FileType {
             FileType::WasmCode => "wasm_code",
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
+            FileType::PList => "plist",
+            FileType::BCSymbolMap => "bcsymbolmap",
         }
     }
 }
