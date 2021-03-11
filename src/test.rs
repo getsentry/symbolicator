@@ -43,6 +43,9 @@ const SYMBOLS_PATH: &str = "tests/fixtures/symbols";
 pub(crate) fn setup() {
     env_logger::builder()
         .filter(Some("symbolicator"), LevelFilter::Trace)
+        .filter(Some("tokio"), LevelFilter::Trace)
+        .filter(Some("hyper"), LevelFilter::Trace)
+        .filter(Some("reqwest"), LevelFilter::Trace)
         .is_test(true)
         .try_init()
         .ok();

@@ -79,7 +79,6 @@ jobs:
           command: test
           args: -- test_integration_microsoft --nocapture
         env:
-          RUST_LOG: trace
           SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL }}
           SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY }}
           SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
