@@ -12,49 +12,49 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
-  lints:
-    name: Lints
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  # lints:
+  #   name: Lints
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Install python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
+  #     - name: Install python
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: 3.8
 
-      - name: Install python dependencies
-        run: pip install --upgrade black flake8
+  #     - name: Install python dependencies
+  #       run: pip install --upgrade black flake8
 
-      - name: Run Black
-        run: black --check --diff tests
+  #     - name: Run Black
+  #       run: black --check --diff tests
 
-      - name: Run Flake8
-        run: flake8 tests
+  #     - name: Run Flake8
+  #       run: flake8 tests
 
-      - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt, clippy
-          override: true
+  #     - name: Install rust stable toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         components: rustfmt, clippy
+  #         override: true
 
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+  #     - name: Cache rust cargo artifacts
+  #       uses: swatinem/rust-cache@v1
 
-      - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+  #     - name: Run cargo fmt
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: fmt
+  #         args: --all -- --check
 
-      - name: Run clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-features --workspace --tests --examples
+  #     - name: Run clippy
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: clippy
+  #         args: --all-features --workspace --tests --examples
 
   unit-test:
     name: Unit Tests
@@ -62,8 +62,6 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-
-      - run: cat /etc/resolv.conf
 
       - name: Install rust stable toolchain
         uses: actions-rs/toolchain@v1
@@ -79,83 +77,83 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --all-features --locked
+          args: -- test_integration_microsoft --nocapture
         env:
           SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL }}
           SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY }}
           SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
 
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  # integration-test:
+  #   name: Integration Tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+  #     - name: Install rust stable toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         override: true
 
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+  #     - name: Cache rust cargo artifacts
+  #       uses: swatinem/rust-cache@v1
 
-      - name: Build rust
-        run: cargo build --locked
+  #     - name: Build rust
+  #       run: cargo build --locked
 
-      - name: Install python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
+  #     - name: Install python
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: 3.8
 
-      - name: Setup python environment
-        run: pip install --upgrade pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
+  #     - name: Setup python environment
+  #       run: pip install --upgrade pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
 
-      - name: Integration tests
-        run: pytest -n12 -vv tests/integration
+  #     - name: Integration tests
+  #       run: pytest -n12 -vv tests/integration
 
-  doc-comments:
-    name: Rust doc comments
-    runs-on: ubuntu-latest
-    env:
-      RUSTDOCFLAGS: -Dwarnings
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  # doc-comments:
+  #   name: Rust doc comments
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     RUSTDOCFLAGS: -Dwarnings
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rust-docs
-          override: true
+  #     - name: Install rust stable toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         components: rust-docs
+  #         override: true
 
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+  #     - name: Cache rust cargo artifacts
+  #       uses: swatinem/rust-cache@v1
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --workspace --all-features --document-private-items --no-deps
+  #     - uses: actions-rs/cargo@v1
+  #       with:
+  #         command: doc
+  #         args: --workspace --all-features --document-private-items --no-deps
 
-  docs:
-    name: Build docs
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  # docs:
+  #   name: Build docs
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
+  #     - name: Setup Python
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: 3.8
 
-      - name: Setup python dependencies
-        run: pip install --upgrade mkdocs mkdocs-material pygments
+  #     - name: Setup python dependencies
+  #       run: pip install --upgrade mkdocs mkdocs-material pygments
 
-      - name: Build Docs
-        run: mkdocs build
+  #     - name: Build Docs
+  #       run: mkdocs build
