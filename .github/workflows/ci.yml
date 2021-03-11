@@ -63,6 +63,8 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
+      - run: cat /etc/resolv.conf
+
       - name: Install rust stable toolchain
         uses: actions-rs/toolchain@v1
         with:
