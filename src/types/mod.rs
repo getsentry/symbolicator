@@ -698,6 +698,15 @@ pub struct ObjectId {
     pub object_type: ObjectType,
 }
 
+impl From<DebugId> for ObjectId {
+    fn from(source: DebugId) -> Self {
+        Self {
+            debug_id: Some(source),
+            ..Default::default()
+        }
+    }
+}
+
 impl ObjectId {
     pub fn code_file_basename(&self) -> Option<&str> {
         Some(split_path(self.code_file.as_ref()?).1)

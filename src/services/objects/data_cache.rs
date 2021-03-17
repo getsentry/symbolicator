@@ -8,15 +8,18 @@
 
 use std::cmp;
 use std::fs;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process;
 use std::time::Duration;
 
+use anyhow::Error;
 use futures::compat::Future01CompatExt;
 use futures::future::{FutureExt, TryFutureExt};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
+use symbolic::debuginfo::bcsymbolmap::BCSymbolMap;
+use symbolic::debuginfo::plist::PList;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::{tempfile_in, NamedTempFile};
 
@@ -176,40 +179,53 @@ impl CacheItemRequest for FetchFileDataRequest {
             // extract the wanted file.
             decompressed.seek(SeekFrom::Start(0))?;
             let view = ByteView::map_file(decompressed)?;
-            let archive = match Archive::parse(&view) {
-                Ok(archive) => archive,
+
+            match Archive::parse(&view) {
+                Ok(archive) => {
+                    let mut persist_file = fs::File::create(&path)?;
+                    if archive.is_multi() {
+                        let object_opt = archive
+                            .objects()
+                            .filter_map(Result::ok)
+                            .find(|object| object_id.match_object(object));
+
+                        let object = match object_opt {
+                            Some(object) => object,
+                            None => {
+                                if archive.objects().any(|r| r.is_err()) {
+                                    return Ok(CacheStatus::Malformed);
+                                } else {
+                                    return Ok(CacheStatus::Negative);
+                                }
+                            }
+                        };
+
+                        io::copy(&mut object.data(), &mut persist_file)?;
+                    } else {
+                        // Attempt to parse the object to capture errors. The result can be
+                        // discarded as the object's data is the entire ByteView.
+                        if archive.object_by_index(0).is_err() {
+                            return Ok(CacheStatus::Malformed);
+                        }
+
+                        io::copy(&mut view.as_ref(), &mut persist_file)?;
+                    }
+                }
                 Err(_) => {
-                    return Ok(CacheStatus::Malformed);
+                    println!("INVALID object file");
+                    let status = if PList::test(&view) {
+                        println!("wooot, a plist");
+                        store_plist(&object_id, view, &path).unwrap_or(CacheStatus::Malformed)
+                    } else if BCSymbolMap::test(&view) {
+                        println!("wooot, a bcsymbolmap");
+                        store_bcsymbolmap(&object_id, view, &path).unwrap_or(CacheStatus::Malformed)
+                    } else {
+                        println!("ouch, actually invalid");
+                        CacheStatus::Malformed
+                    };
+                    return Ok(status);
                 }
             };
-            let mut persist_file = fs::File::create(&path)?;
-            if archive.is_multi() {
-                let object_opt = archive
-                    .objects()
-                    .filter_map(Result::ok)
-                    .find(|object| object_id.match_object(object));
-
-                let object = match object_opt {
-                    Some(object) => object,
-                    None => {
-                        if archive.objects().any(|r| r.is_err()) {
-                            return Ok(CacheStatus::Malformed);
-                        } else {
-                            return Ok(CacheStatus::Negative);
-                        }
-                    }
-                };
-
-                io::copy(&mut object.data(), &mut persist_file)?;
-            } else {
-                // Attempt to parse the object to capture errors. The result can be
-                // discarded as the object's data is the entire ByteView.
-                if archive.object_by_index(0).is_err() {
-                    return Ok(CacheStatus::Malformed);
-                }
-
-                io::copy(&mut view.as_ref(), &mut persist_file)?;
-            }
 
             Ok(CacheStatus::Positive)
         };
@@ -337,4 +353,47 @@ fn decompress_object_file(src: &NamedTempFile, mut dst: fs::File) -> io::Result<
             Ok(src.reopen()?)
         }
     }
+}
+
+/// Stores the Apple PropertyList to the cache if it is valid.
+///
+/// Any errors should be treated as [`CacheStatus::Malformed`].
+fn store_plist(object_id: &ObjectId, view: ByteView, path: &Path) -> Result<CacheStatus, Error> {
+    let debug_id = object_id.debug_id.ok_or_else(|| {
+        sentry::capture_message("Missing DebugId when fetching PList", sentry::Level::Error);
+        Error::msg("Missing DebugId")
+    })?;
+    let plist = PList::parse(debug_id, &view)?;
+
+    if !plist.is_bcsymbol_mapping() {
+        return Ok(CacheStatus::Malformed);
+    }
+
+    let mut file = fs::File::create(path)?;
+    let mut cursor = Cursor::new(&view);
+    io::copy(&mut cursor, &mut file)?;
+
+    Ok(CacheStatus::Positive)
+}
+
+/// Stores the Apple ByteCode Symbol Map to the cache if it is valid.
+///
+/// Any errors should be treated as [`CacheStatus::Malformed`].
+fn store_bcsymbolmap(
+    object_id: &ObjectId,
+    view: ByteView,
+    path: &Path,
+) -> Result<CacheStatus, Error> {
+    let debug_id = object_id.debug_id.ok_or_else(|| {
+        sentry::capture_message("Missing DebugId when fetching PList", sentry::Level::Error);
+        Error::msg("Missing DebugId")
+    })?;
+    BCSymbolMap::parse(debug_id, &view)?;
+
+    let mut file = fs::File::create(path)?;
+    let mut cursor = Cursor::new(&view);
+    io::copy(&mut cursor, &mut file)?;
+    println!("XXXXXXXXXXXXXXXXXXx wrote bcsymbolmap");
+
+    Ok(CacheStatus::Positive)
 }

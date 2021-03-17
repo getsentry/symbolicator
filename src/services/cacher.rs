@@ -16,8 +16,6 @@ use crate::types::Scope;
 use crate::utils::futures::{spawn_compat, BoxedFuture, CallOnDrop};
 
 /// Result from [`Cacher::compute_memoized`].
-///
-/// This is a boxed future which is [`Send`] and [`Sync`].
 type CacheResultFuture<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom

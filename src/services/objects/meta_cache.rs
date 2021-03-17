@@ -73,6 +73,14 @@ impl ObjectMetaHandle {
     pub fn status(&self) -> CacheStatus {
         self.status
     }
+
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
+    pub fn object_id(&self) -> &ObjectId {
+        &self.object_id
+    }
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
@@ -108,21 +116,21 @@ impl CacheItemRequest for FetchFileMetaRequest {
                 .map_err(ObjectError::Caching)
                 .and_then(move |object_handle: Arc<ObjectHandle>| {
                     if object_handle.status == CacheStatus::Positive {
-                        if let Ok(object) = Object::parse(&object_handle.data) {
-                            let mut new_cache = fs::File::create(path)?;
-
-                            let meta = ObjectFeatures {
+                        let mut new_cache = fs::File::create(path)?;
+                        let meta = if let Ok(object) = Object::parse(&object_handle.data) {
+                            ObjectFeatures {
                                 has_debug_info: object.has_debug_info(),
                                 has_unwind_info: object.has_unwind_info(),
                                 has_symbols: object.has_symbols(),
                                 has_sources: object.has_sources(),
-                            };
-
-                            log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                            serde_json::to_writer(&mut new_cache, &meta)?;
-                        }
+                            }
+                        } else {
+                            // This is not an object but rather a PList or BCSymbolMap
+                            ObjectFeatures::default()
+                        };
+                        log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
+                        serde_json::to_writer(&mut new_cache, &meta)?;
                     }
-
                     Ok(object_handle.status)
                 })
         };

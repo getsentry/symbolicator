@@ -11,7 +11,7 @@ use console::style;
 use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
-use symbolic::common::{Arch, ByteView};
+use symbolic::common::{Arch, ByteView, DebugId};
 use symbolic::debuginfo::plist::PList;
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
 use walkdir::WalkDir;
@@ -206,14 +206,14 @@ fn process_file(
                 io::copy(&mut reader, &mut writer)?;
             }
             Ok(vec![(
-                format!("{:x}", unified_id.to_simple_ref()),
+                format!("{:x}", unified_id.uuid()),
                 ObjectKind::Other,
             )])
         }
         FileFormat::PList => {
             let unified_id = match filename.strip_suffix(".plist") {
-                Some(stem) => match stem.parse() {
-                    Ok(uuid) => uuid,
+                Some(stem) => match stem.parse::<DebugId>() {
+                    Ok(id) => id,
                     Err(_) => {
                         return Ok(Vec::new());
                     }
@@ -222,7 +222,7 @@ fn process_file(
                     return Ok(Vec::new());
                 }
             };
-            let is_plist = match PList::parse(unified_id, &bv) {
+            let is_plist = match PList::parse(unified_id.clone(), &bv) {
                 Ok(plist) => plist.is_bcsymbol_mapping(),
                 Err(_err) => false,
             };
@@ -246,7 +246,7 @@ fn process_file(
                 io::copy(&mut reader, &mut writer)?;
             }
             Ok(vec![(
-                format!("{:x}", unified_id.to_simple_ref()),
+                format!("{:x}", unified_id.uuid()),
                 ObjectKind::Other,
             )])
         }

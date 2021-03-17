@@ -222,9 +222,9 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-
-        let file_ids = self.list_files(&sources, filetypes, &identifier).await;
-        let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
+        println!("xxxxxxxxxxxxxxx");
+        let file_ids = dbg!(self.list_files(&sources, filetypes, &identifier).await);
+        let file_metas = dbg!(self.fetch_file_metas(file_ids, &identifier, scope).await);
 
         let candidates = create_candidates(&sources, &file_metas);
         let meta = select_meta(file_metas, purpose);
@@ -340,6 +340,7 @@ fn select_meta(
     all_lookups: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>,
     purpose: ObjectPurpose,
 ) -> Option<Result<Arc<ObjectMetaHandle>, ObjectError>> {
+    // TODO(flub): We don't select the right objects here, we have no purpose for PList or BCSymbolMap
     let mut selected_meta = None;
     let mut selected_quality = u8::MAX;
 
