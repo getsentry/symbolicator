@@ -135,23 +135,6 @@ struct CacheLookupError {
     error: Arc<ObjectError>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ObjectsActor {
-    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
-    data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    download_svc: Arc<DownloadService>,
-}
-
-impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
-        ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache)),
-            data_cache: Arc::new(Cacher::new(data_cache)),
-            download_svc,
-        }
-    }
-}
-
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FindObject {
@@ -183,7 +166,22 @@ pub struct FoundObject {
     pub candidates: AllObjectCandidates,
 }
 
+#[derive(Clone, Debug)]
+pub struct ObjectsActor {
+    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
+    data_cache: Arc<Cacher<FetchFileDataRequest>>,
+    download_svc: Arc<DownloadService>,
+}
+
 impl ObjectsActor {
+    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
+        ObjectsActor {
+            meta_cache: Arc::new(Cacher::new(meta_cache)),
+            data_cache: Arc::new(Cacher::new(data_cache)),
+            download_svc,
+        }
+    }
+
     /// Returns the requested object file.
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no

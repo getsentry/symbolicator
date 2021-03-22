@@ -15,6 +15,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
@@ -48,9 +49,6 @@ pub enum SymCacheError {
     #[error("failed to parse object")]
     ObjectParsing(#[source] ObjectError),
 
-    #[error("failed to handle auxiliary PList file")]
-    PListError(#[from] PListError),
-
     #[error("failed to handle auxiliary BCSymbolMap file")]
     BCSymbolMapError(#[from] BCSymbolMapError),
 
@@ -65,14 +63,21 @@ pub enum SymCacheError {
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: ObjectsActor,
+    bitcode: BitcodeService,
     threadpool: ThreadPool,
 }
 
 impl SymCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
+    pub fn new(
+        cache: Cache,
+        objects: ObjectsActor,
+        bitcode: BitcodeService,
+        threadpool: ThreadPool,
+    ) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
+            bitcode,
             threadpool,
         }
     }
@@ -152,6 +157,7 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     sources: Arc<[SourceConfig]>,
     objects_actor: ObjectsActor,
+    bitcode_svc: BitcodeService,
     threadpool: ThreadPool,
 ) -> Result<CacheStatus, SymCacheError> {
     let object_handle = objects_actor
@@ -163,18 +169,13 @@ async fn fetch_difs_and_compute_symcache(
         return Ok(object_handle.status());
     }
 
-    let bcsymbolmap_handle = match object_meta.object_id().debug_id {
-        Some(ref debug_id) => fetch_bcsymbolmap(
-            debug_id.clone(),
-            object_meta.scope().clone(),
-            sources.clone(),
-            &objects_actor,
-        )
-        .await?
-        .map(|bcsym| (debug_id.clone(), bcsym)),
+    let bcsymbolmap_handle = dbg!(match object_meta.object_id().debug_id {
+        Some(debug_id) => bitcode_svc
+            .fetch_bcsymbolmap(debug_id, object_meta.scope().clone(), sources.clone())
+            .await
+            .map_err(SymCacheError::BCSymbolMapError)?,
         None => None,
-    };
-    let bcsymbolmap_handle = dbg!(bcsymbolmap_handle);
+    });
 
     let compute_future = async move {
         let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {

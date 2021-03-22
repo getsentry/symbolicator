@@ -331,6 +331,7 @@ where
 pub struct Caches {
     pub objects: Cache,
     pub object_meta: Cache,
+    pub auxdifs: Cache,
     pub symcaches: Cache,
     pub cficaches: Cache,
     pub diagnostics: Cache,
@@ -356,6 +357,15 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                )?
+            },
+            auxdifs: {
+                let path = config.cache_dir("auxdifs");
+                Cache::from_config(
+                    "auxdifs",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.downloaded.into(),
                 )?
             },
             symcaches: {
