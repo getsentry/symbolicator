@@ -4,18 +4,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Error;
 use futures::compat::Future01CompatExt;
 use futures::future::{FutureExt, TryFutureExt};
 use sentry::{configure_scope, Hub, SentryFutureExt};
-use symbolic::common::{Arch, ByteView, DebugId};
-use symbolic::debuginfo::bcsymbolmap::{BCSymbolMap, BCSymbolMapError};
-use symbolic::debuginfo::plist::{PList, PListError};
+use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::Object;
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::services::bitcode::BitcodeService;
+use crate::services::bitcode::{BCSymbolMapHandle, BitcodeService};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
@@ -50,7 +49,7 @@ pub enum SymCacheError {
     ObjectParsing(#[source] ObjectError),
 
     #[error("failed to handle auxiliary BCSymbolMap file")]
-    BCSymbolMapError(#[from] BCSymbolMapError),
+    BCSymbolMapError(#[source] Error),
 
     #[error("symcache building took too long")]
     Timeout,
@@ -63,7 +62,7 @@ pub enum SymCacheError {
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: ObjectsActor,
-    bitcode: BitcodeService,
+    bitcode_svc: BitcodeService,
     threadpool: ThreadPool,
 }
 
@@ -71,13 +70,13 @@ impl SymCacheActor {
     pub fn new(
         cache: Cache,
         objects: ObjectsActor,
-        bitcode: BitcodeService,
+        bitcode_svc: BitcodeService,
         threadpool: ThreadPool,
     ) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
-            bitcode,
+            bitcode_svc,
             threadpool,
         }
     }
@@ -129,6 +128,9 @@ struct FetchSymCacheInternal {
 
     /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
+
+    /// The bitcode service, use to fetch [`BCSymbolMap`].
+    bitcode_svc: BitcodeService,
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
@@ -195,83 +197,6 @@ async fn fetch_difs_and_compute_symcache(
         .unwrap_or(Err(SymCacheError::Canceled))
 }
 
-async fn fetch_bcsymbolmap(
-    uuid: DebugId,
-    scope: Scope,
-    sources: Arc<[SourceConfig]>,
-    objects_actor: &ObjectsActor,
-) -> Result<Option<Arc<ObjectHandle>>, SymCacheError> {
-    println!("fetch_bcsymbolmap");
-    let plist_search = FindObject {
-        filetypes: &[FileType::PList],
-        purpose: ObjectPurpose::Debug,
-        scope: scope.clone(),
-        identifier: uuid.clone().into(),
-        sources: sources.clone(),
-    };
-    println!("fetch_bcsymbolmap 2");
-    let found = dbg!(objects_actor
-        .find(plist_search)
-        .await
-        .map_err(SymCacheError::Fetching)?);
-    println!("fetch_bcsymbolmap 3");
-    let meta_handle = match found.meta {
-        Some(handle) => handle,
-        None => {
-            return Ok(None);
-        }
-    };
-    println!("fetch_bcsymbolmap 4");
-    let handle = objects_actor
-        .fetch(meta_handle)
-        .await
-        .map_err(SymCacheError::Fetching)?;
-    println!("fetch_bcsymbolmap 5");
-    if dbg!(handle.status()) != CacheStatus::Positive {
-        return Ok(None);
-    }
-    println!("fetch_bcsymbolmap 6");
-    let plist = PList::parse(uuid, &handle.data())?;
-    println!("fetch_bcsymbolmap 7");
-    let original_uuid = match plist.original_uuid() {
-        Ok(Some(uuid)) => uuid,
-        _ => {
-            // This should not be possible, they only get written if this is valid.
-            sentry::capture_message(
-                "PList did not contain valid BCSymbolMap UUID mapping",
-                sentry::Level::Error,
-            );
-            return Ok(None);
-        }
-    };
-    println!("Ok, got the plist");
-
-    let bcsymbolmap_id = ObjectId::from(original_uuid);
-    let bcsymbolmap_search = FindObject {
-        filetypes: &[FileType::BCSymbolMap],
-        purpose: ObjectPurpose::Debug,
-        scope,
-        identifier: bcsymbolmap_id,
-        sources,
-    };
-    let found = dbg!(objects_actor
-        .find(bcsymbolmap_search)
-        .await
-        .map_err(SymCacheError::Fetching)?);
-    let meta_handle = match found.meta {
-        Some(handle) => handle,
-        None => {
-            return Ok(None);
-        }
-    };
-    println!("fetching bcsymbolmap");
-    objects_actor
-        .fetch(meta_handle)
-        .await
-        .map(|handle| Some(handle))
-        .map_err(SymCacheError::Fetching)
-}
-
 impl CacheItemRequest for FetchSymCacheInternal {
     type Item = SymCacheFile;
     type Error = SymCacheError;
@@ -286,6 +211,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             self.object_meta.clone(),
             self.request.sources.clone(),
             self.objects_actor.clone(),
+            self.bitcode_svc.clone(),
             self.threadpool.clone(),
         );
 
@@ -372,6 +298,7 @@ impl SymCacheActor {
                     .compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
+                        bitcode_svc: self.bitcode_svc.clone(),
                         object_meta: handle,
                         threadpool: self.threadpool.clone(),
                         candidates,
@@ -398,7 +325,7 @@ impl SymCacheActor {
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,
-    bcsymbolmap_handle: Option<(DebugId, Arc<ObjectHandle>)>,
+    bcsymbolmap_handle: Option<BCSymbolMapHandle>,
 ) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
@@ -411,8 +338,10 @@ fn write_symcache(
         .unwrap();
     println!("write_symcache: {:?}", bcsymbolmap_handle);
     if let Object::MachO(ref mut macho) = symbolic_object {
-        if let Some((code_id, symbolmap_handle)) = bcsymbolmap_handle {
-            let bcsymbolmap = BCSymbolMap::parse(code_id, symbolmap_handle.data().as_slice())?;
+        if let Some(handle) = bcsymbolmap_handle {
+            let bcsymbolmap = handle
+                .bc_symbol_map()
+                .map_err(SymCacheError::BCSymbolMapError)?;
             macho.load_symbolmap(bcsymbolmap);
         }
     }

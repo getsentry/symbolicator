@@ -42,7 +42,7 @@ pub struct BCSymbolMapHandle {
 
 impl BCSymbolMapHandle {
     /// Parses the map from the handle.
-    pub fn get(&self) -> Result<BCSymbolMap, Error> {
+    pub fn bc_symbol_map(&self) -> Result<BCSymbolMap, Error> {
         BCSymbolMap::parse(self.uuid, &self.data).context("Bad data in cache")
     }
 }
