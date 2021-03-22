@@ -7,6 +7,7 @@
 //! [`Cacher`]: crate::services::cacher::Cacher
 
 use std::cmp;
+use std::fmt;
 use std::fs;
 use std::io::{self, Seek, SeekFrom};
 use std::path::Path;
@@ -101,6 +102,18 @@ impl ConfigureScope for ObjectHandle {
             "object_file.first_16_bytes",
             format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
         );
+    }
+}
+
+impl fmt::Display for ObjectHandle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(ref debug_id) = self.object_id.debug_id {
+            write!(f, "<object handle for {}>", debug_id)
+        } else if let Some(ref code_id) = self.object_id.code_id {
+            write!(f, "<object handle for {}>", code_id)
+        } else {
+            write!(f, "<object handle for unknown>")
+        }
     }
 }
 

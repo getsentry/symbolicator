@@ -82,7 +82,7 @@ impl FetchFileRequest {
 
         match self
             .download_svc
-            .download(self.file_source, path.clone())
+            .download(self.file_source, download_file.path().to_path_buf())
             .await?
         {
             DownloadStatus::NotFound => Ok(CacheStatus::Negative),
@@ -95,7 +95,9 @@ impl FetchFileRequest {
                 let mut decompressed =
                     match decompress_object_file(&download_file, decompressed_path) {
                         Ok(file) => file,
-                        Err(_) => return Ok(CacheStatus::Malformed),
+                        Err(_) => {
+                            return Ok(CacheStatus::Malformed);
+                        }
                     };
 
                 // Seek back to the start and parse this DIF.
@@ -103,7 +105,6 @@ impl FetchFileRequest {
                 let view = ByteView::map_file(decompressed)?;
 
                 if PList::test(&view) {
-                    println!("wooot, a plist");
                     let plist = match PList::parse(self.uuid.clone(), &view) {
                         Ok(plist) => plist,
                         Err(err) => {
@@ -115,7 +116,6 @@ impl FetchFileRequest {
                         return Ok(CacheStatus::Malformed);
                     }
                 } else if BCSymbolMap::test(&view) {
-                    println!("wooot, a bcsymbolmap");
                     if let Err(err) = BCSymbolMap::parse(self.uuid.clone(), &view) {
                         log::debug!("Failed to parse bcsymbolmap: {}", err);
                         return Ok(CacheStatus::Malformed);
@@ -315,6 +315,7 @@ impl BitcodeService {
                 Ok(handle) if handle.status == CacheStatus::Positive => ret = Some(handle),
                 Ok(_) => (),
                 Err(err) => {
+                    log::error!("Inner failure fetching auxiliary DIF file from a source");
                     capture_anyhow(&*err);
                     return Err(Error::msg("Inner failure fetching a file from a source"));
                 }

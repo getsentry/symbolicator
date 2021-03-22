@@ -171,13 +171,13 @@ async fn fetch_difs_and_compute_symcache(
         return Ok(object_handle.status());
     }
 
-    let bcsymbolmap_handle = dbg!(match object_meta.object_id().debug_id {
+    let bcsymbolmap_handle = match object_meta.object_id().debug_id {
         Some(debug_id) => bitcode_svc
             .fetch_bcsymbolmap(debug_id, object_meta.scope().clone(), sources.clone())
             .await
             .map_err(SymCacheError::BCSymbolMapError)?,
         None => None,
-    });
+    };
 
     let compute_future = async move {
         let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {
@@ -336,12 +336,16 @@ fn write_symcache(
         .parse()
         .map_err(SymCacheError::ObjectParsing)?
         .unwrap();
-    println!("write_symcache: {:?}", bcsymbolmap_handle);
     if let Object::MachO(ref mut macho) = symbolic_object {
         if let Some(handle) = bcsymbolmap_handle {
             let bcsymbolmap = handle
                 .bc_symbol_map()
                 .map_err(SymCacheError::BCSymbolMapError)?;
+            log::debug!(
+                "Adding BCSymbolMap {} to dSYM {}",
+                handle.uuid,
+                object_handle
+            );
             macho.load_symbolmap(bcsymbolmap);
         }
     }

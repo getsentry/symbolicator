@@ -67,7 +67,7 @@ impl FilesystemDownloader {
         // All file I/O in this function is blocking!
         let abspath = file_source.path();
         log::debug!("Fetching debug file from {:?}", abspath);
-        match fs::copy(abspath, dest).await {
+        match fs::copy(abspath, &dest).await {
             Ok(_) => Ok(DownloadStatus::Completed),
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
