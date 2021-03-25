@@ -16,7 +16,6 @@ use sentry::integrations::anyhow::capture_anyhow;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::bcsymbolmap::BCSymbolMap;
-use symbolic::debuginfo::plist::PList;
 use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -26,6 +25,10 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
+
+mod plist;
+
+use plist::PList;
 
 // TODO(flub): Check all these are actually needed.
 /// Handle to a valid BCSymbolMap.
@@ -42,8 +45,8 @@ pub struct BCSymbolMapHandle {
 
 impl BCSymbolMapHandle {
     /// Parses the map from the handle.
-    pub fn bc_symbol_map(&self) -> Result<BCSymbolMap, Error> {
-        BCSymbolMap::parse(self.uuid, &self.data).context("Bad data in cache")
+    pub fn bc_symbol_map(&self) -> Result<BCSymbolMap<'_>, Error> {
+        BCSymbolMap::parse(self.uuid, &self.data).context("Failed to parse BCSymbolMap")
     }
 }
 

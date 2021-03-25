@@ -2243,9 +2243,9 @@ dependencies = [
 
 [[package]]
 name = "pdb"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b66be5fcea88b52962d3d6fcc5194f1d77666f5aca256926688743a8de1152e4"
+checksum = "13f4d162ecaaa1467de5afbe62d597757b674b51da8bb4e587430c5fdb2af7aa"
 dependencies = [
  "fallible-iterator",
  "scroll",
@@ -3396,9 +3396,9 @@ dependencies = [
 
 [[package]]
 name = "siphasher"
-version = "0.3.3"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa8f3741c7372e75519bd9346068370c9cdaabcc1f9599cbcf2a2719352286b7"
+checksum = "cbce6d4507c7e4a3962091436e56e95290cb71fa302d0d270e32130b75fbff27"
 
 [[package]]
 name = "slab"
@@ -3584,7 +3584,6 @@ name = "symbolic-debuginfo"
 version = "8.0.5"
 dependencies = [
  "dmsort",
- "elementtree",
  "fallible-iterator",
  "flate2",
  "gimli",
@@ -3655,6 +3654,7 @@ dependencies = [
  "cadence",
  "chrono",
  "console",
+ "elementtree",
  "env_logger",
  "failure",
  "filetime",
@@ -3703,6 +3703,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "console",
+ "elementtree",
  "lazy_static",
  "rayon",
  "regex",
@@ -3710,6 +3711,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "symbolic",
+ "thiserror",
  "walkdir",
  "zip",
  "zstd",
@@ -3793,18 +3795,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76cc616c6abf8c8928e2fdcc0dbfab37175edd8fb49a4641066ad1364fdab146"
+checksum = "e0f4a65597094d4483ddaed134f409b2cb7c1beccf25201a9f73c719254fa98e"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9be73a2caec27583d0046ef3796c3794f868a5bc813db689eed00c7631275cd1"
+checksum = "7765189610d8241a44529806d6fd1f2e0a08734313a35d5b3a556f92b381f3c0"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.3",

@@ -337,7 +337,7 @@ fn write_symcache(
         .map_err(SymCacheError::ObjectParsing)?
         .unwrap();
     if let Object::MachO(ref mut macho) = symbolic_object {
-        if let Some(handle) = bcsymbolmap_handle {
+        if let Some(ref handle) = bcsymbolmap_handle {
             let bcsymbolmap = handle
                 .bc_symbol_map()
                 .map_err(SymCacheError::BCSymbolMapError)?;
