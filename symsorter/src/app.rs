@@ -206,7 +206,7 @@ fn process_aux_dif(
     // Validate the file contents.
     match dif_type {
         DifType::PList => {
-            let plist = PList::parse(id.clone(), &bv).context("Failed to parse PList")?;
+            let plist = PList::parse(id, &bv).context("Failed to parse PList")?;
             if !plist.is_bcsymbol_mapping() {
                 return Err(Error::msg(
                     "PList is not a BCSymbolMap OriginalUUID mapping",
@@ -214,7 +214,7 @@ fn process_aux_dif(
             }
         }
         DifType::BCSymbolMap => {
-            BCSymbolMap::parse(id.clone(), &bv).context("Failed to parse BCSymbolMap")?;
+            BCSymbolMap::parse(id, &bv).context("Failed to parse BCSymbolMap")?;
         }
         _ => {
             return Err(anyhow!("Unsupported DIF type: {}", dif_type));
@@ -226,7 +226,7 @@ fn process_aux_dif(
     fs::create_dir_all(
         new_path
             .parent()
-            .ok_or(Error::msg(format!("File has no parent: {}", filename)))?,
+            .ok_or_else(|| Error::msg(format!("File has no parent: {}", filename)))?,
     )
     .with_context(|| format!("Failed to create destination directory for {}", filename))?;
 

@@ -93,7 +93,7 @@ impl FetchFileRequest {
                 let download_dir = download_file
                     .path()
                     .parent()
-                    .ok_or(Error::msg("Parent of download dir not found"))?;
+                    .ok_or_else(|| Error::msg("Parent of download dir not found"))?;
                 let decompressed_path = tempfile_in(download_dir)?;
                 let mut decompressed =
                     match decompress_object_file(&download_file, decompressed_path) {
@@ -108,7 +108,7 @@ impl FetchFileRequest {
                 let view = ByteView::map_file(decompressed)?;
 
                 if PList::test(&view) {
-                    let plist = match PList::parse(self.uuid.clone(), &view) {
+                    let plist = match PList::parse(self.uuid, &view) {
                         Ok(plist) => plist,
                         Err(err) => {
                             log::debug!("Failed to parse plist: {}", err);
@@ -119,7 +119,7 @@ impl FetchFileRequest {
                         return Ok(CacheStatus::Malformed);
                     }
                 } else if BCSymbolMap::test(&view) {
-                    if let Err(err) = BCSymbolMap::parse(self.uuid.clone(), &view) {
+                    if let Err(err) = BCSymbolMap::parse(self.uuid, &view) {
                         log::debug!("Failed to parse bcsymbolmap: {}", err);
                         return Ok(CacheStatus::Malformed);
                     }
@@ -180,7 +180,7 @@ impl CacheItemRequest for FetchFileRequest {
     ) -> Self::Item {
         CacheHandle {
             status,
-            uuid: self.uuid.clone(),
+            uuid: self.uuid,
             source: self.file_source.clone(),
             cache_key: self.get_cache_key(),
             data,
