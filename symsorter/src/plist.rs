@@ -75,7 +75,7 @@ impl From<PListErrorKind> for PListError {
 /// This is an auxiliary file, not an object file.
 ///
 /// The PList format is used to map the UUID of a dSYM compiled from bitcode to the original
-/// UUID of the matching [`BCSymbolMap`].
+/// UUID of the matching [`BCSymbolMap`](symbolic::debuginfo::bcsymbolmap::BCSymbolMap).
 #[derive(Clone, Debug)]
 pub struct PList {
     id: DebugId,

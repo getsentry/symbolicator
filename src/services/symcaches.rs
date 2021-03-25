@@ -129,7 +129,8 @@ struct FetchSymCacheInternal {
     /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
 
-    /// The bitcode service, use to fetch [`BCSymbolMap`].
+    /// The bitcode service, use to fetch
+    /// [`BCSymbolMap`](symbolic::debuginfo::bcsymbolmap::BCSymbolMap).
     bitcode_svc: BitcodeService,
 
     /// ObjectMeta handle of the original DIF object to fetch.
