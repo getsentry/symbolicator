@@ -82,13 +82,17 @@ impl FetchFileRequest {
     /// Actual implementation of [`FetchFileRequest::compute`].
     async fn fetch_file(self, path: PathBuf) -> Result<CacheStatus, Error> {
         let download_file = self.cache.tempfile()?;
+        let cache_key = self.get_cache_key();
 
         match self
             .download_svc
             .download(self.file_source, download_file.path().to_path_buf())
             .await?
         {
-            DownloadStatus::NotFound => Ok(CacheStatus::Negative),
+            DownloadStatus::NotFound => {
+                log::debug!("No auxiliary DIF file found for {}", cache_key);
+                Ok(CacheStatus::Negative)
+            }
             DownloadStatus::Completed => {
                 let download_dir = download_file
                     .path()
