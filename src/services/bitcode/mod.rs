@@ -271,7 +271,7 @@ impl BitcodeService {
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
     ///
-    /// This should on be used to fetch [`FileType::PList`] and [`FileType::BcSymbolMap`].
+    /// This should only be used to fetch [`FileType::PList`] and [`FileType::BcSymbolMap`].
     async fn fetch_file_from_source(
         &self,
         uuid: DebugId,
