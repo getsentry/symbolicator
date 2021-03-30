@@ -115,6 +115,7 @@ impl FetchFileRequest {
                         }
                     };
                     if !plist.is_bcsymbol_mapping() {
+                        log::debug!("PList is not a BCSymbolMap OriginalUUID mapping");
                         return Ok(CacheStatus::Malformed);
                     }
                 } else if BcSymbolMap::test(&view) {
