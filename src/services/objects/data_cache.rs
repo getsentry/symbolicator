@@ -189,42 +189,38 @@ impl CacheItemRequest for FetchFileDataRequest {
             // extract the wanted file.
             decompressed.seek(SeekFrom::Start(0))?;
             let view = ByteView::map_file(decompressed)?;
+            let archive = match Archive::parse(&view) {
+                Ok(archive) => archive,
+                Err(_) => return Ok(CacheStatus::Malformed),
+            };
+            let mut persist_file = fs::File::create(&path)?;
+            if archive.is_multi() {
+                let object_opt = archive
+                    .objects()
+                    .filter_map(Result::ok)
+                    .find(|object| object_id.match_object(object));
 
-            match Archive::parse(&view) {
-                Ok(archive) => {
-                    let mut persist_file = fs::File::create(&path)?;
-                    if archive.is_multi() {
-                        let object_opt = archive
-                            .objects()
-                            .filter_map(Result::ok)
-                            .find(|object| object_id.match_object(object));
-
-                        let object = match object_opt {
-                            Some(object) => object,
-                            None => {
-                                if archive.objects().any(|r| r.is_err()) {
-                                    return Ok(CacheStatus::Malformed);
-                                } else {
-                                    return Ok(CacheStatus::Negative);
-                                }
-                            }
-                        };
-
-                        io::copy(&mut object.data(), &mut persist_file)?;
-                    } else {
-                        // Attempt to parse the object to capture errors. The result can be
-                        // discarded as the object's data is the entire ByteView.
-                        if archive.object_by_index(0).is_err() {
+                let object = match object_opt {
+                    Some(object) => object,
+                    None => {
+                        if archive.objects().any(|r| r.is_err()) {
                             return Ok(CacheStatus::Malformed);
+                        } else {
+                            return Ok(CacheStatus::Negative);
                         }
-
-                        io::copy(&mut view.as_ref(), &mut persist_file)?;
                     }
-                }
-                Err(_) => {
+                };
+
+                io::copy(&mut object.data(), &mut persist_file)?;
+            } else {
+                // Attempt to parse the object to capture errors. The result can be
+                // discarded as the object's data is the entire ByteView.
+                if archive.object_by_index(0).is_err() {
                     return Ok(CacheStatus::Malformed);
                 }
-            };
+
+                io::copy(&mut view.as_ref(), &mut persist_file)?;
+            }
 
             Ok(CacheStatus::Positive)
         };
