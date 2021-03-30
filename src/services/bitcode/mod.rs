@@ -30,16 +30,13 @@ mod plist;
 
 use plist::PList;
 
-// TODO(flub): Check all these are actually needed.
 /// Handle to a valid BCSymbolMap.
 ///
 /// While this handle points to the raw data, this data is guaranteed to be valid, you can
 /// only have this handle if a positive cache existed.
 #[derive(Debug, Clone)]
 pub struct BcSymbolMapHandle {
-    pub uuid: DebugId, // TODO: remove?
-    pub source: ObjectFileSource,
-    pub cache_key: CacheKey,
+    pub uuid: DebugId,
     pub data: ByteView<'static>,
 }
 
@@ -247,8 +244,6 @@ impl BitcodeService {
 
         Ok(Some(BcSymbolMapHandle {
             uuid: symbolmap_handle.uuid,
-            source: symbolmap_handle.source.clone(),
-            cache_key: symbolmap_handle.cache_key.clone(),
             data: symbolmap_handle.data.clone(),
         }))
     }
