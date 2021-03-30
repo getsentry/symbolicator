@@ -337,7 +337,6 @@ fn select_meta(
     all_lookups: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>,
     purpose: ObjectPurpose,
 ) -> Option<Result<Arc<ObjectMetaHandle>, ObjectError>> {
-    // TODO(flub): We don't select the right objects here, we have no purpose for PList or BCSymbolMap
     let mut selected_meta = None;
     let mut selected_quality = u8::MAX;
 
