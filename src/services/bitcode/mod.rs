@@ -200,7 +200,7 @@ impl BitcodeService {
         }
     }
 
-    /// Returns a `BCSymbolMap` if one is found for the UUID.
+    /// Returns a `BCSymbolMap` if one is found for the `uuid`.
     pub async fn fetch_bcsymbolmap(
         &self,
         uuid: DebugId,
