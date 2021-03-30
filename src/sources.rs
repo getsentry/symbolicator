@@ -364,7 +364,7 @@ pub enum FileType {
     /// PropertyList, mapping a dSYM UUID to a BCSymbolMap UUID for MachO.
     PList,
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
-    BCSymbolMap,
+    BcSymbolMap,
 }
 
 impl FileType {
@@ -384,7 +384,7 @@ impl FileType {
             Breakpad,
             SourceBundle,
             PList,
-            BCSymbolMap,
+            BcSymbolMap,
         ]
     }
 
@@ -421,7 +421,7 @@ impl AsRef<str> for FileType {
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
             FileType::PList => "plist",
-            FileType::BCSymbolMap => "bcsymbolmap",
+            FileType::BcSymbolMap => "bcsymbolmap",
         }
     }
 }

@@ -197,7 +197,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
             rv
         }
         FileType::PList => Vec::new(),
-        FileType::BCSymbolMap => Vec::new(),
+        FileType::BcSymbolMap => Vec::new(),
     }
 }
 
@@ -281,7 +281,7 @@ fn get_symstore_path(
         FileType::PList => None,
 
         // Microsoft SymbolServer does not speicfy BCSymbolMap.
-        FileType::BCSymbolMap => None,
+        FileType::BcSymbolMap => None,
     }
 }
 
@@ -326,7 +326,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         // not available
         FileType::SourceBundle => None,
         FileType::PList => None,
-        FileType::BCSymbolMap => None,
+        FileType::BcSymbolMap => None,
     }
 }
 
@@ -339,7 +339,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> ObjectType {
     match filetype {
         FileType::Pe | FileType::Pdb => ObjectType::Pe,
-        FileType::MachCode | FileType::MachDebug | FileType::PList | FileType::BCSymbolMap => {
+        FileType::MachCode | FileType::MachDebug | FileType::PList | FileType::BcSymbolMap => {
             ObjectType::Macho
         }
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
@@ -358,7 +358,7 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::Breakpad => "breakpad",
         FileType::SourceBundle => "sourcebundle",
         FileType::PList => "plist",
-        FileType::BCSymbolMap => "bcsymbolmap",
+        FileType::BcSymbolMap => "bcsymbolmap",
     };
 
     // determine the ID we use for the path

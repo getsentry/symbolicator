@@ -16,7 +16,7 @@ pub enum DifType {
     // Breakpad,
     SourceBundle,
     PList,
-    BCSymbolMap,
+    BcSymbolMap,
 }
 
 impl DifType {
@@ -48,7 +48,7 @@ impl DifType {
             // DifType::Breakpad => "breakpad",
             DifType::SourceBundle => "sourcebundle",
             DifType::PList => "plist",
-            DifType::BCSymbolMap => "bcsymbolmap",
+            DifType::BcSymbolMap => "bcsymbolmap",
         }
     }
 
@@ -70,7 +70,7 @@ impl Display for DifType {
             // DifType::Breakpad => write!(f, "Breakpad"),
             DifType::SourceBundle => write!(f, "SourceBundle"),
             DifType::PList => write!(f, "PList"),
-            DifType::BCSymbolMap => write!(f, "BCSymbolMap"),
+            DifType::BcSymbolMap => write!(f, "BCSymbolMap"),
         }
     }
 }

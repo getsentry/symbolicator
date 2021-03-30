@@ -14,7 +14,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::services::bitcode::{BCSymbolMapHandle, BitcodeService};
+use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
@@ -49,7 +49,7 @@ pub enum SymCacheError {
     ObjectParsing(#[source] ObjectError),
 
     #[error("failed to handle auxiliary BCSymbolMap file")]
-    BCSymbolMapError(#[source] Error),
+    BcSymbolMapError(#[source] Error),
 
     #[error("symcache building took too long")]
     Timeout,
@@ -130,7 +130,7 @@ struct FetchSymCacheInternal {
     objects_actor: ObjectsActor,
 
     /// The bitcode service, use to fetch
-    /// [`BCSymbolMap`](symbolic::debuginfo::bcsymbolmap::BCSymbolMap).
+    /// [`BcSymbolMap`](symbolic::debuginfo::macho::BcSymbolMap).
     bitcode_svc: BitcodeService,
 
     /// ObjectMeta handle of the original DIF object to fetch.
@@ -176,7 +176,7 @@ async fn fetch_difs_and_compute_symcache(
         Some(debug_id) => bitcode_svc
             .fetch_bcsymbolmap(debug_id, object_meta.scope().clone(), sources.clone())
             .await
-            .map_err(SymCacheError::BCSymbolMapError)?,
+            .map_err(SymCacheError::BcSymbolMapError)?,
         None => None,
     };
 
@@ -326,7 +326,7 @@ impl SymCacheActor {
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,
-    bcsymbolmap_handle: Option<BCSymbolMapHandle>,
+    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
 ) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
@@ -341,7 +341,7 @@ fn write_symcache(
         if let Some(ref handle) = bcsymbolmap_handle {
             let bcsymbolmap = handle
                 .bc_symbol_map()
-                .map_err(SymCacheError::BCSymbolMapError)?;
+                .map_err(SymCacheError::BcSymbolMapError)?;
             log::debug!(
                 "Adding BCSymbolMap {} to dSYM {}",
                 handle.uuid,

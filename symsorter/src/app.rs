@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView, DebugId};
-use symbolic::debuginfo::bcsymbolmap::BCSymbolMap;
+use symbolic::debuginfo::macho::BcSymbolMap;
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
 use walkdir::WalkDir;
 use zip::ZipArchive;
@@ -213,8 +213,8 @@ fn process_aux_dif(
                 ));
             }
         }
-        DifType::BCSymbolMap => {
-            BCSymbolMap::parse(id, &bv).context("Failed to parse BCSymbolMap")?;
+        DifType::BcSymbolMap => {
+            BcSymbolMap::parse(&bv).context("Failed to parse BCSymbolMap")?;
         }
         _ => {
             return Err(anyhow!("Unsupported DIF type: {}", dif_type));
@@ -308,8 +308,8 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                     }
                     debug_ids.lock().unwrap().push(unified_id);
                 }
-            } else if BCSymbolMap::test(&bv) {
-                process_aux_dif(&sort_config, bv, &filename, DifType::BCSymbolMap)
+            } else if BcSymbolMap::test(&bv) {
+                process_aux_dif(&sort_config, bv, &filename, DifType::BcSymbolMap)
                     .context("Failed to process BCSymbolMap")
                     .or_else(|err| {
                         if RunConfig::get().ignore_errors {

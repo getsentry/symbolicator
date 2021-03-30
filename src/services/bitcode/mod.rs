@@ -1,6 +1,6 @@
 //! Service to retrieve Apple Bitcode Symbol Maps.
 //!
-//! This service downloads and caches the [`PList`] and [`BCSymbolMap`] used to un-obfuscate
+//! This service downloads and caches the [`PList`] and [`BcSymbolMap`] used to un-obfuscate
 //! debug symbols for obfuscated Apple bitcode builds.
 
 use std::fs::File;
@@ -15,7 +15,7 @@ use futures::{future, FutureExt, TryFutureExt};
 use sentry::integrations::anyhow::capture_anyhow;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
-use symbolic::debuginfo::bcsymbolmap::BCSymbolMap;
+use symbolic::debuginfo::macho::BcSymbolMap;
 use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -36,17 +36,17 @@ use plist::PList;
 /// While this handle points to the raw data, this data is guaranteed to be valid, you can
 /// only have this handle if a positive cache existed.
 #[derive(Debug, Clone)]
-pub struct BCSymbolMapHandle {
-    pub uuid: DebugId,
+pub struct BcSymbolMapHandle {
+    pub uuid: DebugId, // TODO: remove?
     pub source: ObjectFileSource,
     pub cache_key: CacheKey,
     pub data: ByteView<'static>,
 }
 
-impl BCSymbolMapHandle {
+impl BcSymbolMapHandle {
     /// Parses the map from the handle.
-    pub fn bc_symbol_map(&self) -> Result<BCSymbolMap<'_>, Error> {
-        BCSymbolMap::parse(self.uuid, &self.data).context("Failed to parse BCSymbolMap")
+    pub fn bc_symbol_map(&self) -> Result<BcSymbolMap<'_>, Error> {
+        BcSymbolMap::parse(&self.data).context("Failed to parse BCSymbolMap")
     }
 }
 
@@ -54,7 +54,7 @@ impl BCSymbolMapHandle {
 ///
 /// This trait requires us to return a handle regardless of positive, negative or malformed
 /// cache status.  This is this handle but we do not expose it outside of this module, see
-/// [`BCSymbolMapHandle`] for that.
+/// [`BcSymbolMapHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
     status: CacheStatus,
@@ -122,8 +122,8 @@ impl FetchFileRequest {
                     if !plist.is_bcsymbol_mapping() {
                         return Ok(CacheStatus::Malformed);
                     }
-                } else if BCSymbolMap::test(&view) {
-                    if let Err(err) = BCSymbolMap::parse(self.uuid, &view) {
+                } else if BcSymbolMap::test(&view) {
+                    if let Err(err) = BcSymbolMap::parse(&view) {
                         log::debug!("Failed to parse bcsymbolmap: {}", err);
                         return Ok(CacheStatus::Malformed);
                     }
@@ -212,7 +212,7 @@ impl BitcodeService {
         uuid: DebugId,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<Option<BCSymbolMapHandle>, Error> {
+    ) -> Result<Option<BcSymbolMapHandle>, Error> {
         // First find the PList.
         let find_plist = self
             .fetch_file_from_all_sources(uuid, &[FileType::PList], scope.clone(), sources.clone())
@@ -238,14 +238,14 @@ impl BitcodeService {
 
         // Next find the BCSymbolMap.
         let find_symbolmap = self
-            .fetch_file_from_all_sources(original_uuid, &[FileType::BCSymbolMap], scope, sources)
+            .fetch_file_from_all_sources(original_uuid, &[FileType::BcSymbolMap], scope, sources)
             .await?;
         let symbolmap_handle = match find_symbolmap {
             Some(handle) => handle,
             None => return Ok(None),
         };
 
-        Ok(Some(BCSymbolMapHandle {
+        Ok(Some(BcSymbolMapHandle {
             uuid: symbolmap_handle.uuid,
             source: symbolmap_handle.source.clone(),
             cache_key: symbolmap_handle.cache_key.clone(),
@@ -279,7 +279,7 @@ impl BitcodeService {
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
     ///
-    /// This should on be used to fetch [`FileType::PList`] and [`FileType::BCSymbolMap`].
+    /// This should on be used to fetch [`FileType::PList`] and [`FileType::BcSymbolMap`].
     async fn fetch_file_from_source(
         &self,
         uuid: DebugId,
