@@ -322,7 +322,8 @@ impl SymCacheActor {
 
 /// Computes and writes the symcache.
 ///
-/// It is assumed both the `object_handle` and `bcsymbolmap_handle` contain positive caches.
+/// It is assumed both the `object_handle` contains a positive cache.  The
+/// `bcsymbolmap_handle` can only exist for a positive cache so does not have this issue.
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,
