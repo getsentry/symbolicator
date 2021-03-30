@@ -74,6 +74,3 @@ debug = true
 
 [workspace]
 members = ["symsorter"]
-
-# [patch.crates-io]
-# symbolic = { path = "../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
