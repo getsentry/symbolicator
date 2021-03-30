@@ -56,8 +56,6 @@ impl BcSymbolMapHandle {
 struct CacheHandle {
     status: CacheStatus,
     uuid: DebugId,
-    source: ObjectFileSource,
-    cache_key: CacheKey,
     data: ByteView<'static>,
 }
 
@@ -182,8 +180,6 @@ impl CacheItemRequest for FetchFileRequest {
         CacheHandle {
             status,
             uuid: self.uuid,
-            source: self.file_source.clone(),
-            cache_key: self.get_cache_key(),
             data,
         }
     }
