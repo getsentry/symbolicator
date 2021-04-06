@@ -1,6 +1,6 @@
 //! Service to retrieve Apple Bitcode Symbol Maps.
 //!
-//! This service downloads and caches the [`PList`] and [`BcSymbolMap`] used to un-obfuscate
+//! This service downloads and caches the `PList` and [`BcSymbolMap`] used to un-obfuscate
 //! debug symbols for obfuscated Apple bitcode builds.
 
 use std::fs::File;
@@ -15,7 +15,7 @@ use futures::{future, FutureExt, TryFutureExt};
 use sentry::integrations::anyhow::capture_anyhow;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
-use symbolic::debuginfo::macho::BcSymbolMap;
+use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
@@ -25,10 +25,6 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
-
-mod plist;
-
-use plist::PList;
 
 /// Handle to a valid BCSymbolMap.
 ///
@@ -106,27 +102,15 @@ impl FetchFileRequest {
                 decompressed.seek(SeekFrom::Start(0))?;
                 let view = ByteView::map_file(decompressed)?;
 
-                if PList::test(&view) {
-                    let plist = match PList::parse(self.uuid, &view) {
-                        Ok(plist) => plist,
-                        Err(err) => {
-                            log::debug!("Failed to parse plist: {}", err);
-                            return Ok(CacheStatus::Malformed);
-                        }
-                    };
-                    if !plist.is_bcsymbol_mapping() {
-                        log::debug!("PList is not a BCSymbolMap OriginalUUID mapping");
-                        return Ok(CacheStatus::Malformed);
-                    }
-                } else if BcSymbolMap::test(&view) {
+                if BcSymbolMap::test(&view) {
                     if let Err(err) = BcSymbolMap::parse(&view) {
                         log::debug!("Failed to parse bcsymbolmap: {}", err);
                         return Ok(CacheStatus::Malformed);
                     }
-                } else {
-                    log::debug!("Unknown file type");
+                } else if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
+                    log::debug!("Failed to parse plist: {}", err);
                     return Ok(CacheStatus::Malformed);
-                };
+                }
 
                 // The file is valid, lets save it.
                 let mut destination = File::create(path)?;
@@ -216,23 +200,16 @@ impl BitcodeService {
             None => return Ok(None),
         };
 
-        let plist = PList::parse(uuid, &plist_handle.data)?;
-        let original_uuid = match plist.original_uuid() {
-            Ok(Some(uuid)) => uuid,
-            _ => {
-                // This should not be possible, they are written as CacheStatus::Malformed
-                // for this case and we should not have found a usable PList.
-                sentry::capture_message(
-                    "PList did not contain valid BCSymbolMap UUID mapping",
-                    sentry::Level::Error,
-                );
-                return Ok(None);
-            }
-        };
+        let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)?;
 
         // Next find the BCSymbolMap.
         let find_symbolmap = self
-            .fetch_file_from_all_sources(original_uuid, &[FileType::BcSymbolMap], scope, sources)
+            .fetch_file_from_all_sources(
+                uuid_mapping.original_uuid(),
+                &[FileType::BcSymbolMap],
+                scope,
+                sources,
+            )
             .await?;
         let symbolmap_handle = match find_symbolmap {
             Some(handle) => handle,

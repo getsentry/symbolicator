@@ -3558,7 +3558,7 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#292b881e75225d037686a7eb74c102ec0feaa2a2"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3570,7 +3570,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#292b881e75225d037686a7eb74c102ec0feaa2a2"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "debugid",
  "memmap",
@@ -3582,9 +3582,10 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#292b881e75225d037686a7eb74c102ec0feaa2a2"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "dmsort",
+ "elementtree",
  "fallible-iterator",
  "flate2",
  "gimli",
@@ -3609,7 +3610,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#292b881e75225d037686a7eb74c102ec0feaa2a2"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3621,7 +3622,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#292b881e75225d037686a7eb74c102ec0feaa2a2"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3635,7 +3636,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#292b881e75225d037686a7eb74c102ec0feaa2a2"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3658,7 +3659,6 @@ dependencies = [
  "cadence",
  "chrono",
  "console",
- "elementtree",
  "env_logger",
  "failure",
  "filetime",
@@ -3707,7 +3707,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "console",
- "elementtree",
  "lazy_static",
  "rayon",
  "regex",

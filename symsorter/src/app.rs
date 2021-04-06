@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView, DebugId};
-use symbolic::debuginfo::macho::BcSymbolMap;
+use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
 use walkdir::WalkDir;
 use zip::ZipArchive;
@@ -20,7 +20,6 @@ use zstd::stream::copy_encode;
 
 use crate::config::{RunConfig, SortConfig};
 use crate::difs::DifType;
-use crate::plist::PList;
 use crate::utils::{create_source_bundle, get_unified_id, is_bundle_id, make_bundle_id};
 
 /// Sorts debug symbols into the right structure for symbolicator.
@@ -189,16 +188,16 @@ fn process_aux_dif(
     let stem = match filename.strip_suffix(&format!(".{}", dif_type.suffix())) {
         Some(stem) => stem,
         None => {
-            // Gracefully skip bad filenames, PList::test just accepts any old XML file so
-            // we might just have some bogus XML file.
+            // Gracefully skip bad filenames, the test just accepts any old XML file so we
+            // might just have some bogus XML file.
             return Ok(());
         }
     };
     let id: DebugId = match stem.parse() {
         Ok(uuid) => uuid,
         Err(_) => {
-            // Gracefully skip bad filenames, PList::test just accepts any old XML file so
-            // we might just have some bogus XML file.
+            // Gracefully skip bad filenames, the test just accepts any old XML file so we
+            // might just have some bogus XML file.
             return Ok(());
         }
     };
@@ -206,12 +205,7 @@ fn process_aux_dif(
     // Validate the file contents.
     match dif_type {
         DifType::PList => {
-            let plist = PList::parse(id, &bv).context("Failed to parse PList")?;
-            if !plist.is_bcsymbol_mapping() {
-                return Err(Error::msg(
-                    "PList is not a BCSymbolMap OriginalUUID mapping",
-                ));
-            }
+            UuidMapping::parse_plist(id, &bv).context("Failed to parse PList")?;
         }
         DifType::BcSymbolMap => {
             BcSymbolMap::parse(&bv).context("Failed to parse BCSymbolMap")?;
@@ -319,7 +313,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                             Err(err)
                         }
                     })?;
-            } else if PList::test(&bv) {
+            } else if bv.as_ref().starts_with(b"<?xml") {
                 process_aux_dif(&sort_config, bv, &filename, DifType::PList)
                     .context("Failed to process PList")
                     .or_else(|err| {

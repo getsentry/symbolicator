@@ -8,7 +8,6 @@ mod utils;
 mod app;
 mod config;
 mod difs;
-mod plist;
 
 fn main() {
     app::main();
