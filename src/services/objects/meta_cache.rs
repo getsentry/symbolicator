@@ -39,20 +39,23 @@ pub(super) struct FetchFileMetaRequest {
     pub(super) download_svc: Arc<crate::services::download::DownloadService>,
 }
 
-/// Handle to local metadata file of an object. Having an instance of this type does not mean there
-/// is a downloaded object file behind it. We cache metadata separately (ObjectFeatures) because
-/// every symcache lookup requires reading this metadata.
+/// Handle to local metadata file of an object.
+///
+/// Having an instance of this type does not mean there is a downloaded object file behind
+/// it. We cache metadata separately (ObjectFeatures) because every symcache lookup requires
+/// reading this metadata.
 #[derive(Clone, Debug)]
 pub struct ObjectMetaHandle {
-    pub(super) request: FetchFileMetaRequest,
     pub(super) scope: Scope,
+    pub(super) object_id: ObjectId,
+    pub(super) file_source: ObjectFileSource,
     pub(super) features: ObjectFeatures,
     pub(super) status: CacheStatus,
 }
 
 impl ObjectMetaHandle {
     pub fn cache_key(&self) -> CacheKey {
-        self.request.get_cache_key()
+        self.file_source.cache_key(self.scope.clone())
     }
 
     pub fn features(&self) -> ObjectFeatures {
@@ -60,15 +63,23 @@ impl ObjectMetaHandle {
     }
 
     pub fn source_id(&self) -> &SourceId {
-        self.request.file_source.source_id()
+        self.file_source.source_id()
     }
 
     pub fn uri(&self) -> ObjectFileSourceUri {
-        self.request.file_source.uri()
+        self.file_source.uri()
     }
 
     pub fn status(&self) -> CacheStatus {
         self.status
+    }
+
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
+    pub fn object_id(&self) -> &ObjectId {
+        &self.object_id
     }
 }
 
@@ -77,10 +88,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     type Error = ObjectError;
 
     fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.file_source.cache_key(),
-            scope: self.scope.clone(),
-        }
+        self.file_source.cache_key(self.scope.clone())
     }
 
     /// Fetches object file and derives metadata from it, storing this in the cache.
@@ -160,8 +168,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
         };
 
         ObjectMetaHandle {
-            request: self.clone(),
             scope,
+            object_id: self.object_id.clone(),
+            file_source: self.file_source.clone(),
             features,
             status,
         }

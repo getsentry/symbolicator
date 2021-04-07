@@ -807,6 +807,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
+name = "elementtree"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19c5d32d0ab83734d2d7452047ef901c105991044b7b07da30fe82371a149a25"
+dependencies = [
+ "string_cache",
+ "xml-rs",
+]
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1967,6 +1977,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "new_debug_unreachable"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
+
+[[package]]
 name = "nom"
 version = "4.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2301,6 +2317,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "phf_shared"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c00cf8b9eafe68dde5e9eaa2cef8ee84a9336a47d566ec55ca16589633b65af7"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
 name = "pin-project"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2369,6 +2394,12 @@ name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
+
+[[package]]
+name = "precomputed-hash"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "pretty_env_logger"
@@ -3118,12 +3149,23 @@ checksum = "f27c425b07c7186018e2ef9ac3a25b01dae78b05a7ef604d07f216b9f59b42b4"
 dependencies = [
  "httpdate",
  "reqwest 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-anyhow",
  "sentry-backtrace",
  "sentry-contexts",
  "sentry-core",
  "sentry-debug-images",
  "sentry-log",
  "sentry-panic",
+]
+
+[[package]]
+name = "sentry-anyhow"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7223213d65495cb9e66f6cece80a78930c1a482a2e8d7fd3d259725b1d6361de"
+dependencies = [
+ "anyhow",
+ "sentry-core",
 ]
 
 [[package]]
@@ -3351,6 +3393,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "siphasher"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbce6d4507c7e4a3962091436e56e95290cb71fa302d0d270e32130b75fbff27"
+
+[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3459,6 +3507,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "string_cache"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ddb1139b5353f96e429e1a5e19fbaf663bddedaa06d1dbd49f82e352601209a"
+dependencies = [
+ "lazy_static",
+ "new_debug_unreachable",
+ "phf_shared",
+ "precomputed-hash",
+ "serde",
+]
+
+[[package]]
 name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3497,7 +3558,7 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3509,7 +3570,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "debugid",
  "memmap",
@@ -3521,9 +3582,10 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "dmsort",
+ "elementtree",
  "fallible-iterator",
  "flate2",
  "gimli",
@@ -3548,7 +3610,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3560,7 +3622,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3574,7 +3636,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#ddb62afa32c6baab97455e8d1876cf3324d6f542"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3652,6 +3714,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "symbolic",
+ "thiserror",
  "walkdir",
  "zip",
  "zstd",
@@ -3735,18 +3798,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76cc616c6abf8c8928e2fdcc0dbfab37175edd8fb49a4641066ad1364fdab146"
+checksum = "e0f4a65597094d4483ddaed134f409b2cb7c1beccf25201a9f73c719254fa98e"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9be73a2caec27583d0046ef3796c3794f868a5bc813db689eed00c7631275cd1"
+checksum = "7765189610d8241a44529806d6fd1f2e0a08734313a35d5b3a556f92b381f3c0"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.3",

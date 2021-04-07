@@ -119,6 +119,9 @@ fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
     ))
 }
 
+/// Returns the relative locations on a native symbols server for the requested DIF.
+///
+/// Some filetypes can not be stored on a native symbol server so return an emtpy vector.
 fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
     match filetype {
         // ELF follows GDB "Build ID Method" conventions.
@@ -193,9 +196,17 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
             rv.push(primary_path);
             rv
         }
+        FileType::PList => Vec::new(),
+        FileType::BcSymbolMap => Vec::new(),
     }
 }
 
+/// Returns the relative location of the requested DIF on the SymStore symbol server.
+///
+/// SymStore is the public symbol server provided by Microsoft hosting debugging symbols for
+/// the Windows platform.
+///
+/// Some file types are not supported by this symbol server and will return no result.
 fn get_symstore_path(
     filetype: FileType,
     identifier: &ObjectId,
@@ -265,6 +276,12 @@ fn get_symstore_path(
             base_path.push_str(".src.zip");
             Some(base_path)
         }
+
+        // Microsoft SymbolServer does not specify PropertyList.
+        FileType::PList => None,
+
+        // Microsoft SymbolServer does not speicfy BCSymbolMap.
+        FileType::BcSymbolMap => None,
     }
 }
 
@@ -280,6 +297,9 @@ fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option
     Some(rv)
 }
 
+/// Returns the relative location of the requested DIF on the debuginfod symbol server.
+///
+/// Some file types are not supported by this symbol server and will return no result.
 fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<String> {
     match filetype {
         FileType::ElfCode => {
@@ -305,10 +325,13 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 
         // not available
         FileType::SourceBundle => None,
+        FileType::PList => None,
+        FileType::BcSymbolMap => None,
     }
 }
 
-/// determine object type for search.
+/// Returns the object type used to determine how to construct the ID for the unified symbol
+/// server.
 ///
 /// We prefer to use the file type as indicator for going back to the object
 /// type. If that is not possible, we use the object type that is stored on the
@@ -316,7 +339,9 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> ObjectType {
     match filetype {
         FileType::Pe | FileType::Pdb => ObjectType::Pe,
-        FileType::MachCode | FileType::MachDebug => ObjectType::Macho,
+        FileType::MachCode | FileType::MachDebug | FileType::PList | FileType::BcSymbolMap => {
+            ObjectType::Macho
+        }
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
         FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
         FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
@@ -332,6 +357,8 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         }
         FileType::Breakpad => "breakpad",
         FileType::SourceBundle => "sourcebundle",
+        FileType::PList => "plist",
+        FileType::BcSymbolMap => "bcsymbolmap",
     };
 
     // determine the ID we use for the path

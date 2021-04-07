@@ -135,23 +135,6 @@ struct CacheLookupError {
     error: Arc<ObjectError>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ObjectsActor {
-    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
-    data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    download_svc: Arc<DownloadService>,
-}
-
-impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
-        ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache)),
-            data_cache: Arc::new(Cacher::new(data_cache)),
-            download_svc,
-        }
-    }
-}
-
 /// Fetch a Object from external sources or internal cache.
 #[derive(Debug, Clone)]
 pub struct FindObject {
@@ -183,17 +166,40 @@ pub struct FoundObject {
     pub candidates: AllObjectCandidates,
 }
 
+#[derive(Clone, Debug)]
+pub struct ObjectsActor {
+    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
+    data_cache: Arc<Cacher<FetchFileDataRequest>>,
+    download_svc: Arc<DownloadService>,
+}
+
 impl ObjectsActor {
+    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
+        ObjectsActor {
+            meta_cache: Arc::new(Cacher::new(meta_cache)),
+            data_cache: Arc::new(Cacher::new(data_cache)),
+            download_svc,
+        }
+    }
+
     /// Returns the requested object file.
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
     pub fn fetch(
         &self,
-        shallow_file: Arc<ObjectMetaHandle>,
+        file_handle: Arc<ObjectMetaHandle>,
     ) -> impl Future<Output = Result<Arc<ObjectHandle>, ObjectError>> {
+        let request = FetchFileDataRequest(FetchFileMetaRequest {
+            scope: file_handle.scope.clone(),
+            file_source: file_handle.file_source.clone(),
+            object_id: file_handle.object_id.clone(),
+            data_cache: self.data_cache.clone(),
+            download_svc: self.download_svc.clone(),
+        });
+
         self.data_cache
-            .compute_memoized(FetchFileDataRequest(shallow_file.request.clone()))
+            .compute_memoized(request)
             .map_err(ObjectError::Caching)
     }
 
@@ -214,7 +220,6 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-
         let file_ids = self.list_files(&sources, filetypes, &identifier).await;
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
@@ -411,7 +416,7 @@ fn create_candidates(
 
     for meta_lookup in lookups.iter() {
         if let Ok(meta_handle) = meta_lookup {
-            let source_id = meta_handle.request.file_source.source_id();
+            let source_id = meta_handle.file_source.source_id();
             source_ids.take(source_id);
         }
         candidates.push(create_candidate_info(meta_lookup));
@@ -446,8 +451,8 @@ fn create_candidate_info(
                 CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {
-                source: meta_handle.request.file_source.source_id().clone(),
-                location: meta_handle.request.file_source.uri(),
+                source: meta_handle.file_source.source_id().clone(),
+                location: meta_handle.file_source.uri(),
                 download,
                 unwind: Default::default(),
                 debug: Default::default(),

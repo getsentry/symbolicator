@@ -329,10 +329,19 @@ where
 }
 
 pub struct Caches {
+    /// Caches for object files, used by [`crate::services::objects::ObjectsActor`].
     pub objects: Cache,
+    /// Caches for object metadata, used by [`crate::services::objects::ObjectsActor`].
     pub object_meta: Cache,
+    /// Caches for auxiliary DIF files, used by [`crate::services::bitcode::BitcodeService`].
+    pub auxdifs: Cache,
+    /// Caches for [`symbolic::symcache::SymCache`], used by
+    /// [`crate::services::symcaches::SymCacheActor`].
     pub symcaches: Cache,
+    /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
     pub cficaches: Cache,
+    /// Store for diagnostics data symbolicator failed to process, used by
+    /// [`crate::services::symbolication::SymbolicationActor`].
     pub diagnostics: Cache,
 }
 
@@ -356,6 +365,15 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                )?
+            },
+            auxdifs: {
+                let path = config.cache_dir("auxdifs");
+                Cache::from_config(
+                    "auxdifs",
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.downloaded.into(),
                 )?
             },
             symcaches: {

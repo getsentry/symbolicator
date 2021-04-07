@@ -1,17 +1,20 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Error;
 use futures::compat::Future01CompatExt;
-use futures::future::{self, TryFutureExt};
+use futures::future::{FutureExt, TryFutureExt};
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
+use symbolic::debuginfo::Object;
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
@@ -45,6 +48,9 @@ pub enum SymCacheError {
     #[error("failed to parse object")]
     ObjectParsing(#[source] ObjectError),
 
+    #[error("failed to handle auxiliary BCSymbolMap file")]
+    BcSymbolMapError(#[source] Error),
+
     #[error("symcache building took too long")]
     Timeout,
 
@@ -56,14 +62,21 @@ pub enum SymCacheError {
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: ObjectsActor,
+    bitcode_svc: BitcodeService,
     threadpool: ThreadPool,
 }
 
 impl SymCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
+    pub fn new(
+        cache: Cache,
+        objects: ObjectsActor,
+        bitcode_svc: BitcodeService,
+        threadpool: ThreadPool,
+    ) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
             objects,
+            bitcode_svc,
             threadpool,
         }
     }
@@ -110,11 +123,79 @@ impl SymCacheFile {
 
 #[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
+    /// The external request, as passed into [`SymCacheActor::fetch`].
     request: FetchSymCache,
+
+    /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
+
+    /// The bitcode service, use to fetch
+    /// [`BcSymbolMap`](symbolic::debuginfo::macho::BcSymbolMap).
+    bitcode_svc: BitcodeService,
+
+    /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
+
+    /// Thread pool on which to spawn the symcache computation.
     threadpool: ThreadPool,
+
+    /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
+    ///
+    /// This needs to be returned back with the symcache result and is only being passed
+    /// through here as callers to the SymCacheActer want to have this info.
     candidates: AllObjectCandidates,
+}
+
+/// Fetches the needed DIF objects and spawns symcache computation.
+///
+/// Required DIF objects are fetched from the objects actor in the current executor, once
+/// DIFs have been retrieved it spawns the symcache computation onto the provided
+/// threadpool.
+///
+/// This is the actual implementation of [`CacheItemRequest::compute`] for
+/// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
+/// code.
+async fn fetch_difs_and_compute_symcache(
+    path: PathBuf,
+    object_meta: Arc<ObjectMetaHandle>,
+    sources: Arc<[SourceConfig]>,
+    objects_actor: ObjectsActor,
+    bitcode_svc: BitcodeService,
+    threadpool: ThreadPool,
+) -> Result<CacheStatus, SymCacheError> {
+    let object_handle = objects_actor
+        .fetch(object_meta.clone())
+        .await
+        .map_err(SymCacheError::Fetching)?;
+
+    if object_handle.status() != CacheStatus::Positive {
+        return Ok(object_handle.status());
+    }
+
+    let bcsymbolmap_handle = match object_meta.object_id().debug_id {
+        Some(debug_id) => bitcode_svc
+            .fetch_bcsymbolmap(debug_id, object_meta.scope().clone(), sources.clone())
+            .await
+            .map_err(SymCacheError::BcSymbolMapError)?,
+        None => None,
+    };
+
+    let compute_future = async move {
+        let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {
+            Ok(_) => CacheStatus::Positive,
+            Err(err) => {
+                log::warn!("Failed to write symcache: {}", err);
+                sentry::capture_error(&err);
+                CacheStatus::Malformed
+            }
+        };
+        Ok(status)
+    };
+
+    threadpool
+        .spawn_handle(compute_future.bind_hub(Hub::current()))
+        .await
+        .unwrap_or(Err(SymCacheError::Canceled))
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -126,35 +207,14 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
-        let path = path.to_owned();
-        let object = self
-            .objects_actor
-            .fetch(self.object_meta.clone())
-            .map_err(SymCacheError::Fetching);
-
-        let threadpool = self.threadpool.clone();
-        let result = object.and_then(move |object| {
-            let future = future::lazy(move |_| {
-                if object.status() != CacheStatus::Positive {
-                    return Ok(object.status());
-                }
-
-                let status = if let Err(e) = write_symcache(&path, &*object) {
-                    log::warn!("Failed to write symcache: {}", e);
-                    sentry::capture_error(&e);
-
-                    CacheStatus::Malformed
-                } else {
-                    CacheStatus::Positive
-                };
-
-                Ok(status)
-            });
-
-            threadpool
-                .spawn_handle(future.bind_hub(Hub::current()))
-                .unwrap_or_else(|_| Err(SymCacheError::Canceled))
-        });
+        let future = fetch_difs_and_compute_symcache(
+            path.to_owned(),
+            self.object_meta.clone(),
+            self.request.sources.clone(),
+            self.objects_actor.clone(),
+            self.bitcode_svc.clone(),
+            self.threadpool.clone(),
+        );
 
         let num_sources = self.request.sources.len();
 
@@ -162,7 +222,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             future_metrics!(
                 "symcaches",
                 Some((Duration::from_secs(1200), SymCacheError::Timeout)),
-                result.compat(),
+                future.boxed_local().compat(),
                 "num_sources" => &num_sources.to_string()
             )
             .compat(),
@@ -239,6 +299,7 @@ impl SymCacheActor {
                     .compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
+                        bitcode_svc: self.bitcode_svc.clone(),
                         object_meta: handle,
                         threadpool: self.threadpool.clone(),
                         candidates,
@@ -259,16 +320,37 @@ impl SymCacheActor {
     }
 }
 
-fn write_symcache(path: &Path, object_handle: &ObjectHandle) -> Result<(), SymCacheError> {
+/// Computes and writes the symcache.
+///
+/// It is assumed both the `object_handle` contains a positive cache.  The
+/// `bcsymbolmap_handle` can only exist for a positive cache so does not have this issue.
+fn write_symcache(
+    path: &Path,
+    object_handle: &ObjectHandle,
+    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_symcache"));
         object_handle.to_scope(scope);
     });
 
-    let symbolic_object = object_handle
+    let mut symbolic_object = object_handle
         .parse()
         .map_err(SymCacheError::ObjectParsing)?
         .unwrap();
+    if let Object::MachO(ref mut macho) = symbolic_object {
+        if let Some(ref handle) = bcsymbolmap_handle {
+            let bcsymbolmap = handle
+                .bc_symbol_map()
+                .map_err(SymCacheError::BcSymbolMapError)?;
+            log::debug!(
+                "Adding BCSymbolMap {} to dSYM {}",
+                handle.uuid,
+                object_handle
+            );
+            macho.load_symbolmap(bcsymbolmap);
+        }
+    }
 
     let file = File::create(&path)?;
     let mut writer = BufWriter::new(file);

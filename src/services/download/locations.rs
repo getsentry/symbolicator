@@ -10,7 +10,9 @@ use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::cache::CacheKey;
 use crate::sources::SourceId;
+use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
 
 use super::filesystem::FilesystemObjectFileSource;
@@ -136,8 +138,8 @@ impl ObjectFileSource {
         }
     }
 
-    pub fn cache_key(&self) -> String {
-        match self {
+    pub fn cache_key(&self, scope: Scope) -> CacheKey {
+        let cache_key = match self {
             ObjectFileSource::Sentry(ref x) => {
                 format!("{}.{}.sentryinternal", x.source.id, x.file_id)
             }
@@ -153,7 +155,8 @@ impl ObjectFileSource {
             ObjectFileSource::Filesystem(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-        }
+        };
+        CacheKey { cache_key, scope }
     }
 
     /// Returns the ID of the source.
