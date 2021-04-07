@@ -1,6 +1,11 @@
 //! Tool to split a WASM file into a binary and debug companion file.
 
-#![warn(missing_docs, missing_debug_implementations, clippy::all)]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    unused_crate_dependencies,
+    clippy::all
+)]
 
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
