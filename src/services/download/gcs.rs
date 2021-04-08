@@ -263,7 +263,7 @@ impl GcsDownloader {
     pub fn list_files(
         &self,
         source: Arc<GcsSourceConfig>,
-        filetypes: &'static [FileType],
+        filetypes: &[FileType],
         object_id: ObjectId,
     ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {

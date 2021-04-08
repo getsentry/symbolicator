@@ -156,7 +156,7 @@ impl S3Downloader {
     pub fn list_files(
         &self,
         source: Arc<S3SourceConfig>,
-        filetypes: &'static [FileType],
+        filetypes: &[FileType],
         object_id: ObjectId,
     ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {

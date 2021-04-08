@@ -17,7 +17,7 @@ use url::Url;
 
 use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri, USER_AGENT};
 use crate::config::Config;
-use crate::sources::{FileType, SentrySourceConfig};
+use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, m, measure};
 
@@ -174,7 +174,6 @@ impl SentryDownloader {
     pub async fn list_files(
         &self,
         source: Arc<SentrySourceConfig>,
-        _filetypes: &'static [FileType],
         object_id: ObjectId,
         config: Arc<Config>,
     ) -> Result<Vec<ObjectFileSource>, DownloadError> {
