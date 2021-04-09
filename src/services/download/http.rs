@@ -109,7 +109,7 @@ impl HttpDownloader {
     pub fn list_files(
         &self,
         source: Arc<HttpSourceConfig>,
-        filetypes: &'static [FileType],
+        filetypes: &[FileType],
         object_id: ObjectId,
     ) -> Vec<ObjectFileSource> {
         super::SourceLocationIter {

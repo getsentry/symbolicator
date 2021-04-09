@@ -12,7 +12,6 @@ use std::time::Duration;
 use anyhow::{Context, Error};
 use futures::compat::Future01CompatExt;
 use futures::{future, FutureExt, TryFutureExt};
-use sentry::integrations::anyhow::capture_anyhow;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
@@ -135,12 +134,9 @@ impl CacheItemRequest for FetchFileRequest {
     ///
     /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
-        let fut = self.clone().fetch_file(path.to_path_buf());
-        let fut = fut
-            .map_err(|e| {
-                capture_anyhow(&e);
-                e
-            })
+        let fut = self
+            .clone()
+            .fetch_file(path.to_path_buf())
             .bind_hub(Hub::current())
             .boxed_local();
         let source_name = self.file_source.source_type_name();
@@ -193,7 +189,7 @@ impl BitcodeService {
     ) -> Result<Option<BcSymbolMapHandle>, Error> {
         // First find the PList.
         let find_plist = self
-            .fetch_file_from_all_sources(uuid, &[FileType::PList], scope.clone(), sources.clone())
+            .fetch_file_from_all_sources(uuid, FileType::PList, scope.clone(), sources.clone())
             .await?;
         let plist_handle = match find_plist {
             Some(handle) => handle,
@@ -206,7 +202,7 @@ impl BitcodeService {
         let find_symbolmap = self
             .fetch_file_from_all_sources(
                 uuid_mapping.original_uuid(),
-                &[FileType::BcSymbolMap],
+                FileType::BcSymbolMap,
                 scope,
                 sources,
             )
@@ -225,10 +221,14 @@ impl BitcodeService {
     async fn fetch_file_from_all_sources(
         &self,
         uuid: DebugId,
-        file_type: &'static [FileType],
+        file_type: FileType,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
+        sentry::configure_scope(|scope| {
+            scope.set_tag("auxdif.debugid", uuid);
+            scope.set_extra("auxdif.file", file_type.as_ref().into());
+        });
         let mut jobs = Vec::with_capacity(sources.len());
         for source in sources.iter() {
             let job = self.fetch_file_from_source(uuid, file_type, scope.clone(), source.clone());
@@ -252,15 +252,18 @@ impl BitcodeService {
     async fn fetch_file_from_source(
         &self,
         uuid: DebugId,
-        file_type: &'static [FileType],
+        file_type: FileType,
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
+        sentry::configure_scope(|scope| {
+            scope.set_extra("auxdif.source", source.type_name().into())
+        });
         let hub = Arc::new(Hub::new_from_top(Hub::current()));
         let file_sources = self
             .download_svc
             .clone()
-            .list_files(source, file_type, uuid.into(), hub)
+            .list_files(source, &[file_type], uuid.into(), hub)
             .await?;
 
         let mut fetch_jobs = Vec::with_capacity(file_sources.len());
@@ -291,9 +294,10 @@ impl BitcodeService {
                 Ok(handle) if handle.status == CacheStatus::Positive => ret = Some(handle),
                 Ok(_) => (),
                 Err(err) => {
-                    log::error!("Inner failure fetching auxiliary DIF file from a source");
-                    capture_anyhow(&*err);
-                    return Err(Error::msg("Inner failure fetching a file from a source"));
+                    let stderr: &dyn std::error::Error = (*err).as_ref();
+                    let mut event = sentry::event_from_error(stderr);
+                    event.message = Some("Failure fetching auxiliary DIF file from source".into());
+                    sentry::capture_event(event);
                 }
             }
         }

@@ -153,7 +153,7 @@ impl DownloadService {
     pub async fn list_files(
         self: Arc<Self>,
         source: SourceConfig,
-        filetypes: &'static [FileType],
+        filetypes: &[FileType],
         object_id: ObjectId,
         hub: Arc<Hub>,
     ) -> Result<Vec<ObjectFileSource>, DownloadError> {
@@ -166,7 +166,7 @@ impl DownloadService {
                 // goes out of scope, which ensures 'static lifetime for `spawn` below.
                 let job = async move {
                     slf.sentry
-                        .list_files(cfg, filetypes, object_id, config)
+                        .list_files(cfg, object_id, config)
                         .bind_hub(hub)
                         .await
                 };
