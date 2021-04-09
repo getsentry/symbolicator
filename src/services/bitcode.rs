@@ -12,7 +12,6 @@ use std::time::Duration;
 use anyhow::{Context, Error};
 use futures::compat::Future01CompatExt;
 use futures::{future, FutureExt, TryFutureExt};
-use sentry::integrations::anyhow::capture_anyhow;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
@@ -135,12 +134,9 @@ impl CacheItemRequest for FetchFileRequest {
     ///
     /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
-        let fut = self.clone().fetch_file(path.to_path_buf());
-        let fut = fut
-            .map_err(|e| {
-                capture_anyhow(&e);
-                e
-            })
+        let fut = self
+            .clone()
+            .fetch_file(path.to_path_buf())
             .bind_hub(Hub::current())
             .boxed_local();
         let source_name = self.file_source.source_type_name();
