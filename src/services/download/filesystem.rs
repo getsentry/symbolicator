@@ -11,25 +11,25 @@ use std::sync::Arc;
 use tokio::fs;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, ObjectFileSource};
-use crate::services::download::ObjectFileSourceUri;
+use super::{DownloadError, DownloadStatus, RemoteDif};
+use crate::services::download::RemoteDifUri;
 use crate::sources::{FileType, FilesystemSourceConfig};
 use crate::types::ObjectId;
 
-/// Filesystem-specific [`ObjectFileSource`].
+/// Filesystem-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
-pub struct FilesystemObjectFileSource {
+pub struct FilesystemRemoteDif {
     pub source: Arc<FilesystemSourceConfig>,
     pub location: SourceLocation,
 }
 
-impl From<FilesystemObjectFileSource> for ObjectFileSource {
-    fn from(source: FilesystemObjectFileSource) -> Self {
+impl From<FilesystemRemoteDif> for RemoteDif {
+    fn from(source: FilesystemRemoteDif) -> Self {
         Self::Filesystem(source)
     }
 }
 
-impl FilesystemObjectFileSource {
+impl FilesystemRemoteDif {
     pub fn new(source: Arc<FilesystemSourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }
@@ -43,8 +43,8 @@ impl FilesystemObjectFileSource {
     ///
     /// This is a quick-and-dirty approximation, not fully RFC8089-compliant.  E.g. we do
     /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
-    /// [`FilesystemObjectFileSource::path`] if the actual file location is needed.
-    pub fn uri(&self) -> ObjectFileSourceUri {
+    /// [`FilesystemRemoteDif::path`] if the actual file location is needed.
+    pub fn uri(&self) -> RemoteDifUri {
         format!("file:///{}", self.path().display()).into()
     }
 }
@@ -61,7 +61,7 @@ impl FilesystemDownloader {
     /// Download from a filesystem source.
     pub async fn download_source(
         &self,
-        file_source: FilesystemObjectFileSource,
+        file_source: FilesystemRemoteDif,
         dest: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         // All file I/O in this function is blocking!
@@ -81,7 +81,7 @@ impl FilesystemDownloader {
         source: Arc<FilesystemSourceConfig>,
         filetypes: &[FileType],
         object_id: ObjectId,
-    ) -> Vec<ObjectFileSource> {
+    ) -> Vec<RemoteDif> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -89,7 +89,7 @@ impl FilesystemDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| FilesystemObjectFileSource::new(source.clone(), loc).into())
+        .map(|loc| FilesystemRemoteDif::new(source.clone(), loc).into())
         .collect()
     }
 }

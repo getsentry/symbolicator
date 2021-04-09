@@ -1,7 +1,7 @@
 //! Types and implementations for dealing with object file locations
 //!
-//! This provides the [`ObjectFileSource`] type which provides a unified way of dealing with
-//! an object file which may exist on a source.
+//! This provides the [`RemoteDif`] type which provides a unified way of dealing with an
+//! object file which may exist on a source.
 
 use std::fmt;
 use std::path::Path;
@@ -15,11 +15,11 @@ use crate::sources::SourceId;
 use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
 
-use super::filesystem::FilesystemObjectFileSource;
-use super::gcs::GcsObjectFileSource;
-use super::http::HttpObjectFileSource;
-use super::s3::S3ObjectFileSource;
-use super::sentry::SentryObjectFileSource;
+use super::filesystem::FilesystemRemoteDif;
+use super::gcs::GcsRemoteDif;
+use super::http::HttpRemoteDif;
+use super::s3::S3RemoteDif;
+use super::sentry::SentryRemoteDif;
 
 /// A location for a file retrievable from many source configs.
 ///
@@ -85,37 +85,38 @@ impl fmt::Display for SourceLocation {
     }
 }
 
-/// Represents a single object file stored on a source.
+/// Represents a single Debug Information File stored on a source.
 ///
 /// This joins the file location together with a [`SourceConfig`] and thus provides all
-/// information to retrieve the object file from its source.
+/// information to retrieve the DIF from its source.  The file could be any DIF type: an
+/// auxiliary DIF or an object file.
 ///
 /// [`SourceConfig`]: crate::sources::SourceConfig
 #[derive(Debug, Clone)]
-pub enum ObjectFileSource {
-    Sentry(SentryObjectFileSource),
-    Http(HttpObjectFileSource),
-    S3(S3ObjectFileSource),
-    Gcs(GcsObjectFileSource),
-    Filesystem(FilesystemObjectFileSource),
+pub enum RemoteDif {
+    Sentry(SentryRemoteDif),
+    Http(HttpRemoteDif),
+    S3(S3RemoteDif),
+    Gcs(GcsRemoteDif),
+    Filesystem(FilesystemRemoteDif),
 }
 
-impl fmt::Display for ObjectFileSource {
+impl fmt::Display for RemoteDif {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ObjectFileSource::Sentry(ref s) => {
+            RemoteDif::Sentry(ref s) => {
                 write!(f, "Sentry source '{}' file id '{}'", s.source.id, s.file_id)
             }
-            ObjectFileSource::Http(ref s) => {
+            RemoteDif::Http(ref s) => {
                 write!(f, "HTTP source '{}' location '{}'", s.source.id, s.location)
             }
-            ObjectFileSource::S3(ref s) => {
+            RemoteDif::S3(ref s) => {
                 write!(f, "S3 source '{}' location '{}'", s.source.id, s.location)
             }
-            ObjectFileSource::Gcs(ref s) => {
+            RemoteDif::Gcs(ref s) => {
                 write!(f, "GCS source '{}' location '{}'", s.source.id, s.location)
             }
-            ObjectFileSource::Filesystem(ref s) => {
+            RemoteDif::Filesystem(ref s) => {
                 write!(
                     f,
                     "Filesystem source '{}' location '{}'",
@@ -126,33 +127,33 @@ impl fmt::Display for ObjectFileSource {
     }
 }
 
-impl ObjectFileSource {
+impl RemoteDif {
     /// Whether debug files from this source may be shared.
     pub fn is_public(&self) -> bool {
         match self {
-            ObjectFileSource::Sentry(_) => false,
-            ObjectFileSource::Http(ref x) => x.source.files.is_public,
-            ObjectFileSource::S3(ref x) => x.source.files.is_public,
-            ObjectFileSource::Gcs(ref x) => x.source.files.is_public,
-            ObjectFileSource::Filesystem(ref x) => x.source.files.is_public,
+            RemoteDif::Sentry(_) => false,
+            RemoteDif::Http(ref x) => x.source.files.is_public,
+            RemoteDif::S3(ref x) => x.source.files.is_public,
+            RemoteDif::Gcs(ref x) => x.source.files.is_public,
+            RemoteDif::Filesystem(ref x) => x.source.files.is_public,
         }
     }
 
     pub fn cache_key(&self, scope: Scope) -> CacheKey {
         let cache_key = match self {
-            ObjectFileSource::Sentry(ref x) => {
+            RemoteDif::Sentry(ref x) => {
                 format!("{}.{}.sentryinternal", x.source.id, x.file_id)
             }
-            ObjectFileSource::Http(ref x) => {
+            RemoteDif::Http(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            ObjectFileSource::S3(ref x) => {
+            RemoteDif::S3(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            ObjectFileSource::Gcs(ref x) => {
+            RemoteDif::Gcs(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            ObjectFileSource::Filesystem(ref x) => {
+            RemoteDif::Filesystem(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
         };
@@ -165,21 +166,21 @@ impl ObjectFileSource {
     /// configuration which are available to all requests.
     pub fn source_id(&self) -> &SourceId {
         match self {
-            ObjectFileSource::Sentry(ref x) => &x.source.id,
-            ObjectFileSource::Http(ref x) => &x.source.id,
-            ObjectFileSource::S3(ref x) => &x.source.id,
-            ObjectFileSource::Gcs(ref x) => &x.source.id,
-            ObjectFileSource::Filesystem(ref x) => &x.source.id,
+            RemoteDif::Sentry(ref x) => &x.source.id,
+            RemoteDif::Http(ref x) => &x.source.id,
+            RemoteDif::S3(ref x) => &x.source.id,
+            RemoteDif::Gcs(ref x) => &x.source.id,
+            RemoteDif::Filesystem(ref x) => &x.source.id,
         }
     }
 
     pub fn source_type_name(&self) -> &'static str {
         match *self {
-            ObjectFileSource::Sentry(..) => "sentry",
-            ObjectFileSource::S3(..) => "s3",
-            ObjectFileSource::Gcs(..) => "gcs",
-            ObjectFileSource::Http(..) => "http",
-            ObjectFileSource::Filesystem(..) => "filesystem",
+            RemoteDif::Sentry(..) => "sentry",
+            RemoteDif::S3(..) => "s3",
+            RemoteDif::Gcs(..) => "gcs",
+            RemoteDif::Http(..) => "http",
+            RemoteDif::Filesystem(..) => "filesystem",
         }
     }
 
@@ -189,18 +190,18 @@ impl ObjectFileSource {
     /// very abstract.  In general the source should try and producde a URI which can be
     /// used directly into the source-specific tooling.  E.g. for an HTTP source this would
     /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
-    pub fn uri(&self) -> ObjectFileSourceUri {
+    pub fn uri(&self) -> RemoteDifUri {
         match self {
-            ObjectFileSource::Sentry(ref file_source) => file_source.uri(),
-            ObjectFileSource::Http(ref file_source) => file_source.uri(),
-            ObjectFileSource::S3(ref file_source) => file_source.uri(),
-            ObjectFileSource::Gcs(ref file_source) => file_source.uri(),
-            ObjectFileSource::Filesystem(ref file_source) => file_source.uri(),
+            RemoteDif::Sentry(ref file_source) => file_source.uri(),
+            RemoteDif::Http(ref file_source) => file_source.uri(),
+            RemoteDif::S3(ref file_source) => file_source.uri(),
+            RemoteDif::Gcs(ref file_source) => file_source.uri(),
+            RemoteDif::Filesystem(ref file_source) => file_source.uri(),
         }
     }
 }
 
-impl ConfigureScope for ObjectFileSource {
+impl ConfigureScope for RemoteDif {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         scope.set_tag("source.id", self.source_id());
         scope.set_tag("source.type", self.source_type_name());
@@ -208,24 +209,24 @@ impl ConfigureScope for ObjectFileSource {
     }
 }
 
-/// A URI representing an [`ObjectFileSource`].
+/// A URI representing an [`RemoteDif`].
 ///
 /// Note that this does not provide enough information to download the object file, for this
-/// you need the actual [`ObjectFileSource`].  The purpose of this URI is to be able to
-/// display to a user who might be able to use this in other tools.  E.g. for an S3 source
-/// this could be an `s3://` URI etc.
+/// you need the actual [`RemoteDif`].  The purpose of this URI is to be able to display to
+/// a user who might be able to use this in other tools.  E.g. for an S3 source this could
+/// be an `s3://` URI etc.
 ///
-/// [`ObjectFileSource`]: crate::services::download::ObjectFileSource
+/// [`RemoteDif`]: crate::services::download::RemoteDif
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct ObjectFileSourceUri(String);
+pub struct RemoteDifUri(String);
 
-impl ObjectFileSourceUri {
+impl RemoteDifUri {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
 }
 
-impl<T> From<T> for ObjectFileSourceUri
+impl<T> From<T> for RemoteDifUri
 where
     T: Into<String>,
 {
@@ -234,7 +235,7 @@ where
     }
 }
 
-impl fmt::Display for ObjectFileSourceUri {
+impl fmt::Display for RemoteDifUri {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }

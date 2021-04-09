@@ -13,9 +13,7 @@ use symbolic::debuginfo;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
 use crate::services::cacher::Cacher;
-use crate::services::download::{
-    DownloadError, DownloadService, ObjectFileSource, ObjectFileSourceUri,
-};
+use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, SourceConfig, SourceId};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
 
@@ -130,7 +128,7 @@ impl From<debuginfo::ObjectError> for ObjectError {
 #[derive(Debug)]
 struct CacheLookupError {
     /// The object file which was attempted to be fetched.
-    file_source: ObjectFileSource,
+    file_source: RemoteDif,
     /// The wrapped [`ObjectError`] which occurred while fetching the object file.
     error: Arc<ObjectError>,
 }
@@ -243,7 +241,7 @@ impl ObjectsActor {
         sources: &'a [SourceConfig],
         filetypes: &'static [FileType],
         identifier: &'a ObjectId,
-    ) -> Vec<ObjectFileSource> {
+    ) -> Vec<RemoteDif> {
         let mut queries = Vec::with_capacity(sources.len());
 
         for source in sources.iter() {
@@ -287,7 +285,7 @@ impl ObjectsActor {
     /// [`ObjectCandidate`] list.
     async fn fetch_file_metas(
         &self,
-        file_sources: Vec<ObjectFileSource>,
+        file_sources: Vec<RemoteDif>,
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
@@ -426,7 +424,7 @@ fn create_candidates(
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: ObjectFileSourceUri::new("No object files listed on this source"),
+            location: RemoteDifUri::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),

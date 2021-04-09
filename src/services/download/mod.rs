@@ -26,7 +26,7 @@ mod sentry;
 use crate::config::Config;
 pub use crate::sources::{DirectoryLayout, FileType, SourceConfig, SourceFilters};
 pub use crate::types::ObjectId;
-pub use locations::{ObjectFileSource, ObjectFileSourceUri, SourceLocation};
+pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -94,19 +94,15 @@ impl DownloadService {
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
         self: Arc<Self>,
-        source: ObjectFileSource,
+        source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         match source {
-            ObjectFileSource::Sentry(inner) => {
-                self.sentry.download_source(inner, destination).await
-            }
-            ObjectFileSource::Http(inner) => self.http.download_source(inner, destination).await,
-            ObjectFileSource::S3(inner) => self.s3.download_source(inner, destination).await,
-            ObjectFileSource::Gcs(inner) => self.gcs.download_source(inner, destination).await,
-            ObjectFileSource::Filesystem(inner) => {
-                self.fs.download_source(inner, destination).await
-            }
+            RemoteDif::Sentry(inner) => self.sentry.download_source(inner, destination).await,
+            RemoteDif::Http(inner) => self.http.download_source(inner, destination).await,
+            RemoteDif::S3(inner) => self.s3.download_source(inner, destination).await,
+            RemoteDif::Gcs(inner) => self.gcs.download_source(inner, destination).await,
+            RemoteDif::Filesystem(inner) => self.fs.download_source(inner, destination).await,
         }
     }
 
@@ -123,7 +119,7 @@ impl DownloadService {
     // owned downloader.
     pub async fn download(
         self: Arc<Self>,
-        source: ObjectFileSource,
+        source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let hub = Hub::current();
@@ -156,7 +152,7 @@ impl DownloadService {
         filetypes: &[FileType],
         object_id: ObjectId,
         hub: Arc<Hub>,
-    ) -> Result<Vec<ObjectFileSource>, DownloadError> {
+    ) -> Result<Vec<RemoteDif>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
                 let config = self.config.clone();
@@ -195,7 +191,7 @@ impl DownloadService {
 ///
 /// This is common functionality used by many downloaders.
 async fn download_stream(
-    source: impl Into<ObjectFileSource>,
+    source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
@@ -258,7 +254,7 @@ impl Iterator for SourceLocationIter<'_> {
 mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
-    use super::http::HttpObjectFileSource;
+    use super::http::HttpRemoteDif;
     use super::*;
 
     use crate::sources::SourceConfig;
@@ -275,7 +271,7 @@ mod tests {
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
             SourceConfig::Http(source) => {
-                HttpObjectFileSource::new(source, SourceLocation::new("hello.txt")).into()
+                HttpRemoteDif::new(source, SourceLocation::new("hello.txt")).into()
             }
             _ => panic!("unexpected source"),
         };

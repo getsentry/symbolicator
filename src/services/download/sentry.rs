@@ -15,31 +15,31 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri, USER_AGENT};
+use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, USER_AGENT};
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, m, measure};
 
-/// The Sentry-specific [`ObjectFileSource`].
+/// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
-pub struct SentryObjectFileSource {
+pub struct SentryRemoteDif {
     pub source: Arc<SentrySourceConfig>,
     pub file_id: SentryFileId,
 }
 
-impl From<SentryObjectFileSource> for ObjectFileSource {
-    fn from(source: SentryObjectFileSource) -> Self {
+impl From<SentryRemoteDif> for RemoteDif {
+    fn from(source: SentryRemoteDif) -> Self {
         Self::Sentry(source)
     }
 }
 
-impl SentryObjectFileSource {
+impl SentryRemoteDif {
     pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId) -> Self {
         Self { source, file_id }
     }
 
-    pub fn uri(&self) -> ObjectFileSourceUri {
+    pub fn uri(&self) -> RemoteDifUri {
         format!("sentry://project_debug_file/{}", self.file_id).into()
     }
 
@@ -176,7 +176,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: ObjectId,
         config: Arc<Config>,
-    ) -> Result<Vec<ObjectFileSource>, DownloadError> {
+    ) -> Result<Vec<RemoteDif>, DownloadError> {
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -205,9 +205,7 @@ impl SentryDownloader {
         let entries = measure("downloads.sentry.index", m::result, search).await?;
         let file_ids = entries
             .into_iter()
-            .map(|search_result| {
-                SentryObjectFileSource::new(source.clone(), search_result.id).into()
-            })
+            .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
             .collect();
 
         Ok(file_ids)
@@ -215,7 +213,7 @@ impl SentryDownloader {
 
     pub async fn download_source(
         &self,
-        file_source: SentryObjectFileSource,
+        file_source: SentryRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let retries = future_utils::retry(|| {
@@ -243,7 +241,7 @@ impl SentryDownloader {
 
     async fn download_source_once(
         &self,
-        source: SentryObjectFileSource,
+        source: SentryRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let request = self
@@ -289,8 +287,7 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source =
-            SentryObjectFileSource::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteDif::new(Arc::new(source), SentryFileId("abc123".into()));
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -302,12 +299,8 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source =
-            SentryObjectFileSource::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteDif::new(Arc::new(source), SentryFileId("abc123".into()));
         let uri = file_source.uri();
-        assert_eq!(
-            uri,
-            ObjectFileSourceUri::new("sentry://project_debug_file/abc123")
-        );
+        assert_eq!(uri, RemoteDifUri::new("sentry://project_debug_file/abc123"));
     }
 }

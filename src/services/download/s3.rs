@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use rusoto_s3::S3;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri};
+use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
@@ -29,20 +29,20 @@ type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 /// metrics.
 const S3_CLIENT_CACHE_SIZE: usize = 100;
 
-/// The S3-specific [`ObjectFileSource`].
+/// The S3-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
-pub struct S3ObjectFileSource {
+pub struct S3RemoteDif {
     pub source: Arc<S3SourceConfig>,
     pub location: SourceLocation,
 }
 
-impl From<S3ObjectFileSource> for ObjectFileSource {
-    fn from(source: S3ObjectFileSource) -> Self {
+impl From<S3RemoteDif> for RemoteDif {
+    fn from(source: S3RemoteDif) -> Self {
         Self::S3(source)
     }
 }
 
-impl S3ObjectFileSource {
+impl S3RemoteDif {
     pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }
@@ -60,7 +60,7 @@ impl S3ObjectFileSource {
     }
 
     /// Returns the `s3://` URI from which to download this object file.
-    pub fn uri(&self) -> ObjectFileSourceUri {
+    pub fn uri(&self) -> RemoteDifUri {
         format!("s3://{}/{}", self.source.bucket, self.key()).into()
     }
 }
@@ -112,7 +112,7 @@ impl S3Downloader {
 
     pub async fn download_source(
         &self,
-        file_source: S3ObjectFileSource,
+        file_source: S3RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
@@ -158,7 +158,7 @@ impl S3Downloader {
         source: Arc<S3SourceConfig>,
         filetypes: &[FileType],
         object_id: ObjectId,
-    ) -> Vec<ObjectFileSource> {
+    ) -> Vec<RemoteDif> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -166,7 +166,7 @@ impl S3Downloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| S3ObjectFileSource::new(source.clone(), loc).into())
+        .map(|loc| S3RemoteDif::new(source.clone(), loc).into())
         .collect()
     }
 }
@@ -350,7 +350,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
-        let file_source = S3ObjectFileSource::new(source, source_location);
+        let file_source = S3RemoteDif::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, target_path.clone())
@@ -379,7 +379,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = S3ObjectFileSource::new(source, source_location);
+        let file_source = S3RemoteDif::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, target_path.clone())
@@ -406,7 +406,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = S3ObjectFileSource::new(source, source_location);
+        let file_source = S3RemoteDif::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, target_path.clone())
