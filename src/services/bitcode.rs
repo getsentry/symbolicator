@@ -19,7 +19,7 @@ use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheKey, CacheStatus};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
-use crate::services::download::{DownloadService, DownloadStatus, ObjectFileSource};
+use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
@@ -60,7 +60,7 @@ struct CacheHandle {
 #[derive(Debug, Clone)]
 struct FetchFileRequest {
     scope: Scope,
-    file_source: ObjectFileSource,
+    file_source: RemoteDif,
     uuid: DebugId,
     download_svc: Arc<DownloadService>,
     cache: Arc<Cacher<FetchFileRequest>>,

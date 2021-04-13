@@ -15,7 +15,7 @@ use thiserror::Error;
 use url::Url;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, ObjectFileSource, ObjectFileSourceUri};
+use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
@@ -33,20 +33,20 @@ type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 /// metrics.
 const GCS_TOKEN_CACHE_SIZE: usize = 100;
 
-/// The GCS-specific [`ObjectFileSource`].
+/// The GCS-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
-pub struct GcsObjectFileSource {
+pub struct GcsRemoteDif {
     pub source: Arc<GcsSourceConfig>,
     pub location: SourceLocation,
 }
 
-impl From<GcsObjectFileSource> for ObjectFileSource {
-    fn from(source: GcsObjectFileSource) -> Self {
+impl From<GcsRemoteDif> for RemoteDif {
+    fn from(source: GcsRemoteDif) -> Self {
         Self::Gcs(source)
     }
 }
 
-impl GcsObjectFileSource {
+impl GcsRemoteDif {
     pub fn new(source: Arc<GcsSourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }
@@ -59,7 +59,7 @@ impl GcsObjectFileSource {
     }
 
     /// Returns the `gs://` URI from which to download this object file.
-    pub fn uri(&self) -> ObjectFileSourceUri {
+    pub fn uri(&self) -> RemoteDifUri {
         format!("gs://{}/{}", self.source.bucket, self.key()).into()
     }
 }
@@ -200,7 +200,7 @@ impl GcsDownloader {
 
     pub async fn download_source(
         &self,
-        file_source: GcsObjectFileSource,
+        file_source: GcsRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
@@ -265,7 +265,7 @@ impl GcsDownloader {
         source: Arc<GcsSourceConfig>,
         filetypes: &[FileType],
         object_id: ObjectId,
-    ) -> Vec<ObjectFileSource> {
+    ) -> Vec<RemoteDif> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -273,7 +273,7 @@ impl GcsDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| GcsObjectFileSource::new(source.clone(), loc).into())
+        .map(|loc| GcsRemoteDif::new(source.clone(), loc).into())
         .collect()
     }
 }
@@ -361,7 +361,7 @@ mod tests {
 
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
-        let file_source = GcsObjectFileSource::new(source, source_location);
+        let file_source = GcsRemoteDif::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, target_path.clone())
@@ -387,7 +387,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = GcsObjectFileSource::new(source, source_location);
+        let file_source = GcsRemoteDif::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, target_path.clone())
@@ -414,7 +414,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = GcsObjectFileSource::new(source, source_location);
+        let file_source = GcsRemoteDif::new(source, source_location);
 
         downloader
             .download_source(file_source, target_path.clone())

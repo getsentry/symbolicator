@@ -22,7 +22,7 @@ use tempfile::tempfile_in;
 
 use crate::cache::{CacheKey, CacheStatus};
 use crate::services::cacher::{CacheItemRequest, CachePath};
-use crate::services::download::{DownloadStatus, ObjectFileSource};
+use crate::services::download::{DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
@@ -45,7 +45,7 @@ pub struct ObjectHandle {
     pub(super) object_id: ObjectId,
     pub(super) scope: Scope,
 
-    pub(super) file_source: ObjectFileSource,
+    pub(super) file_source: RemoteDif,
     pub(super) cache_key: CacheKey,
 
     /// The mmapped object.
