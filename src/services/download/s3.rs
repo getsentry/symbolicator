@@ -10,7 +10,6 @@ use std::sync::Arc;
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
-use url::Url;
 
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
@@ -62,15 +61,7 @@ impl S3RemoteDif {
 
     /// Returns the `s3://` URI from which to download this object file.
     pub fn uri(&self) -> RemoteDifUri {
-        Url::parse(&format!("s3://{}/", self.source.bucket))
-            .and_then(|base| base.join(&self.key()))
-            .map(|url| RemoteDifUri::new(url.into_string()))
-            .unwrap_or_else(|_| {
-                // All these Result-returning operations *should* be infallible and this
-                // branch should never be used.  Nevertheless, for panic-safety we default
-                // to something infallible that's also pretty correct.
-                RemoteDifUri::new(format!("s3://{}/{}", self.source.bucket, self.key()))
-            })
+        RemoteDifUri::from_parts("s3", &self.source.bucket, &self.key())
     }
 }
 

@@ -224,6 +224,30 @@ impl RemoteDifUri {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
+
+    /// Constructs a new [`RemoteDifUri`] from parts.
+    ///
+    /// This percent-encodes the `path`.
+    ///
+    /// # Examples
+    /// ```
+    /// let s3_uri = RemoteDifUri::from_parts("s3", "bucket", "path");
+    /// assert_eq!(s3_uri, RemoteDifUri::new("s3://bucket/path"));
+    ///
+    /// let gcs_uri = RemoteDifUri::from_parts("gs", "bucket", "path with/spaces");
+    /// assert_eq!(gcs_uri, RemoteDifUri::new("gs://bucket/path%20with/spaces"));
+    /// ```
+    pub fn from_parts(scheme: &str, host: &str, path: &str) -> Self {
+        Url::parse(&format!("{}://{}/", scheme, host))
+            .and_then(|base| base.join(path))
+            .map(|url| RemoteDifUri::new(url.into_string()))
+            .unwrap_or_else(|_| {
+                // All these Result-returning operations *should* be infallible and this
+                // branch should never be used.  Nevertheless, for panic-safety we default
+                // to something infallible that's also pretty correct.
+                RemoteDifUri::new(format!("{}://{}/{}", scheme, host, path))
+            })
+    }
 }
 
 impl<T> From<T> for RemoteDifUri

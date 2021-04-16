@@ -60,15 +60,7 @@ impl GcsRemoteDif {
 
     /// Returns the `gs://` URI from which to download this object file.
     pub fn uri(&self) -> RemoteDifUri {
-        Url::parse(&format!("gs://{}/", self.source.bucket))
-            .and_then(|base| base.join(&self.key()))
-            .map(|url| RemoteDifUri::new(url.into_string()))
-            .unwrap_or_else(|_| {
-                // All these Result-returning operations *should* be infallible and this
-                // branch should never be used.  Nevertheless, for panic-safety we default
-                // to something infallible that's also pretty correct.
-                RemoteDifUri::new(format!("gs://{}/{}", self.source.bucket, self.key()))
-            })
+        RemoteDifUri::from_parts("gs", &self.source.bucket, &self.key())
     }
 }
 
