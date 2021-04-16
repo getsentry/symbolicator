@@ -61,7 +61,7 @@ impl S3RemoteDif {
 
     /// Returns the `s3://` URI from which to download this object file.
     pub fn uri(&self) -> RemoteDifUri {
-        format!("s3://{}/{}", self.source.bucket, self.key()).into()
+        RemoteDifUri::from_parts("s3", &self.source.bucket, &self.key())
     }
 }
 
@@ -417,5 +417,28 @@ mod tests {
         // granted, therefore return `NotFound` instead of an authentication error.
         assert_eq!(download_status, DownloadStatus::NotFound);
         assert!(!target_path.exists());
+    }
+
+    #[test]
+    fn test_s3_remote_dif_uri() {
+        let source_key = Arc::new(S3SourceKey {
+            region: rusoto_core::Region::UsEast1,
+            access_key: String::from("abc"),
+            secret_key: String::from("123"),
+        });
+        let source = Arc::new(S3SourceConfig {
+            id: SourceId::new("s3-id"),
+            bucket: String::from("bucket"),
+            prefix: String::from("prefix"),
+            source_key,
+            files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
+        });
+        let location = SourceLocation::new("a/key/with spaces");
+
+        let dif = S3RemoteDif::new(source, location);
+        assert_eq!(
+            dif.uri(),
+            RemoteDifUri::new("s3://bucket/prefix/a/key/with%20spaces")
+        );
     }
 }

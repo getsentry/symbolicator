@@ -60,7 +60,7 @@ impl GcsRemoteDif {
 
     /// Returns the `gs://` URI from which to download this object file.
     pub fn uri(&self) -> RemoteDifUri {
-        format!("gs://{}/{}", self.source.bucket, self.key()).into()
+        RemoteDifUri::from_parts("gs", &self.source.bucket, &self.key())
     }
 }
 
@@ -436,6 +436,28 @@ mod tests {
 
         let key = key_from_string(json_like_key);
         assert!(key.is_ok());
+    }
+
+    #[test]
+    fn test_gcs_remote_dif_uri() {
+        let source_key = Arc::new(GcsSourceKey {
+            private_key: String::from("ABC"),
+            client_email: String::from("someone@example.com"),
+        });
+        let source = Arc::new(GcsSourceConfig {
+            id: SourceId::new("gcs-id"),
+            bucket: String::from("bucket"),
+            prefix: String::from("prefix"),
+            source_key,
+            files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
+        });
+        let location = SourceLocation::new("a/key/with spaces");
+
+        let dif = GcsRemoteDif::new(source, location);
+        assert_eq!(
+            dif.uri(),
+            RemoteDifUri::new("gs://bucket/prefix/a/key/with%20spaces")
+        );
     }
 
     // TODO: Test credential caching.
