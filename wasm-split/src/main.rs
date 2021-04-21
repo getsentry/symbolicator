@@ -45,6 +45,9 @@ pub struct Cli {
     /// strip the file of debug info.
     #[argh(switch, long = "strip")]
     strip: bool,
+    /// strip the file of symbol names.
+    #[argh(switch, long = "strip-names")]
+    strip_names: bool,
     /// do not print the build id.
     #[argh(switch, short = 'q', long = "quiet")]
     quiet: bool,
@@ -64,8 +67,20 @@ fn load_custom_section(section: &Section) -> Option<(&str, &[u8])> {
 }
 
 /// Returns `true` if this section should be stripped.
-fn is_strippable_section(section: &Section) -> bool {
-    load_custom_section(section).map_or(false, |(name, _)| name.starts_with(".debug_"))
+fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
+    fn custom_section_name(section: &Section) -> Option<&str> {
+        Some(match section.try_as()?.try_contents().ok()? {
+            CustomSection::Name(_) => "name",
+            CustomSection::Producers(_) => "producers",
+            CustomSection::Other(s) => &s.name,
+        })
+    }
+
+    match custom_section_name(section) {
+        Some("name") => strip_names,
+        Some(other) if other.starts_with(".debug_") => true,
+        _ => false,
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -116,9 +131,10 @@ fn main() -> Result<(), anyhow::Error> {
 
     // do we want to strip debug data from main file?
     if cli.strip {
+        let strip_names = cli.strip_names;
         module
             .sections
-            .retain(|section| !is_strippable_section(section));
+            .retain(|section| !is_strippable_section(section, strip_names));
         should_write_main_module = true;
     }
 
