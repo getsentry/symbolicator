@@ -12,6 +12,10 @@
 - Bump symbolic to support `debug_addr` indexes in DWARF functions. ([#389](https://github.com/getsentry/symbolicator/pull/389))
 - Fix retry of DIF downloads from sentry ([#397](https://github.com/getsentry/symbolicator/pull/397))
 
+### Tools
+
+- `wasm-split` can remove names with `--strip-names`. ([#412](https://github.com/getsentry/symbolicator/pull/412))
+
 ## 0.3.3
 
 ### Features
