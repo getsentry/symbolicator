@@ -156,6 +156,7 @@ pub struct RequestOptions {
     #[serde(default)]
     pub dif_candidates: bool,
 
+    /// Whether to run the new stackwalking method in addition to the old one and compare their results.
     #[serde(default)]
     pub compare_stackwalking_methods: bool,
 }

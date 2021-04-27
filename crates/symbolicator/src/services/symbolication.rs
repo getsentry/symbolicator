@@ -139,7 +139,7 @@ impl<'a> SymCacheLookupResult<'a> {
 /// provided by it.  This can later be used to compile the required modules information
 /// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
 /// this.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CfiCacheModules {
     inner: BTreeMap<CodeModuleId, CfiModule>,
 }
@@ -271,7 +271,7 @@ impl CfiCacheModules {
 }
 
 /// A module which was referenced in a minidump and processing information for it.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct CfiModule {
     /// Combined features provided by all the DIFs we found for this module.
     features: ObjectFeatures,
@@ -1605,6 +1605,57 @@ impl SymbolicationActor {
         future::join_all(futures).await
     }
 
+    fn post_process(
+        process_state: ProcessState,
+        cfi_caches: CfiCacheModules,
+    ) -> (Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState) {
+        let minidump_state = MinidumpState::new(&process_state);
+
+        // Start building the module list for the symbolication response.
+        let mut module_builder =
+            ModuleListBuilder::new(cfi_caches, &process_state, minidump_state.object_type());
+        // Finally iterate through the threads and build the stacktraces to
+        // return, marking modules as used when they are referenced by a frame.
+        let requesting_thread_index: Option<usize> =
+            process_state.requesting_thread().try_into().ok();
+        let threads = process_state.threads();
+        let mut stacktraces = Vec::with_capacity(threads.len());
+        for (index, thread) in threads.iter().enumerate() {
+            let registers = match thread.frames().get(0) {
+                Some(frame) => {
+                    map_symbolic_registers(frame.registers(minidump_state.system_info.cpu_arch))
+                }
+                None => Registers::new(),
+            };
+
+            // Trim infinite recursions explicitly because those do not
+            // correlate to minidump size. Every other kind of bloated
+            // input data we know is already trimmed/rejected by raw
+            // byte size alone.
+            let frame_count = thread.frames().len().min(20000);
+            let mut frames = Vec::with_capacity(frame_count);
+            for frame in thread.frames().iter().take(frame_count) {
+                let return_address = frame.return_address(minidump_state.system_info.cpu_arch);
+                module_builder.mark_referenced(return_address);
+
+                frames.push(RawFrame {
+                    instruction_addr: HexValue(return_address),
+                    package: frame.module().map(CodeModule::code_file),
+                    trust: frame.trust(),
+                    ..RawFrame::default()
+                });
+            }
+            stacktraces.push(RawStacktrace {
+                is_requesting: requesting_thread_index.map(|r| r == index),
+                thread_id: Some(thread.thread_id().into()),
+                registers,
+                frames,
+            });
+        }
+
+        (module_builder.build(), stacktraces, minidump_state)
+    }
+
     /// Unwind the stack from a minidump.
     ///
     /// This processes the minidump to stackwalk all the threads found in the minidump.
@@ -1654,6 +1705,8 @@ impl SymbolicationActor {
                         metric!(timer("minidump.stackwalk.spawn.duration") = duration);
                     }
 
+                    let cfi_caches_cloned = cfi_caches.clone();
+
                     // Stackwalk the minidump.
                     let cfi = cfi_caches.load_cfi();
                     let minidump = ByteView::from_slice(&minidump);
@@ -1661,121 +1714,34 @@ impl SymbolicationActor {
                     let process_state =
                         ProcessState::from_minidump_breakpad(&minidump, Some(&cfi))?;
                     let timer_old = timer_old.elapsed();
+                    let (object_infos, stacktraces, minidump_state) = Self::post_process(process_state, cfi_caches_cloned);
 
                     // Run and time the new stackwalking method if compare_stackwalking_methods was passed
-                    let process_state_and_timer_new = if compare_stackwalking_methods {
+                    if compare_stackwalking_methods {
                         let timer_new = Instant::now();
                         match ProcessState::from_minidump(&minidump, Some(&cfi)) {
-                            Ok(state) => Some((state, timer_new.elapsed())),
+                            Ok(process_state_new) => {
+                                let timer_new = timer_new.elapsed();
+                                let (object_infos_new, stacktraces_new, _) = Self::post_process(process_state_new, cfi_caches);
+
+                                // Report whether the stacktraces are different or identical.
+                                if stacktraces == stacktraces_new && object_infos == object_infos_new {
+                                    metric!(counter("minidump.stackwalk.identical") += 1);
+                                } else {
+                                    metric!(counter("minidump.stackwalk.different") += 1);
+                                }
+                                    metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
+                                    metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
+                                }
                             Err(_) => {
                                 // If the old method succeeded and the new one failed, report this fact
                                 metric!(counter("minidump.stackwalk.new_method.errors") += 1);
-                                None
                             }
                         }
-                    } else {
-                        None
-                    };
-
-                    let minidump_state = MinidumpState::new(&process_state);
-
-                    // Start building the module list for the symbolication response.
-                    let mut module_builder = ModuleListBuilder::new(
-                        cfi_caches,
-                        &process_state,
-                        minidump_state.object_type(),
-                    );
-
-                    // Finally iterate through the threads and build the stacktraces to
-                    // return, marking modules as used when they are referenced by a frame.
-                    let requesting_thread_index: Option<usize> =
-                        process_state.requesting_thread().try_into().ok();
-                    let threads = process_state.threads();
-                    let mut stacktraces = Vec::with_capacity(threads.len());
-                    for (index, thread) in threads.iter().enumerate() {
-                        let registers = match thread.frames().get(0) {
-                            Some(frame) => map_symbolic_registers(
-                                frame.registers(minidump_state.system_info.cpu_arch),
-                            ),
-                            None => Registers::new(),
-                        };
-
-                        // Trim infinite recursions explicitly because those do not
-                        // correlate to minidump size. Every other kind of bloated
-                        // input data we know is already trimmed/rejected by raw
-                        // byte size alone.
-                        let frame_count = thread.frames().len().min(20000);
-                        let mut frames = Vec::with_capacity(frame_count);
-                        for frame in thread.frames().iter().take(frame_count) {
-                            let return_address =
-                                frame.return_address(minidump_state.system_info.cpu_arch);
-                            module_builder.mark_referenced(return_address);
-
-                            frames.push(RawFrame {
-                                instruction_addr: HexValue(return_address),
-                                package: frame.module().map(CodeModule::code_file),
-                                trust: frame.trust(),
-                                ..RawFrame::default()
-                            });
-                        }
-
-                        stacktraces.push(RawStacktrace {
-                            is_requesting: requesting_thread_index.map(|r| r == index),
-                            thread_id: Some(thread.thread_id().into()),
-                            registers,
-                            frames,
-                        });
-                    }
-
-                    // If we successfully timed the new stackwalking method earlier, compute its
-                    // stacktraces as well
-                    if let Some((process_state_new, timer_new)) = process_state_and_timer_new {
-                    let requesting_thread_index: Option<usize> =
-                        process_state_new.requesting_thread().try_into().ok();
-                    let threads = process_state_new.threads();
-                    let mut stacktraces_new = Vec::with_capacity(threads.len());
-                    for (index, thread) in threads.iter().enumerate() {
-                        let registers = match thread.frames().get(0) {
-                            Some(frame) => map_symbolic_registers(
-                                frame.registers(minidump_state.system_info.cpu_arch),
-                            ),
-                            None => Registers::new(),
-                        };
-
-                        let frame_count = thread.frames().len().min(20000);
-                        let mut frames = Vec::with_capacity(frame_count);
-                        for frame in thread.frames().iter().take(frame_count) {
-                            let return_address =
-                                frame.return_address(minidump_state.system_info.cpu_arch);
-
-                            frames.push(RawFrame {
-                                instruction_addr: HexValue(return_address),
-                                package: frame.module().map(CodeModule::code_file),
-                                trust: frame.trust(),
-                                ..RawFrame::default()
-                            });
-                        }
-
-                        stacktraces_new.push(RawStacktrace {
-                            is_requesting: requesting_thread_index.map(|r| r == index),
-                            thread_id: Some(thread.thread_id().into()),
-                            registers,
-                            frames,
-                        });
-                    }
-
-                    // If both stacktraces are equal, report how long each method took, otherwise
-                    // report the fact that they differed.
-                    if stacktraces == stacktraces_new {
-                        metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
-                        metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
-                    } else {
-                        metric!(counter("minidump.stackwalk.differences") += 1);
-                    }
                     }
 
                     Ok(procspawn::serde::Json((
-                        module_builder.build(),
+                        object_infos,
                         stacktraces,
                         minidump_state,
                     )))
@@ -2181,7 +2147,7 @@ mod tests {
             })],
             options: RequestOptions {
                 dif_candidates: true,
-                compare_stackwalking_methods: false,
+                ..Default::default()
             },
         }
     }
@@ -2328,7 +2294,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
-                    compare_stackwalking_methods: false,
+                    ..Default::default()
                 },
             );
             symbolication.get_response(request_id, None).await
@@ -2375,7 +2341,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
-                    compare_stackwalking_methods: false,
+                    ..Default::default()
                 },
             );
 
