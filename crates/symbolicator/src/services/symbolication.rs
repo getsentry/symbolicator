@@ -1642,8 +1642,12 @@ impl SymbolicationActor {
                     procspawn::serde::Json(cfi_caches),
                     minidump.clone(),
                     spawn_time,
+                    options.compare_stackwalking_methods,
                 ),
-                |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                |(
+                    cfi_caches, minidump,
+                    spawn_time,
+                    compare_stackwalking_methods)| -> Result<_, ProcessMinidumpError> {
                     let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
 
                     if let Ok(duration) = spawn_time.elapsed() {
@@ -1653,7 +1657,26 @@ impl SymbolicationActor {
                     // Stackwalk the minidump.
                     let cfi = cfi_caches.load_cfi();
                     let minidump = ByteView::from_slice(&minidump);
-                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+                    let timer_old = Instant::now();
+                    let process_state =
+                        ProcessState::from_minidump_breakpad(&minidump, Some(&cfi))?;
+                    let timer_old = timer_old.elapsed();
+
+                    // Run and time the new stackwalking method if compare_stackwalking_methods was passed
+                    let process_state_and_timer_new = if compare_stackwalking_methods {
+                        let timer_new = Instant::now();
+                        match ProcessState::from_minidump(&minidump, Some(&cfi)) {
+                            Ok(state) => Some((state, timer_new.elapsed())),
+                            Err(_) => {
+                                // If the old method succeeded and the new one failed, report this fact
+                                metric!(counter("minidump.stackwalk.new_method.errors") += 1);
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
                     let minidump_state = MinidumpState::new(&process_state);
 
                     // Start building the module list for the symbolication response.
@@ -1702,6 +1725,53 @@ impl SymbolicationActor {
                             registers,
                             frames,
                         });
+                    }
+
+                    // If we successfully timed the new stackwalking method earlier, compute its
+                    // stacktraces as well
+                    if let Some((process_state_new, timer_new)) = process_state_and_timer_new {
+                    let requesting_thread_index: Option<usize> =
+                        process_state_new.requesting_thread().try_into().ok();
+                    let threads = process_state_new.threads();
+                    let mut stacktraces_new = Vec::with_capacity(threads.len());
+                    for (index, thread) in threads.iter().enumerate() {
+                        let registers = match thread.frames().get(0) {
+                            Some(frame) => map_symbolic_registers(
+                                frame.registers(minidump_state.system_info.cpu_arch),
+                            ),
+                            None => Registers::new(),
+                        };
+
+                        let frame_count = thread.frames().len().min(20000);
+                        let mut frames = Vec::with_capacity(frame_count);
+                        for frame in thread.frames().iter().take(frame_count) {
+                            let return_address =
+                                frame.return_address(minidump_state.system_info.cpu_arch);
+
+                            frames.push(RawFrame {
+                                instruction_addr: HexValue(return_address),
+                                package: frame.module().map(CodeModule::code_file),
+                                trust: frame.trust(),
+                                ..RawFrame::default()
+                            });
+                        }
+
+                        stacktraces_new.push(RawStacktrace {
+                            is_requesting: requesting_thread_index.map(|r| r == index),
+                            thread_id: Some(thread.thread_id().into()),
+                            registers,
+                            frames,
+                        });
+                    }
+
+                    // If both stacktraces are equal, report how long each method took, otherwise
+                    // report the fact that they differed.
+                    if stacktraces == stacktraces_new {
+                        metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
+                        metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
+                    } else {
+                        metric!(counter("minidump.stackwalk.differences") += 1);
+                    }
                     }
 
                     Ok(procspawn::serde::Json((
@@ -2111,6 +2181,7 @@ mod tests {
             })],
             options: RequestOptions {
                 dif_candidates: true,
+                compare_stackwalking_methods: false,
             },
         }
     }
@@ -2257,6 +2328,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
+                    compare_stackwalking_methods: false,
                 },
             );
             symbolication.get_response(request_id, None).await
@@ -2303,6 +2375,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
+                    compare_stackwalking_methods: false,
                 },
             );
 
