@@ -312,6 +312,7 @@ impl ModuleListBuilder {
         for thread in minidump_process_state.threads() {
             for frame_pair in thread.frames().windows(2) {
                 if let [prev_frame, next_frame] = frame_pair {
+                    // TODO(flub): This never marks the first frame!
                     if let Some(code_id) = prev_frame.module().and_then(|m| m.id()) {
                         match next_frame.trust() {
                             FrameTrust::Scan => {

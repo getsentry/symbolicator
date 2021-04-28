@@ -146,6 +146,10 @@ impl DownloadService {
     ///
     /// If the source needs to be contacted to get matching objects this may fail and
     /// returns a [`DownloadError`].
+    ///
+    /// Note that the `filetypes` argument is not more then a hint, not all source types
+    /// will respect this and they may return all DIFs matching the `object_id`.  After
+    /// downloading you may still need to filter the files.
     pub async fn list_files(
         self: Arc<Self>,
         source: SourceConfig,
@@ -162,7 +166,7 @@ impl DownloadService {
                 // goes out of scope, which ensures 'static lifetime for `spawn` below.
                 let job = async move {
                     slf.sentry
-                        .list_files(cfg, object_id, config)
+                        .list_files(cfg, object_id, filetypes.clone(), config)
                         .bind_hub(hub)
                         .await
                 };

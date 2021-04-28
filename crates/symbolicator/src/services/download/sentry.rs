@@ -15,7 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, USER_AGENT};
+use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, USER_AGENT};
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
@@ -175,8 +175,12 @@ impl SentryDownloader {
         &self,
         source: Arc<SentrySourceConfig>,
         object_id: ObjectId,
+        file_types: &[FileType],
         config: Arc<Config>,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
+        // TODO(flub): LOL, we don't even handle pagination.  But sentry only starts to
+        // paginate at 20 results so i guess we get away with this for now.
+
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -188,6 +192,23 @@ impl SentryDownloader {
             index_url
                 .query_pairs_mut()
                 .append_pair("debug_id", &debug_id.to_string());
+        }
+        for file_type in file_types {
+            match file_type {
+                FileType::PList => {
+                    index_url
+                        .query_pairs_mut()
+                        .append_pair("file_formats", "plist");
+                }
+                FileType::BcSymbolMap => {
+                    index_url
+                        .query_pairs_mut()
+                        .append_pair("file_formats", "bcsymbolmap");
+                }
+                // We do not currently attempt to filter objects
+                // TODO(flub): check object actor handles getting a plist correctly.
+                _ => (),
+            }
         }
 
         if let Some(ref code_id) = object_id.code_id {
