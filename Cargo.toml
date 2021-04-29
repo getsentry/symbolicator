@@ -54,6 +54,8 @@ url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.6.0"
 
+tracing = { version = "0.1.22", default-features = false, features = ["log", "log-always"] }
+
 [dev-dependencies]
 insta = { version = "1.5.2", features = ["redactions"] }
 procspawn = { version = "0.9.0", features = ["test-support"] }
