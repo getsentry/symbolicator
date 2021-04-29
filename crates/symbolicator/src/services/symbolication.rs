@@ -5,7 +5,7 @@ use std::io::{Cursor, Write};
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
@@ -13,6 +13,7 @@ use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
+use procspawn::serde::Json;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
@@ -1361,7 +1362,7 @@ type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError
 /// subprocess and merged into the final symbolication result.
 ///
 /// A few more convenience methods exist to help with building the symbolication results.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct MinidumpState {
     timestamp: DateTime<Utc>,
     system_info: SystemInfo,
@@ -1619,6 +1620,7 @@ impl SymbolicationActor {
         // Start building the module list for the symbolication response.
         let mut module_builder =
             ModuleListBuilder::new(cfi_caches, &process_state, minidump_state.object_type());
+
         // Finally iterate through the threads and build the stacktraces to
         // return, marking modules as used when they are referenced by a frame.
         let requesting_thread_index: Option<usize> =
@@ -1661,6 +1663,62 @@ impl SymbolicationActor {
         (module_builder.build(), stacktraces, minidump_state)
     }
 
+    fn stackwalk_name_subject_to_change(
+        cfi_caches: Json<CfiCacheModules>,
+        minidump: Bytes,
+        spawn_time: SystemTime,
+        compare_stackwalking_methods: bool,
+    ) -> Result<
+        Json<(Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState)>,
+        ProcessMinidumpError,
+    > {
+        let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
+        if let Ok(duration) = spawn_time.elapsed() {
+            metric!(timer("minidump.stackwalk.spawn.duration") = duration);
+        }
+        let cfi_caches_cloned = cfi_caches.clone();
+
+        // Stackwalk the minidump.
+        let cfi = cfi_caches.load_cfi();
+        let minidump = ByteView::from_slice(&minidump);
+        let timer_old = Instant::now();
+        let process_state = ProcessState::from_minidump_breakpad(&minidump, Some(&cfi))?;
+        let timer_old = timer_old.elapsed();
+        let (module_list, stacktraces, minidump_state) =
+            Self::post_process(process_state, cfi_caches_cloned);
+
+        // Run and time the new stackwalking method if compare_stackwalking_methods was passed
+        if compare_stackwalking_methods {
+            let timer_new = Instant::now();
+            match ProcessState::from_minidump(&minidump, Some(&cfi)) {
+                Ok(process_state_new) => {
+                    let timer_new = timer_new.elapsed();
+                    let (module_list_new, stacktraces_new, minidump_state_new) =
+                        Self::post_process(process_state_new, cfi_caches);
+
+                    // Report whether the stackwalking results are different or identical.
+                    if stacktraces == stacktraces_new
+                        && module_list == module_list_new
+                        && minidump_state == minidump_state_new
+                    {
+                        metric!(counter("minidump.stackwalk.identical") += 1);
+                    } else {
+                        metric!(counter("minidump.stackwalk.different") += 1);
+                    }
+
+                    metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
+                    metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
+                }
+
+                Err(e) => {
+                    // If the old method succeeded and the new one failed, report this fact
+                    sentry::capture_error(&e);
+                }
+            }
+        }
+        Ok(Json((module_list, stacktraces, minidump_state)))
+    }
+
     /// Unwind the stack from a minidump.
     ///
     /// This processes the minidump to stackwalk all the threads found in the minidump.
@@ -1700,56 +1758,13 @@ impl SymbolicationActor {
                     spawn_time,
                     options.compare_stackwalking_methods,
                 ),
-                |(
-                    cfi_caches, minidump,
-                    spawn_time,
-                    compare_stackwalking_methods)| -> Result<_, ProcessMinidumpError> {
-                    let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
-
-                    if let Ok(duration) = spawn_time.elapsed() {
-                        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
-                    }
-
-                    let cfi_caches_cloned = cfi_caches.clone();
-
-                    // Stackwalk the minidump.
-                    let cfi = cfi_caches.load_cfi();
-                    let minidump = ByteView::from_slice(&minidump);
-                    let timer_old = Instant::now();
-                    let process_state =
-                        ProcessState::from_minidump_breakpad(&minidump, Some(&cfi))?;
-                    let timer_old = timer_old.elapsed();
-                    let (object_infos, stacktraces, minidump_state) = Self::post_process(process_state, cfi_caches_cloned);
-
-                    // Run and time the new stackwalking method if compare_stackwalking_methods was passed
-                    if compare_stackwalking_methods {
-                        let timer_new = Instant::now();
-                        match ProcessState::from_minidump(&minidump, Some(&cfi)) {
-                            Ok(process_state_new) => {
-                                let timer_new = timer_new.elapsed();
-                                let (object_infos_new, stacktraces_new, _) = Self::post_process(process_state_new, cfi_caches);
-
-                                // Report whether the stacktraces are different or identical.
-                                if stacktraces == stacktraces_new && object_infos == object_infos_new {
-                                    metric!(counter("minidump.stackwalk.identical") += 1);
-                                } else {
-                                    metric!(counter("minidump.stackwalk.different") += 1);
-                                }
-                                    metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
-                                    metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
-                                }
-                            Err(_) => {
-                                // If the old method succeeded and the new one failed, report this fact
-                                metric!(counter("minidump.stackwalk.new_method.errors") += 1);
-                            }
-                        }
-                    }
-
-                    Ok(procspawn::serde::Json((
-                        object_infos,
-                        stacktraces,
-                        minidump_state,
-                    )))
+                |(cfi_caches, minidump, spawn_time, compare_stackwalking_methods)| {
+                    Self::stackwalk_name_subject_to_change(
+                        cfi_caches,
+                        minidump,
+                        spawn_time,
+                        compare_stackwalking_methods,
+                    )
                 },
             );
 
