@@ -60,6 +60,8 @@ lazy_static::lazy_static! {
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
 
+type StackwalkingOutput = (Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState);
+
 /// Errors during symbolication.
 #[derive(Debug, Error)]
 pub enum SymbolicationError {
@@ -1614,7 +1616,7 @@ impl SymbolicationActor {
     fn post_process(
         process_state: ProcessState,
         cfi_caches: CfiCacheModules,
-    ) -> (Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState) {
+    ) -> StackwalkingOutput {
         let minidump_state = MinidumpState::new(&process_state);
 
         // Start building the module list for the symbolication response.
@@ -1668,10 +1670,7 @@ impl SymbolicationActor {
         minidump: Bytes,
         spawn_time: SystemTime,
         compare_stackwalking_methods: bool,
-    ) -> Result<
-        Json<(Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState)>,
-        ProcessMinidumpError,
-    > {
+    ) -> Result<Json<StackwalkingOutput>, ProcessMinidumpError> {
         let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
         if let Ok(duration) = spawn_time.elapsed() {
             metric!(timer("minidump.stackwalk.spawn.duration") = duration);
