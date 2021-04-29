@@ -1605,6 +1605,11 @@ impl SymbolicationActor {
         future::join_all(futures).await
     }
 
+    /// Post-processes breakpad's stackwalking result to extract module list and stacktraces.
+    ///
+    /// The breakpad [`ProcessState`] contains the results of the breakpad stackwalking.  This
+    /// code extracts from this the module list as well as the stack traces in the format required
+    /// for the symbolication response on the API.
     fn post_process(
         process_state: ProcessState,
         cfi_caches: CfiCacheModules,
