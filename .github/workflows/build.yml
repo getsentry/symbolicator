@@ -25,20 +25,27 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --locked
+          args: --all --release --locked
 
       - name: Split and archive debug info
         run: |
+          mkdir -p build
+
+          # Split only symbolicator's debug information
           objcopy --only-keep-debug target/release/symbolicator{,.debug}
           objcopy --strip-debug --strip-unneeded target/release/symbolicator
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
-          zip -j symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
-          mv target/release/symbolicator symbolicator-Linux-x86_64
+          zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
+
+          # Move all binaries
+          mv target/release/symbolicator build/symbolicator-Linux-x86_64
+          mv target/release/wasm_split build/wasm_split-Linux-x86_64
+          mv target/release/symsorter build/symsorter-Linux-x86_64
 
       - uses: actions/upload-artifact@v2
         with:
           name: ${{ github.sha }}
-          path: symbolicator-Linux-*
+          path: build/*
 
   docs:
     name: Build Docs
