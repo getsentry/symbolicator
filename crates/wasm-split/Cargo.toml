@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.38"
-argh = "0.1.4"
+structopt = "0.3.21"
 hex = "0.4.2"
 uuid = { version = "0.8.2", features = ["v4"] }
 wasmbin = "0.2.2"

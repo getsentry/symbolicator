@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
-use argh::FromArgs;
+use structopt::StructOpt;
 use uuid::Uuid;
 use wasmbin::builtins::Blob;
 use wasmbin::sections::{CustomSection, RawCustomSection, Section};
@@ -27,32 +27,31 @@ use wasmbin::Module;
 /// calculate offsets.
 ///
 /// This prints the embedded build_id in hexadecimal format to stdout.
-#[derive(FromArgs, Debug)]
+#[derive(Debug, StructOpt)]
 pub struct Cli {
     /// path to the wasm file
-    #[argh(positional)]
     input: PathBuf,
     /// path to the output wasm file.
     ///
     /// If not provided the same file is modified in place.
-    #[argh(option, short = 'o', long = "out")]
-    output: Option<PathBuf>,
+    #[structopt(short, long)]
+    out: Option<PathBuf>,
     /// path to the output debug wasm file.
     ///
     /// If not provided the debug data stays in the input file.
-    #[argh(option, short = 'd', long = "debug-out")]
-    debug_output: Option<PathBuf>,
+    #[structopt(short, long)]
+    debug_out: Option<PathBuf>,
     /// strip the file of debug info.
-    #[argh(switch, long = "strip")]
+    #[structopt(long)]
     strip: bool,
     /// strip the file of symbol names.
-    #[argh(switch, long = "strip-names")]
+    #[structopt(long)]
     strip_names: bool,
     /// do not print the build id.
-    #[argh(switch, short = 'q', long = "quiet")]
+    #[structopt(short, long)]
     quiet: bool,
     /// explicit build id to provide
-    #[argh(option)]
+    #[structopt(long)]
     build_id: Option<Uuid>,
 }
 
@@ -84,7 +83,7 @@ fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    let cli: Cli = argh::from_env();
+    let cli = Cli::from_args();
 
     let mut module = Module::decode_from(BufReader::new(File::open(&cli.input)?))?;
     let mut build_id = None;
@@ -117,7 +116,7 @@ fn main() -> Result<(), anyhow::Error> {
     });
 
     // split dwarf data out if needed into a separate file.
-    if let Some(debug_output) = cli.debug_output {
+    if let Some(debug_output) = cli.debug_out {
         // note that this actually copies the entire original file over after
         // adding the build ID.  The reason for this is that we can only deal
         // with WASM files if the code section offset can be calculated.  This
@@ -140,7 +139,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     // main module
     if should_write_main_module {
-        let output = cli.output.as_ref().unwrap_or(&cli.input);
+        let output = cli.out.as_ref().unwrap_or(&cli.input);
         module.encode_into(BufWriter::new(File::create(output)?))?;
     }
 
