@@ -39,7 +39,7 @@ jobs:
 
           # Move all binaries
           mv target/release/symbolicator build/symbolicator-Linux-x86_64
-          mv target/release/wasm_split build/wasm_split-Linux-x86_64
+          mv target/release/wasm-split build/wasm-split-Linux-x86_64
           mv target/release/symsorter build/symsorter-Linux-x86_64
 
       - uses: actions/upload-artifact@v2
