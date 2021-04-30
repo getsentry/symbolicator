@@ -278,7 +278,7 @@ mod tests {
         s3_client
             .put_object(rusoto_s3::PutObjectRequest {
                 bucket: S3_BUCKET.to_owned(),
-                body: Some(std::fs::read(fixture).unwrap().into()),
+                body: Some(test::read_fixture(fixture).into()),
                 key,
                 ..Default::default()
             })
@@ -306,7 +306,7 @@ mod tests {
         ensure_bucket(&s3_client).await;
         ensure_fixture(
             &s3_client,
-            "tests/fixtures/symbols/502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
+            "symbols/502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
             "50/2fc0a51ec13e479998684fa139dca7/debuginfo",
         )
         .await;

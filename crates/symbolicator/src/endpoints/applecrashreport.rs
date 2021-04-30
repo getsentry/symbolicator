@@ -62,8 +62,6 @@ pub fn configure(app: App<Service>) -> App<Service> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use actix_web::test::TestServer;
     use reqwest::{multipart, Client, StatusCode};
 
@@ -79,7 +77,7 @@ mod tests {
         let service = Service::create(Config::default()).unwrap();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
 
-        let file_contents = fs::read("tests/fixtures/apple_crash_report.txt").unwrap();
+        let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
 
         let form = multipart::Form::new()
@@ -107,7 +105,7 @@ mod tests {
         let service = Service::create(Config::default()).unwrap();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
 
-        let file_contents = fs::read("tests/fixtures/apple_crash_report.txt").unwrap();
+        let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
 
         let form = multipart::Form::new()
