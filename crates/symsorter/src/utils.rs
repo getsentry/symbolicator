@@ -1,12 +1,12 @@
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::sourcebundle::SourceBundleWriter;
-use symbolic::debuginfo::{Archive, FileFormat, Object};
+use symbolic::debuginfo::{Archive, FileFormat, Object, ObjectKind};
 
 lazy_static! {
     static ref BAD_CHARS_RE: Regex = Regex::new(r"[^a-zA-Z0-9.,-]+").unwrap();
@@ -32,6 +32,25 @@ pub fn get_unified_id(obj: &Object) -> String {
     } else {
         obj.code_id().as_ref().unwrap().as_str().to_string()
     }
+}
+
+/// Returns the intended target filename for an object.
+pub fn get_target_filename(obj: &Object) -> Option<PathBuf> {
+    let id = get_unified_id(obj);
+    // match the unified format here.
+    let suffix = match obj.kind() {
+        ObjectKind::Debug => "debuginfo",
+        ObjectKind::Sources => {
+            if obj.file_format() == FileFormat::SourceBundle {
+                "sourcebundle"
+            } else {
+                return None;
+            }
+        }
+        ObjectKind::Relocatable | ObjectKind::Library | ObjectKind::Executable => "executable",
+        _ => return None,
+    };
+    Some(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())
 }
 
 /// Creates a source bundle from a path.
