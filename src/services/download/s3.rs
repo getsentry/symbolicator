@@ -11,6 +11,9 @@ use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 
+use rusoto_core::credential::ProvideAwsCredentials;
+use rusoto_core::region::Region;
+
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
@@ -88,7 +91,11 @@ impl S3Downloader {
         }
     }
 
-    fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
+    fn get_s3_client(
+        &self,
+        use_container_credentials: bool,
+        key: &Arc<S3SourceKey>,
+    ) -> Arc<rusoto_s3::S3Client> {
         let mut container = self.client_cache.lock();
         if let Some(client) = container.get(&*key) {
             metric!(counter("source.s3.client.cached") += 1);
@@ -96,18 +103,44 @@ impl S3Downloader {
         } else {
             metric!(counter("source.s3.client.create") += 1);
 
-            let s3 = Arc::new(rusoto_s3::S3Client::new_with(
-                self.http_client.clone(),
-                rusoto_credential::StaticProvider::new_minimal(
+            // if use_container_creds is false (the default), and either
+            // access_key or secret_key is empty/blank, we error out.
+            if !use_container_credentials && key.access_key.is_empty() || key.secret_key.is_empty()
+            {
+                panic!(
+                    "use_container_credentials=false but access_key or secret_key is empty/blank!"
+                );
+            }
+            // If use_container_credentials is true, and either
+            // access_key or secret_key are not empty/blank, we error out.
+            if use_container_credentials && !key.access_key.is_empty() || !key.secret_key.is_empty()
+            {
+                panic!("use_container_credentials=true but access_key and secret_key not both empty/blank!");
+            }
+
+            let region = key.region.clone();
+            let s3 = Arc::new(if use_container_credentials {
+                let provider = rusoto_credential::ContainerProvider::new();
+                self.create_s3_client(provider, region)
+            } else {
+                let provider = rusoto_credential::StaticProvider::new_minimal(
                     key.access_key.clone(),
                     key.secret_key.clone(),
-                ),
-                key.region.clone(),
-            ));
+                );
+                self.create_s3_client(provider, region)
+            });
 
             container.put(key.clone(), s3.clone());
             s3
         }
+    }
+
+    fn create_s3_client<P: ProvideAwsCredentials + Send + Sync + 'static>(
+        &self,
+        provider: P,
+        region: Region,
+    ) -> rusoto_s3::S3Client {
+        rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
 
     pub async fn download_source(
@@ -120,8 +153,9 @@ impl S3Downloader {
         log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
+        let use_container_credentials = file_source.source.use_container_credentials;
         let result = self
-            .get_s3_client(&source_key)
+            .get_s3_client(use_container_credentials, &source_key)
             .get_object(rusoto_s3::GetObjectRequest {
                 key: key.clone(),
                 bucket: bucket.clone(),

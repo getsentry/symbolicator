@@ -145,9 +145,11 @@ pub struct S3SourceKey {
     pub region: rusoto_core::Region,
 
     /// S3 authorization key.
+    #[serde(default)]
     pub access_key: String,
 
     /// S3 secret key.
+    #[serde(default)]
     pub secret_key: String,
 }
 
@@ -216,6 +218,10 @@ pub struct S3SourceConfig {
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
     pub source_key: Arc<S3SourceKey>,
+
+    /// Use ContainerProvider, ignore source_key
+    #[serde(default)]
+    pub use_container_credentials: bool,
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
