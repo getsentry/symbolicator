@@ -4,8 +4,6 @@ version = "0.3.3"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2018"
 license = "MIT"
-include = ["src/**/*", "Cargo.toml", "README.md"]
-readme = "README.md"
 
 [dependencies]
 actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
