@@ -56,7 +56,7 @@ impl DifType {
     ///
     /// This is a relative pathname to the root of the unified symbol server layout.
     pub fn unified_path_for(&self, unified_id: &DebugId) -> PathBuf {
-        let repr = format!("{:x}", unified_id.uuid());
+        let repr = unified_id.to_string().replace("-", "");
         let path = format!("{}/{}/{}", &repr[..2], &repr[2..], self.suffix());
         PathBuf::from(path)
     }
