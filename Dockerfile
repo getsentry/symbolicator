@@ -13,15 +13,16 @@ ENV CARGO_HOME=/usr/local/cargo \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 
 # Build only dependencies to speed up subsequent builds
-COPY Cargo.toml Cargo.lock build.rs ./
+COPY Cargo.toml Cargo.lock ./
+COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
 COPY symsorter/Cargo.toml symsorter/
-RUN mkdir -p src \
-    && echo "fn main() {}" > src/main.rs \
+RUN mkdir -p crates/symbolicator/src \
+    && echo "fn main() {}" > crates/symbolicator/src/main.rs \
     && mkdir -p symsorter/src \
     && echo "fn main() {}" > symsorter/src/main.rs \
     && cargo build --release --locked
 
-COPY src ./src/
+COPY crates/symbolicator/src crates/symbolicator/src/
 COPY .git ./.git/
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
