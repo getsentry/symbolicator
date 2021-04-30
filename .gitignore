@@ -9,10 +9,7 @@ __pycache__
 
 # Local testing
 /local.yml
-/cache/objects/
-/cache/symcaches/
-/cache/cficaches/
-/cache/object_meta/
+/cache/
 
 # mkdocs
 site
