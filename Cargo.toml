@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*", "symsorter"]
+members = ["crates/*"]
 default-members = ["crates/symbolicator"]
 
 [profile.dev]

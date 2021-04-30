@@ -3,4 +3,3 @@
 !Cargo.*
 !docker-entrypoint.sh
 !crates/symbolicator/*
-!symsorter/Cargo.*
