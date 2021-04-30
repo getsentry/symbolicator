@@ -1,7 +1,6 @@
 *
 !.git/
-!src/
-!build.rs
 !Cargo.*
 !docker-entrypoint.sh
+!crates/symbolicator/*
 !symsorter/Cargo.*
