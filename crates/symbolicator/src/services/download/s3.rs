@@ -104,6 +104,10 @@ impl S3Downloader {
             metric!(counter("source.s3.client.create") += 1);
 
             let region = key.region.clone();
+            log::debug!(
+                "Using AWS credentials provider: {:?}",
+                aws_credentials_provider
+            );
             let s3 = Arc::new(match aws_credentials_provider {
                 "container" => {
                     let provider = rusoto_credential::ContainerProvider::new();
