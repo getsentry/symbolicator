@@ -93,7 +93,7 @@ impl S3Downloader {
 
     fn get_s3_client(
         &self,
-        use_container_credentials: bool,
+        aws_credentials_provider: &str,
         key: &Arc<S3SourceKey>,
     ) -> Arc<rusoto_s3::S3Client> {
         let mut container = self.client_cache.lock();
@@ -103,31 +103,20 @@ impl S3Downloader {
         } else {
             metric!(counter("source.s3.client.create") += 1);
 
-            // if use_container_creds is false (the default), and either
-            // access_key or secret_key is empty/blank, we error out.
-            if !use_container_credentials && key.access_key.is_empty() || key.secret_key.is_empty()
-            {
-                panic!(
-                    "use_container_credentials=false but access_key or secret_key is empty/blank!"
-                );
-            }
-            // If use_container_credentials is true, and either
-            // access_key or secret_key are not empty/blank, we error out.
-            if use_container_credentials && !key.access_key.is_empty() || !key.secret_key.is_empty()
-            {
-                panic!("use_container_credentials=true but access_key and secret_key not both empty/blank!");
-            }
-
             let region = key.region.clone();
-            let s3 = Arc::new(if use_container_credentials {
-                let provider = rusoto_credential::ContainerProvider::new();
-                self.create_s3_client(provider, region)
-            } else {
-                let provider = rusoto_credential::StaticProvider::new_minimal(
-                    key.access_key.clone(),
-                    key.secret_key.clone(),
-                );
-                self.create_s3_client(provider, region)
+            let s3 = Arc::new(match aws_credentials_provider {
+                "container" => {
+                    let provider = rusoto_credential::ContainerProvider::new();
+                    self.create_s3_client(provider, region)
+                }
+                "static" => {
+                    let provider = rusoto_credential::StaticProvider::new_minimal(
+                        key.access_key.clone(),
+                        key.secret_key.clone(),
+                    );
+                    self.create_s3_client(provider, region)
+                }
+                _ => panic!("unexpected provider: {}", aws_credentials_provider),
             });
 
             container.put(key.clone(), s3.clone());
@@ -153,9 +142,9 @@ impl S3Downloader {
         log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
-        let use_container_credentials = file_source.source.use_container_credentials;
+        let aws_credentials_provider = &source_key.aws_credentials_provider;
         let result = self
-            .get_s3_client(use_container_credentials, &source_key)
+            .get_s3_client(&aws_credentials_provider.to_string(), &source_key)
             .get_object(rusoto_s3::GetObjectRequest {
                 key: key.clone(),
                 bucket: bucket.clone(),
@@ -221,6 +210,8 @@ mod tests {
     const S3_BUCKET: &str = "symbolicator-test";
 
     fn s3_source_key() -> Option<S3SourceKey> {
+        let aws_credentials_provider =
+            std::env::var("SENTRY_SYMBOLICATOR_TEST_AWS_CREDENTIALS_PROVIDER").ok()?;
         let access_key = std::env::var("SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID").ok()?;
         let secret_key = std::env::var("SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY").ok()?;
 
@@ -229,6 +220,7 @@ mod tests {
         } else {
             Some(S3SourceKey {
                 region: rusoto_core::Region::UsEast1,
+                aws_credentials_provider,
                 access_key,
                 secret_key,
             })
@@ -430,6 +422,7 @@ mod tests {
 
         let broken_key = S3SourceKey {
             region: rusoto_core::Region::UsEast1,
+            aws_credentials_provider: "static".to_owned(),
             access_key: "".to_owned(),
             secret_key: "".to_owned(),
         };
@@ -457,6 +450,7 @@ mod tests {
     fn test_s3_remote_dif_uri() {
         let source_key = Arc::new(S3SourceKey {
             region: rusoto_core::Region::UsEast1,
+            aws_credentials_provider: String::from("static"),
             access_key: String::from("abc"),
             secret_key: String::from("123"),
         });

@@ -110,6 +110,10 @@ pub struct HttpSourceConfig {
     pub files: CommonSourceConfig,
 }
 
+fn default_aws_provider() -> String {
+    "static".to_string()
+}
+
 /// Configuration for reading from the local file system.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FilesystemSourceConfig {
@@ -143,6 +147,10 @@ pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
     pub region: rusoto_core::Region,
+
+    /// "static" (default)|"container"
+    #[serde(default = "default_aws_provider")]
+    pub aws_credentials_provider: String,
 
     /// S3 authorization key.
     #[serde(default)]
@@ -218,10 +226,6 @@ pub struct S3SourceConfig {
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
     pub source_key: Arc<S3SourceKey>,
-
-    /// Use ContainerProvider, ignore source_key
-    #[serde(default)]
-    pub use_container_credentials: bool,
 
     #[serde(flatten)]
     pub files: CommonSourceConfig,
