@@ -12,7 +12,6 @@ mod utils;
 
 mod app;
 mod config;
-mod difs;
 
 fn main() {
     app::main();

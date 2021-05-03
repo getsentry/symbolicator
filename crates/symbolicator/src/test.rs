@@ -18,7 +18,7 @@
 
 use std::future::Future;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::{FutureExt, TryFutureExt};
@@ -33,8 +33,6 @@ use crate::sources::{
 
 pub use actix_web::test::TestServer;
 pub use tempfile::TempDir;
-
-const SYMBOLS_PATH: &str = "tests/fixtures/symbols";
 
 /// Setup the test environment.
 ///
@@ -55,6 +53,40 @@ pub(crate) fn setup() {
 /// tests.
 pub(crate) fn tempdir() -> TempDir {
     TempDir::new().unwrap()
+}
+
+/// Returns the absolute path to the given fixture.
+///
+/// Fixtures are located in the `tests/fixtures` directory, located from the workspace root.
+/// Fixtures can be either files, or directories.
+///
+/// # Panics
+///
+/// Panics if the fixture path does not exist on the file system.
+pub(crate) fn fixture(path: impl AsRef<Path>) -> PathBuf {
+    let path = path.as_ref();
+
+    let mut full_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    full_path.pop(); // to /crates/
+    full_path.pop(); // to /
+    full_path.push("./tests/fixtures/");
+    full_path.push(path);
+
+    assert!(full_path.exists(), "'{}' does not exist", path.display());
+
+    full_path
+}
+
+/// Returns the contents of a fixture.
+///
+/// Fixtures are located in the `tests/fixtures` directory, located from the workspace root. The
+/// fixture must be a readable file.
+///
+/// # Panics
+///
+/// Panics if the fixture does not exist or cannot be read.
+pub(crate) fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
+    std::fs::read(fixture(path)).unwrap()
 }
 
 /// Runs the provided function, blocking the current thread until the result **legacy**
@@ -99,7 +131,7 @@ where
 pub(crate) fn local_source() -> SourceConfig {
     SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
         id: SourceId::new("local"),
-        path: PathBuf::from(SYMBOLS_PATH),
+        path: fixture("symbols"),
         files: Default::default(),
     }))
 }
@@ -191,7 +223,7 @@ impl Drop for Server {
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
 /// permitted, and need to be activated via [`Config::connect_to_reserved_ips`].
 pub(crate) fn symbol_server() -> (Server, SourceConfig) {
-    let app = warp::path("download").and(warp::fs::dir(SYMBOLS_PATH));
+    let app = warp::path("download").and(warp::fs::dir(fixture("symbols")));
     let server = Server::new(app);
 
     // The source uses the same identifier ("local") as the local file system source to avoid
