@@ -5,7 +5,7 @@ use std::io::{Cursor, Write};
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
@@ -13,6 +13,7 @@ use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
+use procspawn::serde::Json;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
@@ -58,6 +59,11 @@ lazy_static::lazy_static! {
     /// Format sent by Unreal Engine on macOS
     static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
 }
+
+/// Output of a successfull stack walk.
+///
+/// Contains a module list, a list of stacktraces, and a minidump state.
+type StackwalkingOutput = (Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState);
 
 /// Errors during symbolication.
 #[derive(Debug, Error)]
@@ -139,7 +145,7 @@ impl<'a> SymCacheLookupResult<'a> {
 /// provided by it.  This can later be used to compile the required modules information
 /// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
 /// this.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CfiCacheModules {
     inner: BTreeMap<CodeModuleId, CfiModule>,
 }
@@ -271,7 +277,7 @@ impl CfiCacheModules {
 }
 
 /// A module which was referenced in a minidump and processing information for it.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct CfiModule {
     /// Combined features provided by all the DIFs we found for this module.
     features: ObjectFeatures,
@@ -1473,7 +1479,7 @@ type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError
 /// subprocess and merged into the final symbolication result.
 ///
 /// A few more convenience methods exist to help with building the symbolication results.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct MinidumpState {
     timestamp: DateTime<Utc>,
     system_info: SystemInfo,
@@ -1576,8 +1582,10 @@ impl SymbolicationActor {
                     }
                     log::debug!("Processing minidump ({} bytes)", minidump.len());
                     metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-                    let state =
-                        ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
+                    let state = ProcessState::from_minidump_breakpad(
+                        &ByteView::from_slice(&minidump),
+                        None,
+                    )?;
 
                     let object_type = MinidumpState::new(&state).object_type();
 
@@ -1717,6 +1725,121 @@ impl SymbolicationActor {
         future::join_all(futures).await
     }
 
+    /// Post-processes breakpad's stackwalking result to extract module list and stacktraces.
+    ///
+    /// The breakpad [`ProcessState`] contains the results of the breakpad stackwalking.  This
+    /// code extracts from this the module list as well as the stack traces in the format required
+    /// for the symbolication response on the API.
+    fn post_process(
+        process_state: ProcessState,
+        cfi_caches: CfiCacheModules,
+    ) -> StackwalkingOutput {
+        let minidump_state = MinidumpState::new(&process_state);
+
+        // Start building the module list for the symbolication response.
+        let mut module_builder =
+            ModuleListBuilder::new(cfi_caches, &process_state, minidump_state.object_type());
+
+        // Finally iterate through the threads and build the stacktraces to
+        // return, marking modules as used when they are referenced by a frame.
+        let requesting_thread_index: Option<usize> =
+            process_state.requesting_thread().try_into().ok();
+        let threads = process_state.threads();
+        let mut stacktraces = Vec::with_capacity(threads.len());
+        for (index, thread) in threads.iter().enumerate() {
+            let registers = match thread.frames().get(0) {
+                Some(frame) => {
+                    map_symbolic_registers(frame.registers(minidump_state.system_info.cpu_arch))
+                }
+                None => Registers::new(),
+            };
+
+            // Trim infinite recursions explicitly because those do not
+            // correlate to minidump size. Every other kind of bloated
+            // input data we know is already trimmed/rejected by raw
+            // byte size alone.
+            let frame_count = thread.frames().len().min(20000);
+            let mut frames = Vec::with_capacity(frame_count);
+            for frame in thread.frames().iter().take(frame_count) {
+                let return_address = frame.return_address(minidump_state.system_info.cpu_arch);
+                module_builder.mark_referenced(return_address);
+
+                frames.push(RawFrame {
+                    instruction_addr: HexValue(return_address),
+                    package: frame.module().map(CodeModule::code_file),
+                    trust: frame.trust(),
+                    ..RawFrame::default()
+                });
+            }
+            stacktraces.push(RawStacktrace {
+                is_requesting: requesting_thread_index.map(|r| r == index),
+                thread_id: Some(thread.thread_id().into()),
+                registers,
+                frames,
+            });
+        }
+
+        (module_builder.build(), stacktraces, minidump_state)
+    }
+
+    /// The actual stackwalking procedure.
+    ///
+    /// This is a method, as opposed to a closure in
+    /// [`stackwalk_minidump_with_cfi`](SymbolicationActor::stackwalk_minidump_with_cfi),
+    /// to circumvent a problem with `rustfmt`.
+    fn procspawn_inner_stackwalk(
+        cfi_caches: Json<CfiCacheModules>,
+        minidump: Bytes,
+        spawn_time: SystemTime,
+        compare_stackwalking_methods: bool,
+    ) -> Result<Json<StackwalkingOutput>, ProcessMinidumpError> {
+        let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
+        if let Ok(duration) = spawn_time.elapsed() {
+            metric!(timer("minidump.stackwalk.spawn.duration") = duration);
+        }
+        let cfi_caches_cloned = cfi_caches.clone();
+
+        // Stackwalk the minidump.
+        let cfi = cfi_caches.load_cfi();
+        let minidump = ByteView::from_slice(&minidump);
+        let timer_old = Instant::now();
+        let process_state = ProcessState::from_minidump_breakpad(&minidump, Some(&cfi))?;
+        let timer_old = timer_old.elapsed();
+        let (module_list, stacktraces, minidump_state) =
+            Self::post_process(process_state, cfi_caches_cloned);
+
+        // Run and time the new stackwalking method if compare_stackwalking_methods was passed
+        if compare_stackwalking_methods {
+            let timer_new = Instant::now();
+            match ProcessState::from_minidump(&minidump, Some(&cfi)) {
+                Ok(process_state_new) => {
+                    let timer_new = timer_new.elapsed();
+                    let (module_list_new, stacktraces_new, minidump_state_new) =
+                        Self::post_process(process_state_new, cfi_caches);
+
+                    // Report whether the stackwalking results are different or identical.
+                    if stacktraces == stacktraces_new
+                        && module_list == module_list_new
+                        && minidump_state == minidump_state_new
+                    {
+                        metric!(counter("minidump.stackwalk.identical") += 1);
+                    } else {
+                        metric!(counter("minidump.stackwalk.different") += 1);
+                    }
+
+                    metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
+                    metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
+                }
+
+                Err(e) => {
+                    // If the old method succeeded and the new one failed, report this fact
+                    sentry::capture_error(&e);
+                }
+            }
+        }
+        Ok(Json((module_list, stacktraces, minidump_state)))
+    }
+
     /// Unwind the stack from a minidump.
     ///
     /// This processes the minidump to stackwalk all the threads found in the minidump.
@@ -1754,73 +1877,15 @@ impl SymbolicationActor {
                     procspawn::serde::Json(cfi_caches),
                     minidump.clone(),
                     spawn_time,
+                    options.compare_stackwalking_methods,
                 ),
-                |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
-                    let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
-
-                    if let Ok(duration) = spawn_time.elapsed() {
-                        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
-                    }
-
-                    // Stackwalk the minidump.
-                    let cfi = cfi_caches.load_cfi();
-                    let minidump = ByteView::from_slice(&minidump);
-                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
-                    let minidump_state = MinidumpState::new(&process_state);
-
-                    // Start building the module list for the symbolication response.
-                    let mut module_builder = ModuleListBuilder::new(
+                |(cfi_caches, minidump, spawn_time, compare_stackwalking_methods)| {
+                    Self::procspawn_inner_stackwalk(
                         cfi_caches,
-                        &process_state,
-                        minidump_state.object_type(),
-                    );
-
-                    // Finally iterate through the threads and build the stacktraces to
-                    // return, marking modules as used when they are referenced by a frame.
-                    let requesting_thread_index: Option<usize> =
-                        process_state.requesting_thread().try_into().ok();
-                    let threads = process_state.threads();
-                    let mut stacktraces = Vec::with_capacity(threads.len());
-                    for (index, thread) in threads.iter().enumerate() {
-                        let registers = match thread.frames().get(0) {
-                            Some(frame) => map_symbolic_registers(
-                                frame.registers(minidump_state.system_info.cpu_arch),
-                            ),
-                            None => Registers::new(),
-                        };
-
-                        // Trim infinite recursions explicitly because those do not
-                        // correlate to minidump size. Every other kind of bloated
-                        // input data we know is already trimmed/rejected by raw
-                        // byte size alone.
-                        let frame_count = thread.frames().len().min(20000);
-                        let mut frames = Vec::with_capacity(frame_count);
-                        for frame in thread.frames().iter().take(frame_count) {
-                            let return_address =
-                                frame.return_address(minidump_state.system_info.cpu_arch);
-                            module_builder.mark_referenced(return_address);
-
-                            frames.push(RawFrame {
-                                instruction_addr: HexValue(return_address),
-                                package: frame.module().map(CodeModule::code_file),
-                                trust: frame.trust(),
-                                ..RawFrame::default()
-                            });
-                        }
-
-                        stacktraces.push(RawStacktrace {
-                            is_requesting: requesting_thread_index.map(|r| r == index),
-                            thread_id: Some(thread.thread_id().into()),
-                            registers,
-                            frames,
-                        });
-                    }
-
-                    Ok(procspawn::serde::Json((
-                        module_builder.build(),
-                        stacktraces,
-                        minidump_state,
-                    )))
+                        minidump,
+                        spawn_time,
+                        compare_stackwalking_methods,
+                    )
                 },
             );
 
@@ -2223,6 +2288,7 @@ mod tests {
             })],
             options: RequestOptions {
                 dif_candidates: true,
+                ..Default::default()
             },
         }
     }
@@ -2369,6 +2435,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
+                    ..Default::default()
                 },
             );
             symbolication.get_response(request_id, None).await
@@ -2415,6 +2482,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
+                    ..Default::default()
                 },
             );
 
