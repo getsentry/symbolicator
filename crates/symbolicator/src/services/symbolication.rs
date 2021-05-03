@@ -1670,7 +1670,8 @@ impl SymbolicationActor {
 
     /// The actual stackwalking procedure.
     ///
-    /// This is a method, as opposed to a closure in `stackwalk_minidump_with_cfi`,
+    /// This is a method, as opposed to a closure in
+    /// [`stackwalk_minidump_with_cfi`](SymbolicationActor::stackwalk_minidump_with_cfi),
     /// to circumvent a problem with `rustfmt`.
     fn procspawn_inner_stackwalk(
         cfi_caches: Json<CfiCacheModules>,
