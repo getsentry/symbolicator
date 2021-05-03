@@ -91,11 +91,7 @@ impl S3Downloader {
         }
     }
 
-    fn get_s3_client(
-        &self,
-        aws_credentials_provider: &str,
-        key: &Arc<S3SourceKey>,
-    ) -> Arc<rusoto_s3::S3Client> {
+    fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
         let mut container = self.client_cache.lock();
         if let Some(client) = container.get(&*key) {
             metric!(counter("source.s3.client.cached") += 1);
@@ -106,21 +102,20 @@ impl S3Downloader {
             let region = key.region.clone();
             log::debug!(
                 "Using AWS credentials provider: {:?}",
-                aws_credentials_provider
+                key.aws_credentials_provider
             );
-            let s3 = Arc::new(match aws_credentials_provider {
+            let s3 = Arc::new(match key.aws_credentials_provider.as_ref() {
                 "container" => {
                     let provider = rusoto_credential::ContainerProvider::new();
                     self.create_s3_client(provider, region)
                 }
-                "static" => {
+                _ => {
                     let provider = rusoto_credential::StaticProvider::new_minimal(
                         key.access_key.clone(),
                         key.secret_key.clone(),
                     );
                     self.create_s3_client(provider, region)
                 }
-                _ => panic!("unexpected provider: {}", aws_credentials_provider),
             });
 
             container.put(key.clone(), s3.clone());
@@ -146,9 +141,8 @@ impl S3Downloader {
         log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
-        let aws_credentials_provider = &source_key.aws_credentials_provider;
         let result = self
-            .get_s3_client(&aws_credentials_provider.to_string(), &source_key)
+            .get_s3_client(&source_key)
             .get_object(rusoto_s3::GetObjectRequest {
                 key: key.clone(),
                 bucket: bucket.clone(),
