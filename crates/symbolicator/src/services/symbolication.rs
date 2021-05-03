@@ -1668,7 +1668,11 @@ impl SymbolicationActor {
         (module_builder.build(), stacktraces, minidump_state)
     }
 
-    fn stackwalk_name_subject_to_change(
+    /// The actual stackwalking procedure.
+    ///
+    /// This is a method, as opposed to a closure in [`stackwalk_minidump_with_cfi`],
+    /// to circumvent a problem with `rustfmt`.
+    fn procspawn_inner_stackwalk(
         cfi_caches: Json<CfiCacheModules>,
         minidump: Bytes,
         spawn_time: SystemTime,
@@ -1761,7 +1765,7 @@ impl SymbolicationActor {
                     options.compare_stackwalking_methods,
                 ),
                 |(cfi_caches, minidump, spawn_time, compare_stackwalking_methods)| {
-                    Self::stackwalk_name_subject_to_change(
+                    Self::procspawn_inner_stackwalk(
                         cfi_caches,
                         minidump,
                         spawn_time,
