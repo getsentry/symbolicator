@@ -43,3 +43,5 @@ requireNames:
   - /^gh-pages.zip$/
   - /^symbolicator-Linux-x86_64$/
   - /^symbolicator-Linux-x86_64-debug.zip$/
+  - /^symsorter-Linux-x86_64$/
+  - /^wasm-split-Linux-x86_64$/
