@@ -110,10 +110,6 @@ pub struct HttpSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-fn default_aws_provider() -> String {
-    "static".to_string()
-}
-
 /// Configuration for reading from the local file system.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FilesystemSourceConfig {
@@ -141,6 +137,19 @@ where
         .map_err(|e| D::Error::custom(format!("region: {}", e)))
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AwsCredentialsProvider {
+    Static,
+    Container,
+}
+
+impl Default for AwsCredentialsProvider {
+    fn default() -> Self {
+        AwsCredentialsProvider::Static
+    }
+}
+
 /// Amazon S3 authorization information.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
@@ -148,9 +157,9 @@ pub struct S3SourceKey {
     #[serde(deserialize_with = "deserialize_region")]
     pub region: rusoto_core::Region,
 
-    /// "static" (default)|"container"
-    #[serde(default = "default_aws_provider")]
-    pub aws_credentials_provider: String,
+    /// AWS IAM credentials provider for obtaining S3 access.
+    #[serde(default)]
+    pub aws_credentials_provider: AwsCredentialsProvider,
 
     /// S3 authorization key.
     #[serde(default)]
