@@ -109,7 +109,7 @@ impl S3Downloader {
                     let provider = rusoto_credential::ContainerProvider::new();
                     self.create_s3_client(provider, region)
                 }
-                _ => {
+                AwsCredentialsProvider::Static => {
                     let provider = rusoto_credential::StaticProvider::new_minimal(
                         key.access_key.clone(),
                         key.secret_key.clone(),

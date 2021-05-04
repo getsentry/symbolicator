@@ -16,6 +16,12 @@
 
 - `wasm-split` can remove names with `--strip-names`. ([#412](https://github.com/getsentry/symbolicator/pull/412))
 
+## 0.3.4
+
+### Features
+
+- S3 sources: add support for using AWS container credentials provided by IAM task roles, by specifying the `container` keyword in the source. `static` remains the default provider.
+
 ## 0.3.3
 
 ### Features
