@@ -155,10 +155,6 @@ pub struct RequestOptions {
     /// [`ObjectCandidate`] struct for which extra information is returned for DIF objects.
     #[serde(default)]
     pub dif_candidates: bool,
-
-    /// Whether to run the new stackwalking method in addition to the old one and compare their results.
-    #[serde(default)]
-    pub compare_stackwalking_methods: bool,
 }
 
 /// A map of register values.
@@ -169,7 +165,7 @@ fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
 }
 
 /// An unsymbolicated frame from a symbolication request.
-#[derive(Debug, Default, Clone, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct RawFrame {
     /// Controls the addressing mode for [`instruction_addr`](Self::instruction_addr) and
     /// [`sym_addr`](Self::sym_addr).
@@ -237,7 +233,7 @@ pub struct RawFrame {
 }
 
 /// A stack trace containing unsymbolicated stack frames.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct RawStacktrace {
     /// The OS-dependent identifier of the thread.
     #[serde(default)]
