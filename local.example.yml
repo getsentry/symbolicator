@@ -1,0 +1,19 @@
+# Symbolicator listens on port `3021` by default.
+cache_dir: cache
+sources:
+  # You can use symsorter to correctly sort symbols into the local filesystem source:
+  # `cargo run --release --package symsorter -- --output symbols $source_dir`
+  - id: local
+    type: filesystem
+    path: ./symbols
+    layout: { type: "unified" }
+    is_public: true
+
+  # More public symbol servers be found here:
+  # https://github.com/getsentry/sentry/blob/06265eed51c7f884b571bf55fe05312591ea146b/src/sentry/conf/server.py#L1894
+  - id: sentry:microsoft
+    type: http
+    url: https://msdl.microsoft.com/download/symbols/
+    layout: { type: "symstore" }
+    filters: { filetypes: ["pdb", "pe"] }
+    is_public: true

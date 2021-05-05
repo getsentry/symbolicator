@@ -10,6 +10,7 @@ __pycache__
 # Local testing
 /local.yml
 /cache/
+/symbols/
 
 # mkdocs
 site
