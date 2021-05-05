@@ -1149,16 +1149,6 @@ struct StacktraceMetrics {
     unmapped_frames: u64,
 }
 
-impl StacktraceMetrics {
-    fn update(&mut self, other: StacktraceMetrics) {
-        self.truncated_traces += other.truncated_traces;
-        self.bad_traces += other.bad_traces;
-        self.scanned_frames += other.scanned_frames;
-        self.unsymbolicated_frames += other.unsymbolicated_frames;
-        self.unmapped_frames += other.unmapped_frames;
-    }
-}
-
 /// Determine if the [`SymbolicatedFrame`] is likely to be a thread base.
 ///
 /// This is just a heuristic that matches the function to well known thread entry points.
@@ -1178,8 +1168,12 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
         return true;
     }
 
-    // Windows and posix thread base
-    if function.contains("UserThreadStart") || function.contains("pthread_start") {
+    // Windows and posix thread base. These often have prefixes depending on the OS and Version, so
+    // we use a substring match here.
+    if function.contains("UserThreadStart")
+        || function.contains("thread_start")
+        || function.contains("start_thread")
+    {
         return true;
     }
 
@@ -1189,15 +1183,15 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
 fn symbolicate_stacktrace(
     thread: RawStacktrace,
     caches: &SymCacheLookup,
+    metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
-) -> (CompleteStacktrace, StacktraceMetrics) {
+) -> CompleteStacktrace {
     let mut stacktrace = CompleteStacktrace {
         thread_id: thread.thread_id,
         is_requesting: thread.is_requesting,
         registers: thread.registers.clone(),
         frames: vec![],
     };
-    let mut metrics = StacktraceMetrics::default();
 
     for (index, mut frame) in thread.frames.into_iter().enumerate() {
         if matches!(frame.trust, FrameTrust::Scan | FrameTrust::CFIScan) {
@@ -1271,7 +1265,7 @@ fn symbolicate_stacktrace(
         metrics.bad_traces += 1;
     }
 
-    (stacktrace, metrics)
+    stacktrace
 }
 
 #[derive(Debug, Clone)]
@@ -1345,13 +1339,7 @@ impl SymbolicationActor {
             let mut metrics = StacktraceMetrics::default();
             let stacktraces: Vec<_> = stacktraces
                 .into_iter()
-                .map(|trace| {
-                    let (trace, trace_metrics) =
-                        symbolicate_stacktrace(trace, &symcache_lookup, signal);
-                    metrics.update(trace_metrics);
-
-                    trace
-                })
+                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
                 .collect();
 
             let mut modules: Vec<_> = symcache_lookup
