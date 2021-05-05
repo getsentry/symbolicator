@@ -14,6 +14,13 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --pr
 
 # Build only dependencies to speed up subsequent builds
 COPY Cargo.toml Cargo.lock ./
+
+COPY crates/symsorter/Cargo.toml crates/symsorter/
+COPY crates/wasm-split/Cargo.toml crates/wasm-split/
+RUN mkdir -p crates/symsorter/src \
+    && echo "fn main() {}" > crates/symsorter/src/main.rs \
+    && mkdir -p crates/wasm-split/src \
+    && echo "fn main() {}" > crates/wasm-split/src/main.rs
 COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
 RUN mkdir -p crates/symbolicator/src \
     && echo "fn main() {}" > crates/symbolicator/src/main.rs \
