@@ -567,8 +567,9 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.1"
-source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#479281f0c8c2630c5a5a1aeec2ea74ce233d8cc6"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44919ecaf6f99e8e737bc239408931c9a01e9a6c74814fee8242dd2506b65390"
 dependencies = [
  "cfg-if 1.0.0",
  "glob",
@@ -1964,7 +1965,8 @@ dependencies = [
 [[package]]
 name = "msvc-demangler"
 version = "0.8.0"
-source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#075432259fe0eaac2f3fc225550a4db479bf3c81"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6584cf122f02fc0396420a116cd395a9a776ec4347dffe1c5119c3fcc917c060"
 dependencies = [
  "bitflags",
 ]
@@ -3586,8 +3588,9 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 
 [[package]]
 name = "symbolic"
-version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4b052742c32348e5217c9bf28ba2a1a9d4169609ef1055eaea5333ccf7a7614"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3598,8 +3601,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be7dfa630954f18297ceae1ff2890cb7f5008a0b2d2106b0468dafc45b0b6b12"
 dependencies = [
  "debugid",
  "memmap",
@@ -3610,8 +3614,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fec6e5e3c9575f509bafa63e82e98f178d50f886a23c385f27fdcbbc5f29bbf"
 dependencies = [
  "dmsort",
  "elementtree",
@@ -3638,8 +3643,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b4ba42bd1221803e965054767b1899f2db9a12c89969965c6cb3a02af7014eb"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3650,8 +3656,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7cc4b27a557b1667873c1c15c1abd51afb8946a18ec488b101360038aec56c3"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3664,8 +3671,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "8.0.5"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#3f796347dcb0f48a79550ffaff75d08e0dd2a1ff"
+version = "8.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "967d61abb3626bedf91e433e02821696cbdb9e7dd003ea13d46fe393a0dd41c7"
 dependencies = [
  "dmsort",
  "fnv",

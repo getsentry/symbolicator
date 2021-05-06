@@ -2,4 +2,4 @@
 !.git/
 !Cargo.*
 !docker-entrypoint.sh
-!crates/symbolicator/*
+!crates/**

@@ -11,9 +11,12 @@ use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
 
+use rusoto_core::credential::ProvideAwsCredentials;
+use rusoto_core::region::Region;
+
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
-use crate::sources::{FileType, S3SourceConfig, S3SourceKey};
+use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
@@ -96,18 +99,36 @@ impl S3Downloader {
         } else {
             metric!(counter("source.s3.client.create") += 1);
 
-            let s3 = Arc::new(rusoto_s3::S3Client::new_with(
-                self.http_client.clone(),
-                rusoto_credential::StaticProvider::new_minimal(
-                    key.access_key.clone(),
-                    key.secret_key.clone(),
-                ),
-                key.region.clone(),
-            ));
+            let region = key.region.clone();
+            log::debug!(
+                "Using AWS credentials provider: {:?}",
+                key.aws_credentials_provider
+            );
+            let s3 = Arc::new(match key.aws_credentials_provider {
+                AwsCredentialsProvider::Container => {
+                    let provider = rusoto_credential::ContainerProvider::new();
+                    self.create_s3_client(provider, region)
+                }
+                AwsCredentialsProvider::Static => {
+                    let provider = rusoto_credential::StaticProvider::new_minimal(
+                        key.access_key.clone(),
+                        key.secret_key.clone(),
+                    );
+                    self.create_s3_client(provider, region)
+                }
+            });
 
             container.put(key.clone(), s3.clone());
             s3
         }
+    }
+
+    fn create_s3_client<P: ProvideAwsCredentials + Send + Sync + 'static>(
+        &self,
+        provider: P,
+        region: Region,
+    ) -> rusoto_s3::S3Client {
+        rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
 
     pub async fn download_source(
@@ -195,6 +216,7 @@ mod tests {
         } else {
             Some(S3SourceKey {
                 region: rusoto_core::Region::UsEast1,
+                aws_credentials_provider: AwsCredentialsProvider::Static,
                 access_key,
                 secret_key,
             })
@@ -396,6 +418,7 @@ mod tests {
 
         let broken_key = S3SourceKey {
             region: rusoto_core::Region::UsEast1,
+            aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: "".to_owned(),
             secret_key: "".to_owned(),
         };
@@ -423,6 +446,7 @@ mod tests {
     fn test_s3_remote_dif_uri() {
         let source_key = Arc::new(S3SourceKey {
             region: rusoto_core::Region::UsEast1,
+            aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: String::from("abc"),
             secret_key: String::from("123"),
         });

@@ -137,6 +137,23 @@ where
         .map_err(|e| D::Error::custom(format!("region: {}", e)))
 }
 
+/// The types of Amazon IAM credentials providers we support.
+///
+/// For details on the AWS side, see:
+/// https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AwsCredentialsProvider {
+    Static,
+    Container,
+}
+
+impl Default for AwsCredentialsProvider {
+    fn default() -> Self {
+        AwsCredentialsProvider::Static
+    }
+}
+
 /// Amazon S3 authorization information.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
@@ -144,10 +161,16 @@ pub struct S3SourceKey {
     #[serde(deserialize_with = "deserialize_region")]
     pub region: rusoto_core::Region,
 
+    /// AWS IAM credentials provider for obtaining S3 access.
+    #[serde(default)]
+    pub aws_credentials_provider: AwsCredentialsProvider,
+
     /// S3 authorization key.
+    #[serde(default)]
     pub access_key: String,
 
     /// S3 secret key.
+    #[serde(default)]
     pub secret_key: String,
 }
 
