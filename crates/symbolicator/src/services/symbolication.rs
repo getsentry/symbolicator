@@ -1173,6 +1173,7 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     if function.contains("UserThreadStart")
         || function.contains("thread_start")
         || function.contains("start_thread")
+        || function.contains("start_wqthread")
     {
         return true;
     }
