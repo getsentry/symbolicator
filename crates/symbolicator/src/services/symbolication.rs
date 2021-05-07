@@ -1113,9 +1113,81 @@ fn symbolicate_frame(
     Ok(rv)
 }
 
+/// Stacktrace related Metrics
+///
+/// This gives some metrics about the quality of the stack traces included
+/// in a symbolication request. See the individual members for more information.
+///
+/// These numbers are being accumulated across one symbolication request, and are emitted
+/// as a histogram.
+#[derive(Default)]
+struct StacktraceMetrics {
+    /// A truncated stack trace is one that does not end in a
+    /// well known thread base.
+    truncated_traces: u64,
+
+    /// This indicated a stack trace that has at least one bad frame
+    /// from the below categories.
+    bad_traces: u64,
+
+    /// Frames that were scanned.
+    ///
+    /// These are frequently wrong and lead to bad and incomplete stack traces.
+    /// We can improve (lower) these numbers by having more usable CFI info.
+    scanned_frames: u64,
+
+    /// Unsymbolicated Frames.
+    ///
+    /// These may be the result of unavailable or broken debug info.
+    /// We can improve (lower) these numbers by having more usable debug info.
+    unsymbolicated_frames: u64,
+
+    /// Frames referencing unmapped memory regions.
+    ///
+    /// These may be the result of issues in the client-side module finder, or
+    /// broken debug-id information.
+    ///
+    /// We can improve this by fixing client-side implementations and having
+    /// proper debug-ids.
+    unmapped_frames: u64,
+}
+
+/// Determine if the [`SymbolicatedFrame`] is likely to be a thread base.
+///
+/// This is just a heuristic that matches the function to well known thread entry points.
+fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
+    let function = match frame
+        .raw
+        .function
+        .as_deref()
+        .or_else(|| frame.raw.symbol.as_deref())
+    {
+        Some(f) => f,
+        None => return false,
+    };
+
+    // C start/main
+    if matches!(function, "main" | "start") {
+        return true;
+    }
+
+    // Windows and posix thread base. These often have prefixes depending on the OS and Version, so
+    // we use a substring match here.
+    if function.contains("UserThreadStart")
+        || function.contains("thread_start")
+        || function.contains("start_thread")
+        || function.contains("start_wqthread")
+    {
+        return true;
+    }
+
+    false
+}
+
 fn symbolicate_stacktrace(
     thread: RawStacktrace,
     caches: &SymCacheLookup,
+    metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
 ) -> CompleteStacktrace {
     let mut stacktrace = CompleteStacktrace {
@@ -1126,9 +1198,17 @@ fn symbolicate_stacktrace(
     };
 
     for (index, mut frame) in thread.frames.into_iter().enumerate() {
+        if matches!(frame.trust, FrameTrust::Scan | FrameTrust::CFIScan) {
+            metrics.scanned_frames += 1;
+        }
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
             Ok(frames) => stacktrace.frames.extend(frames),
             Err(status) => {
+                metrics.unsymbolicated_frames += 1;
+                if status == FrameStatus::UnknownImage {
+                    metrics.unmapped_frames += 1;
+                }
+
                 // Since symbolication failed, the function name was not demangled. In case there is
                 // either one of `function` or `symbol`, treat that as mangled name and try to
                 // demangle it. If that succeeds, write the demangled name back.
@@ -1169,6 +1249,24 @@ fn symbolicate_stacktrace(
                 });
             }
         }
+    }
+
+    // we try to find a base frame among the bottom 5
+    if !stacktrace
+        .frames
+        .iter()
+        .rev()
+        .take(5)
+        .any(is_likely_base_frame)
+    {
+        metrics.truncated_traces += 1;
+    }
+
+    if metrics.scanned_frames > 0
+        || metrics.unsymbolicated_frames > 0
+        || metrics.unmapped_frames > 0
+    {
+        metrics.bad_traces += 1;
     }
 
     stacktrace
@@ -1242,9 +1340,10 @@ impl SymbolicationActor {
             .await;
 
         let future = async move {
+            let mut metrics = StacktraceMetrics::default();
             let stacktraces: Vec<_> = stacktraces
                 .into_iter()
-                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, signal))
+                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
                 .collect();
 
             let mut modules: Vec<_> = symcache_lookup
@@ -1265,11 +1364,24 @@ impl SymbolicationActor {
             let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
 
             metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
+            metric!(
+                time_raw("symbolication.unusable_modules") =
+                    modules.iter().filter(|m| m.raw.debug_id.is_none()).count() as u64
+            );
+
             metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+            metric!(time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces);
+            metric!(time_raw("symbolication.bad_stacktraces") = metrics.bad_traces);
+
             metric!(
                 time_raw("symbolication.num_frames") =
                     stacktraces.iter().map(|s| s.frames.len() as u64).sum()
             );
+            metric!(time_raw("symbolication.scanned_frames") = metrics.scanned_frames);
+            metric!(
+                time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames
+            );
+            metric!(time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames);
 
             CompletedSymbolicationResponse {
                 signal,
