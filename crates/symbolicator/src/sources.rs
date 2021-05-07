@@ -340,7 +340,7 @@ pub enum DirectoryLayoutType {
     /// Uses [debuginfod](https://www.mankier.com/8/debuginfod) conventions.
     #[serde(rename = "debuginfod")]
     Debuginfod,
-    /// Unified sentry propriertary bucket format.
+    /// Unified sentry proprietary bucket format.
     #[serde(rename = "unified")]
     Unified,
 }
@@ -385,8 +385,10 @@ pub enum FileType {
     #[serde(rename = "sourcebundle")]
     SourceBundle,
     /// PropertyList, mapping a dSYM UUID to a BCSymbolMap UUID for MachO.
+    #[serde(rename = "plist")]
     PList,
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
+    #[serde(rename = "bcsymbolmap")]
     BcSymbolMap,
 }
 

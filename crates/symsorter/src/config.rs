@@ -37,7 +37,7 @@ impl RunConfig {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct SortConfig {
     /// The bundle ID of this task.
-    pub bundle_id: String,
+    pub bundle_id: Option<String>,
 
     /// If enable the system will attempt to create source bundles
     pub with_sources: bool,

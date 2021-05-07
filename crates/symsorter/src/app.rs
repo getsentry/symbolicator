@@ -3,7 +3,6 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
@@ -34,12 +33,7 @@ struct Cli {
     pub prefix: Option<String>,
 
     /// The bundle ID to use.
-    #[structopt(
-        long = "bundle-id",
-        short = "b",
-        value_name = "BUNDLE_ID",
-        required_unless = "multiple-bundles"
-    )]
+    #[structopt(long = "bundle-id", short = "b", value_name = "BUNDLE_ID")]
     pub bundle_id: Option<String>,
 
     /// Derive the bundle ID from the first folder.
@@ -135,9 +129,11 @@ fn process_file(
 
         fs::create_dir_all(new_filename.parent().unwrap())?;
 
-        let refs_path = new_filename.parent().unwrap().join("refs");
-        fs::create_dir_all(&refs_path)?;
-        fs::write(&refs_path.join(&sort_config.bundle_id), b"")?;
+        if let Some(bundle_id) = &sort_config.bundle_id {
+            let refs_path = new_filename.parent().unwrap().join("refs");
+            fs::create_dir_all(&refs_path)?;
+            fs::write(&refs_path.join(bundle_id), b"")?;
+        }
 
         let meta = DebugIdMeta {
             name: Some(filename.clone()),
@@ -261,22 +257,24 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
             .reduce(|| Ok(0), |sum, res| Ok(sum? + res?))?
     }
 
-    log!("{}", style("Writing bundle meta data").bold());
+    let debug_ids = debug_ids.into_inner().unwrap();
+    let num_debug_ids = debug_ids.len();
 
-    let bundle_meta = BundleMeta {
-        name: sort_config.bundle_id.clone(),
-        timestamp: Utc::now(),
-        debug_ids: debug_ids.into_inner().unwrap(),
-    };
+    if let Some(bundle_id) = &sort_config.bundle_id {
+        log!("{}", style("Writing bundle meta data").bold());
 
-    let bundle_meta_filename = RunConfig::get()
-        .output
-        .join("bundles")
-        .join(&sort_config.bundle_id);
-    fs::create_dir_all(bundle_meta_filename.parent().unwrap())?;
-    fs::write(&bundle_meta_filename, serde_json::to_vec(&bundle_meta)?)?;
+        let bundle_meta = BundleMeta {
+            name: bundle_id.clone(),
+            timestamp: Utc::now(),
+            debug_ids,
+        };
 
-    Ok((bundle_meta.debug_ids.len(), source_bundles_created))
+        let bundle_meta_filename = RunConfig::get().output.join("bundles").join(bundle_id);
+        fs::create_dir_all(bundle_meta_filename.parent().unwrap())?;
+        fs::write(&bundle_meta_filename, serde_json::to_vec(&bundle_meta)?)?;
+    }
+
+    Ok((num_debug_ids, source_bundles_created))
 }
 
 fn execute() -> Result<()> {
@@ -297,31 +295,32 @@ fn execute() -> Result<()> {
             style("WARNING").bold().red(),
             "No compression used. Consider to pass -zz."
         );
-        std::thread::sleep(Duration::from_secs(2));
         log!();
     }
 
     let mut debug_files = 0;
     let mut source_bundles = 0;
     let mut sort_config = SortConfig {
-        bundle_id: "".into(),
+        bundle_id: None,
         with_sources: cli.with_sources,
         compression_level: cli.compression_level,
     };
 
     if cli.multiple_bundles {
         for path in cli.input.into_iter() {
-            sort_config.bundle_id = make_bundle_id(&path.file_name().unwrap().to_string_lossy());
-            log!("[bundle: {}]", style(&sort_config.bundle_id).dim());
+            let bundle_id = make_bundle_id(&path.file_name().unwrap().to_string_lossy());
+            log!("[bundle: {}]", style(&bundle_id).dim());
+            sort_config.bundle_id = Some(bundle_id);
             let (debug_files_sorted, source_bundles_created) =
                 sort_files(&sort_config, vec![path])?;
             debug_files += debug_files_sorted;
             source_bundles *= source_bundles_created;
         }
     } else {
-        let bundle_id = cli.bundle_id.unwrap();
-        anyhow::ensure!(is_bundle_id(&bundle_id), "Invalid bundle id");
-        sort_config.bundle_id = bundle_id;
+        if let Some(bundle_id) = cli.bundle_id {
+            anyhow::ensure!(is_bundle_id(&bundle_id), "Invalid bundle id");
+            sort_config.bundle_id = Some(bundle_id);
+        }
         let (debug_files_sorted, source_bundles_created) = sort_files(&sort_config, cli.input)?;
         debug_files += debug_files_sorted;
         source_bundles *= source_bundles_created;
