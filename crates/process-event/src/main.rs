@@ -102,7 +102,12 @@ mod event {
         }
 
         for stacktrace in &mut stacktraces {
-            stacktrace.frames.reverse();
+            let frames = std::mem::replace(&mut stacktrace.frames, vec![]);
+            stacktrace.frames = frames
+                .into_iter()
+                .rev()
+                .filter(|frame| frame.instruction_addr.is_some())
+                .collect();
         }
 
         serde_json::json!({
@@ -125,16 +130,22 @@ mod event {
 
     #[derive(Deserialize, Serialize)]
     struct Image {
-        #[serde(rename = "type")]
+        #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
         ty: Option<String>,
 
+        #[serde(skip_serializing_if = "Option::is_none")]
         image_addr: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         image_size: Option<u64>,
 
+        #[serde(skip_serializing_if = "Option::is_none")]
         code_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         code_file: Option<String>,
 
+        #[serde(skip_serializing_if = "Option::is_none")]
         debug_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         debug_file: Option<String>,
     }
 
@@ -165,10 +176,17 @@ mod event {
 
     #[derive(Deserialize, Serialize)]
     struct Frame {
+        #[serde(skip_serializing_if = "Option::is_none")]
         function: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         symbol: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         package: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         instruction_addr: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        addr_mode: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         trust: Option<String>,
     }
 }
