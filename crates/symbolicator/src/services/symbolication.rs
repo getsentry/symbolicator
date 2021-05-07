@@ -1117,6 +1117,9 @@ fn symbolicate_frame(
 ///
 /// This gives some metrics about the quality of the stack traces included
 /// in a symbolication request. See the individual members for more information.
+///
+/// These numbers are being accumulated across one symbolication request, and are emitted
+/// as a histogram.
 #[derive(Default)]
 struct StacktraceMetrics {
     /// A truncated stack trace is one that does not end in a
