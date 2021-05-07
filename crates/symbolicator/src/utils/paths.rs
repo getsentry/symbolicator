@@ -196,7 +196,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
             rv.push(primary_path);
             rv
         }
-        FileType::PList => Vec::new(),
+        FileType::BcSymbolMapUuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
     }
 }
@@ -278,7 +278,7 @@ fn get_symstore_path(
         }
 
         // Microsoft SymbolServer does not specify PropertyList.
-        FileType::PList => None,
+        FileType::BcSymbolMapUuidMap => None,
 
         // Microsoft SymbolServer does not speicfy BCSymbolMap.
         FileType::BcSymbolMap => None,
@@ -325,7 +325,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 
         // not available
         FileType::SourceBundle => None,
-        FileType::PList => None,
+        FileType::BcSymbolMapUuidMap => None,
         FileType::BcSymbolMap => None,
     }
 }
@@ -339,9 +339,10 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> ObjectType {
     match filetype {
         FileType::Pe | FileType::Pdb => ObjectType::Pe,
-        FileType::MachCode | FileType::MachDebug | FileType::PList | FileType::BcSymbolMap => {
-            ObjectType::Macho
-        }
+        FileType::MachCode
+        | FileType::MachDebug
+        | FileType::BcSymbolMapUuidMap
+        | FileType::BcSymbolMap => ObjectType::Macho,
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
         FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
         FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
@@ -357,7 +358,7 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         }
         FileType::Breakpad => "breakpad",
         FileType::SourceBundle => "sourcebundle",
-        FileType::PList => "plist",
+        FileType::BcSymbolMapUuidMap => "plist",
         FileType::BcSymbolMap => "bcsymbolmap",
     };
 

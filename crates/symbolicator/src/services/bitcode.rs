@@ -189,7 +189,12 @@ impl BitcodeService {
     ) -> Result<Option<BcSymbolMapHandle>, Error> {
         // First find the PList.
         let find_plist = self
-            .fetch_file_from_all_sources(uuid, FileType::PList, scope.clone(), sources.clone())
+            .fetch_file_from_all_sources(
+                uuid,
+                FileType::BcSymbolMapUuidMap,
+                scope.clone(),
+                sources.clone(),
+            )
             .await?;
         let plist_handle = match find_plist {
             Some(handle) => handle,

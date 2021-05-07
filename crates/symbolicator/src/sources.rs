@@ -384,11 +384,12 @@ pub enum FileType {
     /// Source bundle
     #[serde(rename = "sourcebundle")]
     SourceBundle,
-    /// PropertyList, mapping a dSYM UUID to a BCSymbolMap UUID for MachO.
-    #[serde(rename = "plist")]
-    PList,
+    /// A file mapping a dSYM UUID to a BCSymbolMap UUID for MachO.
+    ///
+    /// At the time of writing this only supports the XML PropertyList format, but this does
+    /// not need to remain so.
+    BcSymbolMapUuidMap,
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
-    #[serde(rename = "bcsymbolmap")]
     BcSymbolMap,
 }
 
@@ -408,7 +409,7 @@ impl FileType {
             WasmDebug,
             Breakpad,
             SourceBundle,
-            PList,
+            BcSymbolMapUuidMap,
             BcSymbolMap,
         ]
     }
@@ -445,7 +446,7 @@ impl AsRef<str> for FileType {
             FileType::WasmCode => "wasm_code",
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
-            FileType::PList => "plist",
+            FileType::BcSymbolMapUuidMap => "bcsymbolmap_uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
         }
     }
