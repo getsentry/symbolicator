@@ -2506,6 +2506,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-event"
+version = "0.3.3"
+dependencies = [
+ "anyhow",
+ "reqwest 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+ "serde_json",
+ "structopt",
+]
+
+[[package]]
 name = "procspawn"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2851,6 +2862,7 @@ dependencies = [
  "lazy_static",
  "log",
  "mime",
+ "mime_guess",
  "native-tls",
  "percent-encoding 2.1.0",
  "pin-project-lite",
