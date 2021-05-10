@@ -10,28 +10,34 @@ RUN apt-get update \
 ENV CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+# We should really depend on the rust:slim-buster images again as this
+# will automatically upgrade our Rust toolchains when a new one is
+# released.  But while we can't: bump versions manually.
+ENV RUST_TOOLCHAIN=1.52
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $RUST_TOOLCHAIN
 
 # Build only dependencies to speed up subsequent builds
 COPY Cargo.toml Cargo.lock ./
 
-COPY crates/symsorter/Cargo.toml crates/symsorter/
-COPY crates/wasm-split/Cargo.toml crates/wasm-split/
-RUN mkdir -p crates/symsorter/src \
-    && echo "fn main() {}" > crates/symsorter/src/main.rs \
-    && mkdir -p crates/wasm-split/src \
-    && echo "fn main() {}" > crates/wasm-split/src/main.rs
 COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
+
+# Build without --locked.
+#
+# CI already builds with --locked so we are sure exactly which
+# dependencies we are building with.  However because we do not copy
+# in all the crates into the build the workspace-wide Cargo.lock file
+# will get some unused dependencies pruned during this build.
 RUN mkdir -p crates/symbolicator/src \
     && echo "fn main() {}" > crates/symbolicator/src/main.rs \
-    && cargo build --release --locked
+    && cargo build --release
 
 COPY crates/symbolicator/src crates/symbolicator/src/
 COPY .git ./.git/
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
-RUN cargo build --release --locked
+RUN cargo build --release
 RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
     && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
