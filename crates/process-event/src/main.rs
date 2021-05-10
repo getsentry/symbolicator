@@ -102,7 +102,7 @@ mod event {
         }
 
         for stacktrace in &mut stacktraces {
-            let frames = std::mem::replace(&mut stacktrace.frames, vec![]);
+            let frames = std::mem::take(&mut stacktrace.frames);
             stacktrace.frames = frames
                 .into_iter()
                 .rev()
