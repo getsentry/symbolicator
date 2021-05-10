@@ -388,8 +388,10 @@ pub enum FileType {
     ///
     /// At the time of writing this only supports the XML PropertyList format, but this does
     /// not need to remain so.
+    #[serde(rename = "bcsymbolmap_uuidmap")]
     BcSymbolMapUuidMap,
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
+    #[serde(rename = "bcsymbolmap")]
     BcSymbolMap,
 }
 
