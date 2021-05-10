@@ -189,12 +189,7 @@ impl BitcodeService {
     ) -> Result<Option<BcSymbolMapHandle>, Error> {
         // First find the PList.
         let find_plist = self
-            .fetch_file_from_all_sources(
-                uuid,
-                FileType::BcSymbolMapUuidMap,
-                scope.clone(),
-                sources.clone(),
-            )
+            .fetch_file_from_all_sources(uuid, FileType::UuidMap, scope.clone(), sources.clone())
             .await?;
         let plist_handle = match find_plist {
             Some(handle) => handle,
@@ -253,7 +248,7 @@ impl BitcodeService {
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
     ///
-    /// This should only be used to fetch [`FileType::BcSymbolMapUuidMap`] and
+    /// This should only be used to fetch [`FileType::UuidMap`] and
     /// [`FileType::BcSymbolMap`].
     async fn fetch_file_from_source(
         &self,

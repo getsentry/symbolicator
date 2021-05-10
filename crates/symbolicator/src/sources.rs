@@ -384,12 +384,22 @@ pub enum FileType {
     /// Source bundle
     #[serde(rename = "sourcebundle")]
     SourceBundle,
-    /// A file mapping a dSYM UUID to a BCSymbolMap UUID for MachO.
+    /// A file mapping a MachO [`DebugId`] to an originating [`DebugId`].
     ///
-    /// At the time of writing this only supports the XML PropertyList format, but this does
-    /// not need to remain so.
-    #[serde(rename = "bcsymbolmap_uuidmap")]
-    BcSymbolMapUuidMap,
+    /// For the MachO format a [`DebugId`] is always a UUID.
+    ///
+    /// This is used when compilation introduces intermediate outputs, like Apple BitCode.
+    /// In this case some Debug Information Files will have the [`DebugId`] of the
+    /// intermediate compilation rather than of the final executable code.  Thus these maps
+    /// point to which other [`DebugId`]s provide DIFs.
+    ///
+    /// At the time of writing this is only used to map a dSYM UUID to a BCSymbolMap UUID
+    /// for MachO.  The only format supported for this is currently the XML PropertyList
+    /// format.  In the future other formats could be added to this.
+    ///
+    /// [`DebugId`]: symbolic::common::DebugId
+    #[serde(rename = "uuidmap")]
+    UuidMap,
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
     #[serde(rename = "bcsymbolmap")]
     BcSymbolMap,
@@ -411,7 +421,7 @@ impl FileType {
             WasmDebug,
             Breakpad,
             SourceBundle,
-            BcSymbolMapUuidMap,
+            UuidMap,
             BcSymbolMap,
         ]
     }
@@ -448,7 +458,7 @@ impl AsRef<str> for FileType {
             FileType::WasmCode => "wasm_code",
             FileType::Breakpad => "breakpad",
             FileType::SourceBundle => "sourcebundle",
-            FileType::BcSymbolMapUuidMap => "bcsymbolmap_uuidmap",
+            FileType::UuidMap => "uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
         }
     }
