@@ -153,7 +153,7 @@ impl DownloadService {
     pub async fn list_files(
         self: Arc<Self>,
         source: SourceConfig,
-        filetypes: &[FileType],
+        filetypes: Vec<FileType>,
         object_id: ObjectId,
         hub: Arc<Hub>,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
@@ -166,7 +166,7 @@ impl DownloadService {
                 // goes out of scope, which ensures 'static lifetime for `spawn` below.
                 let job = async move {
                     slf.sentry
-                        .list_files(cfg, object_id, filetypes.clone(), config)
+                        .list_files(cfg, object_id, &filetypes, config)
                         .bind_hub(hub)
                         .await
                 };
@@ -183,10 +183,10 @@ impl DownloadService {
                     Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
                 }
             }
-            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
-            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, &filetypes, object_id)),
+            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, &filetypes, object_id)),
+            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, &filetypes, object_id)),
+            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, &filetypes, object_id)),
         }
     }
 }
@@ -311,7 +311,12 @@ mod tests {
         let config = Arc::new(Config::default());
         let svc = DownloadService::new(config);
         let file_list = svc
-            .list_files(source.clone(), FileType::all(), objid, Hub::current())
+            .list_files(
+                source.clone(),
+                FileType::all().to_vec(),
+                objid,
+                Hub::current(),
+            )
             .await
             .unwrap();
 

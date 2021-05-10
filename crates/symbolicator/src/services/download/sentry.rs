@@ -178,8 +178,8 @@ impl SentryDownloader {
         file_types: &[FileType],
         config: Arc<Config>,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
-        // TODO(flub): LOL, we don't even handle pagination.  But sentry only starts to
-        // paginate at 20 results so i guess we get away with this for now.
+        // TODO(flub): These queries do not handle pagination.  But sentry only starts to
+        // paginate at 20 results so we get away with this for now.
 
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
@@ -195,7 +195,7 @@ impl SentryDownloader {
         }
         for file_type in file_types {
             match file_type {
-                FileType::PList => {
+                FileType::UuidMap => {
                     index_url
                         .query_pairs_mut()
                         .append_pair("file_formats", "plist");
@@ -205,8 +205,8 @@ impl SentryDownloader {
                         .query_pairs_mut()
                         .append_pair("file_formats", "bcsymbolmap");
                 }
-                // We do not currently attempt to filter objects
-                // TODO(flub): check object actor handles getting a plist correctly.
+                // We do not currently attempt to filter objects.  The object actor caches
+                // these as a "malformed" files and carries on.  But let's add them anyway.
                 _ => (),
             }
         }

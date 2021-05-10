@@ -59,14 +59,14 @@ struct CacheHandle {
 #[derive(Debug, Clone, Copy)]
 enum AuxDifKind {
     BcSymbolMap,
-    PList,
+    UuidMap,
 }
 
 impl Display for AuxDifKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AuxDifKind::BcSymbolMap => write!(f, "BCSymbolMap"),
-            AuxDifKind::PList => write!(f, "PList"),
+            AuxDifKind::UuidMap => write!(f, "PList"),
         }
     }
 }
@@ -122,14 +122,16 @@ impl FetchFileRequest {
                 match self.kind {
                     AuxDifKind::BcSymbolMap => {
                         if let Err(err) = BcSymbolMap::parse(&view) {
-                            // TODO(flub): log metric?
+                            let kind = self.kind.to_string();
+                            metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                             log::debug!("Failed to parse bcsymbolmap: {}", err);
                             return Ok(CacheStatus::Malformed);
                         }
                     }
-                    AuxDifKind::PList => {
+                    AuxDifKind::UuidMap => {
                         if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
-                            // TODO(flub): log metric?
+                            let kind = self.kind.to_string();
+                            metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                             log::debug!("Failed to parse plist: {}", err);
                             return Ok(CacheStatus::Malformed);
                         }
@@ -214,7 +216,7 @@ impl BitcodeService {
     ) -> Result<Option<BcSymbolMapHandle>, Error> {
         // First find the PList.
         let find_plist = self
-            .fetch_file_from_all_sources(uuid, AuxDifKind::PList, scope.clone(), sources.clone())
+            .fetch_file_from_all_sources(uuid, AuxDifKind::UuidMap, scope.clone(), sources.clone())
             .await?;
         let plist_handle = match find_plist {
             Some(handle) => handle,
@@ -288,12 +290,12 @@ impl BitcodeService {
         let hub = Arc::new(Hub::new_from_top(Hub::current()));
         let file_type = match dif_kind {
             AuxDifKind::BcSymbolMap => vec![FileType::BcSymbolMap],
-            AuxDifKind::PList => vec![FileType::PList],
+            AuxDifKind::UuidMap => vec![FileType::UuidMap],
         };
         let file_sources = self
             .download_svc
             .clone()
-            .list_files(source, &file_type, uuid.into(), hub)
+            .list_files(source, file_type, uuid.into(), hub)
             .await?;
 
         let mut fetch_jobs = Vec::with_capacity(file_sources.len());
