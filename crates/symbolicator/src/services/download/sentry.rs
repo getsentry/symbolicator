@@ -193,23 +193,24 @@ impl SentryDownloader {
                 .query_pairs_mut()
                 .append_pair("debug_id", &debug_id.to_string());
         }
-        for file_type in file_types {
-            match file_type {
-                FileType::UuidMap => {
-                    index_url
-                        .query_pairs_mut()
-                        .append_pair("file_formats", "plist");
-                }
-                FileType::BcSymbolMap => {
-                    index_url
-                        .query_pairs_mut()
-                        .append_pair("file_formats", "bcsymbolmap");
-                }
-                // We do not currently attempt to filter objects.  The object actor caches
-                // these as a "malformed" files and carries on.  But let's add them anyway.
-                _ => (),
-            }
-        }
+
+        // See <sentry-repo>/src/sentry/constants.py KNOWN_DIF_FORMATS for these query strings.
+        index_url.query_pairs_mut().extend_pairs(
+            file_types
+                .into_iter()
+                .map(|file_type| match file_type {
+                    FileType::UuidMap => "plist",
+                    FileType::BcSymbolMap => "bcsymbolmap",
+                    FileType::Pe => "pe",
+                    FileType::Pdb => "pdb",
+                    FileType::MachDebug | FileType::MachCode => "macho",
+                    FileType::ElfDebug | FileType::ElfCode => "elf",
+                    FileType::WasmDebug | FileType::WasmCode => "wasm",
+                    FileType::Breakpad => "breakpad",
+                    FileType::SourceBundle => "sourcebundle",
+                })
+                .map(|val| ("file_formats", val)),
+        );
 
         if let Some(ref code_id) = object_id.code_id {
             index_url
