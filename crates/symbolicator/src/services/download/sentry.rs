@@ -199,7 +199,7 @@ impl SentryDownloader {
             file_types
                 .iter()
                 .map(|file_type| match file_type {
-                    FileType::UuidMap => "plist",
+                    FileType::UuidMap => "uuidmap",
                     FileType::BcSymbolMap => "bcsymbolmap",
                     FileType::Pe => "pe",
                     FileType::Pdb => "pdb",
