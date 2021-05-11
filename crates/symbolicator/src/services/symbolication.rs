@@ -1582,10 +1582,8 @@ impl SymbolicationActor {
                     }
                     log::debug!("Processing minidump ({} bytes)", minidump.len());
                     metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-                    let state = ProcessState::from_minidump_breakpad(
-                        &ByteView::from_slice(&minidump),
-                        None,
-                    )?;
+                    let state =
+                        ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
 
                     let object_type = MinidumpState::new(&state).object_type();
 
@@ -1803,7 +1801,7 @@ impl SymbolicationActor {
         let cfi = cfi_caches.load_cfi();
         let minidump = ByteView::from_slice(&minidump);
         let timer_old = Instant::now();
-        let process_state = ProcessState::from_minidump_breakpad(&minidump, Some(&cfi))?;
+        let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
         let timer_old = timer_old.elapsed();
         let (module_list, stacktraces, minidump_state) =
             Self::post_process(process_state, cfi_caches_cloned);
@@ -1811,7 +1809,7 @@ impl SymbolicationActor {
         // Run and time the new stackwalking method if compare_stackwalking_methods was passed
         if compare_stackwalking_methods {
             let timer_new = Instant::now();
-            match ProcessState::from_minidump(&minidump, Some(&cfi)) {
+            match ProcessState::from_minidump_new(&minidump, Some(&cfi)) {
                 Ok(process_state_new) => {
                     let timer_new = timer_new.elapsed();
                     let (module_list_new, stacktraces_new, minidump_state_new) =
