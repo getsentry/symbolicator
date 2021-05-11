@@ -197,7 +197,7 @@ impl SentryDownloader {
         // See <sentry-repo>/src/sentry/constants.py KNOWN_DIF_FORMATS for these query strings.
         index_url.query_pairs_mut().extend_pairs(
             file_types
-                .into_iter()
+                .iter()
                 .map(|file_type| match file_type {
                     FileType::UuidMap => "plist",
                     FileType::BcSymbolMap => "bcsymbolmap",
