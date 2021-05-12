@@ -48,5 +48,7 @@ pub async fn read_multipart_request_options(
     field: multipart::Field<Payload>,
 ) -> Result<RequestOptions, Error> {
     let data = read_multipart_data(field, MAX_JSON_SIZE).await?;
-    Ok(serde_json::from_slice(&data)?)
+    let options = serde_json::from_slice(&data)?;
+    log::info!("{:?}", options);
+    Ok(options)
 }
