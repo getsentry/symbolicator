@@ -1201,11 +1201,13 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
 }
 
 fn record_symbolication_metrics(
-    origin: String,
+    origin: StacktraceOrigin,
     metrics: StacktraceMetrics,
     modules: &[CompleteObjectInfo],
     stacktraces: &[CompleteStacktrace],
 ) {
+    let origin = origin.to_string();
+
     let platform = modules
         .first()
         .map(|m| m.raw.ty)
@@ -1390,7 +1392,7 @@ fn symbolicate_stacktrace(
     stacktrace
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 /// Where the Stack Traces in the [`SymbolicateStacktraces`] originated from.
 pub enum StacktraceOrigin {
     /// The stack traces came from a direct request to symbolicate.
@@ -1476,7 +1478,7 @@ impl SymbolicationActor {
         let sources = request.sources.clone();
         let scope = request.scope.clone();
         let signal = request.signal;
-        let origin = request.origin.to_string();
+        let origin = request.origin;
 
         let symcache_lookup = symcache_lookup
             .fetch_symcaches(self.symcaches, request)
