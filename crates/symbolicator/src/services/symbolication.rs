@@ -1200,6 +1200,97 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     false
 }
 
+fn record_symbolication_metrics(
+    origin: String,
+    metrics: StacktraceMetrics,
+    modules: &[CompleteObjectInfo],
+    stacktraces: &[CompleteStacktrace],
+) {
+    let platform = modules
+        .first()
+        .map(|m| m.raw.ty)
+        .unwrap_or(ObjectType::Unknown)
+        .to_string();
+
+    // Unusable modules that don’t have any kind of ID to look them up with
+    let unusable_modules = modules
+        .iter()
+        .filter(|m| {
+            let id = object_id_from_object_info(&m.raw);
+            id.debug_id.is_none() && id.code_id.is_none()
+        })
+        .count() as u64;
+
+    // Modules that failed parsing
+    let unparsable_modules = modules
+        .iter()
+        .filter(|m| m.debug_status == ObjectFileStatus::Malformed)
+        .count() as u64;
+
+    metric!(
+        time_raw("symbolication.num_modules") = modules.len() as u64,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unusable_modules") = unusable_modules,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unparsable_modules") = unparsable_modules,
+        "platform" => &platform, "origin" => &origin,
+    );
+
+    metric!(
+        time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.short_stacktraces") = metrics.short_traces,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.bad_stacktraces") = metrics.bad_traces,
+        "platform" => &platform, "origin" => &origin,
+    );
+
+    metric!(
+        time_raw("symbolication.num_frames") =
+            stacktraces.iter().map(|s| s.frames.len() as u64).sum(),
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.scanned_frames") = metrics.scanned_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_context_frames") =
+            metrics.unsymbolicated_context_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_cfi_frames") =
+            metrics.unsymbolicated_cfi_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_scanned_frames") =
+            metrics.unsymbolicated_scanned_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+}
+
 fn symbolicate_stacktrace(
     thread: RawStacktrace,
     caches: &SymCacheLookup,
@@ -1415,89 +1506,7 @@ impl SymbolicationActor {
             modules.sort_by_key(|&(index, _)| index);
             let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
 
-            let platform = modules
-                .first()
-                .map(|m| m.raw.ty)
-                .unwrap_or(ObjectType::Unknown)
-                .to_string();
-
-            // Unusable modules that don’t have any kind of ID to look them up with
-            let unusable_modules = modules
-                .iter()
-                .filter(|m| {
-                    let id = object_id_from_object_info(&m.raw);
-                    id.debug_id.is_none() && id.code_id.is_none()
-                })
-                .count() as u64;
-
-            // Modules that failed parsing
-            let unparsable_modules = modules
-                .iter()
-                .filter(|m| m.debug_status == ObjectFileStatus::Malformed)
-                .count() as u64;
-
-            metric!(
-                time_raw("symbolication.num_modules") = modules.len() as u64,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unusable_modules") = unusable_modules,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unparsable_modules") = unparsable_modules,
-                "platform" => &platform, "origin" => &origin,
-            );
-
-            metric!(
-                time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.short_stacktraces") = metrics.short_traces,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.bad_stacktraces") = metrics.bad_traces,
-                "platform" => &platform, "origin" => &origin,
-            );
-
-            metric!(
-                time_raw("symbolication.num_frames") =
-                    stacktraces.iter().map(|s| s.frames.len() as u64).sum(),
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.scanned_frames") = metrics.scanned_frames,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unsymbolicated_context_frames") =
-                    metrics.unsymbolicated_context_frames,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unsymbolicated_cfi_frames") =
-                    metrics.unsymbolicated_cfi_frames,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unsymbolicated_scanned_frames") =
-                    metrics.unsymbolicated_scanned_frames,
-                "platform" => &platform, "origin" => &origin,
-            );
-            metric!(
-                time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames,
-                "platform" => &platform, "origin" => &origin,
-            );
+            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
 
             CompletedSymbolicationResponse {
                 signal,
