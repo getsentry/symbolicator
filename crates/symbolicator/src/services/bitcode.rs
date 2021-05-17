@@ -3,6 +3,7 @@
 //! This service downloads and caches the `PList` and [`BcSymbolMap`] used to un-obfuscate
 //! debug symbols for obfuscated Apple bitcode builds.
 
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Cursor, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -54,6 +55,22 @@ struct CacheHandle {
     data: ByteView<'static>,
 }
 
+/// The kinds of DIFs which are stored in the cache accessed from [`FetchFileRequest`].
+#[derive(Debug, Clone, Copy)]
+enum AuxDifKind {
+    BcSymbolMap,
+    UuidMap,
+}
+
+impl Display for AuxDifKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AuxDifKind::BcSymbolMap => write!(f, "BCSymbolMap"),
+            AuxDifKind::UuidMap => write!(f, "UuidMap"),
+        }
+    }
+}
+
 /// The interface to the [`Cacher`] service.
 ///
 /// The main work is done by the [`CacheItemRequest`] impl.
@@ -62,6 +79,7 @@ struct FetchFileRequest {
     scope: Scope,
     file_source: RemoteDif,
     uuid: DebugId,
+    kind: AuxDifKind,
     download_svc: Arc<DownloadService>,
     cache: Arc<Cacher<FetchFileRequest>>,
 }
@@ -101,14 +119,23 @@ impl FetchFileRequest {
                 decompressed.seek(SeekFrom::Start(0))?;
                 let view = ByteView::map_file(decompressed)?;
 
-                if BcSymbolMap::test(&view) {
-                    if let Err(err) = BcSymbolMap::parse(&view) {
-                        log::debug!("Failed to parse bcsymbolmap: {}", err);
-                        return Ok(CacheStatus::Malformed);
+                match self.kind {
+                    AuxDifKind::BcSymbolMap => {
+                        if let Err(err) = BcSymbolMap::parse(&view) {
+                            let kind = self.kind.to_string();
+                            metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
+                            log::debug!("Failed to parse bcsymbolmap: {}", err);
+                            return Ok(CacheStatus::Malformed);
+                        }
                     }
-                } else if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
-                    log::debug!("Failed to parse plist: {}", err);
-                    return Ok(CacheStatus::Malformed);
+                    AuxDifKind::UuidMap => {
+                        if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
+                            let kind = self.kind.to_string();
+                            metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
+                            log::debug!("Failed to parse plist: {}", err);
+                            return Ok(CacheStatus::Malformed);
+                        }
+                    }
                 }
 
                 // The file is valid, lets save it.
@@ -189,7 +216,7 @@ impl BitcodeService {
     ) -> Result<Option<BcSymbolMapHandle>, Error> {
         // First find the PList.
         let find_plist = self
-            .fetch_file_from_all_sources(uuid, FileType::UuidMap, scope.clone(), sources.clone())
+            .fetch_file_from_all_sources(uuid, AuxDifKind::UuidMap, scope.clone(), sources.clone())
             .await?;
         let plist_handle = match find_plist {
             Some(handle) => handle,
@@ -202,7 +229,7 @@ impl BitcodeService {
         let find_symbolmap = self
             .fetch_file_from_all_sources(
                 uuid_mapping.original_uuid(),
-                FileType::BcSymbolMap,
+                AuxDifKind::BcSymbolMap,
                 scope,
                 sources,
             )
@@ -221,17 +248,17 @@ impl BitcodeService {
     async fn fetch_file_from_all_sources(
         &self,
         uuid: DebugId,
-        file_type: FileType,
+        dif_kind: AuxDifKind,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
         sentry::configure_scope(|scope| {
             scope.set_tag("auxdif.debugid", uuid);
-            scope.set_extra("auxdif.file", file_type.as_ref().into());
+            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
         });
         let mut jobs = Vec::with_capacity(sources.len());
         for source in sources.iter() {
-            let job = self.fetch_file_from_source(uuid, file_type, scope.clone(), source.clone());
+            let job = self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone());
             jobs.push(job);
         }
         let results = future::join_all(jobs).await;
@@ -253,7 +280,7 @@ impl BitcodeService {
     async fn fetch_file_from_source(
         &self,
         uuid: DebugId,
-        file_type: FileType,
+        dif_kind: AuxDifKind,
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
@@ -261,10 +288,14 @@ impl BitcodeService {
             scope.set_extra("auxdif.source", source.type_name().into())
         });
         let hub = Arc::new(Hub::new_from_top(Hub::current()));
+        let file_type = match dif_kind {
+            AuxDifKind::BcSymbolMap => vec![FileType::BcSymbolMap],
+            AuxDifKind::UuidMap => vec![FileType::UuidMap],
+        };
         let file_sources = self
             .download_svc
             .clone()
-            .list_files(source, &[file_type], uuid.into(), hub)
+            .list_files(source, file_type, uuid.into(), hub)
             .await?;
 
         let mut fetch_jobs = Vec::with_capacity(file_sources.len());
@@ -278,6 +309,7 @@ impl BitcodeService {
                 scope,
                 file_source,
                 uuid,
+                kind: dif_kind,
                 download_svc: self.download_svc.clone(),
                 cache: self.cache.clone(),
             };

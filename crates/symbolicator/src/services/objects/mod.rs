@@ -251,7 +251,7 @@ impl ObjectsActor {
                 let type_name = source.type_name();
                 self.download_svc
                     .clone()
-                    .list_files(source.clone(), filetypes, identifier.clone(), hub)
+                    .list_files(source.clone(), filetypes.to_vec(), identifier.clone(), hub)
                     .await
                     .unwrap_or_else(|err| {
                         // This basically only happens for the Sentry source type, when doing
