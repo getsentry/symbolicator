@@ -1126,6 +1126,9 @@ struct StacktraceMetrics {
     /// well known thread base.
     truncated_traces: u64,
 
+    /// We classify a short stacktrace as one that has less that 5 frames.
+    short_traces: u64,
+
     /// This indicated a stack trace that has at least one bad frame
     /// from the below categories.
     bad_traces: u64,
@@ -1141,6 +1144,19 @@ struct StacktraceMetrics {
     /// These may be the result of unavailable or broken debug info.
     /// We can improve (lower) these numbers by having more usable debug info.
     unsymbolicated_frames: u64,
+
+    /// Unsymbolicated Context Frames.
+    ///
+    /// This is an indication of broken contexts, or failure to extract it from minidumps.
+    unsymbolicated_context_frames: u64,
+
+    /// Unsymbolicated Frames found by scanning.
+    unsymbolicated_scanned_frames: u64,
+
+    /// Unsymbolicated Frames found by CFI.
+    ///
+    /// These are the result of the *previous* frame being wrongly scanned.
+    unsymbolicated_cfi_frames: u64,
 
     /// Frames referencing unmapped memory regions.
     ///
@@ -1184,6 +1200,99 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     false
 }
 
+fn record_symbolication_metrics(
+    origin: StacktraceOrigin,
+    metrics: StacktraceMetrics,
+    modules: &[CompleteObjectInfo],
+    stacktraces: &[CompleteStacktrace],
+) {
+    let origin = origin.to_string();
+
+    let platform = modules
+        .first()
+        .map(|m| m.raw.ty)
+        .unwrap_or(ObjectType::Unknown)
+        .to_string();
+
+    // Unusable modules that don’t have any kind of ID to look them up with
+    let unusable_modules = modules
+        .iter()
+        .filter(|m| {
+            let id = object_id_from_object_info(&m.raw);
+            id.debug_id.is_none() && id.code_id.is_none()
+        })
+        .count() as u64;
+
+    // Modules that failed parsing
+    let unparsable_modules = modules
+        .iter()
+        .filter(|m| m.debug_status == ObjectFileStatus::Malformed)
+        .count() as u64;
+
+    metric!(
+        time_raw("symbolication.num_modules") = modules.len() as u64,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unusable_modules") = unusable_modules,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unparsable_modules") = unparsable_modules,
+        "platform" => &platform, "origin" => &origin,
+    );
+
+    metric!(
+        time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.short_stacktraces") = metrics.short_traces,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.bad_stacktraces") = metrics.bad_traces,
+        "platform" => &platform, "origin" => &origin,
+    );
+
+    metric!(
+        time_raw("symbolication.num_frames") =
+            stacktraces.iter().map(|s| s.frames.len() as u64).sum(),
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.scanned_frames") = metrics.scanned_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_context_frames") =
+            metrics.unsymbolicated_context_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_cfi_frames") =
+            metrics.unsymbolicated_cfi_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unsymbolicated_scanned_frames") =
+            metrics.unsymbolicated_scanned_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+    metric!(
+        time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames,
+        "platform" => &platform, "origin" => &origin,
+    );
+}
+
 fn symbolicate_stacktrace(
     thread: RawStacktrace,
     caches: &SymCacheLookup,
@@ -1198,17 +1307,14 @@ fn symbolicate_stacktrace(
     };
 
     for (index, mut frame) in thread.frames.into_iter().enumerate() {
-        if matches!(frame.trust, FrameTrust::Scan | FrameTrust::CFIScan) {
-            metrics.scanned_frames += 1;
-        }
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
-            Ok(frames) => stacktrace.frames.extend(frames),
-            Err(status) => {
-                metrics.unsymbolicated_frames += 1;
-                if status == FrameStatus::UnknownImage {
-                    metrics.unmapped_frames += 1;
+            Ok(frames) => {
+                if matches!(frame.trust, FrameTrust::Scan) {
+                    metrics.scanned_frames += 1;
                 }
-
+                stacktrace.frames.extend(frames)
+            }
+            Err(status) => {
                 // Since symbolication failed, the function name was not demangled. In case there is
                 // either one of `function` or `symbol`, treat that as mangled name and try to
                 // demangle it. If that succeeds, write the demangled name back.
@@ -1242,6 +1348,20 @@ fn symbolicate_stacktrace(
                     continue;
                 }
 
+                metrics.unsymbolicated_frames += 1;
+                match frame.trust {
+                    FrameTrust::Scan => {
+                        metrics.scanned_frames += 1;
+                        metrics.unsymbolicated_scanned_frames += 1;
+                    }
+                    FrameTrust::CFI => metrics.unsymbolicated_cfi_frames += 1,
+                    FrameTrust::Context => metrics.unsymbolicated_context_frames += 1,
+                    _ => {}
+                }
+                if status == FrameStatus::UnknownImage {
+                    metrics.unmapped_frames += 1;
+                }
+
                 stacktrace.frames.push(SymbolicatedFrame {
                     status,
                     original_index: Some(index),
@@ -1261,15 +1381,36 @@ fn symbolicate_stacktrace(
     {
         metrics.truncated_traces += 1;
     }
+    if stacktrace.frames.len() < 5 {
+        metrics.short_traces += 1;
+    }
 
-    if metrics.scanned_frames > 0
-        || metrics.unsymbolicated_frames > 0
-        || metrics.unmapped_frames > 0
-    {
+    if metrics.scanned_frames > 0 || metrics.unsymbolicated_frames > 0 {
         metrics.bad_traces += 1;
     }
 
     stacktrace
+}
+
+#[derive(Debug, Copy, Clone)]
+/// Where the Stack Traces in the [`SymbolicateStacktraces`] originated from.
+pub enum StacktraceOrigin {
+    /// The stack traces came from a direct request to symbolicate.
+    Symbolicate,
+    /// The stack traces were extracted from a minidump.
+    Minidump,
+    /// The stack traces came from an Apple Crash Report.
+    AppleCrashReport,
+}
+
+impl std::fmt::Display for StacktraceOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            StacktraceOrigin::Symbolicate => "symbolicate",
+            StacktraceOrigin::Minidump => "minidump",
+            StacktraceOrigin::AppleCrashReport => "applecrashreport",
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1286,6 +1427,9 @@ pub struct SymbolicateStacktraces {
 
     /// A list of external sources to load debug files.
     pub sources: Arc<[SourceConfig]>,
+
+    /// Where the stacktraces originated from.
+    pub origin: StacktraceOrigin,
 
     /// A list of threads containing stack traces.
     pub stacktraces: Vec<RawStacktrace>,
@@ -1334,6 +1478,7 @@ impl SymbolicationActor {
         let sources = request.sources.clone();
         let scope = request.scope.clone();
         let signal = request.signal;
+        let origin = request.origin;
 
         let symcache_lookup = symcache_lookup
             .fetch_symcaches(self.symcaches, request)
@@ -1363,25 +1508,7 @@ impl SymbolicationActor {
             modules.sort_by_key(|&(index, _)| index);
             let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
 
-            metric!(time_raw("symbolication.num_modules") = modules.len() as u64);
-            metric!(
-                time_raw("symbolication.unusable_modules") =
-                    modules.iter().filter(|m| m.raw.debug_id.is_none()).count() as u64
-            );
-
-            metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
-            metric!(time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces);
-            metric!(time_raw("symbolication.bad_stacktraces") = metrics.bad_traces);
-
-            metric!(
-                time_raw("symbolication.num_frames") =
-                    stacktraces.iter().map(|s| s.frames.len() as u64).sum()
-            );
-            metric!(time_raw("symbolication.scanned_frames") = metrics.scanned_frames);
-            metric!(
-                time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames
-            );
-            metric!(time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames);
+            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
 
             CompletedSymbolicationResponse {
                 signal,
@@ -1836,6 +1963,7 @@ impl SymbolicationActor {
                 modules,
                 scope,
                 sources,
+                origin: StacktraceOrigin::Minidump,
                 signal: None,
                 stacktraces,
                 options,
@@ -2022,6 +2150,7 @@ impl SymbolicationActor {
                 modules,
                 scope,
                 sources,
+                origin: StacktraceOrigin::AppleCrashReport,
                 signal: None,
                 stacktraces,
                 options,
@@ -2205,6 +2334,7 @@ mod tests {
             scope: Scope::Global,
             signal: None,
             sources: Arc::from(sources),
+            origin: StacktraceOrigin::Symbolicate,
             stacktraces: vec![RawStacktrace {
                 frames: vec![RawFrame {
                     instruction_addr: HexValue(0x1_0000_0fa0),
@@ -2331,6 +2461,7 @@ mod tests {
             modules: Vec::new(),
             stacktraces,
             signal: None,
+            origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([]),
             scope: Default::default(),
             options: Default::default(),
@@ -2458,6 +2589,7 @@ mod tests {
             modules: modules.into_iter().map(From::from).collect(),
             stacktraces,
             signal: None,
+            origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([source]),
             scope: Default::default(),
             options: Default::default(),

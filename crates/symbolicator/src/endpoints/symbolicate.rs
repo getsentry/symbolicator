@@ -1,7 +1,7 @@
 use actix_web::{error, App, Error, Json, Query, State};
 use serde::Deserialize;
 
-use crate::services::symbolication::SymbolicateStacktraces;
+use crate::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 use crate::services::Service;
 use crate::sources::SourceConfig;
 use crate::types::{
@@ -65,6 +65,7 @@ async fn symbolicate_frames(
         scope: params.scope,
         signal: body.signal,
         sources,
+        origin: StacktraceOrigin::Symbolicate,
         stacktraces: body.stacktraces,
         modules: body.modules.into_iter().map(From::from).collect(),
         options: body.options,
