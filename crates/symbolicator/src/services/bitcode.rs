@@ -66,7 +66,7 @@ impl Display for AuxDifKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AuxDifKind::BcSymbolMap => write!(f, "BCSymbolMap"),
-            AuxDifKind::UuidMap => write!(f, "PList"),
+            AuxDifKind::UuidMap => write!(f, "UuidMap"),
         }
     }
 }
