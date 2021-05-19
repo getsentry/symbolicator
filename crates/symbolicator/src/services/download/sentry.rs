@@ -15,7 +15,7 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, USER_AGENT};
+use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, USER_AGENT};
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
@@ -175,8 +175,12 @@ impl SentryDownloader {
         &self,
         source: Arc<SentrySourceConfig>,
         object_id: ObjectId,
+        file_types: &[FileType],
         config: Arc<Config>,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
+        // TODO(flub): These queries do not handle pagination.  But sentry only starts to
+        // paginate at 20 results so we get away with this for now.
+
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -189,6 +193,24 @@ impl SentryDownloader {
                 .query_pairs_mut()
                 .append_pair("debug_id", &debug_id.to_string());
         }
+
+        // See <sentry-repo>/src/sentry/constants.py KNOWN_DIF_FORMATS for these query strings.
+        index_url.query_pairs_mut().extend_pairs(
+            file_types
+                .iter()
+                .map(|file_type| match file_type {
+                    FileType::UuidMap => "uuidmap",
+                    FileType::BcSymbolMap => "bcsymbolmap",
+                    FileType::Pe => "pe",
+                    FileType::Pdb => "pdb",
+                    FileType::MachDebug | FileType::MachCode => "macho",
+                    FileType::ElfDebug | FileType::ElfCode => "elf",
+                    FileType::WasmDebug | FileType::WasmCode => "wasm",
+                    FileType::Breakpad => "breakpad",
+                    FileType::SourceBundle => "sourcebundle",
+                })
+                .map(|val| ("file_formats", val)),
+        );
 
         if let Some(ref code_id) = object_id.code_id {
             index_url
