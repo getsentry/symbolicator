@@ -1932,7 +1932,6 @@ impl SymbolicationActor {
         let timer_old = timer_old.elapsed();
 
         metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
-        metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not tested");
 
         let (module_list, stacktraces, minidump_state) =
             Self::post_process(process_state, cfi_caches_cloned);
@@ -1964,7 +1963,10 @@ impl SymbolicationActor {
                     sentry::capture_error(&e);
                 }
             }
+        } else {
+            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not tested");
         }
+
         Ok(Json((module_list, stacktraces, minidump_state)))
     }
 
