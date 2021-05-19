@@ -1930,6 +1930,10 @@ impl SymbolicationActor {
         let timer_old = Instant::now();
         let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
         let timer_old = timer_old.elapsed();
+
+        metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
+        metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not tested");
+
         let (module_list, stacktraces, minidump_state) =
             Self::post_process(process_state, cfi_caches_cloned);
 
@@ -1947,12 +1951,11 @@ impl SymbolicationActor {
                         && module_list == module_list_new
                         && minidump_state == minidump_state_new
                     {
-                        metric!(counter("minidump.stackwalk.identical") += 1);
+                        metric!(counter("minidump.stackwalk.results") += 1, "equality" => "equal");
                     } else {
-                        metric!(counter("minidump.stackwalk.different") += 1);
+                        metric!(counter("minidump.stackwalk.results") += 1, "equality" => "unequal");
                     }
 
-                    metric!(timer("minidump.stackwalk.duration") = timer_old, "method" => "old");
                     metric!(timer("minidump.stackwalk.duration") = timer_new, "method" => "new");
                 }
 
