@@ -2008,24 +2008,32 @@ impl SymbolicationActor {
                         Self::procspawn_inner_stackwalk(cfi_caches, minidump, None, true)
                     },
                 );
-                let stackwalking_result_new = Self::join_procspawn(
+                match Self::join_procspawn(
                     spawn_result,
                     Duration::from_secs(60),
-                    "minidump.stackwalk.spawn.error",
+                    "minidump.stackwalk_new.spawn.error",
                     &minidump,
                     diagnostics_cache,
-                )?;
+                ) {
+                    Ok(stackwalking_result_new) => {
+                        metric!(timer("minidump.stackwalk.duration") = stackwalking_result_new.run_time, "method" => "new");
 
-                metric!(timer("minidump.stackwalk.duration") = stackwalking_result_new.run_time, "method" => "new");
+                        if stackwalking_result_new.module_list
+                            == stackwalking_result_old.module_list
+                            && stackwalking_result_new.stacktraces
+                                == stackwalking_result_old.stacktraces
+                            && stackwalking_result_new.minidump_state
+                                == stackwalking_result_old.minidump_state
+                        {
+                            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "equal")
+                        } else {
+                            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not equal")
+                        }
+                    }
 
-                if stackwalking_result_new.module_list == stackwalking_result_old.module_list
-                    && stackwalking_result_new.stacktraces == stackwalking_result_old.stacktraces
-                    && stackwalking_result_new.minidump_state
-                        == stackwalking_result_old.minidump_state
-                {
-                    metric!(counter("minidump.stackwalk.results") += 1, "equality" => "equal")
-                } else {
-                    metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not equal")
+                    Err(e) => {
+                        sentry::capture_error::<dyn std::error::Error>(e.as_ref());
+                    }
                 }
             }
 
