@@ -13,6 +13,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
+use crate::logging::LogError;
 use crate::types::Scope;
 
 /// Content of cache items whose writing failed.
@@ -421,11 +422,41 @@ impl Caches {
     }
 
     pub fn cleanup(&self) -> Result<()> {
-        self.objects.cleanup()?;
-        self.object_meta.cleanup()?;
-        self.symcaches.cleanup()?;
-        self.cficaches.cleanup()?;
-        Ok(())
+        // Destructure so we do not accidentally forget to cleanup one of our members.
+        let Self {
+            objects,
+            object_meta,
+            auxdifs,
+            symcaches,
+            cficaches,
+            diagnostics,
+        } = &self;
+
+        // Collect results so we can fail the entire function.  But we do not want to early
+        // return since we should at least attempt to clean up all caches.
+        let results = vec![
+            objects.cleanup(),
+            object_meta.cleanup(),
+            symcaches.cleanup(),
+            cficaches.cleanup(),
+            diagnostics.cleanup(),
+            auxdifs.cleanup(),
+        ];
+
+        let mut first_error = None;
+        for result in results {
+            if let Err(err) = result {
+                let stderr: &dyn std::error::Error = &*err;
+                log::error!("Failed to cleanup cache: {}", LogError(stderr));
+                if first_error.is_none() {
+                    first_error = Some(err);
+                }
+            }
+        }
+        match first_error {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
     }
 }
 
@@ -445,7 +476,9 @@ mod tests {
     use std::io::Write;
     use std::thread::sleep;
 
-    use crate::config::DerivedCacheConfig;
+    use crate::config::{
+        CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
+    };
 
     fn tempdir() -> io::Result<tempfile::TempDir> {
         tempfile::tempdir_in(".")
@@ -644,5 +677,86 @@ mod tests {
         assert!(old_mtime < new_mtime);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_cleanup() {
+        let tempdir = tempdir().unwrap();
+
+        // Create entries in our caches that are an hour old.
+        let mtime = FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+
+        let objects_dir = tempdir.path().join("objects");
+        fs::create_dir(&objects_dir).unwrap();
+        let object_entry = objects_dir.join("entry");
+        fs::write(&object_entry, "contents").unwrap();
+        filetime::set_file_mtime(&object_entry, mtime).unwrap();
+
+        let object_meta_dir = tempdir.path().join("object_meta");
+        fs::create_dir(&object_meta_dir).unwrap();
+        let object_meta_entry = object_meta_dir.join("entry");
+        fs::write(&object_meta_entry, "contents").unwrap();
+        filetime::set_file_mtime(&object_meta_entry, mtime).unwrap();
+
+        let auxdifs_dir = tempdir.path().join("auxdifs");
+        fs::create_dir(&auxdifs_dir).unwrap();
+        let auxdifs_entry = auxdifs_dir.join("entry");
+        fs::write(&auxdifs_entry, "contents").unwrap();
+        filetime::set_file_mtime(&auxdifs_entry, mtime).unwrap();
+
+        let symcaches_dir = tempdir.path().join("symcaches");
+        fs::create_dir(&symcaches_dir).unwrap();
+        let symcaches_entry = symcaches_dir.join("entry");
+        fs::write(&symcaches_entry, "contents").unwrap();
+        filetime::set_file_mtime(&symcaches_entry, mtime).unwrap();
+
+        let cficaches_dir = tempdir.path().join("cficaches");
+        fs::create_dir(&cficaches_dir).unwrap();
+        let cficaches_entry = cficaches_dir.join("entry");
+        fs::write(&cficaches_entry, "contents").unwrap();
+        filetime::set_file_mtime(&cficaches_entry, mtime).unwrap();
+
+        let diagnostics_dir = tempdir.path().join("diagnostics");
+        fs::create_dir(&diagnostics_dir).unwrap();
+        let diagnostics_entry = diagnostics_dir.join("entry");
+        fs::write(&diagnostics_entry, "contents").unwrap();
+        filetime::set_file_mtime(&diagnostics_entry, mtime).unwrap();
+
+        // Configure the caches to expire after 1 second.
+        let caches = Caches::from_config(&Config {
+            cache_dir: Some(tempdir.path().to_path_buf()),
+            caches: CacheConfigs {
+                downloaded: DownloadedCacheConfig {
+                    max_unused_for: Some(Duration::from_secs(1)),
+                    ..Default::default()
+                },
+                derived: DerivedCacheConfig {
+                    max_unused_for: Some(Duration::from_secs(1)),
+                    ..Default::default()
+                },
+                diagnostics: DiagnosticsCacheConfig {
+                    retention: Some(Duration::from_secs(1)),
+                },
+            },
+            ..Default::default()
+        })
+        .unwrap();
+
+        // Finally do some testing
+        assert!(object_entry.is_file());
+        assert!(object_meta_entry.is_file());
+        assert!(auxdifs_entry.is_file());
+        assert!(symcaches_entry.is_file());
+        assert!(cficaches_entry.is_file());
+        assert!(diagnostics_entry.is_file());
+
+        caches.cleanup().unwrap();
+
+        assert!(!object_entry.is_file());
+        assert!(!object_meta_entry.is_file());
+        assert!(!auxdifs_entry.is_file());
+        assert!(!symcaches_entry.is_file());
+        assert!(!cficaches_entry.is_file());
+        assert!(!diagnostics_entry.is_file());
     }
 }
