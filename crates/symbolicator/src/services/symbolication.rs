@@ -2017,7 +2017,7 @@ impl SymbolicationActor {
                     ),
                     |(cfi_caches, minidump, spawn_time)| {
                         if let Ok(duration) = spawn_time.elapsed() {
-                            metric!(timer("minidump.stackwalk_new.spawn.duration") = duration);
+                            metric!(timer("minidump.stackwalk.spawn.duration") = duration);
                         }
                         let procspawn::serde::Json(cfi_caches) = cfi_caches;
                         Self::procspawn_inner_stackwalk(
