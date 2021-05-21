@@ -686,56 +686,36 @@ mod tests {
         // Create entries in our caches that are an hour old.
         let mtime = FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
 
-        let objects_dir = tempdir.path().join("objects");
-        fs::create_dir(&objects_dir).unwrap();
-        let object_entry = objects_dir.join("entry");
-        fs::write(&object_entry, "contents").unwrap();
-        filetime::set_file_mtime(&object_entry, mtime).unwrap();
+        let create = |cache_name: &str| {
+            let dir = tempdir.path().join(cache_name);
+            fs::create_dir(&dir).unwrap();
+            let entry = dir.join("entry");
+            fs::write(&entry, "contents").unwrap();
+            filetime::set_file_mtime(&entry, mtime).unwrap();
+            entry
+        };
 
-        let object_meta_dir = tempdir.path().join("object_meta");
-        fs::create_dir(&object_meta_dir).unwrap();
-        let object_meta_entry = object_meta_dir.join("entry");
-        fs::write(&object_meta_entry, "contents").unwrap();
-        filetime::set_file_mtime(&object_meta_entry, mtime).unwrap();
+        let object_entry = create("objects");
+        let object_meta_entry = create("object_meta");
+        let auxdifs_entry = create("auxdifs");
+        let symcaches_entry = create("symcaches");
+        let cficaches_entry = create("cficaches");
+        let diagnostics_entry = create("diagnostics");
 
-        let auxdifs_dir = tempdir.path().join("auxdifs");
-        fs::create_dir(&auxdifs_dir).unwrap();
-        let auxdifs_entry = auxdifs_dir.join("entry");
-        fs::write(&auxdifs_entry, "contents").unwrap();
-        filetime::set_file_mtime(&auxdifs_entry, mtime).unwrap();
-
-        let symcaches_dir = tempdir.path().join("symcaches");
-        fs::create_dir(&symcaches_dir).unwrap();
-        let symcaches_entry = symcaches_dir.join("entry");
-        fs::write(&symcaches_entry, "contents").unwrap();
-        filetime::set_file_mtime(&symcaches_entry, mtime).unwrap();
-
-        let cficaches_dir = tempdir.path().join("cficaches");
-        fs::create_dir(&cficaches_dir).unwrap();
-        let cficaches_entry = cficaches_dir.join("entry");
-        fs::write(&cficaches_entry, "contents").unwrap();
-        filetime::set_file_mtime(&cficaches_entry, mtime).unwrap();
-
-        let diagnostics_dir = tempdir.path().join("diagnostics");
-        fs::create_dir(&diagnostics_dir).unwrap();
-        let diagnostics_entry = diagnostics_dir.join("entry");
-        fs::write(&diagnostics_entry, "contents").unwrap();
-        filetime::set_file_mtime(&diagnostics_entry, mtime).unwrap();
-
-        // Configure the caches to expire after 1 second.
+        // Configure the caches to expire after 1 minute.
         let caches = Caches::from_config(&Config {
             cache_dir: Some(tempdir.path().to_path_buf()),
             caches: CacheConfigs {
                 downloaded: DownloadedCacheConfig {
-                    max_unused_for: Some(Duration::from_secs(1)),
+                    max_unused_for: Some(Duration::from_secs(60)),
                     ..Default::default()
                 },
                 derived: DerivedCacheConfig {
-                    max_unused_for: Some(Duration::from_secs(1)),
+                    max_unused_for: Some(Duration::from_secs(60)),
                     ..Default::default()
                 },
                 diagnostics: DiagnosticsCacheConfig {
-                    retention: Some(Duration::from_secs(1)),
+                    retention: Some(Duration::from_secs(60)),
                 },
             },
             ..Default::default()
