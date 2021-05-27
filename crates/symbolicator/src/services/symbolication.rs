@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
@@ -68,7 +68,7 @@ enum StackwalkingMethod {
 }
 
 /// The output of a successful stack walk.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct StackwalkingOutput {
     module_list: Vec<CompleteObjectInfo>,
     stacktraces: Vec<RawStacktrace>,
@@ -1744,7 +1744,7 @@ impl SymbolicationActor {
                 Duration::from_secs(20),
                 "minidump.modules.spawn.error",
                 &minidump,
-                diagnostics_cache,
+                &diagnostics_cache,
             )
         };
 
@@ -1764,7 +1764,7 @@ impl SymbolicationActor {
         timeout: Duration,
         metric: &str,
         minidump: &[u8],
-        minidump_cache: crate::cache::Cache,
+        minidump_cache: &crate::cache::Cache,
     ) -> Result<T, anyhow::Error>
     where
         T: Serialize + DeserializeOwned,
@@ -1811,7 +1811,7 @@ impl SymbolicationActor {
     /// Save a minidump to temporary location.
     fn save_minidump(
         minidump: &[u8],
-        failed_cache: crate::cache::Cache,
+        failed_cache: &crate::cache::Cache,
     ) -> anyhow::Result<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
             std::fs::create_dir_all(dir)?;
@@ -2004,7 +2004,7 @@ impl SymbolicationActor {
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
                 &minidump,
-                diagnostics_cache.clone(),
+                &diagnostics_cache,
             )?;
 
             if options.compare_stackwalking_methods {
@@ -2033,19 +2033,26 @@ impl SymbolicationActor {
                     Duration::from_secs(60),
                     "minidump.stackwalk_new.spawn.error",
                     &minidump,
-                    diagnostics_cache,
+                    &diagnostics_cache,
                 ) {
                     Ok(stackwalking_result_new) => {
-                        if stackwalking_result_new.module_list
-                            == stackwalking_result_old.module_list
-                            && stackwalking_result_new.stacktraces
-                                == stackwalking_result_old.stacktraces
-                            && stackwalking_result_new.minidump_state
-                                == stackwalking_result_old.minidump_state
-                        {
-                            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "equal")
-                        } else {
-                            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not equal")
+                        if stackwalking_result_new != stackwalking_result_old {
+                            Self::save_minidump(&minidump, &diagnostics_cache)
+                                .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
+                                .map(|r| {
+                                    if let Some(path) = r {
+                                        sentry::configure_scope(|scope| {
+                                            scope.set_extra(
+                                                "crashed_minidump",
+                                                sentry::protocol::Value::String(
+                                                    path.to_string_lossy().to_string(),
+                                                ),
+                                            );
+                                        });
+                                    }
+                                })
+                                .ok();
+                            sentry::capture_error(&*anyhow!("Different stackwalking results"));
                         }
                     }
 
