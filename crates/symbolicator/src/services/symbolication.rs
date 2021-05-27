@@ -1744,7 +1744,7 @@ impl SymbolicationActor {
                 Duration::from_secs(20),
                 "minidump.modules.spawn.error",
                 &minidump,
-                diagnostics_cache,
+                &diagnostics_cache,
             )
         };
 
@@ -1764,7 +1764,7 @@ impl SymbolicationActor {
         timeout: Duration,
         metric: &str,
         minidump: &[u8],
-        minidump_cache: crate::cache::Cache,
+        minidump_cache: &crate::cache::Cache,
     ) -> Result<T, anyhow::Error>
     where
         T: Serialize + DeserializeOwned,
@@ -1811,7 +1811,7 @@ impl SymbolicationActor {
     /// Save a minidump to temporary location.
     fn save_minidump(
         minidump: &[u8],
-        failed_cache: crate::cache::Cache,
+        failed_cache: &crate::cache::Cache,
     ) -> anyhow::Result<Option<PathBuf>> {
         if let Some(dir) = failed_cache.cache_dir() {
             std::fs::create_dir_all(dir)?;
@@ -2004,7 +2004,7 @@ impl SymbolicationActor {
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
                 &minidump,
-                diagnostics_cache.clone(),
+                &diagnostics_cache,
             )?;
 
             if options.compare_stackwalking_methods {
@@ -2033,7 +2033,7 @@ impl SymbolicationActor {
                     Duration::from_secs(60),
                     "minidump.stackwalk_new.spawn.error",
                     &minidump,
-                    diagnostics_cache,
+                    &diagnostics_cache,
                 ) {
                     Ok(stackwalking_result_new) => {
                         if stackwalking_result_new.module_list
