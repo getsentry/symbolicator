@@ -68,7 +68,7 @@ enum StackwalkingMethod {
 }
 
 /// The output of a successful stack walk.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 struct StackwalkingOutput {
     module_list: Vec<CompleteObjectInfo>,
     stacktraces: Vec<RawStacktrace>,
@@ -2036,13 +2036,7 @@ impl SymbolicationActor {
                     &diagnostics_cache,
                 ) {
                     Ok(stackwalking_result_new) => {
-                        if stackwalking_result_new.module_list
-                            == stackwalking_result_old.module_list
-                            && stackwalking_result_new.stacktraces
-                                == stackwalking_result_old.stacktraces
-                            && stackwalking_result_new.minidump_state
-                                == stackwalking_result_old.minidump_state
-                        {
+                        if stackwalking_result_new == stackwalking_result_old {
                             metric!(counter("minidump.stackwalk.results") += 1, "equality" => "equal")
                         } else {
                             metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not equal")
