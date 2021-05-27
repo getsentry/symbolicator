@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
@@ -2036,10 +2036,23 @@ impl SymbolicationActor {
                     &diagnostics_cache,
                 ) {
                     Ok(stackwalking_result_new) => {
-                        if stackwalking_result_new == stackwalking_result_old {
-                            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "equal")
-                        } else {
-                            metric!(counter("minidump.stackwalk.results") += 1, "equality" => "not equal")
+                        if stackwalking_result_new != stackwalking_result_old {
+                            Self::save_minidump(&minidump, &diagnostics_cache)
+                                .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
+                                .map(|r| {
+                                    if let Some(path) = r {
+                                        sentry::configure_scope(|scope| {
+                                            scope.set_extra(
+                                                "crashed_minidump",
+                                                sentry::protocol::Value::String(
+                                                    path.to_string_lossy().to_string(),
+                                                ),
+                                            );
+                                        });
+                                    }
+                                })
+                                .ok();
+                            sentry::capture_error(&*anyhow!("Different stackwalking results"));
                         }
                     }
 
