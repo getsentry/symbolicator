@@ -2111,20 +2111,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b7a8e9be5e039e2ff869df49155f1c06bd01ade2117ec783e56ab0932b67a8f"
-dependencies = [
- "num-bigint 0.3.2",
- "num-complex",
- "num-integer",
- "num-iter",
- "num-rational",
- "num-traits",
-]
-
-[[package]]
 name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2136,55 +2122,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-bigint"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d0a3d5e207573f948a9e5376662aa743a2ea13f7c50a554d7af443a73fbfeba"
-dependencies = [
- "autocfg 1.0.0",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-complex"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "747d632c0c558b87dbabbe6a82f3b4ae03720d0646ac5b7b4dae89394be5f2c5"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "num-integer"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
 dependencies = [
  "autocfg 1.0.0",
- "num-traits",
-]
-
-[[package]]
-name = "num-iter"
-version = "0.1.42"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2021c8337a54d21aca0d59a92577a029af9431cb59b909b03252b9c164fad59"
-dependencies = [
- "autocfg 1.0.0",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-rational"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12ac428b1cb17fce6f731001d307d351ec70a6d202fc2e60f7d4c5e42d8f4f07"
-dependencies = [
- "autocfg 1.0.0",
- "num-bigint 0.3.2",
- "num-integer",
  "num-traits",
 ]
 
@@ -3510,7 +3453,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "692ca13de57ce0613a363c8c2f1de925adebc81b04c923ac60c5488bb44abe4b"
 dependencies = [
  "chrono",
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-traits",
 ]
 
@@ -3686,7 +3629,7 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3698,7 +3641,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "debugid",
  "memmap",
@@ -3710,7 +3653,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "dmsort",
  "elementtree",
@@ -3739,7 +3682,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3751,7 +3694,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3767,11 +3710,10 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "dmsort",
  "fnv",
- "num",
  "symbolic-common",
  "symbolic-debuginfo",
  "thiserror",
@@ -3780,7 +3722,7 @@ dependencies = [
 [[package]]
 name = "symbolic-unwind"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#41871dfffd62aeb0cefba98b01fb511fddb6fd45"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#db2c1902dd14e11fdf818485a0c25f36cbf6d114"
 dependencies = [
  "insta",
  "nom 6.1.2",
