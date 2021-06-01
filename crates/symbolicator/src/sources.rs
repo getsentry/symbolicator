@@ -448,3 +448,59 @@ impl AsRef<str> for FileType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rusoto_core::Region;
+
+    use super::*;
+
+    #[test]
+    fn test_s3_config() {
+        let text = r#"
+          - id: us-east
+            type: s3
+            bucket: my-bucket
+            region: us-east-1
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+          - id: minio
+            type: s3
+            bucket: my-bucket
+            region:
+              - minio
+              - http://minio.minio.svc.cluster.local:9000
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let sources: Vec<SourceConfig> = serde_yaml::from_str(&text).unwrap();
+        assert_eq!(*sources[0].id(), SourceId("us-east".to_string()));
+        match &sources[0] {
+            SourceConfig::S3(cfg) => {
+                assert_eq!(cfg.id, SourceId("us-east".to_string()));
+                assert_eq!(cfg.bucket, "my-bucket");
+                assert_eq!(cfg.source_key.region, Region::UsEast1);
+                assert_eq!(cfg.source_key.access_key, "the-access-key");
+                assert_eq!(cfg.source_key.secret_key, "the-secret-key");
+            }
+            _ => unreachable!(),
+        }
+        match &sources[1] {
+            SourceConfig::S3(cfg) => {
+                assert_eq!(cfg.id, SourceId("minio".to_string()));
+                assert_eq!(
+                    cfg.source_key.region,
+                    Region::Custom {
+                        name: "minio".to_string(),
+                        endpoint: "http://minio.minio.svc.cluster.local:9000".to_string(),
+                    }
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+}
