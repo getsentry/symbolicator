@@ -1794,8 +1794,7 @@ impl SymbolicationActor {
     ///
     /// This processes the minidump to stackwalk all the threads found in the minidump.
     ///
-    /// The `cfi_results` must contain all modules found in the minidump (extracted using
-    /// [`SymbolicationActor::get_referenced_modules_from_minidump`]) and the result of trying
+    /// The `cfi_results` will contain all modules found in the minidump and the result of trying
     /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`].
     ///
     /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
