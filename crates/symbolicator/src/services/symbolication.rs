@@ -1864,12 +1864,9 @@ impl SymbolicationActor {
     /// modules.
     async fn stackwalk_minidump_with_cfi(
         &self,
-        scope: Scope,
         minidump: Bytes,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-        cfi_results: Vec<CfiCacheResult>,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), anyhow::Error> {
+        cfi_results: &[CfiCacheResult],
+    ) -> Result<(Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState), anyhow::Error> {
         let cfi_caches = CfiCacheModules::new(cfi_results.iter());
 
         let pool = self.spawnpool.clone();
@@ -1951,37 +1948,20 @@ impl SymbolicationActor {
                 },
             );
 
-            let (modules, stacktraces, minidump_state) = Self::join_procspawn(
+            Self::join_procspawn(
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
                 &minidump,
                 diagnostics_cache,
-            )?;
-
-            let request = SymbolicateStacktraces {
-                modules,
-                scope,
-                sources,
-                origin: StacktraceOrigin::Minidump,
-                signal: None,
-                stacktraces,
-                options,
-            };
-
-            Ok((request, minidump_state))
+            )
         };
 
-        let result = self
+        Ok(self
             .threadpool
             .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Minidump stackwalk future cancelled")?;
-
-        // keep the results until symbolication has finished to ensure we don't drop
-        // temporary files prematurely.
-        drop(cfi_results);
-        result
+            .await?
+            .context("Minidump stackwalk future cancelled")?)
     }
 
     async fn do_stackwalk_minidump(
@@ -2002,8 +1982,25 @@ impl SymbolicationActor {
                 .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
                 .await;
 
-            self.stackwalk_minidump_with_cfi(scope, minidump, sources, options, cfi_caches)
-                .await
+            let result = self
+                .stackwalk_minidump_with_cfi(minidump, &cfi_caches)
+                .await;
+
+            // make sure the cache is alive and temporary files are not deleted prematurely
+            drop(cfi_caches);
+
+            let (modules, stacktraces, minidump_state) = result?;
+
+            let request = SymbolicateStacktraces {
+                modules,
+                scope,
+                sources,
+                origin: StacktraceOrigin::Minidump,
+                signal: None,
+                stacktraces,
+                options,
+            };
+            Ok::<_, anyhow::Error>((request, minidump_state))
         };
 
         let future = timeout_compat(Duration::from_secs(3600), future);
