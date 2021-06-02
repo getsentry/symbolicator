@@ -1183,7 +1183,7 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     };
 
     // C start/main
-    if matches!(function, "main" | "start") {
+    if matches!(function, "main" | "start" | "_start") {
         return true;
     }
 
@@ -1381,7 +1381,9 @@ fn symbolicate_stacktrace(
     {
         metrics.truncated_traces += 1;
     }
-    if stacktrace.frames.len() < 5 {
+    // macOS has some extremely short but perfectly fine stacks, such as:
+    // `__workq_kernreturn` > `_pthread_wqthread` > `start_wqthread`
+    if stacktrace.frames.len() < 3 {
         metrics.short_traces += 1;
     }
 
