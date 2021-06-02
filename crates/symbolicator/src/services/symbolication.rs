@@ -1761,7 +1761,7 @@ impl SymbolicationActor {
     async fn load_cfi_caches(
         &self,
         scope: Scope,
-        requests: Vec<(CodeModuleId, RawObjectInfo)>,
+        requests: &[(CodeModuleId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
         let mut futures = Vec::with_capacity(requests.len());
@@ -1780,7 +1780,7 @@ impl SymbolicationActor {
                         scope,
                     })
                     .await;
-                (code_id, result)
+                ((*code_id).to_owned(), result)
             };
 
             // Clone hub because of join_all concurrency.
@@ -1934,19 +1934,38 @@ impl SymbolicationActor {
             metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
             let mut cfi_caches = vec![];
+            fn is_cached(caches: &[CfiCacheResult], id: &CodeModuleId) -> bool {
+                caches.iter().any(|(cached_id, _)| cached_id == id)
+            }
 
-            let result = self
-                .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
-                .await?;
+            let mut iterations = 0;
 
-            cfi_caches.extend(
-                self.load_cfi_caches(scope.clone(), result.referenced_modules, sources.clone())
-                    .await,
-            );
+            let result = loop {
+                iterations += 1;
 
-            let result = self
-                .stackwalk_minidump_with_cfi(minidump, &cfi_caches)
-                .await?;
+                let result = self
+                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
+                    .await?;
+
+                let missing_modules: Vec<_> = result
+                    .referenced_modules
+                    .iter()
+                    // This can be O(n^2) which is bad, doing HashSet intersections would be better
+                    .filter(|(id, _)| !is_cached(&cfi_caches, id))
+                    .map(|t| (t.0, &t.1))
+                    .collect();
+
+                // We put a hard limit of 5 iterations here.
+                // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+                if missing_modules.is_empty() || iterations >= 5 {
+                    break result;
+                }
+
+                cfi_caches.extend(
+                    self.load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
+                        .await,
+                );
+            };
 
             let StackWalkMinidumpResult {
                 modules,
@@ -1957,6 +1976,8 @@ impl SymbolicationActor {
 
             // make sure the cache is alive and temporary files are not deleted prematurely
             drop(cfi_caches);
+
+            metric!(time_raw("minidump.stackwalk.iterations") = iterations);
 
             let request = SymbolicateStacktraces {
                 modules,
