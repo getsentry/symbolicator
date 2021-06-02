@@ -6,7 +6,6 @@ targets:
   - name: registry
     apps:
       app:symbolicator:
-        name: registry
         urlTemplate: https://downloads.sentry-cdn.com/symbolicator/{{version}}/{{file}}
         includeNames: /^symbolicator-.*$/i
   - name: gcs
