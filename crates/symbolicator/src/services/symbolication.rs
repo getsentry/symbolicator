@@ -1675,69 +1675,15 @@ impl MinidumpState {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct StackWalkMinidumpResult {
+    modules: Vec<CompleteObjectInfo>,
+    referenced_modules: Vec<(CodeModuleId, RawObjectInfo)>,
+    stacktraces: Vec<RawStacktrace>,
+    minidump_state: MinidumpState,
+}
+
 impl SymbolicationActor {
-    /// Extract the modules from a minidump.
-    ///
-    /// The modules are needed before we know which DIFs are needed to stackwalk this
-    /// minidump.  The minidumps are processed in a subprocess to avoid crashes from the
-    /// native library bringing down symbolicator.
-    ///
-    /// This will perform stackwalking without having the full CFI information required.
-    /// This results in more stack scanning, generally leading to a superset of the actual
-    /// referenced modules.  This reduces the total number of CFI DIFs we try and fetch as
-    /// usually minidumps contain a large number of modules which are entirely unused.  It
-    /// is however possible we miss some modules which are used after all.
-    async fn get_referenced_modules_from_minidump(
-        &self,
-        minidump: Bytes,
-    ) -> Result<Vec<(CodeModuleId, RawObjectInfo)>, anyhow::Error> {
-        let pool = self.spawnpool.clone();
-        let diagnostics_cache = self.diagnostics_cache.clone();
-        let lazy = async move {
-            let spawn_time = std::time::SystemTime::now();
-            let spawn_result = pool.spawn(
-                (minidump.clone(), spawn_time),
-                |(minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
-                    if let Ok(duration) = spawn_time.elapsed() {
-                        metric!(timer("minidump.modules.spawn.duration") = duration);
-                    }
-                    log::debug!("Processing minidump ({} bytes)", minidump.len());
-                    metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-                    let state =
-                        ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
-
-                    let object_type = MinidumpState::new(&state).object_type();
-
-                    let cfi_modules = state
-                        .referenced_modules()
-                        .into_iter()
-                        .filter_map(|code_module| {
-                            Some((
-                                code_module.id()?,
-                                object_info_from_minidump_module(object_type, code_module),
-                            ))
-                        })
-                        .collect();
-
-                    Ok(procspawn::serde::Json(cfi_modules))
-                },
-            );
-
-            Self::join_procspawn(
-                spawn_result,
-                Duration::from_secs(20),
-                "minidump.modules.spawn.error",
-                &minidump,
-                diagnostics_cache,
-            )
-        };
-
-        self.threadpool
-            .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Getting minidump referenced modules future cancelled")?
-    }
-
     /// Join a procspawn handle with a timeout.
     ///
     /// This handles the procspawn result, makes sure to appropriately log any failures and
@@ -1866,7 +1812,7 @@ impl SymbolicationActor {
         &self,
         minidump: Bytes,
         cfi_results: &[CfiCacheResult],
-    ) -> Result<(Vec<CompleteObjectInfo>, Vec<RawStacktrace>, MinidumpState), anyhow::Error> {
+    ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
         let cfi_caches = CfiCacheModules::new(cfi_results.iter());
 
         let pool = self.spawnpool.clone();
@@ -1891,13 +1837,22 @@ impl SymbolicationActor {
                     let minidump = ByteView::from_slice(&minidump);
                     let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
                     let minidump_state = MinidumpState::new(&process_state);
+                    let object_type = minidump_state.object_type();
+
+                    let referenced_modules = process_state
+                        .referenced_modules()
+                        .into_iter()
+                        .filter_map(|code_module| {
+                            Some((
+                                code_module.id()?,
+                                object_info_from_minidump_module(object_type, code_module),
+                            ))
+                        })
+                        .collect();
 
                     // Start building the module list for the symbolication response.
-                    let mut module_builder = ModuleListBuilder::new(
-                        cfi_caches,
-                        &process_state,
-                        minidump_state.object_type(),
-                    );
+                    let mut module_builder =
+                        ModuleListBuilder::new(cfi_caches, &process_state, object_type);
 
                     // Finally iterate through the threads and build the stacktraces to
                     // return, marking modules as used when they are referenced by a frame.
@@ -1940,11 +1895,12 @@ impl SymbolicationActor {
                         });
                     }
 
-                    Ok(procspawn::serde::Json((
-                        module_builder.build(),
+                    Ok(procspawn::serde::Json(StackWalkMinidumpResult {
+                        modules: module_builder.build(),
+                        referenced_modules,
                         stacktraces,
                         minidump_state,
-                    )))
+                    }))
                 },
             );
 
@@ -1974,22 +1930,33 @@ impl SymbolicationActor {
         let future = async move {
             let minidump = Bytes::from(minidump);
 
-            let referenced_modules = self
-                .get_referenced_modules_from_minidump(minidump.clone())
+            log::debug!("Processing minidump ({} bytes)", minidump.len());
+            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
+
+            let mut cfi_caches = vec![];
+
+            let result = self
+                .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
                 .await?;
 
-            let cfi_caches = self
-                .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
-                .await;
+            cfi_caches.extend(
+                self.load_cfi_caches(scope.clone(), result.referenced_modules, sources.clone())
+                    .await,
+            );
 
             let result = self
                 .stackwalk_minidump_with_cfi(minidump, &cfi_caches)
-                .await;
+                .await?;
+
+            let StackWalkMinidumpResult {
+                modules,
+                stacktraces,
+                minidump_state,
+                ..
+            } = result;
 
             // make sure the cache is alive and temporary files are not deleted prematurely
             drop(cfi_caches);
-
-            let (modules, stacktraces, minidump_state) = result?;
 
             let request = SymbolicateStacktraces {
                 modules,
