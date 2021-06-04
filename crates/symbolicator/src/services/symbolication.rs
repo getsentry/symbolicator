@@ -130,8 +130,7 @@ impl<'a> SymCacheLookupResult<'a> {
 /// The CFI modules referenced by a minidump for CFI processing.
 ///
 /// This is populated from the [`CfiCacheResult`], which is the result of looking up the
-/// modules determined to be referenced by this minidump by
-/// [`SymbolicationActor::get_referenced_modules_from_minidump`].  It contains the CFI cache
+/// modules determined to be referenced by this minidump.  It contains the CFI cache
 /// status of the modules and allows loading the CFI from the caches for the correct
 /// minidump stackwalking.
 ///
@@ -139,51 +138,62 @@ impl<'a> SymCacheLookupResult<'a> {
 /// provided by it.  This can later be used to compile the required modules information
 /// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
 /// this.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CfiCacheModules {
     inner: BTreeMap<CodeModuleId, CfiModule>,
 }
 
 impl CfiCacheModules {
     /// Creates a new CFI cache entries for code modules.
-    fn new<'a>(cfi_caches: impl Iterator<Item = &'a CfiCacheResult>) -> Self {
-        let inner = cfi_caches
-            .map(|(code_id, cache_result)| {
-                let cfi_module = match cache_result {
-                    Ok(cfi_cache) => {
-                        let cfi_status = match cfi_cache.status() {
-                            CacheStatus::Positive => ObjectFileStatus::Found,
-                            CacheStatus::Negative => ObjectFileStatus::Missing,
-                            CacheStatus::Malformed => {
-                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                                log::warn!("Error while parsing cficache: {}", LogError(&err));
-                                ObjectFileStatus::from(&err)
-                            }
-                        };
-                        let cfi_path = match cfi_cache.status() {
-                            CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
-                            _ => None,
-                        };
-                        CfiModule {
-                            features: cfi_cache.features(),
-                            cfi_status,
-                            cfi_path,
-                            cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
-                            ..Default::default()
+    fn new() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+
+    /// Check if the Cache already contains the module with the given `id`.
+    fn has_module(&self, id: &CodeModuleId) -> bool {
+        self.inner.contains_key(id)
+    }
+
+    /// Extend the CacheModules with the fetched caches represented by
+    /// [`CfiCacheResult`].
+    fn extend(&mut self, cfi_caches: impl IntoIterator<Item = CfiCacheResult>) {
+        let iter = cfi_caches.into_iter().map(|(code_id, cache_result)| {
+            let cfi_module = match cache_result {
+                Ok(cfi_cache) => {
+                    let cfi_status = match cfi_cache.status() {
+                        CacheStatus::Positive => ObjectFileStatus::Found,
+                        CacheStatus::Negative => ObjectFileStatus::Missing,
+                        CacheStatus::Malformed => {
+                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            log::warn!("Error while parsing cficache: {}", LogError(&err));
+                            ObjectFileStatus::from(&err)
                         }
+                    };
+                    let cfi_path = match cfi_cache.status() {
+                        CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
+                        _ => None,
+                    };
+                    CfiModule {
+                        features: cfi_cache.features(),
+                        cfi_status,
+                        cfi_path,
+                        cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
+                        ..Default::default()
                     }
-                    Err(err) => {
-                        log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
-                        CfiModule {
-                            cfi_status: ObjectFileStatus::from(err.as_ref()),
-                            ..Default::default()
-                        }
+                }
+                Err(err) => {
+                    log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    CfiModule {
+                        cfi_status: ObjectFileStatus::from(err.as_ref()),
+                        ..Default::default()
                     }
-                };
-                (*code_id, cfi_module)
-            })
-            .collect();
-        Self { inner }
+                }
+            };
+            (code_id, cfi_module)
+        });
+        self.inner.extend(iter)
     }
 
     /// Load the CFI information from the cache.
@@ -271,7 +281,7 @@ impl CfiCacheModules {
 }
 
 /// A module which was referenced in a minidump and processing information for it.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct CfiModule {
     /// Combined features provided by all the DIFs we found for this module.
     features: ObjectFeatures,
@@ -1810,10 +1820,9 @@ impl SymbolicationActor {
     async fn stackwalk_minidump_with_cfi(
         &self,
         minidump: Bytes,
-        cfi_results: &[CfiCacheResult],
+        cfi_caches: &CfiCacheModules,
     ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
-        let cfi_caches = CfiCacheModules::new(cfi_results.iter());
-
+        let cfi_caches = cfi_caches.to_owned();
         let pool = self.spawnpool.clone();
         let diagnostics_cache = self.diagnostics_cache.clone();
         let lazy = async move {
@@ -1932,10 +1941,7 @@ impl SymbolicationActor {
             log::debug!("Processing minidump ({} bytes)", minidump.len());
             metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
-            let mut cfi_caches = vec![];
-            fn is_cached(caches: &[CfiCacheResult], id: &CodeModuleId) -> bool {
-                caches.iter().any(|(cached_id, _)| cached_id == id)
-            }
+            let mut cfi_caches = CfiCacheModules::new();
 
             let mut iterations = 0;
 
@@ -1949,8 +1955,7 @@ impl SymbolicationActor {
                 let missing_modules: Vec<_> = result
                     .referenced_modules
                     .iter()
-                    // This can be O(n^2) which is bad, doing HashSet intersections would be better
-                    .filter(|(id, _)| !is_cached(&cfi_caches, id))
+                    .filter(|(id, _)| !cfi_caches.has_module(id))
                     .map(|t| (t.0, &t.1))
                     .collect();
 
@@ -1960,10 +1965,10 @@ impl SymbolicationActor {
                     break result;
                 }
 
-                cfi_caches.extend(
-                    self.load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
-                        .await,
-                );
+                let loaded_caches = self
+                    .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
+                    .await;
+                cfi_caches.extend(loaded_caches);
             };
 
             let StackWalkMinidumpResult {
