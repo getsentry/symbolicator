@@ -344,13 +344,13 @@ impl ModuleListBuilder {
     fn process_stacktraces(&mut self, stacktraces: &[RawStacktrace]) {
         for trace in stacktraces {
             if let Some(first_frame) = trace.frames.first() {
-                let return_address = first_frame.instruction_addr.0;
-                self.mark_referenced(return_address);
+                let addr = first_frame.instruction_addr.0;
+                self.mark_referenced(addr);
             }
             for frame_pair in trace.frames.windows(2) {
                 if let [prev_frame, next_frame] = frame_pair {
-                    let return_address = next_frame.instruction_addr.0;
-                    self.mark_referenced(return_address);
+                    let addr = next_frame.instruction_addr.0;
+                    self.mark_referenced(addr);
 
                     if let Some(info_index) = self.find_module_index(prev_frame.instruction_addr.0)
                     {
@@ -2607,7 +2607,7 @@ mod tests {
     }
 
     fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {
-        RawObjectInfo {
+        let mut info: CompleteObjectInfo = RawObjectInfo {
             ty: ObjectType::Elf,
             code_id: None,
             code_file: None,
@@ -2616,7 +2616,9 @@ mod tests {
             image_addr: HexValue(addr),
             image_size: size,
         }
-        .into()
+        .into();
+        info.unwind_status = Some(ObjectFileStatus::Unused);
+        info
     }
 
     #[test]

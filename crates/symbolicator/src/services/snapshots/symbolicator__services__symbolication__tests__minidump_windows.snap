@@ -1,5 +1,5 @@
 ---
-source: src/services/symbolication.rs
+source: crates/symbolicator/src/services/symbolication.rs
 expression: response.await.unwrap()
 ---
 status: completed
@@ -244,7 +244,7 @@ modules:
     image_addr: "0x70a10000"
     image_size: 598016
   - debug_status: unused
-    unwind_status: unused
+    unwind_status: missing
     features:
       has_debug_info: false
       has_unwind_info: false
@@ -370,7 +370,7 @@ modules:
     image_addr: "0x74450000"
     image_size: 266240
   - debug_status: missing
-    unwind_status: unused
+    unwind_status: missing
     features:
       has_debug_info: false
       has_unwind_info: false
@@ -421,7 +421,7 @@ modules:
     image_addr: "0x75130000"
     image_size: 368640
   - debug_status: unused
-    unwind_status: unused
+    unwind_status: missing
     features:
       has_debug_info: false
       has_unwind_info: false
@@ -487,7 +487,7 @@ modules:
     image_addr: "0x76db0000"
     image_size: 1708032
   - debug_status: missing
-    unwind_status: unused
+    unwind_status: missing
     features:
       has_debug_info: false
       has_unwind_info: false
