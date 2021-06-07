@@ -252,25 +252,31 @@ impl BitcodeService {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
-        sentry::configure_scope(|scope| {
-            scope.set_tag("auxdif.debugid", uuid);
-            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
-        });
-        let mut jobs = Vec::with_capacity(sources.len());
-        for source in sources.iter() {
-            let job = self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone());
-            jobs.push(job);
-        }
-        let results = future::join_all(jobs).await;
-        let mut ret = None;
-        for result in results {
-            match result {
-                Ok(Some(handle)) => ret = Some(handle),
-                Ok(None) => (),
-                Err(err) => return Err(err),
-            }
-        }
-        Ok(ret)
+        sentry::with_scope(
+            |scope| {
+                scope.set_tag("auxdif.debugid", uuid);
+                scope.set_extra("auxdif.kind", dif_kind.to_string().into());
+            },
+            || async {
+                let mut jobs = Vec::with_capacity(sources.len());
+                for source in sources.iter() {
+                    let job =
+                        self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone());
+                    jobs.push(job);
+                }
+                let results = future::join_all(jobs).await;
+                let mut ret = None;
+                for result in results {
+                    match result {
+                        Ok(Some(handle)) => ret = Some(handle),
+                        Ok(None) => (),
+                        Err(err) => return Err(err),
+                    }
+                }
+                Ok(ret)
+            },
+        )
+        .await
     }
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
@@ -284,10 +290,9 @@ impl BitcodeService {
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
-        sentry::configure_scope(|scope| {
-            scope.set_extra("auxdif.source", source.type_name().into())
-        });
         let hub = Arc::new(Hub::new_from_top(Hub::current()));
+        hub.configure_scope(|scope| scope.set_extra("auxdif.source", source.type_name().into()));
+
         let file_type = match dif_kind {
             AuxDifKind::BcSymbolMap => vec![FileType::BcSymbolMap],
             AuxDifKind::UuidMap => vec![FileType::UuidMap],
@@ -295,7 +300,7 @@ impl BitcodeService {
         let file_sources = self
             .download_svc
             .clone()
-            .list_files(source, file_type, uuid.into(), hub)
+            .list_files(source, file_type, uuid.into(), hub.clone())
             .await?;
 
         let mut fetch_jobs = Vec::with_capacity(file_sources.len());
@@ -313,10 +318,7 @@ impl BitcodeService {
                 download_svc: self.download_svc.clone(),
                 cache: self.cache.clone(),
             };
-            let job = self
-                .cache
-                .compute_memoized(request)
-                .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()));
+            let job = self.cache.compute_memoized(request).bind_hub(hub.clone());
             fetch_jobs.push(job);
         }
 
@@ -330,7 +332,7 @@ impl BitcodeService {
                     let stderr: &dyn std::error::Error = (*err).as_ref();
                     let mut event = sentry::event_from_error(stderr);
                     event.message = Some("Failure fetching auxiliary DIF file from source".into());
-                    sentry::capture_event(event);
+                    hub.capture_event(event);
                 }
             }
         }
