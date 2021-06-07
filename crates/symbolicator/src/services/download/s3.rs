@@ -142,7 +142,7 @@ impl S3Downloader {
 
         let source_key = &file_source.source.source_key;
         let result = self
-            .get_s3_client(&source_key)
+            .get_s3_client(source_key)
             .get_object(rusoto_s3::GetObjectRequest {
                 key: key.clone(),
                 bucket: bucket.clone(),

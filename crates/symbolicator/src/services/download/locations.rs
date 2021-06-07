@@ -42,7 +42,7 @@ impl SourceLocation {
 
     /// Returns this location as a local (relative) Path.
     pub fn path(&self) -> &Path {
-        &Path::new(&self.0)
+        Path::new(&self.0)
     }
 
     /// Returns this location relative to the given base.
