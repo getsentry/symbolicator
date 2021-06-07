@@ -126,7 +126,7 @@ version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a55f82cfe485775d02112886f4169bde0c5894d75e79ead7eafe7e40a25e45f7"
 dependencies = [
- "gimli",
+ "gimli 0.23.0",
 ]
 
 [[package]]
@@ -1264,6 +1264,12 @@ name = "gimli"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6503fe142514ca4799d4c26297c4248239fe8838d827db6bd6065c6ed29a6ce"
+
+[[package]]
+name = "gimli"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e4075386626662786ddb0ec9081e7c7eeb1ba31951f447ca780ef9f5d568189"
 dependencies = [
  "fallible-iterator",
  "stable_deref_trait",
@@ -1277,9 +1283,9 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "goblin"
-version = "0.3.4"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "669cdc3826f69a51d3f8fc3f86de81c2378110254f678b8407977736122057a4"
+checksum = "ee05c709047abe5eb0571880d2887ac77299c5f0835f8e6b7f4d5404f8962921"
 dependencies = [
  "log",
  "plain",
@@ -1963,8 +1969,9 @@ dependencies = [
 
 [[package]]
 name = "msvc-demangler"
-version = "0.8.0"
-source = "git+https://github.com/Swatinem/msvc-demangler-rust?branch=sentry-patches#075432259fe0eaac2f3fc225550a4db479bf3c81"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb67c6dd0fa9b00619c41c5700b6f92d5f418be49b45ddb9970fbd4569df3c8"
 dependencies = [
  "bitflags",
 ]
@@ -2042,20 +2049,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b7a8e9be5e039e2ff869df49155f1c06bd01ade2117ec783e56ab0932b67a8f"
-dependencies = [
- "num-bigint 0.3.1",
- "num-complex",
- "num-integer",
- "num-iter",
- "num-rational",
- "num-traits",
-]
-
-[[package]]
 name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2067,55 +2060,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-bigint"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e9a41747ae4633fce5adffb4d2e81ffc5e89593cb19917f8fb2cc5ff76507bf"
-dependencies = [
- "autocfg 1.0.0",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-complex"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "747d632c0c558b87dbabbe6a82f3b4ae03720d0646ac5b7b4dae89394be5f2c5"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "num-integer"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
 dependencies = [
  "autocfg 1.0.0",
- "num-traits",
-]
-
-[[package]]
-name = "num-iter"
-version = "0.1.42"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2021c8337a54d21aca0d59a92577a029af9431cb59b909b03252b9c164fad59"
-dependencies = [
- "autocfg 1.0.0",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-rational"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12ac428b1cb17fce6f731001d307d351ec70a6d202fc2e60f7d4c5e42d8f4f07"
-dependencies = [
- "autocfg 1.0.0",
- "num-bigint 0.3.1",
- "num-integer",
  "num-traits",
 ]
 
@@ -3429,7 +3379,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "692ca13de57ce0613a363c8c2f1de925adebc81b04c923ac60c5488bb44abe4b"
 dependencies = [
  "chrono",
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-traits",
 ]
 
@@ -3599,7 +3549,7 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#5a5aa38a56828b5e61bbab10647864e8017f564b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3611,7 +3561,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#5a5aa38a56828b5e61bbab10647864e8017f564b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
 dependencies = [
  "debugid",
  "memmap",
@@ -3623,13 +3573,13 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#5a5aa38a56828b5e61bbab10647864e8017f564b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
 dependencies = [
  "dmsort",
  "elementtree",
  "fallible-iterator",
  "flate2",
- "gimli",
+ "gimli 0.24.0",
  "goblin",
  "lazy_static",
  "lazycell",
@@ -3638,6 +3588,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "regex",
+ "scroll",
  "serde",
  "serde_json",
  "smallvec 1.5.0",
@@ -3651,7 +3602,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#5a5aa38a56828b5e61bbab10647864e8017f564b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3663,7 +3614,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#5a5aa38a56828b5e61bbab10647864e8017f564b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3677,11 +3628,10 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#5a5aa38a56828b5e61bbab10647864e8017f564b"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
 dependencies = [
  "dmsort",
  "fnv",
- "num",
  "symbolic-common",
  "symbolic-debuginfo",
  "thiserror",
@@ -4590,9 +4540,9 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d470d0583e65f4cab21a1ff3c1ba3dd23ae49e68f516f0afceaeb001b32af39"
+checksum = "4eb08e48cde54c05f363d984bb54ce374f49e242def9468d2e1b6c2372d291f8"
 dependencies = [
  "anyhow",
  "id-arena",
@@ -4604,9 +4554,9 @@ dependencies = [
 
 [[package]]
 name = "walrus-macro"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7c2bb690b44cb1b0fdcc54d4998d21f8bdaf706b93775425e440b174f39ad16"
+checksum = "0a6e5bd22c71e77d60140b0bd5be56155a37e5bd14e24f5f87298040d0cc40d7"
 dependencies = [
  "heck",
  "proc-macro2 1.0.24",
@@ -4774,9 +4724,9 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.59.0"
+version = "0.77.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a950e6a618f62147fd514ff445b2a0b53120d382751960797f85f058c7eda9b9"
+checksum = "b35c86d22e720a07d954ebbed772d01180501afe7d03d464f413bb5f8914a8d6"
 
 [[package]]
 name = "web-sys"
