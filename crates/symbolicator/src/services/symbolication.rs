@@ -343,28 +343,9 @@ impl ModuleListBuilder {
 
     fn process_stacktraces(&mut self, stacktraces: &[RawStacktrace]) {
         for trace in stacktraces {
-            if let Some(first_frame) = trace.frames.first() {
-                let addr = first_frame.instruction_addr.0;
+            for frame in &trace.frames {
+                let addr = frame.instruction_addr.0;
                 self.mark_referenced(addr);
-            }
-            for frame_pair in trace.frames.windows(2) {
-                if let [prev_frame, next_frame] = frame_pair {
-                    let addr = next_frame.instruction_addr.0;
-                    self.mark_referenced(addr);
-
-                    if let Some(info_index) = self.find_module_index(prev_frame.instruction_addr.0)
-                    {
-                        let (info, _) = &mut self.inner[info_index];
-                        if info.unwind_status.is_none() {
-                            // We report this error once per missing module in a minidump.
-                            sentry::capture_message(
-                                "Module marked as used but not found",
-                                sentry::Level::Error,
-                            );
-                            info.unwind_status = Some(ObjectFileStatus::Missing);
-                        }
-                    }
-                }
             }
         }
     }
@@ -378,26 +359,35 @@ impl ModuleListBuilder {
             None => return,
         };
 
-        let (_, marked) = &mut self.inner[info_index];
+        let (info, marked) = &mut self.inner[info_index];
         *marked = true;
+
+        if info.unwind_status.is_none() {
+            // We report this error once per missing module in a minidump.
+            sentry::capture_message("Module marked as used but not found", sentry::Level::Error);
+            info.unwind_status = Some(ObjectFileStatus::Missing);
+        }
     }
 
     /// Returns the modules list to be used in the symbolication response.
     pub fn build(self) -> Vec<CompleteObjectInfo> {
         self.inner
             .into_iter()
-            .filter(|(info, marked)| {
+            .filter_map(|(mut info, marked)| {
+                let include = marked || info.raw.debug_id.is_some();
+                if !include {
+                    return None;
+                }
+                // Reset the unwind status to `unused` for all objects that were not being referenced
+                // in the final stack traces.
+                if !marked || info.unwind_status.is_none() {
+                    info.unwind_status = Some(ObjectFileStatus::Unused);
+                }
                 metric!(
                     counter("symbolication.unwind_status") += 1,
                     "status" => info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
                 );
-                *marked || info.raw.debug_id.is_some()
-            })
-            .map(|(mut info, _)| {
-                if info.unwind_status.is_none() {
-                    info.unwind_status = Some(ObjectFileStatus::Unused);
-                }
-                info
+                Some(info)
             })
             .collect()
     }
