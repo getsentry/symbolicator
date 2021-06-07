@@ -129,10 +129,9 @@ impl<'a> SymCacheLookupResult<'a> {
 
 /// The CFI modules referenced by a minidump for CFI processing.
 ///
-/// This is populated from the [`CfiCacheResult`], which is the result of looking up the
-/// modules determined to be referenced by this minidump.  It contains the CFI cache
-/// status of the modules and allows loading the CFI from the caches for the correct
-/// minidump stackwalking.
+/// This is continuously updated with [`CfiCacheResult`] from referenced modules that have not yet
+/// been fetched.  It contains the CFI cache status of the modules and allows loading the CFI from
+/// the caches for the correct minidump stackwalking.
 ///
 /// It maintains the status of the object file availability itself as well as any features
 /// provided by it.  This can later be used to compile the required modules information
@@ -314,6 +313,7 @@ impl ModuleListBuilder {
         Self { inner }
     }
 
+    /// Finds the index of the module (for lookup in `self.modules`) that covers the gives `addr`.
     fn find_module_index(&self, addr: u64) -> Option<usize> {
         let search_index = self
             .inner
@@ -325,7 +325,7 @@ impl ModuleListBuilder {
             Err(index) => index - 1,
         };
 
-        let (info, _) = &self.inner[info_idx];
+        let (info, _marked) = &self.inner[info_idx];
         let HexValue(image_addr) = info.raw.image_addr;
         let includes_addr = match info.raw.image_size {
             Some(size) => addr < image_addr + size,
@@ -341,6 +341,7 @@ impl ModuleListBuilder {
         }
     }
 
+    /// Walks all the `stacktraces`, marking modules as being referenced based on the frames addr.
     fn process_stacktraces(&mut self, stacktraces: &[RawStacktrace]) {
         for trace in stacktraces {
             for frame in &trace.frames {
@@ -364,7 +365,10 @@ impl ModuleListBuilder {
 
         if info.unwind_status.is_none() {
             // We report this error once per missing module in a minidump.
-            sentry::capture_message("Module marked as used but not found", sentry::Level::Error);
+            sentry::capture_message(
+                "Module marked as needed but not found",
+                sentry::Level::Error,
+            );
             info.unwind_status = Some(ObjectFileStatus::Missing);
         }
     }
