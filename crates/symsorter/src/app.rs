@@ -196,7 +196,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                     let bv = ByteView::read(zip_file)?;
                     if Archive::peek(&bv) != FileFormat::Unknown {
                         debug_ids.lock().unwrap().extend(
-                            process_file(&sort_config, bv, name)?
+                            process_file(sort_config, bv, name)?
                                 .into_iter()
                                 .map(|x| x.0),
                         );
@@ -206,7 +206,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
                 for (unified_id, object_kind) in process_file(
-                    &sort_config,
+                    sort_config,
                     bv,
                     path.file_name().unwrap().to_string_lossy().to_string(),
                 )? {
@@ -242,7 +242,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                 };
 
                 let processed_objects = process_file(
-                    &sort_config,
+                    sort_config,
                     source_bundle,
                     path.file_name().unwrap().to_string_lossy().to_string(),
                 )?;
