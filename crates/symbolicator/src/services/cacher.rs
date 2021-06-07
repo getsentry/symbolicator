@@ -101,8 +101,8 @@ impl std::ops::Deref for CachePath {
     #[inline]
     fn deref(&self) -> &Self::Target {
         match *self {
-            Self::Temp(ref temp) => &temp,
-            Self::Cached(ref buf) => &buf,
+            Self::Temp(ref temp) => temp,
+            Self::Cached(ref buf) => buf,
         }
     }
 }
@@ -111,8 +111,8 @@ impl AsRef<Path> for CachePath {
     #[inline]
     fn as_ref(&self) -> &Path {
         match *self {
-            Self::Temp(ref temp) => &temp,
-            Self::Cached(ref buf) => &buf,
+            Self::Temp(ref temp) => temp,
+            Self::Cached(ref buf) => buf,
         }
     }
 }
@@ -211,7 +211,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // cache_path is None when caching is disabled.
         let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
         if let Some(ref path) = cache_path {
-            if let Some(item) = tryf!(self.lookup_cache(&request, &key, &path)) {
+            if let Some(item) = tryf!(self.lookup_cache(&request, &key, path)) {
                 return Box::pin(future::ok(item));
             }
         }

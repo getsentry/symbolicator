@@ -105,7 +105,7 @@ impl AsRef<str> for Scope {
     fn as_ref(&self) -> &str {
         match *self {
             Scope::Global => "global",
-            Scope::Scoped(ref s) => &s,
+            Scope::Scoped(ref s) => s,
         }
     }
 }
@@ -120,7 +120,7 @@ impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Scope::Global => f.write_str("global"),
-            Scope::Scoped(ref scope) => f.write_str(&scope),
+            Scope::Scoped(ref scope) => f.write_str(scope),
         }
     }
 }
