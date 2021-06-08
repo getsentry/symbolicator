@@ -206,36 +206,11 @@ impl CfiCacheModules {
         self.inner.extend(iter)
     }
 
-    /// Returns a copy of the inner Module Map that can be used for processing.
-    fn for_processing(&self) -> BTreeMap<CodeModuleId, CfiModule> {
-        self.inner.clone()
-    }
-
-    /// Load the CFI information from the cache.
-    ///
-    /// This reads the CFI caches from disk and returns them in a format suitable for the
-    /// breakpad processor to stackwalk.
-    fn load_cfi(map: &BTreeMap<CodeModuleId, CfiModule>) -> BTreeMap<CodeModuleId, CfiCache> {
-        map.iter()
-            .filter_map(|(code_id, cfi_module)| {
-                let path = cfi_module.cfi_path.as_ref()?;
-                let bytes = ByteView::open(path)
-                    .map_err(|err| {
-                        log::error!("Error while reading cficache: {}", LogError(&err));
-                        err
-                    })
-                    .ok()?;
-                let cfi_cache = CfiCache::from_bytes(bytes)
-                    .map_err(|err| {
-                        // This mostly never happens since we already checked the files
-                        // after downloading and they would have been tagged with
-                        // CacheStatus::Malformed.
-                        log::error!("Error while loading cficache: {}", LogError(&err));
-                        err
-                    })
-                    .ok()?;
-                Some((*code_id, cfi_cache))
-            })
+    /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
+    fn for_processing(&self) -> Vec<(CodeModuleId, PathBuf)> {
+        self.inner
+            .iter()
+            .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
             .collect()
     }
 
@@ -1663,6 +1638,35 @@ impl MinidumpState {
     }
 }
 
+/// Load the CFI information from the cache.
+///
+/// This reads the CFI caches from disk and returns them in a format suitable for the
+/// breakpad processor to stackwalk.
+fn load_cfi_for_processor(
+    cfi: Vec<(CodeModuleId, PathBuf)>,
+) -> BTreeMap<CodeModuleId, CfiCache<'static>> {
+    cfi.into_iter()
+        .filter_map(|(code_id, cfi_path)| {
+            let bytes = ByteView::open(cfi_path)
+                .map_err(|err| {
+                    log::error!("Error while reading cficache: {}", LogError(&err));
+                    err
+                })
+                .ok()?;
+            let cfi_cache = CfiCache::from_bytes(bytes)
+                .map_err(|err| {
+                    // This mostly never happens since we already checked the files
+                    // after downloading and they would have been tagged with
+                    // CacheStatus::Malformed.
+                    log::error!("Error while loading cficache: {}", LogError(&err));
+                    err
+                })
+                .ok()?;
+            Some((code_id, cfi_cache))
+        })
+        .collect()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     all_modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
@@ -1798,10 +1802,11 @@ impl SymbolicationActor {
     async fn stackwalk_minidump_with_cfi(
         &self,
         minidump: Bytes,
-        cfi_caches: BTreeMap<CodeModuleId, CfiModule>,
+        cfi_caches: &CfiCacheModules,
     ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
         let pool = self.spawnpool.clone();
         let diagnostics_cache = self.diagnostics_cache.clone();
+        let cfi_caches = cfi_caches.for_processing();
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
@@ -1818,7 +1823,7 @@ impl SymbolicationActor {
                     }
 
                     // Stackwalk the minidump.
-                    let cfi = CfiCacheModules::load_cfi(&cfi_caches);
+                    let cfi = load_cfi_for_processor(cfi_caches);
                     let minidump = ByteView::from_slice(&minidump);
                     let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
                     let minidump_state = MinidumpState::new(&process_state);
@@ -1931,7 +1936,7 @@ impl SymbolicationActor {
                 iterations += 1;
 
                 let result = self
-                    .stackwalk_minidump_with_cfi(minidump.clone(), cfi_caches.for_processing())
+                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
                     .await?;
 
                 let missing_modules: Vec<_> = result
