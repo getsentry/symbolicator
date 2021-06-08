@@ -139,6 +139,8 @@ impl<'a> SymCacheLookupResult<'a> {
 /// this.
 #[derive(Clone, Debug)]
 struct CfiCacheModules {
+    /// We have to make sure to hold onto a reference to the CfiCacheFile,
+    /// to make sure it will not be evicted in the middle of reading it in the procspawn
     cache_files: Vec<Arc<CfiCacheFile>>,
     inner: BTreeMap<CodeModuleId, CfiModule>,
 }
@@ -160,8 +162,6 @@ impl CfiCacheModules {
     /// Extend the CacheModules with the fetched caches represented by
     /// [`CfiCacheResult`].
     fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
-        // make sure to hold onto a reference to the CfiCacheFile, to make sure
-        // it will not be evicted in the middle of using it
         self.cache_files.extend(
             cfi_caches
                 .iter()
@@ -1939,7 +1939,7 @@ impl SymbolicationActor {
                     .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
                     .await?;
 
-                let missing_modules: Vec<_> = result
+                let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
                     .referenced_modules
                     .iter()
                     .filter(|(id, _)| !cfi_caches.has_module(id))
