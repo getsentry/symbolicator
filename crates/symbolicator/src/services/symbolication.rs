@@ -339,11 +339,6 @@ impl ModuleListBuilder {
         *marked = true;
 
         if info.unwind_status.is_none() {
-            // We report this error once per missing module in a minidump.
-            sentry::capture_message(
-                "Module marked as needed but not found",
-                sentry::Level::Error,
-            );
             info.unwind_status = Some(ObjectFileStatus::Missing);
         }
     }
