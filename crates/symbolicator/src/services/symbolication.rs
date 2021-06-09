@@ -1931,7 +1931,7 @@ impl SymbolicationActor {
         mut cfi_caches: CfiCacheModules,
         minidump: Bytes,
         stackwalking_method: StackwalkingMethod,
-    ) -> Result<StackwalkingOutput, ProcessMinidumpError> {
+    ) -> Result<(StackwalkingOutput, Duration), ProcessMinidumpError> {
         let cfi_caches_cloned = cfi_caches.clone();
 
         // Stackwalk the minidump.
@@ -1939,19 +1939,15 @@ impl SymbolicationActor {
         let minidump = ByteView::from_slice(&minidump);
         let run_time = Instant::now();
         let process_state = match stackwalking_method {
-            StackwalkingMethod::New => {
-                let state = ProcessState::from_minidump_new(&minidump, Some(&cfi))?;
-                metric!(timer("minidump.stackwalk.duration") = run_time.elapsed(), "method" => "new");
-                state
-            }
-            StackwalkingMethod::Old => {
-                let state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
-                metric!(timer("minidump.stackwalk.duration") = run_time.elapsed(), "method" => "old");
-                state
-            }
+            StackwalkingMethod::New => ProcessState::from_minidump_new(&minidump, Some(&cfi))?,
+
+            StackwalkingMethod::Old => ProcessState::from_minidump(&minidump, Some(&cfi))?,
         };
 
-        Ok(Self::post_process(process_state, cfi_caches_cloned))
+        Ok((
+            Self::post_process(process_state, cfi_caches_cloned),
+            run_time.elapsed(),
+        ))
     }
 
     /// Unwind the stack from a minidump.
@@ -2001,13 +1997,15 @@ impl SymbolicationActor {
                 },
             );
 
-            let stackwalking_result_old = Self::join_procspawn(
+            let (stackwalking_result_old, duration_old) = Self::join_procspawn(
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
                 &minidump,
                 &diagnostics_cache,
             )?;
+
+            metric!(timer("minidump.stackwalk.duration") = duration_old, "method" => "old");
 
             if options.compare_stackwalking_methods {
                 let spawn_time = std::time::SystemTime::now();
@@ -2037,7 +2035,7 @@ impl SymbolicationActor {
                     &minidump,
                     &diagnostics_cache,
                 ) {
-                    Ok(stackwalking_result_new) => {
+                    Ok((stackwalking_result_new, duration_new)) => {
                         if stackwalking_result_new != stackwalking_result_old {
                             Self::save_minidump(&minidump, &diagnostics_cache)
                                 .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
@@ -2055,6 +2053,25 @@ impl SymbolicationActor {
                                 })
                                 .ok();
                             sentry::capture_error(&*anyhow!("Different stackwalking results"));
+                        }
+                        metric!(timer("minidump.stackwalk.duration") = duration_new, "method" => "new");
+                        if duration_new >= Duration::from_secs(5) {
+                            Self::save_minidump(&minidump, &diagnostics_cache)
+                                .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
+                                .map(|r| {
+                                    if let Some(path) = r {
+                                        sentry::configure_scope(|scope| {
+                                            scope.set_extra(
+                                                "crashed_minidump",
+                                                sentry::protocol::Value::String(
+                                                    path.to_string_lossy().to_string(),
+                                                ),
+                                            );
+                                        });
+                                    }
+                                })
+                                .ok();
+                            sentry::capture_error(&*anyhow!("Slow stackwalking run"));
                         }
                     }
 
