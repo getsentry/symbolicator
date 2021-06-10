@@ -1764,7 +1764,7 @@ impl SymbolicationActor {
                     .cficaches
                     .fetch(FetchCfiCache {
                         object_type: object_info.ty,
-                        identifier: object_id_from_object_info(&object_info),
+                        identifier: object_id_from_object_info(object_info),
                         sources,
                         scope,
                     })
