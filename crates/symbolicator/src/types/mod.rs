@@ -169,7 +169,7 @@ fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
 }
 
 /// An unsymbolicated frame from a symbolication request.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq, Serialize)]
 pub struct RawFrame {
     /// Controls the addressing mode for [`instruction_addr`](Self::instruction_addr) and
     /// [`sym_addr`](Self::sym_addr).
@@ -237,7 +237,7 @@ pub struct RawFrame {
 }
 
 /// A stack trace containing unsymbolicated stack frames.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct RawStacktrace {
     /// The OS-dependent identifier of the thread.
     #[serde(default)]
