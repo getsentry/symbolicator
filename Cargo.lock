@@ -3637,7 +3637,7 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3649,7 +3649,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "debugid",
  "memmap",
@@ -3661,7 +3661,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "dmsort",
  "elementtree",
@@ -3690,7 +3690,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3702,7 +3702,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3718,7 +3718,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3730,7 +3730,7 @@ dependencies = [
 [[package]]
 name = "symbolic-unwind"
 version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#f56947a51469c115c3a6c566bc81074bdd12125a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#11c35ff079d6a7950aacea54dfdee555fb7aac65"
 dependencies = [
  "insta",
  "nom 6.1.2",
