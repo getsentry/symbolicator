@@ -71,7 +71,7 @@ Follow these steps to update snapshots in Sentry:
 }
 
 async function checkSnapshots() {
-  const SNAPSHOT_LOCATION = "src/actors/snapshots/";
+  const SNAPSHOT_LOCATION = "crates/symbolicator/src/services/snapshots/";
 
   // Sanity check that the snapshot directory exists
   let contents = await danger.github.utils.fileContents(
