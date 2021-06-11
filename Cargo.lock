@@ -2457,7 +2457,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "reqwest 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "actix-web",
  "anyhow",
@@ -3693,7 +3693,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4686,7 +4686,7 @@ checksum = "7e7811dd7f9398f14cc76efd356f98f03aa30419dea46aa810d71e819fc97158"
 
 [[package]]
 name = "wasm-split"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "hex",
