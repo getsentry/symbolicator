@@ -72,6 +72,18 @@ Follow these steps to update snapshots in Sentry:
 
 async function checkSnapshots() {
   const SNAPSHOT_LOCATION = "src/actors/snapshots/";
+
+  // Sanity check that the snapshot directory exists
+  let contents = await danger.github.utils.fileContents(
+    SNAPSHOT_LOCATION + "CAUTION.md"
+  );
+  if (!contents) {
+    fail(
+      "The snapshot directory has moved to a new location. Please update SNAPSHOT_LOCATION in /dangerfile.js."
+    );
+    return;
+  }
+
   const changesSnapshots = danger.git.modified_files.some((f) =>
     f.startsWith(SNAPSHOT_LOCATION)
   );
