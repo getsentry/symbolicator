@@ -1,12 +1,11 @@
 //! Download sources types and related implementations.
 
-use anyhow::Result;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::types::{Glob, ObjectId, ObjectType};
@@ -123,20 +122,6 @@ pub struct FilesystemSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-/// Local helper to deserializes an S3 region string in `S3SourceKey`.
-fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    // For safety reason we only want to parse the default AWS regions so that
-    // non AWS services cannot be accessed.
-    use serde::de::Error as _;
-    let region = String::deserialize(deserializer)?;
-    region
-        .parse()
-        .map_err(|e| D::Error::custom(format!("region: {}", e)))
-}
-
 /// The types of Amazon IAM credentials providers we support.
 ///
 /// For details on the AWS side, see:
@@ -158,7 +143,7 @@ impl Default for AwsCredentialsProvider {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
-    #[serde(deserialize_with = "deserialize_region")]
+    #[serde(default)]
     pub region: rusoto_core::Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
@@ -460,6 +445,62 @@ impl AsRef<str> for FileType {
             FileType::SourceBundle => "sourcebundle",
             FileType::UuidMap => "uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rusoto_core::Region;
+
+    use super::*;
+
+    #[test]
+    fn test_s3_config() {
+        let text = r#"
+          - id: us-east
+            type: s3
+            bucket: my-bucket
+            region: us-east-1
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+          - id: minio
+            type: s3
+            bucket: my-bucket
+            region:
+              - minio
+              - http://minio.minio.svc.cluster.local:9000
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let sources: Vec<SourceConfig> = serde_yaml::from_str(&text).unwrap();
+        assert_eq!(*sources[0].id(), SourceId("us-east".to_string()));
+        match &sources[0] {
+            SourceConfig::S3(cfg) => {
+                assert_eq!(cfg.id, SourceId("us-east".to_string()));
+                assert_eq!(cfg.bucket, "my-bucket");
+                assert_eq!(cfg.source_key.region, Region::UsEast1);
+                assert_eq!(cfg.source_key.access_key, "the-access-key");
+                assert_eq!(cfg.source_key.secret_key, "the-secret-key");
+            }
+            _ => unreachable!(),
+        }
+        match &sources[1] {
+            SourceConfig::S3(cfg) => {
+                assert_eq!(cfg.id, SourceId("minio".to_string()));
+                assert_eq!(
+                    cfg.source_key.region,
+                    Region::Custom {
+                        name: "minio".to_string(),
+                        endpoint: "http://minio.minio.svc.cluster.local:9000".to_string(),
+                    }
+                );
+            }
+            _ => unreachable!(),
         }
     }
 }
