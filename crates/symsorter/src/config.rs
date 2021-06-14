@@ -39,10 +39,10 @@ pub struct SortConfig {
     /// The bundle ID of this task.
     pub bundle_id: Option<String>,
 
-    /// If enable the system will attempt to create source bundles
+    /// If enabled, the system will attempt to create source bundles
     pub with_sources: bool,
 
-    /// If enabled debug symbols will be zstd compressed
+    /// If enabled, debug symbols will be zstd compressed
     /// (repeat to increase compression)
     pub compression_level: usize,
 }

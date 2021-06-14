@@ -7,6 +7,8 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use console::style;
+use object::read::macho::DyldCache;
+use object::Endianness;
 use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
@@ -83,7 +85,7 @@ pub struct BundleMeta {
 
 fn process_file(
     sort_config: &SortConfig,
-    bv: ByteView<'static>,
+    bv: ByteView,
     filename: String,
 ) -> Result<Vec<(String, ObjectKind)>> {
     let mut rv = vec![];
@@ -202,7 +204,23 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                         );
                     }
                 }
-
+            // dyld shared cache
+            } else if let Ok(cache) = DyldCache::<Endianness>::parse(bv.as_slice()) {
+                // let image_debug_ids = cache.images().filter_map(|image| {});
+                // debug_ids.lock().unwrap().extend(image_debug_ids);
+                for image in cache.images() {
+                    // TODO: what sort of errors does file_offset return?
+                    let image_offset = image.file_offset()? as usize;
+                    let img_bv = ByteView::from_slice(&bv[image_offset..]);
+                    if Archive::peek(&img_bv) != FileFormat::Unknown {
+                        let name = image.path()?.rsplit('/').next().unwrap().to_string();
+                        debug_ids.lock().unwrap().extend(
+                            process_file(sort_config, img_bv, name)?
+                                .into_iter()
+                                .map(|x| x.0),
+                        );
+                    }
+                }
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
                 for (unified_id, object_kind) in process_file(
@@ -293,7 +311,7 @@ fn execute() -> Result<()> {
         log!(
             "{}: {}",
             style("WARNING").bold().red(),
-            "No compression used. Consider to pass -zz."
+            "No compression used. Consider passing in -zz."
         );
         log!();
     }
