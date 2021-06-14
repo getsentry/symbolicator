@@ -240,7 +240,7 @@ impl RemoteDifUri {
     pub fn from_parts(scheme: &str, host: &str, path: &str) -> Self {
         Url::parse(&format!("{}://{}/", scheme, host))
             .and_then(|base| base.join(path))
-            .map(|url| RemoteDifUri::new(url.into_string()))
+            .map(RemoteDifUri::new)
             .unwrap_or_else(|_| {
                 // All these Result-returning operations *should* be infallible and this
                 // branch should never be used.  Nevertheless, for panic-safety we default
