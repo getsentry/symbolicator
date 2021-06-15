@@ -7,8 +7,13 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use console::style;
-use object::read::macho::DyldCache;
-use object::Endianness;
+use object::File;
+// use object::{macho::DyldCacheHeader};
+// use object::macho::DyldCacheMappingInfo;
+use object::{
+    read::macho::DyldCache, write, Endianness, Object, ObjectComdat, ObjectSection, ObjectSymbol,
+    RelocationTarget, SectionKind, SymbolFlags, SymbolKind, SymbolSection,
+};
 use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
@@ -168,6 +173,234 @@ fn process_file(
     Ok(rv)
 }
 
+fn clone_dyld_image(in_object: &File) -> Vec<u8> {
+    let mut out_object = write::Object::new(
+        in_object.format(),
+        in_object.architecture(),
+        in_object.endianness(),
+    );
+    out_object.mangling = write::Mangling::None;
+    out_object.flags = in_object.flags();
+
+    let mut out_sections = HashMap::new();
+    for in_section in in_object.sections() {
+        if in_section.kind() == SectionKind::Metadata {
+            continue;
+        }
+        let section_id = out_object.add_section(
+            in_section
+                .segment_name()
+                .unwrap()
+                .unwrap_or("")
+                .as_bytes()
+                .to_vec(),
+            in_section.name().unwrap().as_bytes().to_vec(),
+            in_section.kind(),
+        );
+        let out_section = out_object.section_mut(section_id);
+        if out_section.is_bss() {
+            out_section.append_bss(in_section.size(), in_section.align());
+        } else {
+            out_section.set_data(in_section.data().unwrap().into(), in_section.align());
+        }
+        out_section.flags = in_section.flags();
+        out_sections.insert(in_section.index(), section_id);
+    }
+
+    let mut out_symbols = HashMap::new();
+    for in_symbol in in_object.symbols() {
+        match in_symbol.kind() {
+            SymbolKind::Unknown => continue,
+            // null and label are unsupported according to macho_write()
+            SymbolKind::Null => continue,
+            SymbolKind::Label => continue,
+            _ => (),
+        }
+        let (section, value) = match in_symbol.section() {
+            SymbolSection::None => (write::SymbolSection::None, in_symbol.address()),
+            SymbolSection::Undefined => (write::SymbolSection::Undefined, in_symbol.address()),
+            SymbolSection::Absolute => (write::SymbolSection::Absolute, in_symbol.address()),
+            SymbolSection::Common => (write::SymbolSection::Common, in_symbol.address()),
+            SymbolSection::Section(index) => {
+                if let Some(out_section) = out_sections.get(&index) {
+                    (
+                        write::SymbolSection::Section(*out_section),
+                        in_symbol.address() - in_object.section_by_index(index).unwrap().address(),
+                    )
+                } else {
+                    // Ignore symbols for sections that we have skipped.
+                    assert_eq!(in_symbol.kind(), SymbolKind::Section);
+                    continue;
+                }
+            }
+            _ => panic!("unknown symbol section for {:?}", in_symbol),
+        };
+        let flags = match in_symbol.flags() {
+            SymbolFlags::None => SymbolFlags::None,
+            SymbolFlags::Elf { st_info, st_other } => SymbolFlags::Elf { st_info, st_other },
+            SymbolFlags::MachO { n_desc } => SymbolFlags::MachO { n_desc },
+            SymbolFlags::CoffSection {
+                selection,
+                associative_section,
+            } => {
+                let associative_section =
+                    associative_section.map(|index| *out_sections.get(&index).unwrap());
+                SymbolFlags::CoffSection {
+                    selection,
+                    associative_section,
+                }
+            }
+            _ => panic!("unknown symbol flags for {:?}", in_symbol),
+        };
+        let out_symbol = write::Symbol {
+            name: in_symbol.name().unwrap_or("").as_bytes().to_vec(),
+            value,
+            size: in_symbol.size(),
+            kind: in_symbol.kind(),
+            scope: in_symbol.scope(),
+            weak: in_symbol.is_weak(),
+            section,
+            flags,
+        };
+        let symbol_id = out_object.add_symbol(out_symbol);
+        out_symbols.insert(in_symbol.index(), symbol_id);
+    }
+
+    for in_section in in_object.sections() {
+        if in_section.kind() == SectionKind::Metadata {
+            continue;
+        }
+        let out_section = *out_sections.get(&in_section.index()).unwrap();
+        for (offset, in_relocation) in in_section.relocations() {
+            let symbol = match in_relocation.target() {
+                RelocationTarget::Symbol(symbol) => *out_symbols.get(&symbol).unwrap(),
+                RelocationTarget::Section(section) => {
+                    out_object.section_symbol(*out_sections.get(&section).unwrap())
+                }
+                _ => panic!("unknown relocation target for {:?}", in_relocation),
+            };
+            let out_relocation = write::Relocation {
+                offset,
+                size: in_relocation.size(),
+                kind: in_relocation.kind(),
+                encoding: in_relocation.encoding(),
+                symbol,
+                addend: in_relocation.addend(),
+            };
+            out_object
+                .add_relocation(out_section, out_relocation)
+                .unwrap();
+        }
+    }
+
+    for in_comdat in in_object.comdats() {
+        let mut sections = Vec::new();
+        for in_section in in_comdat.sections() {
+            sections.push(*out_sections.get(&in_section).unwrap());
+        }
+        out_object.add_comdat(write::Comdat {
+            kind: in_comdat.kind(),
+            symbol: *out_symbols.get(&in_comdat.symbol()).unwrap(),
+            sections,
+        });
+    }
+
+    out_object.write().unwrap()
+}
+
+fn process_dyld_file(
+    sort_config: &SortConfig,
+    bv: ByteView,
+    writable_object: object::File,
+    filename: String,
+) -> Result<Vec<(String, ObjectKind)>> {
+    let mut rv = vec![];
+
+    macro_rules! maybe_ignore_error {
+        ($expr:expr) => {
+            match $expr {
+                Ok(value) => value,
+                Err(err) => {
+                    if RunConfig::get().ignore_errors {
+                        eprintln!(
+                            "{}: ignored error {} ({})",
+                            "error",
+                            // style("error").red().bold(),
+                            err,
+                            filename,
+                            // style(filename).cyan(),
+                        );
+
+                        for cause in err.chain().skip(1) {
+                            eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+                        }
+                        return Ok(rv);
+                    } else {
+                        return Err(err).context(format!("failed to process file {}", filename));
+                    }
+                }
+            }
+        };
+    }
+
+    let compression_level = match sort_config.compression_level {
+        0 => 0,
+        1 => 3,
+        2 => 10,
+        3 => 19,
+        _ => 22,
+    };
+    let archive = maybe_ignore_error!(
+        Archive::parse(&bv).map_err(|e| anyhow!("failed to parse archive {}", e))
+    );
+    let root = &RunConfig::get().output;
+
+    for obj in archive.objects() {
+        let obj = maybe_ignore_error!(obj.map_err(|e| anyhow!(e)));
+        let new_filename = root.join(maybe_ignore_error!(
+            get_target_filename(&obj).ok_or_else(|| anyhow!("unsupported file"))
+        ));
+
+        fs::create_dir_all(new_filename.parent().unwrap())?;
+
+        if let Some(bundle_id) = &sort_config.bundle_id {
+            let refs_path = new_filename.parent().unwrap().join("refs");
+            fs::create_dir_all(&refs_path)?;
+            fs::write(&refs_path.join(bundle_id), b"")?;
+        }
+
+        let meta = DebugIdMeta {
+            name: Some(filename.clone()),
+            arch: Some(obj.arch()),
+            file_format: Some(obj.file_format()),
+        };
+
+        fs::write(
+            &new_filename.parent().unwrap().join("meta"),
+            &serde_json::to_vec(&meta)?,
+        )?;
+
+        log!(
+            "{} ({}, {}) -> {}",
+            style(&filename).dim(),
+            style(obj.kind()).yellow(),
+            style(obj.arch()).yellow(),
+            style(new_filename.display()).cyan(),
+        );
+        let mut out = fs::File::create(&new_filename)?;
+
+        let writable_data = clone_dyld_image(&writable_object);
+        if compression_level > 0 {
+            copy_encode(writable_data.as_slice(), &mut out, compression_level)?;
+        } else {
+            io::copy(&mut writable_data.as_slice(), &mut out)?;
+        }
+        rv.push((get_unified_id(&obj), obj.kind()));
+    }
+
+    Ok(rv)
+}
+
 fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
     let mut source_bundles_created = 0;
     let source_candidates = Mutex::new(HashMap::<String, Option<PathBuf>>::new());
@@ -206,22 +439,56 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                 }
             // dyld shared cache
             } else if let Ok(cache) = DyldCache::<Endianness>::parse(bv.as_slice()) {
-                // let image_debug_ids = cache.images().filter_map(|image| {});
+                // let image_debug_ids = cache
+                //     .images()
+                //     .filter_map(|image| {
+                //         let image_offset = image.file_offset().ok()? as usize;
+                //         let name = image.path().ok()?.rsplit('/').next().unwrap().to_string();
+                //         let img_bv = ByteView::from_slice(&bv[image_offset..]);
+                //         if Archive::peek(&img_bv) != FileFormat::Unknown {
+                //             let in_object = image.parse_object().ok()?;
+                //             Some(
+                //                 process_dyld_file(sort_config, img_bv, in_object, name.clone())
+                //                     .map_err(|err| {
+                //                         eprintln!(
+                //                             "{}: ignored error {} ({})",
+                //                             style("error").red().bold(),
+                //                             err,
+                //                             style(name).cyan(),
+                //                         )
+                //                     })
+                //                     .ok()?
+                //                     .into_iter()
+                //                     .map(|x| x.0),
+                //             )
+                //         } else {
+                //             eprintln!(
+                //                 "{}: ignored error {} ({})",
+                //                 style("error").red().bold(),
+                //                 anyhow!("unrecognized file"),
+                //                 style(name).cyan(),
+                //             );
+                //             None
+                //         }
+                //     })
+                //     .flatten();
+
                 // debug_ids.lock().unwrap().extend(image_debug_ids);
+
                 for image in cache.images() {
-                    // TODO: what sort of errors does file_offset return?
                     let image_offset = image.file_offset()? as usize;
                     let img_bv = ByteView::from_slice(&bv[image_offset..]);
                     if Archive::peek(&img_bv) != FileFormat::Unknown {
                         let name = image.path()?.rsplit('/').next().unwrap().to_string();
+                        let in_object = image.parse_object()?;
                         debug_ids.lock().unwrap().extend(
-                            process_file(sort_config, img_bv, name)?
+                            process_dyld_file(sort_config, img_bv, in_object, name)?
                                 .into_iter()
                                 .map(|x| x.0),
                         );
                     }
                 }
-            // object file directly
+                // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
                 for (unified_id, object_kind) in process_file(
                     sort_config,
