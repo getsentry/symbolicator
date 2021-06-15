@@ -1,8 +1,8 @@
 # SymSorter
 
 A small utility that takes a folder structure of debug information files
-(currently mostly useful for apple and linux) and writes them into a folder
 structure that symbolicator can work with as a symbol source.  The structure
+(currently mostly useful for Apple and Linux) and writes them into a folder
 used is the `unified` format that the symbolicator also supports.
 
 ## Compiling

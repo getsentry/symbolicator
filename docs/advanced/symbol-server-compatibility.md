@@ -30,7 +30,7 @@ also has support for source bundles for all file types.
 
 ### `unified`
 
-This is the symbolicator proprietary but preferred source (Unified Symbol
+This is the proprietary, but preferred symbolicator source (Unified Symbol
 Server Layout) which adds a consistent lookup format for all architectures.
 It's used at Sentry for the internal symbol lookups (like Apple or Android
 symbols). Like The `native` format this supports source bundles.
@@ -39,8 +39,8 @@ symbols). Like The `native` format this supports source bundles.
 
 ### Identifiers
 
-There are two fundamentally different identifiers. Their semantics fundamentally
-depend on the symbol type, but follow certain rules:
+There are two different identifiers. Their semantics fundamentally depend on the
+symbol type, but follow certain rules:
 
 - **Code Identifier:** Identifies the actual executable or library file (e.g.
   EXE or DLL)

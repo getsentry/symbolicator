@@ -7,6 +7,10 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use console::style;
+use object::macho::MachHeader32;
+use object::macho::MachHeader64;
+use object::read::macho::{DyldCache, DyldCacheImage, MachHeader};
+use object::{Endianness, Object};
 use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
@@ -18,7 +22,8 @@ use zstd::stream::copy_encode;
 
 use crate::config::{RunConfig, SortConfig};
 use crate::utils::{
-    create_source_bundle, get_target_filename, get_unified_id, is_bundle_id, make_bundle_id,
+    clone_dyld_image, create_source_bundle, get_dyld_image_filename, get_dyld_image_unified_id,
+    get_target_filename, get_unified_id, is_bundle_id, make_bundle_id,
 };
 
 /// Sorts debug symbols into the right structure for symbolicator.
@@ -83,7 +88,7 @@ pub struct BundleMeta {
 
 fn process_file(
     sort_config: &SortConfig,
-    bv: ByteView<'static>,
+    bv: ByteView,
     filename: String,
 ) -> Result<Vec<(String, ObjectKind)>> {
     let mut rv = vec![];
@@ -166,6 +171,127 @@ fn process_file(
     Ok(rv)
 }
 
+fn process_dyld_image(
+    sort_config: &SortConfig,
+    image: DyldCacheImage,
+) -> Result<Vec<(String, ObjectKind)>> {
+    let mut rv = vec![];
+    let filename = image.path()?.rsplit('/').next().unwrap().to_string();
+
+    macro_rules! maybe_ignore_error {
+        ($expr:expr) => {
+            match $expr {
+                Ok(value) => value,
+                Err(err) => {
+                    if RunConfig::get().ignore_errors {
+                        eprintln!(
+                            "{}: ignored error {} ({})",
+                            style("error").red().bold(),
+                            err,
+                            style(filename).cyan(),
+                        );
+
+                        for cause in err.chain().skip(1) {
+                            eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+                        }
+                        return Ok(rv);
+                    } else {
+                        return Err(err).context(format!("failed to process file {}", filename));
+                    }
+                }
+            }
+        };
+    }
+
+    let compression_level = match sort_config.compression_level {
+        0 => 0,
+        1 => 3,
+        2 => 10,
+        3 => 19,
+        _ => 22,
+    };
+
+    let in_object = maybe_ignore_error!(image
+        .parse_object()
+        .map_err(|e| anyhow!("failed to parse archive {}", e)));
+    let root = &RunConfig::get().output;
+
+    let writable_data = clone_dyld_image(&in_object);
+
+    let raw_kind = if in_object.is_64() {
+        MachHeader64::parse(writable_data.as_slice(), 0)?.filetype(in_object.endianness())
+    } else {
+        MachHeader32::parse(writable_data.as_slice(), 0)?.filetype(in_object.endianness())
+    };
+    let kind = match raw_kind {
+        object::macho::MH_OBJECT => ObjectKind::Relocatable,
+        object::macho::MH_EXECUTE => ObjectKind::Executable,
+        object::macho::MH_FVMLIB => ObjectKind::Library,
+        object::macho::MH_CORE => ObjectKind::Dump,
+        object::macho::MH_PRELOAD => ObjectKind::Executable,
+        object::macho::MH_DYLIB => ObjectKind::Library,
+        object::macho::MH_DYLINKER => ObjectKind::Executable,
+        object::macho::MH_BUNDLE => ObjectKind::Library,
+        object::macho::MH_DSYM => ObjectKind::Debug,
+        object::macho::MH_KEXT_BUNDLE => ObjectKind::Library,
+        _ => ObjectKind::Other,
+    };
+
+    let new_filename = root.join(maybe_ignore_error!(get_dyld_image_filename(
+        &in_object, &kind
+    )
+    .ok_or_else(|| anyhow!("unsupported file"))));
+
+    fs::create_dir_all(new_filename.parent().unwrap())?;
+
+    if let Some(bundle_id) = &sort_config.bundle_id {
+        let refs_path = new_filename.parent().unwrap().join("refs");
+        fs::create_dir_all(&refs_path)?;
+        fs::write(&refs_path.join(bundle_id), b"")?;
+    }
+
+    // all of the types recognized by DyldCacheHeader
+    let arch = match in_object.architecture() {
+        object::Architecture::I386 => Arch::X86,
+        object::Architecture::PowerPc => Arch::Ppc,
+        // we lose a bit of precision in the below variants because object combines all x86_64, arm,
+        // and arm64 variants into one common enum member
+        object::Architecture::X86_64 => Arch::Amd64,
+        object::Architecture::Arm => Arch::Arm,
+        object::Architecture::Aarch64 => Arch::Arm64_32,
+        _ => Arch::Unknown,
+    };
+
+    let meta = DebugIdMeta {
+        name: Some(filename.clone()),
+        arch: Some(arch),
+        file_format: Some(FileFormat::MachO),
+    };
+
+    fs::write(
+        &new_filename.parent().unwrap().join("meta"),
+        &serde_json::to_vec(&meta)?,
+    )?;
+
+    log!(
+        "{} ({}, {}) -> {}",
+        style(&filename).dim(),
+        style(kind).yellow(),
+        style(arch).yellow(),
+        style(new_filename.display()).cyan(),
+    );
+    let mut out = fs::File::create(&new_filename)?;
+
+    if compression_level > 0 {
+        copy_encode(writable_data.as_slice(), &mut out, compression_level)?;
+    } else {
+        io::copy(&mut writable_data.as_slice(), &mut out)?;
+    }
+    rv.push((get_dyld_image_unified_id(&in_object), kind));
+
+    Ok(rv)
+}
+
 fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
     let mut source_bundles_created = 0;
     let source_candidates = Mutex::new(HashMap::<String, Option<PathBuf>>::new());
@@ -202,7 +328,16 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                         );
                     }
                 }
-
+            // dyld shared cache
+            } else if let Ok(cache) = DyldCache::<Endianness>::parse(bv.as_slice()) {
+                for image in cache.images() {
+                    // let in_object = image.parse_object()?;
+                    debug_ids.lock().unwrap().extend(
+                        process_dyld_image(sort_config, image)?
+                            .into_iter()
+                            .map(|x| x.0),
+                    );
+                }
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
                 for (unified_id, object_kind) in process_file(
@@ -293,7 +428,7 @@ fn execute() -> Result<()> {
         log!(
             "{}: {}",
             style("WARNING").bold().red(),
-            "No compression used. Consider to pass -zz."
+            "No compression used. Consider passing in -zz."
         );
         log!();
     }
