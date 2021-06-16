@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
@@ -2107,7 +2107,7 @@ impl SymbolicationActor {
                             }
                         })
                         .ok();
-                    sentry::capture_error(&*anyhow!("Different stackwalking results"));
+                    sentry::capture_message("Different stackwalking results", sentry::Level::Error);
                 }
 
                 if duration_new >= Duration::from_secs(5) {
@@ -2126,7 +2126,7 @@ impl SymbolicationActor {
                             }
                         })
                         .ok();
-                    sentry::capture_error(&*anyhow!("Slow stackwalking run"));
+                    sentry::capture_message("Slow stackwalking run", sentry::Level::Error);
                 }
             }
 
