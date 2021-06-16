@@ -187,6 +187,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
+
+[[package]]
 name = "async-compression"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -290,6 +296,18 @@ name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
+
+[[package]]
+name = "bitvec"
+version = "0.19.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8942c8d352ae1838c9dda0b0ca2ab657696ef2232a20147cf1b30ae1a9cb4321"
+dependencies = [
+ "funty",
+ "radium",
+ "tap",
+ "wyz",
+]
 
 [[package]]
 name = "block-buffer"
@@ -397,6 +415,12 @@ checksum = "847f3952612c1559b60fe3a4de76b5c0c7745c5f3214a80b29e7aa844fee06d3"
 dependencies = [
  "crossbeam-channel 0.5.1",
 ]
+
+[[package]]
+name = "cascade"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f18c6a921baae2d947e4cf96f6ef1b5774b3056ae8edbdf5c5cfce4f33260921"
 
 [[package]]
 name = "cc"
@@ -1033,6 +1057,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 
 [[package]]
+name = "funty"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
+
+[[package]]
 name = "futures"
 version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1469,6 +1499,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indent_write"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cfe9645a18782869361d9c8732246be7b410ad4e919d3609ebabdac00ba12c3"
+
+[[package]]
 name = "indexmap"
 version = "1.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,6 +1633,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "joinery"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72167d68f5fce3b8655487b8038691a3c9984ee769590f93f2a631f4ad64e4f5"
+
+[[package]]
 name = "js-sys"
 version = "0.3.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1652,6 +1694,19 @@ name = "leb128"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3576a87f2ba00f6f106fdfcd16db1d698d648a26ad8e0573cad8537c3c362d2a"
+
+[[package]]
+name = "lexical-core"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6607c62aa161d23d17a9072cc5da0be67cdfc89d3afb1e8d9c842bebc2525ffe"
+dependencies = [
+ "arrayvec",
+ "bitflags",
+ "cfg-if 1.0.0",
+ "ryu",
+ "static_assertions",
+]
 
 [[package]]
 name = "libc"
@@ -1945,6 +2000,32 @@ checksum = "2ad2a91a8e869eeb30b9cb3119ae87773a8f4ae617f41b1eb9c154b2905f7bd6"
 dependencies = [
  "memchr",
  "version_check 0.1.5",
+]
+
+[[package]]
+name = "nom"
+version = "6.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7413f999671bd4745a7b624bd370a569fb6bc574b23c83a3c5ed2e453f3d5e2"
+dependencies = [
+ "bitvec",
+ "funty",
+ "lexical-core",
+ "memchr",
+ "version_check 0.9.3",
+]
+
+[[package]]
+name = "nom-supreme"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "133b9264602f2a75dcc5e3e39f3f7f98c6cee76f2cc749b9d8e751ffe12a712f"
+dependencies = [
+ "cascade",
+ "indent_write",
+ "joinery",
+ "memchr",
+ "nom 6.1.2",
 ]
 
 [[package]]
@@ -2394,6 +2475,12 @@ checksum = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
 dependencies = [
  "proc-macro2 1.0.27",
 ]
+
+[[package]]
+name = "radium"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "941ba9d78d8e2f7ce474c015eea4d9c6d25b6a3327f9832ee29a4de27f91bbb8"
 
 [[package]]
 name = "rand"
@@ -3334,6 +3421,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "stdweb"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3442,8 +3535,8 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 
 [[package]]
 name = "symbolic"
-version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
+version = "8.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#898bc7081b074f72dae201c4ea686d56db28f60b"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3454,8 +3547,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
+version = "8.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#898bc7081b074f72dae201c4ea686d56db28f60b"
 dependencies = [
  "debugid",
  "memmap",
@@ -3466,8 +3559,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
+version = "8.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#898bc7081b074f72dae201c4ea686d56db28f60b"
 dependencies = [
  "dmsort",
  "elementtree",
@@ -3477,10 +3570,10 @@ dependencies = [
  "goblin",
  "lazy_static",
  "lazycell",
+ "nom 6.1.2",
+ "nom-supreme",
  "parking_lot 0.11.1",
  "pdb",
- "pest",
- "pest_derive",
  "regex",
  "scroll",
  "serde",
@@ -3495,8 +3588,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
+version = "8.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#898bc7081b074f72dae201c4ea686d56db28f60b"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3507,8 +3600,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
+version = "8.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#898bc7081b074f72dae201c4ea686d56db28f60b"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3521,8 +3614,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "8.1.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#bed8c79797c21c5b24e0b4cd8c113eec0fd6539b"
+version = "8.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#898bc7081b074f72dae201c4ea686d56db28f60b"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3637,6 +3730,12 @@ dependencies = [
  "syn 1.0.73",
  "unicode-xid 0.2.2",
 ]
+
+[[package]]
+name = "tap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tempfile"
@@ -4377,7 +4476,7 @@ version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2ca2a14bc3fc5b64d188b087a7d3a927df87b152e941ccfbc66672e20c467ae"
 dependencies = [
- "nom",
+ "nom 4.2.3",
  "proc-macro2 1.0.27",
  "quote 1.0.9",
  "syn 1.0.73",
@@ -4718,6 +4817,12 @@ dependencies = [
  "winapi 0.2.8",
  "winapi-build",
 ]
+
+[[package]]
+name = "wyz"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
 
 [[package]]
 name = "xml-rs"
