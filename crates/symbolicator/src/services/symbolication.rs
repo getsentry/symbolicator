@@ -18,6 +18,7 @@ use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use similar::{udiff::unified_diff, Algorithm};
 use symbolic::common::{
     Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name, SelfCell,
 };
@@ -2092,6 +2093,25 @@ impl SymbolicationActor {
             if let Some((result_new, duration_new)) = result_new {
                 metric!(timer("minidump.stackwalk.duration") = duration_new, "method" => "new");
                 if result_new != result_old {
+                    let diff = serde_json::to_string_pretty(&result_old)
+                        .map_err(|e| log::error!("Failed to convert result_old to json: {}", e))
+                        .ok()
+                        .and_then(|old| {
+                            serde_json::to_string_pretty(&result_new)
+                                .map_err(|e| {
+                                    log::error!("Failed to convert result_new to json: {}", e)
+                                })
+                                .ok()
+                                .map(|new| {
+                                    unified_diff(
+                                        Algorithm::Myers,
+                                        &old,
+                                        &new,
+                                        3,
+                                        Some(("old", "new")),
+                                    )
+                                })
+                        });
                     Self::save_minidump(&minidump, &self.diagnostics_cache)
                         .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
                         .map(|r| {
@@ -2103,6 +2123,12 @@ impl SymbolicationActor {
                                             path.to_string_lossy().to_string(),
                                         ),
                                     );
+                                    if let Some(diff) = diff {
+                                        scope.set_extra(
+                                            "diff",
+                                            sentry::protocol::Value::String(diff),
+                                        );
+                                    }
                                 });
                             }
                         })
