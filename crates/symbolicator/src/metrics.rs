@@ -2,7 +2,7 @@
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
-use cadence::StatsdClient;
+use cadence::{StatsdClient, UdpMetricSink};
 use parking_lot::RwLock;
 
 lazy_static::lazy_static! {
@@ -36,7 +36,10 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A) {
     if !addrs.is_empty() {
         log::info!("Reporting metrics to statsd at {}", addrs[0]);
     }
-    set_client(StatsdClient::from_udp_host(prefix, &addrs[..]).unwrap());
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let sink = UdpMetricSink::from(&addrs[..], socket).unwrap();
+    set_client(StatsdClient::from_sink(prefix, sink));
 }
 
 /// Invoke a callback with the current statsd client.
