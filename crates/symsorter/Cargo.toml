@@ -1,6 +1,6 @@
 [package]
 name = "symsorter"
-version = "0.3.3"
+version = "0.3.4"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2018"
 
@@ -17,4 +17,4 @@ structopt = "0.3.21"
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "feat/cfi_unwind", version = "8.1.0", features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
 zip = "0.5.11"
-zstd = "0.6.0"
+zstd = "0.9.0"
