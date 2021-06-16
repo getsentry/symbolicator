@@ -3679,6 +3679,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha-1 0.9.6",
+ "similar",
  "structopt",
  "symbolic",
  "tempfile",
