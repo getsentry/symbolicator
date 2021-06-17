@@ -566,7 +566,7 @@ impl SourceLookup {
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
                 if let Some(i) =
-                    self.get_object_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                    self.get_module_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
                 {
                     referenced_objects.insert(i);
                 }
@@ -624,29 +624,32 @@ impl SourceLookup {
         })
     }
 
-    pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
+    pub fn prepare_debug_sessions(&self) -> BTreeMap<usize, Option<ObjectDebugSession<'_>>> {
         self.inner
             .iter()
             .map(|entry| {
-                entry
-                    .source_object
-                    .as_ref()
-                    .and_then(|o| o.0.get().debug_session().ok())
+                (
+                    entry.module_index,
+                    entry
+                        .source_object
+                        .as_ref()
+                        .and_then(|o| o.0.get().debug_session().ok()),
+                )
             })
             .collect()
     }
 
     pub fn get_context_lines(
         &self,
-        debug_sessions: &[Option<ObjectDebugSession<'_>>],
+        debug_sessions: &BTreeMap<usize, Option<ObjectDebugSession<'_>>>,
         addr: u64,
         addr_mode: AddrMode,
         abs_path: &str,
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let index = self.get_object_index_by_addr(addr, addr_mode)?;
-        let session = debug_sessions[index].as_ref()?;
+        let index = self.get_module_index_by_addr(addr, addr_mode)?;
+        let session = debug_sessions[&index].as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
         let lineno = lineno as usize;
@@ -664,7 +667,7 @@ impl SourceLookup {
         Some((pre_context, context, post_context))
     }
 
-    fn get_object_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
+    fn get_module_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
         match addr_mode {
             AddrMode::Abs => {
                 for entry in self.inner.iter() {
