@@ -94,10 +94,7 @@ impl ObjectHandle {
 impl ConfigureScope for ObjectHandle {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.to_scope(scope);
-        self.file_source.to_scope(scope);
-
         scope.set_tag("object_file.scope", self.scope());
-
         scope.set_extra(
             "object_file.first_16_bytes",
             format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
