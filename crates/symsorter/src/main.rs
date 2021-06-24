@@ -12,6 +12,7 @@ mod utils;
 
 mod app;
 mod config;
+mod dyldcache;
 
 fn main() {
     app::main();

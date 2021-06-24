@@ -7,10 +7,11 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use console::style;
-use object::macho::MachHeader32;
-use object::macho::MachHeader64;
-use object::read::macho::{DyldCache, DyldCacheImage, MachHeader};
-use object::{Endianness, Object};
+// use object::macho::DyldInfoCommand;
+use object::macho::{DyldCacheHeader, MachHeader32, MachHeader64};
+// use object::pod::Bytes;
+use object::read::macho::MachHeader;
+use object::Endianness;
 use rayon::prelude::*;
 use serde::Serialize;
 use structopt::StructOpt;
@@ -22,8 +23,7 @@ use zstd::stream::copy_encode;
 
 use crate::config::{RunConfig, SortConfig};
 use crate::utils::{
-    clone_dyld_image, create_source_bundle, get_dyld_image_filename, get_dyld_image_unified_id,
-    get_target_filename, get_unified_id, is_bundle_id, make_bundle_id,
+    create_source_bundle, get_target_filename, get_unified_id, is_bundle_id, make_bundle_id,
 };
 
 /// Sorts debug symbols into the right structure for symbolicator.
@@ -171,126 +171,127 @@ fn process_file(
     Ok(rv)
 }
 
-fn process_dyld_image(
-    sort_config: &SortConfig,
-    image: DyldCacheImage,
-) -> Result<Vec<(String, ObjectKind)>> {
-    let mut rv = vec![];
-    let filename = image.path()?.rsplit('/').next().unwrap().to_string();
+// fn process_dyld_image(
+//     sort_config: &SortConfig,
+//     // data: &ByteView,
+//     image: DyldCacheImage,
+// ) -> Result<Vec<(String, ObjectKind)>> {
+//     let mut rv = vec![];
+//     let filename = image.path()?.rsplit('/').next().unwrap().to_string();
 
-    macro_rules! maybe_ignore_error {
-        ($expr:expr) => {
-            match $expr {
-                Ok(value) => value,
-                Err(err) => {
-                    if RunConfig::get().ignore_errors {
-                        eprintln!(
-                            "{}: ignored error {} ({})",
-                            style("error").red().bold(),
-                            err,
-                            style(filename).cyan(),
-                        );
+//     macro_rules! maybe_ignore_error {
+//         ($expr:expr) => {
+//             match $expr {
+//                 Ok(value) => value,
+//                 Err(err) => {
+//                     if RunConfig::get().ignore_errors {
+//                         eprintln!(
+//                             "{}: ignored error {} ({})",
+//                             style("error").red().bold(),
+//                             err,
+//                             style(filename).cyan(),
+//                         );
 
-                        for cause in err.chain().skip(1) {
-                            eprintln!("{}", style(format!("  caused by {}", cause)).dim());
-                        }
-                        return Ok(rv);
-                    } else {
-                        return Err(err).context(format!("failed to process file {}", filename));
-                    }
-                }
-            }
-        };
-    }
+//                         for cause in err.chain().skip(1) {
+//                             eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+//                         }
+//                         return Ok(rv);
+//                     } else {
+//                         return Err(err).context(format!("failed to process file {}", filename));
+//                     }
+//                 }
+//             }
+//         };
+//     }
 
-    let compression_level = match sort_config.compression_level {
-        0 => 0,
-        1 => 3,
-        2 => 10,
-        3 => 19,
-        _ => 22,
-    };
+//     let compression_level = match sort_config.compression_level {
+//         0 => 0,
+//         1 => 3,
+//         2 => 10,
+//         3 => 19,
+//         _ => 22,
+//     };
 
-    let in_object = maybe_ignore_error!(image
-        .parse_object()
-        .map_err(|e| anyhow!("failed to parse archive {}", e)));
-    let root = &RunConfig::get().output;
+//     let in_object = maybe_ignore_error!(image
+//         .parse_object()
+//         .map_err(|e| anyhow!("failed to parse archive {}", e)));
 
-    let writable_data = clone_dyld_image(&in_object);
+//     let writable_data = clone_dyld_image(&in_object);
 
-    let raw_kind = if in_object.is_64() {
-        MachHeader64::parse(writable_data.as_slice(), 0)?.filetype(in_object.endianness())
-    } else {
-        MachHeader32::parse(writable_data.as_slice(), 0)?.filetype(in_object.endianness())
-    };
-    let kind = match raw_kind {
-        object::macho::MH_OBJECT => ObjectKind::Relocatable,
-        object::macho::MH_EXECUTE => ObjectKind::Executable,
-        object::macho::MH_FVMLIB => ObjectKind::Library,
-        object::macho::MH_CORE => ObjectKind::Dump,
-        object::macho::MH_PRELOAD => ObjectKind::Executable,
-        object::macho::MH_DYLIB => ObjectKind::Library,
-        object::macho::MH_DYLINKER => ObjectKind::Executable,
-        object::macho::MH_BUNDLE => ObjectKind::Library,
-        object::macho::MH_DSYM => ObjectKind::Debug,
-        object::macho::MH_KEXT_BUNDLE => ObjectKind::Library,
-        _ => ObjectKind::Other,
-    };
+//     let raw_kind = if in_object.is_64() {
+//         MachHeader64::parse(writable_data.as_slice(), 0)?.filetype(in_object.endianness())
+//     } else {
+//         MachHeader32::parse(writable_data.as_slice(), 0)?.filetype(in_object.endianness())
+//     };
+//     let kind = match raw_kind {
+//         object::macho::MH_OBJECT => ObjectKind::Relocatable,
+//         object::macho::MH_EXECUTE => ObjectKind::Executable,
+//         object::macho::MH_FVMLIB => ObjectKind::Library,
+//         object::macho::MH_CORE => ObjectKind::Dump,
+//         object::macho::MH_PRELOAD => ObjectKind::Executable,
+//         object::macho::MH_DYLIB => ObjectKind::Library,
+//         object::macho::MH_DYLINKER => ObjectKind::Executable,
+//         object::macho::MH_BUNDLE => ObjectKind::Library,
+//         object::macho::MH_DSYM => ObjectKind::Debug,
+//         object::macho::MH_KEXT_BUNDLE => ObjectKind::Library,
+//         _ => ObjectKind::Other,
+//     };
 
-    let new_filename = root.join(maybe_ignore_error!(get_dyld_image_filename(
-        &in_object, &kind
-    )
-    .ok_or_else(|| anyhow!("unsupported file"))));
+//     let root = &RunConfig::get().output;
+//     let new_filename = root.join(maybe_ignore_error!(get_dyld_image_filename(
+//         &in_object, &kind
+//     )
+//     .ok_or_else(|| anyhow!("unsupported file"))));
 
-    fs::create_dir_all(new_filename.parent().unwrap())?;
+//     fs::create_dir_all(new_filename.parent().unwrap())?;
 
-    if let Some(bundle_id) = &sort_config.bundle_id {
-        let refs_path = new_filename.parent().unwrap().join("refs");
-        fs::create_dir_all(&refs_path)?;
-        fs::write(&refs_path.join(bundle_id), b"")?;
-    }
+//     if let Some(bundle_id) = &sort_config.bundle_id {
+//         let refs_path = new_filename.parent().unwrap().join("refs");
+//         fs::create_dir_all(&refs_path)?;
+//         fs::write(&refs_path.join(bundle_id), b"")?;
+//     }
 
-    // all of the types recognized by DyldCacheHeader
-    let arch = match in_object.architecture() {
-        object::Architecture::I386 => Arch::X86,
-        object::Architecture::PowerPc => Arch::Ppc,
-        // we lose a bit of precision in the below variants because object combines all x86_64, arm,
-        // and arm64 variants into one common enum member
-        object::Architecture::X86_64 => Arch::Amd64,
-        object::Architecture::Arm => Arch::Arm,
-        object::Architecture::Aarch64 => Arch::Arm64_32,
-        _ => Arch::Unknown,
-    };
+//     // all of the types recognized by DyldCacheHeader
+//     let arch = match in_object.architecture() {
+//         object::Architecture::I386 => Arch::X86,
+//         object::Architecture::PowerPc => Arch::Ppc,
+//         // we lose a bit of precision in the below variants because object combines all x86_64, arm,
+//         // and arm64 variants into one common enum member
+//         object::Architecture::X86_64 => Arch::Amd64,
+//         object::Architecture::Arm => Arch::Arm,
+//         object::Architecture::Aarch64 => Arch::Arm64_32,
+//         _ => Arch::Unknown,
+//     };
 
-    let meta = DebugIdMeta {
-        name: Some(filename.clone()),
-        arch: Some(arch),
-        file_format: Some(FileFormat::MachO),
-    };
+//     let meta = DebugIdMeta {
+//         name: Some(filename.clone()),
+//         arch: Some(arch),
+//         file_format: Some(FileFormat::MachO),
+//     };
 
-    fs::write(
-        &new_filename.parent().unwrap().join("meta"),
-        &serde_json::to_vec(&meta)?,
-    )?;
+//     fs::write(
+//         &new_filename.parent().unwrap().join("meta"),
+//         &serde_json::to_vec(&meta)?,
+//     )?;
 
-    log!(
-        "{} ({}, {}) -> {}",
-        style(&filename).dim(),
-        style(kind).yellow(),
-        style(arch).yellow(),
-        style(new_filename.display()).cyan(),
-    );
-    let mut out = fs::File::create(&new_filename)?;
+//     log!(
+//         "{} ({}, {}) -> {}",
+//         style(&filename).dim(),
+//         style(kind).yellow(),
+//         style(arch).yellow(),
+//         style(new_filename.display()).cyan(),
+//     );
+//     let mut out = fs::File::create(&new_filename)?;
 
-    if compression_level > 0 {
-        copy_encode(writable_data.as_slice(), &mut out, compression_level)?;
-    } else {
-        io::copy(&mut writable_data.as_slice(), &mut out)?;
-    }
-    rv.push((get_dyld_image_unified_id(&in_object), kind));
+//     if compression_level > 0 {
+//         copy_encode(writable_data.as_slice(), &mut out, compression_level)?;
+//     } else {
+//         io::copy(&mut writable_data.as_slice(), &mut out)?;
+//     }
+//     rv.push((get_dyld_image_unified_id(&in_object), kind));
 
-    Ok(rv)
-}
+//     Ok(rv)
+// }
 
 fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
     let mut source_bundles_created = 0;
@@ -329,16 +330,172 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                     }
                 }
             // dyld shared cache
-            } else if let Ok(cache) = DyldCache::<Endianness>::parse(bv.as_slice()) {
-                for image in cache.images() {
-                    // let in_object = image.parse_object()?;
-                    debug_ids.lock().unwrap().extend(
-                        process_dyld_image(sort_config, image)?
-                            .into_iter()
-                            .map(|x| x.0),
-                    );
+            // } else if let Ok(cache) = DyldCache::<Endianness>::parse(bv.as_slice()) {
+            } else if let Ok(header) = DyldCacheHeader::<Endianness>::parse(bv.as_slice()) {
+                let data = bv.as_slice();
+                let (_, endian) = header.parse_magic()?;
+                let mappings = header.mappings(endian, data)?;
+                let images = header.images(endian, data)?;
+
+                for image in images.iter().take(2) {
+                    let mut image_data = Vec::<u8>::new();
+                    let image_path = match image.path(endian, data).map(|p| std::str::from_utf8(p))
+                    {
+                        Ok(Ok(path)) => path,
+                        Ok(Err(_)) | Err(_) => {
+                            log!("unable to grab pathname for image");
+                            continue;
+                        }
+                    };
+                    let image_offset = match image.file_offset(endian, mappings) {
+                        Ok(offset) => offset,
+                        Err(_) => {
+                            log!("unable to obtain offset for {:?}", image_path);
+                            continue;
+                        }
+                    };
+                    let kind = match object::FileKind::parse_at(data, image_offset) {
+                        Ok(file) => file,
+                        Err(err) => {
+                            log!("unable to parse file {:?}: {}", image_path, err);
+                            continue;
+                        }
+                    };
+                    log!("image: {}", image_path);
+                    match kind {
+                        object::FileKind::MachO32 => {
+                            let header = MachHeader32::<Endianness>::parse(data, image_offset)?;
+                            // 28 bytes for 32bit
+                            let start_header = image_offset as usize;
+                            let end_header =
+                                start_header + std::mem::size_of::<MachHeader32<Endianness>>();
+                            // TODO: remove in-cache bit from flags, flags &= 0x7FFFFFFF
+                            image_data.extend_from_slice(&data[start_header..end_header]);
+
+                            // #SEGMENT getting size based on values in header
+                            let start_commands = end_header;
+                            let end_commands = end_header + (header.sizeofcmds(endian) as usize);
+                            image_data.extend_from_slice(&data[start_commands..end_commands]);
+
+                            // header.load_commands(endian, data, image_offset)
+                        }
+                        object::FileKind::MachO64 => {
+                            let header = MachHeader64::<Endianness>::parse(data, image_offset)?;
+                            // 32 bytes for 64bit
+                            let start_header = image_offset as usize;
+                            let end_header =
+                                start_header + std::mem::size_of::<MachHeader64<Endianness>>();
+                            image_data.extend_from_slice(&data[start_header..end_header]);
+
+                            // #SEGMENT getting size based on values in header
+                            let start_commands = end_header;
+                            let end_commands = end_header + (header.sizeofcmds(endian) as usize);
+                            image_data.extend_from_slice(&data[start_commands..end_commands]);
+
+                            // header.load_commands(endian, data, image_offset)
+
+                            let mut commands =
+                                match header.load_commands(endian, data, image_offset) {
+                                    Ok(cmds) => cmds,
+                                    Err(_) => {
+                                        log!("could not load commands for {}", image_path);
+                                        continue;
+                                    }
+                                };
+
+                            let mut index = 0;
+                            while let Ok(Some(command)) = commands.next() {
+                                log!("cmdsize: {}", command.cmdsize());
+                                if let Ok(variant) = command.variant() {
+                                    match variant {
+                                        object::read::macho::LoadCommandVariant::Segment32(
+                                            _,
+                                            _,
+                                        ) => log!("ok"),
+                                        object::read::macho::LoadCommandVariant::Segment64(
+                                            _,
+                                            _,
+                                        ) => log!("ok"),
+                                        object::read::macho::LoadCommandVariant::DyldInfo(
+                                            dyld_info,
+                                        ) => {
+                                            log!("index: {}", index);
+                                            log!("dyldinfo: {:?}", dyld_info);
+                                            log!("cmd rep: {:?}", command);
+
+                                            // whoops, sizeofcmds is the size for ALL cmds, not per cmd
+                                            // let start = start_commands
+                                            //     + (index * header.sizeofcmds(endian)) as usize;
+                                            // let end = start + header.sizeofcmds(endian) as usize;
+
+                                            // let mut podbytes = Bytes(&data[start..end]);
+
+                                            // let wow: &DyldInfoCommand<Endianness> =
+                                            //     match podbytes.read() {
+                                            //         Ok(command) => command,
+                                            //         Err(_) => {
+                                            //             log!("oh no");
+                                            //             index += 1;
+                                            //             continue;
+                                            //         }
+                                            //     };
+                                        }
+                                        // specifically LC_DYLD_EXPORTS_TRI, LC_FUNCTION_STARTS, LC_DATA_IN_CODE
+                                        // REMOVE LC_SEGMENT_SPLIT_INFO
+                                        object::read::macho::LoadCommandVariant::LinkeditData(
+                                            _,
+                                        ) => {
+                                            log!("ok");
+                                        }
+                                        object::read::macho::LoadCommandVariant::Symtab(_) => {
+                                            log!("ok");
+                                        }
+                                        object::read::macho::LoadCommandVariant::Dysymtab(_) => {
+                                            log!("ok");
+                                        }
+                                        // LC_LOAD_DYLIB, etc
+                                        object::read::macho::LoadCommandVariant::Dylib(_) => {
+                                            log!("ok");
+                                        }
+                                        _ => {
+                                            // on second thought, just copy everything else over that doesn't
+                                            // need adjusting but maybe emit something if it isn't expected?
+                                            log!("unexpected load command: {:?}", command);
+                                            index += 1;
+                                            continue;
+                                        }
+                                    }
+                                }
+                                index += 1;
+                            }
+                        }
+                        other => {
+                            log!(
+                                "found unexpected file type in dyld shared cache: {:?}, {}",
+                                other,
+                                image_path
+                            );
+                            continue;
+                        }
+                    };
+
+                    let root = &RunConfig::get().output;
+                    let filename = root.join(image_path.rsplit('/').next().unwrap().to_string());
+                    fs::create_dir_all(filename.parent().unwrap())?;
+                    let mut out = fs::File::create(&filename)?;
+                    io::copy(&mut image_data.as_slice(), &mut out)?;
                 }
-            // object file directly
+
+                // for image in cache.images() {
+                //     println!("path: {}", image.path().unwrap_or_default());
+
+                //     debug_ids.lock().unwrap().extend(
+                //         process_dyld_image(sort_config, image)?
+                //             .into_iter()
+                //             .map(|x| x.0),
+                //     );
+                // }
+                // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
                 for (unified_id, object_kind) in process_file(
                     sort_config,
