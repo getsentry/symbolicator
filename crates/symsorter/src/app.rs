@@ -123,9 +123,7 @@ fn process_file(
 
     for obj in archive.objects() {
         let obj = maybe_ignore_error!(obj.map_err(|e| anyhow!(e)));
-        let new_filename = root.join(maybe_ignore_error!(
-            get_target_filename(&obj).ok_or_else(|| anyhow!("unsupported file"))
-        ));
+        let new_filename = root.join(maybe_ignore_error!(get_target_filename(&obj)));
 
         fs::create_dir_all(new_filename.parent().unwrap())?;
 
@@ -160,7 +158,8 @@ fn process_file(
         } else {
             io::copy(&mut obj.data(), &mut out)?;
         }
-        rv.push((get_unified_id(&obj), obj.kind()));
+        let unified_id = maybe_ignore_error!(get_unified_id(&obj));
+        rv.push((unified_id, obj.kind()));
     }
 
     Ok(rv)

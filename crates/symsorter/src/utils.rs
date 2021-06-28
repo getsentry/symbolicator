@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use symbolic::common::ByteView;
@@ -26,31 +26,30 @@ pub fn is_bundle_id(input: &str) -> bool {
 }
 
 /// Gets the unified ID from an object.
-pub fn get_unified_id(obj: &Object) -> String {
+pub fn get_unified_id(obj: &Object) -> Result<String> {
     if obj.file_format() == FileFormat::Pe || obj.code_id().is_none() {
-        obj.debug_id().breakpad().to_string().to_lowercase()
+        let debug_id = obj.debug_id();
+        if debug_id.is_nil() {
+            Err(anyhow!("failed to generate debug identifier"))
+        } else {
+            Ok(debug_id.breakpad().to_string().to_lowercase())
+        }
     } else {
-        obj.code_id().as_ref().unwrap().as_str().to_string()
+        Ok(obj.code_id().as_ref().unwrap().as_str().to_string())
     }
 }
 
 /// Returns the intended target filename for an object.
-pub fn get_target_filename(obj: &Object) -> Option<PathBuf> {
-    let id = get_unified_id(obj);
+pub fn get_target_filename(obj: &Object) -> Result<PathBuf> {
+    let id = get_unified_id(obj)?;
     // match the unified format here.
     let suffix = match obj.kind() {
         ObjectKind::Debug => "debuginfo",
-        ObjectKind::Sources => {
-            if obj.file_format() == FileFormat::SourceBundle {
-                "sourcebundle"
-            } else {
-                return None;
-            }
-        }
+        ObjectKind::Sources if obj.file_format() == FileFormat::SourceBundle => "sourcebundle",
         ObjectKind::Relocatable | ObjectKind::Library | ObjectKind::Executable => "executable",
-        _ => return None,
+        _ => bail!("unsupported file"),
     };
-    Some(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())
+    Ok(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())
 }
 
 /// Creates a source bundle from a path.
@@ -59,7 +58,7 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
     let archive = Archive::parse(&bv).map_err(|e| anyhow!(e))?;
     for obj in archive.objects() {
         let obj = obj.map_err(|e| anyhow!(e))?;
-        if get_unified_id(&obj) == unified_id {
+        if matches!(get_unified_id(&obj), Ok(generated_id) if unified_id == generated_id) {
             let mut out = Vec::<u8>::new();
             let writer =
                 SourceBundleWriter::start(Cursor::new(&mut out)).map_err(|e| anyhow!(e))?;
