@@ -2147,7 +2147,7 @@ impl SymbolicationActor {
                     sentry::capture_message("Different stackwalking results", sentry::Level::Error);
                 }
 
-                if duration_new >= Duration::from_secs(5) {
+                if duration_new >= 1.5 * duration_old {
                     Self::save_minidump(&minidump, &self.diagnostics_cache)
                         .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
                         .map(|r| {
