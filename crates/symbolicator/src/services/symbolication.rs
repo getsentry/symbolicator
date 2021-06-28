@@ -1170,8 +1170,15 @@ fn record_symbolication_metrics(
     let origin = origin.to_string();
 
     let platform = modules
-        .first()
-        .map(|m| m.raw.ty)
+        .iter()
+        .filter_map(|m| {
+            if m.raw.ty == ObjectType::Unknown {
+                None
+            } else {
+                Some(m.raw.ty)
+            }
+        })
+        .next()
         .unwrap_or(ObjectType::Unknown)
         .to_string();
 
