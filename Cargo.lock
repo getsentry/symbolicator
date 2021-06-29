@@ -533,8 +533,7 @@ checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 [[package]]
 name = "cpp_demangle"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44919ecaf6f99e8e737bc239408931c9a01e9a6c74814fee8242dd2506b65390"
+source = "git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches#3850dfbe03a3f8621be88ab50429a00374a8470a"
 dependencies = [
  "cfg-if 1.0.0",
  "glob",
@@ -3539,7 +3538,7 @@ checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
 [[package]]
 name = "symbolic"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3551,7 +3550,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "debugid",
  "memmap",
@@ -3563,7 +3562,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "dmsort",
  "elementtree",
@@ -3592,7 +3591,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3604,7 +3603,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3615,12 +3614,13 @@ dependencies = [
  "symbolic-symcache",
  "symbolic-unwind",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
 name = "symbolic-symcache"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3632,7 +3632,7 @@ dependencies = [
 [[package]]
 name = "symbolic-unwind"
 version = "8.2.1"
-source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#a044b4519d121d5149bdb7d1592039ec7d8d132a"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/cfi_unwind#3671a704f81877304695acace0676fbed96b66f7"
 dependencies = [
  "insta",
  "nom 6.1.2",
@@ -4191,7 +4191,19 @@ dependencies = [
  "cfg-if 1.0.0",
  "log",
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c42e6fa53307c8a17e4ccd4dc81cf5ec38db9209f59b222210375b54ee40d1e2"
+dependencies = [
+ "proc-macro2 1.0.27",
+ "quote 1.0.9",
+ "syn 1.0.73",
 ]
 
 [[package]]
