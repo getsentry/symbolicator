@@ -11,6 +11,14 @@ __pycache__
 /local.yml
 /cache/
 /symbols/
+/symbols*/
+
+# Generated symbols
+executable
+meta
+
+# log files
+*.log
 
 # mkdocs
 site
