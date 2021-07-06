@@ -21,6 +21,7 @@ use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 
 use crate::cache::{CacheKey, CacheStatus};
+use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CachePath};
 use crate::services::download::{DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
@@ -156,15 +157,20 @@ impl CacheItemRequest for FetchFileDataRequest {
         let future = async move {
             let status = downloader
                 .download(file_id, download_file.path().to_owned())
-                .await
-                .map_err(Self::Error::from)?;
+                .await;
 
             match status {
-                DownloadStatus::NotFound => {
+                Ok(DownloadStatus::NotFound) => {
                     log::debug!("No debug file found for {}", cache_key);
                     return Ok(CacheStatus::Negative);
                 }
-                DownloadStatus::Completed => {
+
+                Err(e) => {
+                    log::error!("Error while downloading file: {}", LogError(&e));
+                    return Ok(CacheStatus::Negative);
+                }
+
+                Ok(DownloadStatus::Completed) => {
                     // fall-through
                 }
             }
@@ -264,5 +270,71 @@ impl CacheItemRequest for FetchFileDataRequest {
         object_handle.configure_scope();
 
         object_handle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use crate::cache::Cache;
+    use crate::config::{CacheConfig, CacheConfigs, Config};
+    use crate::services::download::DownloadService;
+    use crate::services::objects::data_cache::{CacheStatus, Scope};
+    use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
+    use crate::sources::FileType;
+    use crate::test;
+
+    fn objects_actor() -> ObjectsActor {
+        let meta_cache = Cache::from_config(
+            "meta",
+            None,
+            None,
+            CacheConfig::from(CacheConfigs::default().derived),
+        )
+        .unwrap();
+
+        let data_cache = Cache::from_config(
+            "data",
+            None,
+            None,
+            CacheConfig::from(CacheConfigs::default().downloaded),
+        )
+        .unwrap();
+
+        let config = Arc::new(Config {
+            connect_to_reserved_ips: true,
+            ..Config::default()
+        });
+
+        let download_svc = DownloadService::new(config);
+        ObjectsActor::new(meta_cache, data_cache, download_svc)
+    }
+
+    #[tokio::test]
+    async fn test_negative_cache() {
+        test::setup();
+
+        let (_srv, source) = test::symbol_server();
+
+        let objects_actor = objects_actor();
+
+        let find_object = FindObject {
+            filetypes: FileType::all(),
+            purpose: ObjectPurpose::Debug,
+            scope: Scope::Global,
+            identifier: Default::default(),
+            sources: Arc::new([source]),
+        };
+
+        let status = objects_actor
+            .find(find_object)
+            .await
+            .unwrap()
+            .meta
+            .unwrap()
+            .status();
+
+        assert_eq!(status, CacheStatus::Negative);
     }
 }
