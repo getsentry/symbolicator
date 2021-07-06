@@ -73,6 +73,7 @@ metrics:
   sources. See [Security](#security). Defaults to `false`.
 - `processing_pool_size`: The number of subprocesses in Symbolicator's internal
   processing pool. Defaults to the total number of logical CPUs on the machine.
+- `download_timeout`: The timeout for downloading debug files.
 - `caches`: Fine-tune cache expiry.
   All time units can be either a time expression like `1s`.  Units
   can be `s`, `seconds`, `m`, `minutes`, `h`, `hours`, `d`, `days`,
