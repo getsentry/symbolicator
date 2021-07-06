@@ -242,6 +242,9 @@ pub struct Config {
 
     /// Number of subprocesses in the internal processing pool.
     pub processing_pool_size: usize,
+
+    /// The timeout for downloads in seconds.
+    pub download_timeout: u64,
 }
 
 impl Config {
@@ -305,6 +308,7 @@ impl Default for Config {
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
+            download_timeout: 300,
         }
     }
 }
