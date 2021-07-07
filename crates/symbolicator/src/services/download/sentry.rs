@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::prelude::*;
+use futures::TryStreamExt;
 use parking_lot::Mutex;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -283,7 +283,7 @@ impl SentryDownloader {
 
         let download_url = file_source.url();
         let source = RemoteDif::from(file_source);
-        let request = future_utils::measure_source_download(source.source_metric_key(), request);
+        let request = super::measure_download_time(source.source_metric_key(), request);
 
         match request.await {
             Ok(response) => {

@@ -223,7 +223,7 @@ impl GcsDownloader {
                 .get(url.clone())
                 .header("authorization", format!("Bearer {}", token.access_token))
                 .send();
-            future_utils::measure_source_download(source.source_metric_key(), request)
+            super::measure_download_time(source.source_metric_key(), request)
         });
 
         match request.await {

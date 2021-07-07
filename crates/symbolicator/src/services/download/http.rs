@@ -111,7 +111,7 @@ impl HttpDownloader {
         }
         let source = RemoteDif::from(file_source);
         let request = builder.header(header::USER_AGENT, USER_AGENT).send();
-        let request = future_utils::measure_source_download(source.source_metric_key(), request);
+        let request = super::measure_download_time(source.source_metric_key(), request);
 
         match request.await {
             Ok(request) => {
