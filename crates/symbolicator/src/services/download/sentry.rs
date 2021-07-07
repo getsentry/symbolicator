@@ -19,7 +19,7 @@ use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, US
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m, measure};
+use crate::utils::futures::{self as future_utils, m, measure, measure_source_download};
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -263,33 +263,43 @@ impl SentryDownloader {
 
     async fn download_source_once(
         &self,
-        source: SentryRemoteDif,
+        file_source: SentryRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let request = self
             .client
-            .get(source.url())
+            .get(file_source.url())
             .header("User-Agent", USER_AGENT)
-            .bearer_auth(&source.source.token)
+            .bearer_auth(&file_source.source.token)
             .send();
+
+        let download_url = file_source.url();
+        let source = RemoteDif::from(file_source);
+        let request = future_utils::measure_source_download(
+            "service.download.download_source",
+            source.source_metric_key(),
+            future_utils::m::result,
+            request,
+        );
+
         match request.await {
             Ok(response) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting {}", source.url());
+                    log::trace!("Success hitting {}", download_url);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
-                        source.url(),
+                        download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }
             }
             Err(e) => {
-                log::trace!("Skipping response from {}: {}", source.url(), e);
+                log::trace!("Skipping response from {}: {}", download_url, e);
                 Ok(DownloadStatus::NotFound) // must be wrong type
             }
         }
