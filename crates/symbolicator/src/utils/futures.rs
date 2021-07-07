@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -286,15 +287,21 @@ impl Drop for MeasureSourceDownload<'_> {
             MeasureState::Done(status) => status,
         };
 
-        let duration = self.creation_time.elapsed().as_secs();
+        let duration = self.creation_time.elapsed();
         metric!(
-            histogram(self.task_name) = duration,
+            timer(self.task_name) = duration,
             "status" => status,
             "source" => self.source_name,
         );
 
         if let Some(bytes_transferred) = self.bytes_transferred {
-            let throughput = duration / bytes_transferred;
+            // Times are recorded in milliseconds, so match that unit when calculating throughput.
+            let throughput = duration
+                .as_millis()
+                .checked_div(bytes_transferred as u128)
+                .unwrap_or_default()
+                .try_into()
+                .unwrap_or(u64::MAX);
             metric!(
                 histogram(format!("{}.throughput", self.task_name).as_str()) = throughput,
                 "status" => status,
