@@ -222,7 +222,7 @@ async fn download_stream(
         Ok(())
     }
     .await;
-    measuring_stick.done(m::result(&result));
+    measuring_stick.done(&result);
     result?;
 
     file.flush().await.map_err(DownloadError::Write)?;

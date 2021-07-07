@@ -283,12 +283,7 @@ impl SentryDownloader {
 
         let download_url = file_source.url();
         let source = RemoteDif::from(file_source);
-        let request = future_utils::measure_source_download(
-            "service.download.download_source",
-            source.source_metric_key(),
-            m::result,
-            request,
-        );
+        let request = future_utils::measure_source_download(source.source_metric_key(), request);
 
         match request.await {
             Ok(response) => {

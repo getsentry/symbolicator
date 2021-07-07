@@ -237,7 +237,7 @@ where
 }
 
 /// A guard to [`measure`] the amount of time it takes to download a source. This guard is also
-/// capable of calculating and reporting the the throughput of the connection. Two metrics are
+/// capable of calculating and reporting the throughput of the connection. Two metrics are
 /// emitted if `bytes_transferred` is set:
 ///
 /// 1. Amount of time taken to complete the measurement
@@ -273,8 +273,8 @@ impl<'a> MeasureSourceDownload<'a> {
     }
 
     /// Marks the download as terminated.
-    pub fn done(mut self, status: &'static str) {
-        self.state = MeasureState::Done(status);
+    pub fn done<T, E>(mut self, reason: &Result<T, E>) {
+        self.state = MeasureState::Done(m::result(reason));
     }
 }
 
@@ -319,20 +319,17 @@ impl Drop for MeasureSourceDownload<'_> {
 /// for status helpers.
 ///
 /// An additional tag for the source name is also added to the metric.
-pub fn measure_source_download<'a, S, F>(
-    task_name: &'a str,
+pub fn measure_source_download<'a, F, T, G>(
     source_name: &'a str,
-    get_status: S,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a
 where
-    F: 'a + Future,
-    S: 'a + FnOnce(&F::Output) -> &'static str,
+    F: 'a + Future<Output = Result<T, G>>,
 {
-    let guard = MeasureSourceDownload::new(task_name, source_name);
+    let guard = MeasureSourceDownload::new("service.download.download_source", source_name);
     async move {
         let output = f.await;
-        guard.done(get_status(&output));
+        guard.done(&output);
         output
     }
 }

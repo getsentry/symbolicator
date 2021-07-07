@@ -13,7 +13,7 @@ use url::Url;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m};
+use crate::utils::futures as future_utils;
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -111,12 +111,7 @@ impl HttpDownloader {
         }
         let source = RemoteDif::from(file_source);
         let request = builder.header(header::USER_AGENT, USER_AGENT).send();
-        let request = future_utils::measure_source_download(
-            "service.download.download_source",
-            source.source_metric_key(),
-            m::result,
-            request,
-        );
+        let request = future_utils::measure_source_download(source.source_metric_key(), request);
 
         match request.await {
             Ok(request) => {

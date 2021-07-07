@@ -18,7 +18,7 @@ use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m};
+use crate::utils::futures as future_utils;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
@@ -223,12 +223,7 @@ impl GcsDownloader {
                 .get(url.clone())
                 .header("authorization", format!("Bearer {}", token.access_token))
                 .send();
-            future_utils::measure_source_download(
-                "service.download.download_source",
-                source.source_metric_key(),
-                m::result,
-                request,
-            )
+            future_utils::measure_source_download(source.source_metric_key(), request)
         });
 
         match request.await {

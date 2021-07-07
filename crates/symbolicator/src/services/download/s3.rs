@@ -18,7 +18,7 @@ use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m};
+use crate::utils::futures as future_utils;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 
@@ -150,12 +150,7 @@ impl S3Downloader {
         });
 
         let source = RemoteDif::from(file_source);
-        let request = future_utils::measure_source_download(
-            "service.download.download_source",
-            source.source_metric_key(),
-            m::result,
-            request,
-        );
+        let request = future_utils::measure_source_download(source.source_metric_key(), request);
 
         let response = match request.await {
             Ok(response) => response,
