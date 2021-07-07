@@ -298,7 +298,7 @@ impl Drop for MeasureSourceDownload<'_> {
             metric!(
                 histogram(format!("{}.throughput", self.task_name).as_str()) = throughput,
                 "status" => status,
-                "source_name" => self.source_name,
+                "source" => self.source_name,
             );
         }
     }
