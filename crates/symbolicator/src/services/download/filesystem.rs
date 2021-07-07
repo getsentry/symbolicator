@@ -14,6 +14,7 @@ use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, FilesystemSourceConfig};
 use crate::types::ObjectId;
+use crate::utils::futures as future_utils;
 
 /// Filesystem-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -59,6 +60,38 @@ impl FilesystemDownloader {
 
     /// Download from a filesystem source.
     pub async fn download_source(
+        &self,
+        file_source: FilesystemRemoteDif,
+        dest: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
+        let retries =
+            future_utils::retry(|| self.download_source_once(file_source.clone(), dest.clone()));
+        let abspath = file_source.path();
+        match retries.await {
+            Ok(DownloadStatus::NotFound) => {
+                log::debug!(
+                    "Did not fetch debug file from local filesystem {:?} : {:?}",
+                    abspath,
+                    DownloadStatus::NotFound
+                );
+                Ok(DownloadStatus::NotFound)
+            }
+            Ok(status) => {
+                log::debug!("Fetched debug file from local filesystem {:?}", abspath);
+                Ok(status)
+            }
+            Err(err) => {
+                log::debug!(
+                    "Failed to fetch debug file from local filesystem {:?}: {}",
+                    abspath,
+                    err
+                );
+                Err(err)
+            }
+        }
+    }
+
+    async fn download_source_once(
         &self,
         file_source: FilesystemRemoteDif,
         dest: PathBuf,

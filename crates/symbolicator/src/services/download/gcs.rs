@@ -205,6 +205,43 @@ impl GcsDownloader {
         file_source: GcsRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
+        let retries = future_utils::retry(|| {
+            self.download_source_once(file_source.clone(), destination.clone())
+        });
+
+        let key = file_source.key();
+        let bucket = file_source.source.bucket.as_str();
+        match retries.await {
+            Ok(DownloadStatus::NotFound) => {
+                log::debug!(
+                    "Did not fetch debug file from GCS {} (from {}): {:?}",
+                    &key,
+                    bucket,
+                    DownloadStatus::NotFound
+                );
+                Ok(DownloadStatus::NotFound)
+            }
+            Ok(status) => {
+                log::debug!("Fetched debug file from GCS {} (from {})", &key, bucket);
+                Ok(status)
+            }
+            Err(err) => {
+                log::debug!(
+                    "Failed to fetch debug file from GCS {} (from {}): {}",
+                    &key,
+                    bucket,
+                    err
+                );
+                Err(err)
+            }
+        }
+    }
+
+    async fn download_source_once(
+        &self,
+        file_source: GcsRemoteDif,
+        destination: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
         log::debug!("Fetching from GCS: {} (from {})", &key, bucket);
@@ -219,14 +256,12 @@ impl GcsDownloader {
             .extend(&[&bucket, "o", &key]);
 
         let source = RemoteDif::from(file_source);
-        let request = future_utils::retry(|| {
-            let request = self
-                .client
-                .get(url.clone())
-                .header("authorization", format!("Bearer {}", token.access_token))
-                .send();
-            super::measure_download_time(source.source_metric_key(), request)
-        });
+        let request = self
+            .client
+            .get(url.clone())
+            .header("authorization", format!("Bearer {}", token.access_token))
+            .send();
+        let request = super::measure_download_time(source.source_metric_key(), request);
 
         match request.await {
             Ok(response) => {
