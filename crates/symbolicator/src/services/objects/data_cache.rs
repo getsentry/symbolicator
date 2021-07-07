@@ -275,7 +275,10 @@ impl CacheItemRequest for FetchFileDataRequest {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use crate::cache::Cache;
     use crate::config::{CacheConfig, CacheConfigs, Config};
@@ -283,33 +286,118 @@ mod tests {
     use crate::services::objects::data_cache::{CacheStatus, Scope};
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::sources::{FileType, HttpSourceConfig, SourceConfig, SourceId};
-    use crate::test;
-    use crate::test::Server;
+    use crate::test::{self, fixture, Server};
 
-    use warp::reject::Reject;
+    use symbolic::common::DebugId;
+
+    use warp::filters::fs::File;
+    use warp::reject::{Reject, Rejection};
     use warp::Filter;
 
     #[derive(Debug, Clone, Copy)]
     struct GoAway;
 
     impl Reject for GoAway {}
-    fn failing_symbol_server() -> (Server, SourceConfig) {
-        let app = warp::path("reject")
-            .and_then(|| async move { Err::<&str, _>(warp::reject::custom(GoAway)) });
-        let server = Server::new(app);
-        // The source uses the same identifier ("local") as the local file system source to avoid
-        // differences when changing the bucket in tests.
 
-        let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("local"),
-            url: server.url("reject/"),
-            headers: Default::default(),
-            files: Default::default(),
-        }));
-
-        (server, source)
+    struct FailingSymbolServer {
+        server: Server,
+        times_accessed: Arc<AtomicUsize>,
+        accept_source: SourceConfig,
+        reject_source: SourceConfig,
+        pending_source: SourceConfig,
+        not_found_source: SourceConfig,
     }
+    impl FailingSymbolServer {
+        fn new() -> Self {
+            let times_accessed = Arc::new(AtomicUsize::new(0));
 
+            let times = times_accessed.clone();
+            let reject = warp::path("reject")
+                .and(warp::fs::dir(fixture("symbols")))
+                .and_then(move |_| {
+                    let times = Arc::clone(&times);
+                    async move {
+                        (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                        Err::<File, _>(warp::reject::custom(GoAway))
+                    }
+                });
+
+            let times = times_accessed.clone();
+            let not_found = warp::path("not-found")
+                .and(warp::fs::dir(fixture("symbols")))
+                .and_then(move |_| {
+                    let times = Arc::clone(&times);
+                    async move {
+                        (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                        Err::<File, _>(warp::reject::not_found())
+                    }
+                });
+
+            let times = times_accessed.clone();
+            let pending = warp::path("pending")
+                .and(warp::fs::dir(fixture("symbols")))
+                .and_then(move |_| {
+                    let times = Arc::clone(&times);
+                    (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                    std::future::pending::<Result<File, Rejection>>()
+                });
+
+            let times = times_accessed.clone();
+            let accept = warp::path("pending")
+                .and(warp::fs::dir(fixture("symbols")))
+                .map(move |file| {
+                    let times = Arc::clone(&times);
+                    (*times).fetch_add(1, Ordering::SeqCst);
+
+                    file
+                });
+
+            let server = Server::new(reject.or(not_found).or(pending).or(accept));
+
+            // The sources use the same identifier ("local") as the local file system source to avoid
+            // differences when changing the bucket in tests.
+
+            let accept_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+                id: SourceId::new("accept"),
+                url: server.url("accept/"),
+                headers: Default::default(),
+                files: Default::default(),
+            }));
+
+            let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+                id: SourceId::new("reject"),
+                url: server.url("reject/"),
+                headers: Default::default(),
+                files: Default::default(),
+            }));
+
+            let pending_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+                id: SourceId::new("pending"),
+                url: server.url("pending/"),
+                headers: Default::default(),
+                files: Default::default(),
+            }));
+
+            let not_found_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+                id: SourceId::new("not-found"),
+                url: server.url("not-found/"),
+                headers: Default::default(),
+                files: Default::default(),
+            }));
+
+            FailingSymbolServer {
+                server,
+                times_accessed,
+                accept_source,
+                reject_source,
+                pending_source,
+                not_found_source,
+            }
+        }
+    }
     fn objects_actor() -> ObjectsActor {
         let meta_cache = Cache::from_config(
             "meta",
@@ -329,6 +417,7 @@ mod tests {
 
         let config = Arc::new(Config {
             connect_to_reserved_ips: true,
+            download_timeout: Duration::from_secs(1),
             ..Config::default()
         });
 
@@ -340,7 +429,7 @@ mod tests {
     async fn test_negative_cache() {
         test::setup();
 
-        let (_srv, source) = failing_symbol_server();
+        let server = FailingSymbolServer::new();
 
         let objects_actor = objects_actor();
 
@@ -348,16 +437,13 @@ mod tests {
             filetypes: FileType::all(),
             purpose: ObjectPurpose::Debug,
             scope: Scope::Global,
-            identifier: Default::default(),
-            sources: Arc::new([source]),
+            identifier: DebugId::default().into(),
+            sources: Arc::new([server.reject_source]),
         };
 
-        let status = dbg!(objects_actor.find(find_object).await)
-            .unwrap()
-            .meta
-            .unwrap()
-            .status();
-
-        assert_eq!(status, CacheStatus::Negative);
+        objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(server.times_accessed.load(Ordering::SeqCst), 1);
+        objects_actor.find(find_object).await.unwrap();
+        assert_eq!(server.times_accessed.load(Ordering::SeqCst), 1);
     }
 }
