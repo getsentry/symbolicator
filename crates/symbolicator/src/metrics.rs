@@ -101,17 +101,6 @@ macro_rules! metric {
                 .send();
         })
     }};
-    (timer($id:expr), $block:block $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
-        let now = Instant::now();
-        let rv = {$block};
-        $crate::metrics::with_client(|client| {
-            client.time_duration_with_tags($id, now.elapsed())
-                $(.with_tag($k, $v))*
-                .send();
-        });
-        rv
-    }};
 
     // we use statsd timers to send things such as filesizes as well.
     (time_raw($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
@@ -122,7 +111,6 @@ macro_rules! metric {
                 .send();
         })
     }};
-
 }
 
 macro_rules! future_metrics {
