@@ -18,6 +18,7 @@ use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
+use crate::utils::futures::{self as future_utils, m};
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 
@@ -141,16 +142,22 @@ impl S3Downloader {
         log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
-        let result = self
-            .get_s3_client(source_key)
-            .get_object(rusoto_s3::GetObjectRequest {
-                key: key.clone(),
-                bucket: bucket.clone(),
-                ..Default::default()
-            })
-            .await;
+        let client = self.get_s3_client(source_key);
+        let request = client.get_object(rusoto_s3::GetObjectRequest {
+            key: key.clone(),
+            bucket: bucket.clone(),
+            ..Default::default()
+        });
 
-        let response = match result {
+        let source = RemoteDif::from(file_source);
+        let request = future_utils::measure_source_download(
+            "service.download.download_source",
+            source.source_metric_key(),
+            m::result,
+            request,
+        );
+
+        let response = match request.await {
             Ok(response) => response,
             Err(err) => {
                 // For missing files, Amazon returns different status codes based on the given
@@ -171,7 +178,7 @@ impl S3Downloader {
             }
         };
 
-        super::download_stream(file_source, stream, destination).await
+        super::download_stream(source, stream, destination).await
     }
 
     pub fn list_files(
