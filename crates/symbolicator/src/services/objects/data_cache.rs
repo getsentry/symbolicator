@@ -282,8 +282,33 @@ mod tests {
     use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::{CacheStatus, Scope};
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
-    use crate::sources::FileType;
+    use crate::sources::{FileType, HttpSourceConfig, SourceConfig, SourceId};
     use crate::test;
+    use crate::test::Server;
+
+    use warp::reject::Reject;
+    use warp::Filter;
+
+    #[derive(Debug, Clone, Copy)]
+    struct GoAway;
+
+    impl Reject for GoAway {}
+    fn failing_symbol_server() -> (Server, SourceConfig) {
+        let app = warp::path("reject")
+            .and_then(|| async move { Err::<&str, _>(warp::reject::custom(GoAway)) });
+        let server = Server::new(app);
+        // The source uses the same identifier ("local") as the local file system source to avoid
+        // differences when changing the bucket in tests.
+
+        let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("local"),
+            url: server.url("reject/"),
+            headers: Default::default(),
+            files: Default::default(),
+        }));
+
+        (server, source)
+    }
 
     fn objects_actor() -> ObjectsActor {
         let meta_cache = Cache::from_config(
@@ -315,7 +340,7 @@ mod tests {
     async fn test_negative_cache() {
         test::setup();
 
-        let (_srv, source) = test::symbol_server();
+        let (_srv, source) = failing_symbol_server();
 
         let objects_actor = objects_actor();
 
@@ -327,9 +352,7 @@ mod tests {
             sources: Arc::new([source]),
         };
 
-        let status = objects_actor
-            .find(find_object)
-            .await
+        let status = dbg!(objects_actor.find(find_object).await)
             .unwrap()
             .meta
             .unwrap()
