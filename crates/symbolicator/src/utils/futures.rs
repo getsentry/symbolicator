@@ -268,10 +268,8 @@ impl<'a> MeasureSourceDownload<'a> {
     ///
     /// This value will be emitted when the download's future is completed or cancelled.
     pub fn add_bytes_transferred(&mut self, additional_bytes: u64) {
-        self.bytes_transferred = self
-            .bytes_transferred
-            .and_then(|old_count| old_count.checked_add(additional_bytes).or(Some(old_count)))
-            .or(Some(additional_bytes));
+        let bytes = self.bytes_transferred.get_or_insert(Default::default());
+        *bytes = bytes.saturating_add(additional_bytes);
     }
 
     /// Marks the download as terminated.
