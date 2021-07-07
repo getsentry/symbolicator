@@ -293,13 +293,14 @@ impl Drop for MeasureSourceDownload<'_> {
         );
 
         if let Some(bytes_transferred) = self.bytes_transferred {
-            // Times are recorded in milliseconds, so match that unit when calculating throughput.
-            let throughput = duration
-                .as_millis()
-                .checked_div(bytes_transferred as u128)
-                .unwrap_or_default()
-                .try_into()
-                .unwrap_or(u64::MAX);
+            // Times are recorded in milliseconds, so match that unit when calculating throughput,
+            // recording a byte / ms value.
+            // This falls back to the throughput being equivalent to the amount of bytes transferred
+            // if the duration is zero, or there are any conversion errors.
+            let throughput = (bytes_transferred as u128)
+                .checked_div(duration.as_millis())
+                .and_then(|t| t.try_into().ok())
+                .unwrap_or(bytes_transferred);
             metric!(
                 histogram(format!("{}.throughput", self.task_name).as_str()) = throughput,
                 "status" => status,
