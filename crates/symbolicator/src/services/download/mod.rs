@@ -209,21 +209,19 @@ async fn download_stream(
         .map_err(DownloadError::BadDestination)?;
     futures::pin_mut!(stream);
 
-    let mut measuring_stick = MeasureSourceDownloadGuard::new(
-        "service.download.download_source_stream",
-        source.source_metric_key(),
-    );
+    let mut throughput_recorder =
+        MeasureSourceDownloadGuard::new("source.download", source.source_metric_key());
     let result: Result<_, DownloadError> = async {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             let chunk = chunk.as_ref();
-            measuring_stick.add_bytes_transferred(chunk.len() as u64);
+            throughput_recorder.add_bytes_transferred(chunk.len() as u64);
             file.write_all(chunk).await.map_err(DownloadError::Write)?;
         }
         Ok(())
     }
     .await;
-    measuring_stick.done(&result);
+    throughput_recorder.done(&result);
     result?;
 
     file.flush().await.map_err(DownloadError::Write)?;
@@ -290,8 +288,9 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
         };
 
         let duration = self.creation_time.elapsed();
+        let metric_name = format!("{}.duration", self.task_name);
         metric!(
-            timer(self.task_name) = duration,
+            timer(&metric_name) = duration,
             "status" => status,
             "source" => self.source_name,
         );
@@ -305,8 +304,9 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 .checked_div(duration.as_millis())
                 .and_then(|t| t.try_into().ok())
                 .unwrap_or(bytes_transferred);
+            let throughput_name = format!("{}.throughput", self.task_name);
             metric!(
-                histogram(format!("{}.throughput", self.task_name).as_str()) = throughput,
+                histogram(&throughput_name) = throughput,
                 "status" => status,
                 "source" => self.source_name,
             );
@@ -321,14 +321,14 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
 ///
 /// A tag with the source name is also added to the metric, in addition to a tag recording the
 /// status of the future.
-fn measure_download_time<'a, F, T, G>(
+fn measure_download_time<'a, F, T, E>(
     source_name: &'a str,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a
 where
-    F: 'a + Future<Output = Result<T, G>>,
+    F: 'a + Future<Output = Result<T, E>>,
 {
-    let guard = MeasureSourceDownloadGuard::new("service.download.download_source", source_name);
+    let guard = MeasureSourceDownloadGuard::new("source.download", source_name);
     async move {
         let output = f.await;
         guard.done(&output);
