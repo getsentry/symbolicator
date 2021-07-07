@@ -111,6 +111,16 @@ macro_rules! metric {
                 .send();
         })
     }};
+
+    // histograms
+    (histogram($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
+        use $crate::metrics::_pred::*;
+        $crate::metrics::with_client(|client| {
+            client.histogram_with_tags($id, $value)
+                $(.with_tag($k, $v))*
+                .send();
+        })
+    }};
 }
 
 macro_rules! future_metrics {

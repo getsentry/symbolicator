@@ -62,36 +62,65 @@ impl HttpDownloader {
         file_source: HttpRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
+        let retries = future_utils::retry(|| {
+            self.download_source_once(file_source.clone(), destination.clone())
+        });
+
+        let download_url = file_source.url().ok();
+        match retries.await {
+            Ok(status) => {
+                log::debug!("Fetched debug file from {:?}: {:?}", download_url, status);
+                Ok(status)
+            }
+            Err(err) => {
+                log::debug!(
+                    "Failed to fetch debug file from {:?}: {}",
+                    download_url,
+                    err
+                );
+                Err(err)
+            }
+        }
+    }
+
+    async fn download_source_once(
+        &self,
+        file_source: HttpRemoteDif,
+        destination: PathBuf,
+    ) -> Result<DownloadStatus, DownloadError> {
         let download_url = match file_source.url() {
             Ok(x) => x,
             Err(_) => return Ok(DownloadStatus::NotFound),
         };
 
         log::debug!("Fetching debug file from {}", download_url);
-        let response = future_utils::retry(|| {
-            let mut builder = self.client.get(download_url.clone());
+        let mut builder = self.client.get(download_url.clone());
 
-            for (key, value) in file_source.source.headers.iter() {
-                if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                    builder = builder.header(key, value.as_str());
-                }
+        for (key, value) in file_source.source.headers.iter() {
+            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                builder = builder.header(key, value.as_str());
             }
+        }
+        let source = RemoteDif::from(file_source);
+        let request = builder.header(header::USER_AGENT, USER_AGENT).send();
+        let request = future_utils::measure_source_download(
+            "service.download.download_source",
+            source.source_metric_key(),
+            future_utils::m::result,
+            request,
+        );
 
-            builder.header(header::USER_AGENT, USER_AGENT).send()
-        });
-
-        match response.await {
-            Ok(response) => {
-                if response.status().is_success() {
+        match request.await {
+            Ok(request) => {
+                if request.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-                    super::download_stream(file_source, stream, destination).await
+                    let stream = request.bytes_stream().map_err(DownloadError::Reqwest);
+                    super::download_stream(source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
                         download_url,
-                        response.status()
+                        request.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }

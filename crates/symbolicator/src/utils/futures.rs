@@ -235,6 +235,102 @@ where
     }
 }
 
+/// A guard to [`measure`] the amount of time it takes to download a source. This guard is also
+/// capable of calculating and reporting the the throughput of the connection. Two metrics are
+/// emitted if `bytes_transferred` is set:
+///
+/// 1. Amount of time taken to complete the measurement
+/// 2. Connection thoroughput (bytes transferred / time taken to complete)
+///
+/// If `bytes_transferred` is not set, then only 1 is recorded.
+pub struct MeasureSourceDownload<'a> {
+    state: MeasureState,
+    task_name: &'a str,
+    source_name: &'a str,
+    creation_time: Instant,
+    bytes_transferred: Option<u64>,
+}
+
+impl<'a> MeasureSourceDownload<'a> {
+    /// Creates a new measure guard for downloading a source.
+    pub fn new(task_name: &'a str, source_name: &'a str) -> Self {
+        Self {
+            state: MeasureState::Pending,
+            task_name,
+            source_name,
+            bytes_transferred: None,
+            creation_time: Instant::now(),
+        }
+    }
+
+    /// A checked add to the amount of bytes transferred during the download.
+    ///
+    /// This value will be emitted when the download's future is completed or cancelled.
+    pub fn add_bytes_transferred(&mut self, additional_bytes: u64) {
+        self.bytes_transferred = self
+            .bytes_transferred
+            .and_then(|old_count| old_count.checked_add(additional_bytes).or(Some(old_count)))
+            .or(Some(additional_bytes));
+    }
+
+    /// Marks the download as terminated.
+    pub fn done(mut self, status: &'static str) {
+        self.state = MeasureState::Done(status);
+    }
+}
+
+impl Drop for MeasureSourceDownload<'_> {
+    fn drop(&mut self) {
+        let status = match self.state {
+            MeasureState::Pending => "canceled",
+            MeasureState::Done(status) => status,
+        };
+
+        let duration = self.creation_time.elapsed().as_secs();
+        metric!(
+            histogram(self.task_name) = duration,
+            "status" => status,
+            "source" => self.source_name,
+        );
+
+        if let Some(bytes_transferred) = self.bytes_transferred {
+            let throughput = duration / bytes_transferred;
+            metric!(
+                histogram(format!("{}.throughput", self.task_name).as_str()) = throughput,
+                "status" => status,
+                "source_name" => self.source_name,
+            );
+        }
+    }
+}
+
+/// Measures the timing of a download-related future and reports metrics as a histogram.
+///
+/// This function reports a single metric corresponding to the task name. This metric is reported
+/// regardless of the future's return value.
+///
+/// The metric is tagged with a status derived with the `get_status` function. See the [`m`] module
+/// for status helpers.
+///
+/// An additional tag for the source name is also added to the metric.
+pub fn measure_source_download<'a, S, F>(
+    task_name: &'a str,
+    source_name: &'a str,
+    get_status: S,
+    f: F,
+) -> impl Future<Output = F::Output> + 'a
+where
+    F: 'a + Future,
+    S: 'a + FnOnce(&F::Output) -> &'static str,
+{
+    let guard = MeasureSourceDownload::new(task_name, source_name);
+    async move {
+        let output = f.await;
+        guard.done(get_status(&output));
+        output
+    }
+}
+
 /// Status helpers for [`measure`].
 #[allow(dead_code)]
 pub mod m {

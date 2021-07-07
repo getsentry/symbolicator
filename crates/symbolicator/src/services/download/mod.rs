@@ -13,7 +13,7 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
-use crate::utils::futures::{m, measure};
+use crate::utils::futures::{m, measure, MeasureSourceDownload};
 use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
@@ -199,19 +199,32 @@ async fn download_stream(
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
 ) -> Result<DownloadStatus, DownloadError> {
+    let source = source.into();
+
     // All file I/O in this function is blocking!
-    log::trace!("Downloading from {}", source.into());
+    log::trace!("Downloading from {}", source);
     let mut file = File::create(&destination)
         .await
         .map_err(DownloadError::BadDestination)?;
     futures::pin_mut!(stream);
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        file.write_all(chunk.as_ref())
-            .await
-            .map_err(DownloadError::Write)?;
+    let mut measuring_stick = MeasureSourceDownload::new(
+        "service.download.download_source_stream",
+        source.source_metric_key(),
+    );
+    let result: Result<_, DownloadError> = async {
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            let chunk = chunk.as_ref();
+            measuring_stick.add_bytes_transferred(chunk.len() as u64);
+            file.write_all(chunk).await.map_err(DownloadError::Write)?;
+        }
+        Ok(())
     }
+    .await;
+    measuring_stick.done(m::result(&result));
+    result?;
+
     file.flush().await.map_err(DownloadError::Write)?;
     Ok(DownloadStatus::Completed)
 }
