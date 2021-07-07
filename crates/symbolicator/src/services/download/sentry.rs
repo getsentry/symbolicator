@@ -19,7 +19,7 @@ use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, US
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m, measure, measure_source_download};
+use crate::utils::futures::{self as future_utils, m, measure};
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -242,9 +242,17 @@ impl SentryDownloader {
             self.download_source_once(file_source.clone(), destination.clone())
         });
         match retries.await {
+            Ok(DownloadStatus::NotFound) => {
+                log::debug!(
+                    "Did not fetch debug file from {:?}: {:?}",
+                    file_source.url(),
+                    DownloadStatus::NotFound
+                );
+                Ok(DownloadStatus::NotFound)
+            }
             Ok(status) => {
                 log::debug!(
-                    "Fetched debug file from {}: {:?}",
+                    "Fetched debug file from {:?}: {:?}",
                     file_source.url(),
                     status
                 );
@@ -252,7 +260,7 @@ impl SentryDownloader {
             }
             Err(err) => {
                 log::debug!(
-                    "Failed to fetch debug file from {}: {}",
+                    "Failed to fetch debug file from {:?}: {}",
                     file_source.url(),
                     err
                 );
@@ -278,7 +286,7 @@ impl SentryDownloader {
         let request = future_utils::measure_source_download(
             "service.download.download_source",
             source.source_metric_key(),
-            future_utils::m::result,
+            m::result,
             request,
         );
 

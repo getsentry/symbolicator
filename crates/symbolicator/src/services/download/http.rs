@@ -13,7 +13,7 @@ use url::Url;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation, USER_AGENT};
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
-use crate::utils::futures as future_utils;
+use crate::utils::futures::{self as future_utils, m};
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -68,6 +68,14 @@ impl HttpDownloader {
 
         let download_url = file_source.url().ok();
         match retries.await {
+            Ok(DownloadStatus::NotFound) => {
+                log::debug!(
+                    "Did not fetch debug file from {:?}: {:?}",
+                    download_url,
+                    DownloadStatus::NotFound
+                );
+                Ok(DownloadStatus::NotFound)
+            }
             Ok(status) => {
                 log::debug!("Fetched debug file from {:?}: {:?}", download_url, status);
                 Ok(status)
@@ -106,7 +114,7 @@ impl HttpDownloader {
         let request = future_utils::measure_source_download(
             "service.download.download_source",
             source.source_metric_key(),
-            future_utils::m::result,
+            m::result,
             request,
         );
 
