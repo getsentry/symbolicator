@@ -4,16 +4,21 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use futures::prelude::*;
 use reqwest::{header, Client};
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation, USER_AGENT};
+use super::{
+    content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation,
+    USER_AGENT,
+};
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
+use tokio::time::error::Elapsed;
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -50,21 +55,27 @@ impl HttpRemoteDif {
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
+    download_timeout: Duration,
+    streaming_timeout: Duration,
 }
 
 impl HttpDownloader {
-    pub fn new(client: Client) -> Self {
-        Self { client }
+    pub fn new(client: Client, download_timeout: Duration, streaming_timeout: Duration) -> Self {
+        Self {
+            client,
+            download_timeout,
+            streaming_timeout,
+        }
     }
 
     pub async fn download_source(
         &self,
         file_source: HttpRemoteDif,
         destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
         let download_url = match file_source.url() {
             Ok(x) => x,
-            Err(_) => return Ok(DownloadStatus::NotFound),
+            Err(_) => return Ok(Ok(DownloadStatus::NotFound)),
         };
         let headers = file_source.source.headers.clone();
         let source = RemoteDif::from(file_source);
@@ -83,23 +94,39 @@ impl HttpDownloader {
         });
 
         match request.await {
-            Ok(request) => {
-                if request.status().is_success() {
+            Ok(response) => {
+                if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = request.bytes_stream().map_err(DownloadError::Reqwest);
-                    super::download_stream(source, stream, destination).await
+
+                    let timeout = content_length_timeout(
+                        response
+                            .headers()
+                            .get(header::CONTENT_LENGTH)
+                            .and_then(|hv| hv.to_str().ok())
+                            .and_then(|s| s.parse::<u32>().ok()),
+                        self.streaming_timeout,
+                        self.download_timeout,
+                    );
+
+                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
+
+                    tokio::time::timeout(
+                        timeout,
+                        super::download_stream(file_source, stream, destination),
+                    )
+                    .await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
                         download_url,
-                        request.status()
+                        response.status()
                     );
-                    Ok(DownloadStatus::NotFound)
+                    Ok(Ok(DownloadStatus::NotFound))
                 }
             }
             Err(e) => {
                 log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(DownloadStatus::NotFound) // must be wrong type
+                Ok(Ok(DownloadStatus::NotFound)) // must be wrong type
             }
         }
     }

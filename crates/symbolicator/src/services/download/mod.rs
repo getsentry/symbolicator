@@ -13,6 +13,7 @@ use futures::prelude::*;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use tokio::time::error::Elapsed;
 
 use crate::utils::futures::{m, measure};
 use crate::utils::paths::get_directory_paths;
@@ -81,14 +82,28 @@ impl DownloadService {
         let trusted_client = crate::utils::http::create_client(&config, true);
         let restricted_client = crate::utils::http::create_client(&config, false);
 
+        let Config {
+            download_timeout,
+            streaming_timeout,
+            ..
+        } = *config;
+
         Arc::new(Self {
             config,
             worker: tokio::runtime::Handle::current(),
-            sentry: sentry::SentryDownloader::new(trusted_client),
-            http: http::HttpDownloader::new(restricted_client.clone()),
-            s3: s3::S3Downloader::new(),
-            gcs: gcs::GcsDownloader::new(restricted_client),
-            fs: filesystem::FilesystemDownloader::new(),
+            sentry: sentry::SentryDownloader::new(
+                trusted_client,
+                download_timeout,
+                streaming_timeout,
+            ),
+            http: http::HttpDownloader::new(
+                restricted_client.clone(),
+                download_timeout,
+                streaming_timeout,
+            ),
+            s3: s3::S3Downloader::new(download_timeout, streaming_timeout),
+            gcs: gcs::GcsDownloader::new(restricted_client, download_timeout),
+            fs: filesystem::FilesystemDownloader::new(download_timeout),
         })
     }
 
@@ -97,7 +112,7 @@ impl DownloadService {
         self: Arc<Self>,
         source: RemoteDif,
         destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
         match source {
             RemoteDif::Sentry(inner) => self.sentry.download_source(inner, destination).await,
             RemoteDif::Http(inner) => self.http.download_source(inner, destination).await,
@@ -130,7 +145,6 @@ impl DownloadService {
         // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
         let _guard = self.worker.enter();
         let job = slf.dispatch_download(source, destination).bind_hub(hub);
-        let job = tokio::time::timeout(self.config.download_timeout, job);
         let job = measure("service.download", m::timed_result, job);
 
         // Map all SpawnError variants into DownloadError::Canceled.
@@ -372,6 +386,17 @@ impl Iterator for SourceLocationIter<'_> {
 
         self.next.pop().map(SourceLocation::new)
     }
+}
+
+/// Computes a download timeout based on a response's `content-length` header.
+fn content_length_timeout(
+    content_length: Option<u32>,
+    streaming_timeout: Duration,
+    download_timeout: Duration,
+) -> Duration {
+    content_length
+        .map(|length| streaming_timeout * (length / (1024 * 1024 * 1024)))
+        .unwrap_or(download_timeout)
 }
 
 #[cfg(test)]

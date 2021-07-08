@@ -7,8 +7,10 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::fs;
+use tokio::time::error::Elapsed;
 
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif};
@@ -51,15 +53,17 @@ impl FilesystemRemoteDif {
 
 /// Downloader implementation that supports the [`FilesystemSourceConfig`] source.
 #[derive(Debug)]
-pub struct FilesystemDownloader {}
+pub struct FilesystemDownloader {
+    download_timeout: Duration,
+}
 
 impl FilesystemDownloader {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(download_timeout: Duration) -> Self {
+        Self { download_timeout }
     }
 
     /// Download from a filesystem source.
-    pub async fn download_source(
+    async fn download_source_inner(
         &self,
         file_source: FilesystemRemoteDif,
         dest: PathBuf,
@@ -74,6 +78,19 @@ impl FilesystemDownloader {
                 _ => Err(DownloadError::Io(e)),
             },
         }
+    }
+
+    /// Download from a filesystem source.
+    pub async fn download_source(
+        &self,
+        file_source: FilesystemRemoteDif,
+        dest: PathBuf,
+    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
+        tokio::time::timeout(
+            self.download_timeout,
+            self.download_source_inner(file_source, dest),
+        )
+        .await
     }
 
     pub fn list_files(

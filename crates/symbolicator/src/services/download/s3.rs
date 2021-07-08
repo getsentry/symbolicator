@@ -3,19 +3,22 @@
 //! Specifically this supports the [`S3SourceConfig`] source.
 
 use std::any::type_name;
+use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 use rusoto_s3::S3;
+use tokio::time::error::Elapsed;
 
 use rusoto_core::credential::ProvideAwsCredentials;
 use rusoto_core::region::Region;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
+use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
@@ -72,6 +75,8 @@ impl S3RemoteDif {
 pub struct S3Downloader {
     http_client: Arc<rusoto_core::HttpClient>,
     client_cache: Mutex<ClientCache>,
+    download_timeout: Duration,
+    streaming_timeout: Duration,
 }
 
 impl fmt::Debug for S3Downloader {
@@ -84,10 +89,12 @@ impl fmt::Debug for S3Downloader {
 }
 
 impl S3Downloader {
-    pub fn new() -> Self {
+    pub fn new(download_timeout: Duration, streaming_timeout: Duration) -> Self {
         Self {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
+            download_timeout,
+            streaming_timeout,
         }
     }
 
@@ -135,7 +142,7 @@ impl S3Downloader {
         &self,
         file_source: S3RemoteDif,
         destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
         let key = file_source.key();
         let bucket = file_source.bucket();
         log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
@@ -160,19 +167,31 @@ impl S3Downloader {
                 // - If `ListBucket` is premitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
-                return Ok(DownloadStatus::NotFound);
+                return Ok(Ok(DownloadStatus::NotFound));
             }
         };
+
+        let timeout = content_length_timeout(
+            response
+                .content_length
+                .and_then(|cl| u32::try_from(cl).ok()),
+            self.streaming_timeout,
+            self.download_timeout,
+        );
 
         let stream = match response.body {
             Some(body) => body.map_err(DownloadError::Io),
             None => {
                 log::debug!("Empty response from s3:{}{}", bucket, &key);
-                return Ok(DownloadStatus::NotFound);
+                return Ok(Ok(DownloadStatus::NotFound));
             }
         };
 
-        super::download_stream(source, stream, destination).await
+        tokio::time::timeout(
+            timeout,
+            super::download_stream(file_source, stream, destination),
+        )
+        .await
     }
 
     pub fn list_files(

@@ -246,6 +246,10 @@ pub struct Config {
     /// The timeout for downloads.
     #[serde(with = "humantime_serde")]
     pub download_timeout: Duration,
+
+    /// The timeout per GB for streaming downloads.
+    #[serde(with = "humantime_serde")]
+    pub streaming_timeout: Duration,
 }
 
 impl Config {
@@ -310,6 +314,7 @@ impl Default for Config {
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
             download_timeout: Duration::from_secs(300),
+            streaming_timeout: Duration::from_secs(60),
         }
     }
 }

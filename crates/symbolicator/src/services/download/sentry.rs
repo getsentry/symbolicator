@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
+use tokio::time::error::Elapsed;
 use url::Url;
 
 use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, USER_AGENT};
@@ -89,6 +90,8 @@ pub enum SentryError {
 pub struct SentryDownloader {
     client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
+    download_timeout: Duration,
+    streaming_timeout: Duration,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -101,10 +104,16 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        download_timeout: Duration,
+        streaming_timeout: Duration,
+    ) -> Self {
         Self {
             client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            download_timeout,
+            streaming_timeout,
         }
     }
 
@@ -233,7 +242,7 @@ impl SentryDownloader {
         Ok(file_ids)
     }
 
-    pub async fn download_source(
+    async fn download_source_inner(
         &self,
         file_source: SentryRemoteDif,
         destination: PathBuf,
@@ -267,6 +276,19 @@ impl SentryDownloader {
                 Err(err)
             }
         }
+    }
+
+    pub async fn download_source(
+        &self,
+        file_source: SentryRemoteDif,
+        destination: PathBuf,
+    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
+        let timeout = todo!();
+        tokio::time::timeout(
+            timeout,
+            self.download_source_inner(file_source, destination),
+        )
+        .await
     }
 
     async fn download_source_once(
