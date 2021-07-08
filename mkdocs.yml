@@ -1,5 +1,6 @@
 site_name: Sentry Symbolicator
 repo_url: https://github.com/getsentry/symbolicator
+site_url: https://getsentry.github.io/symbolicator
 site_author: Sentry
 theme:
   name: material
