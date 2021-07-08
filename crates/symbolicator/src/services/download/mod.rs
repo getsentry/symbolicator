@@ -270,7 +270,7 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
     ///
     /// This value will be emitted when the download's future is completed or cancelled.
     pub fn add_bytes_transferred(&mut self, additional_bytes: u64) {
-        let bytes = self.bytes_transferred.get_or_insert(Default::default());
+        let bytes = self.bytes_transferred.get_or_insert(0);
         *bytes = bytes.saturating_add(additional_bytes);
     }
 
@@ -328,7 +328,7 @@ fn measure_download_time<'a, F, T, E>(
 where
     F: 'a + Future<Output = Result<T, E>>,
 {
-    let guard = MeasureSourceDownloadGuard::new("source.download", source_name);
+    let guard = MeasureSourceDownloadGuard::new("source.connect", source_name);
     async move {
         let output = f.await;
         guard.done(&output);
