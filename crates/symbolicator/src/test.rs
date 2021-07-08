@@ -19,11 +19,14 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use futures::{FutureExt, TryFutureExt};
 use log::LevelFilter;
 use reqwest::Url;
+use warp::filters::fs::File;
+use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
 use crate::sources::{
@@ -239,5 +242,110 @@ pub(crate) fn symbol_server() -> (Server, SourceConfig) {
     (server, source)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct GoAway;
+
+impl Reject for GoAway {}
+
+pub(crate) struct FailingSymbolServer {
+    pub(crate) server: Server,
+    pub(crate) times_accessed: Arc<AtomicUsize>,
+    pub(crate) accept_source: SourceConfig,
+    pub(crate) reject_source: SourceConfig,
+    pub(crate) pending_source: SourceConfig,
+    pub(crate) not_found_source: SourceConfig,
+}
+
+impl FailingSymbolServer {
+    pub(crate) fn new() -> Self {
+        let times_accessed = Arc::new(AtomicUsize::new(0));
+
+        let times = times_accessed.clone();
+        let reject = warp::path("reject")
+            .and(warp::fs::dir(fixture("symbols")))
+            .and_then(move |_| {
+                let times = Arc::clone(&times);
+                async move {
+                    (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                    Err::<File, _>(warp::reject::custom(GoAway))
+                }
+            });
+
+        let times = times_accessed.clone();
+        let not_found = warp::path("not-found")
+            .and(warp::fs::dir(fixture("symbols")))
+            .and_then(move |_| {
+                let times = Arc::clone(&times);
+                async move {
+                    (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                    Err::<File, _>(warp::reject::not_found())
+                }
+            });
+
+        let times = times_accessed.clone();
+        let pending = warp::path("pending")
+            .and(warp::fs::dir(fixture("symbols")))
+            .and_then(move |_| {
+                let times = Arc::clone(&times);
+                (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                std::future::pending::<Result<File, Rejection>>()
+            });
+
+        let times = times_accessed.clone();
+        let accept = warp::path("accept")
+            .and(warp::fs::dir(fixture("symbols")))
+            .map(move |file| {
+                let times = Arc::clone(&times);
+                (*times).fetch_add(1, Ordering::SeqCst);
+
+                file
+            });
+
+        let server = Server::new(reject.or(not_found).or(pending).or(accept));
+
+        // The sources use the same identifier ("local") as the local file system source to avoid
+        // differences when changing the bucket in tests.
+
+        let accept_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("accept"),
+            url: server.url("accept/"),
+            headers: Default::default(),
+            files: Default::default(),
+        }));
+
+        let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("reject"),
+            url: server.url("reject/"),
+            headers: Default::default(),
+            files: Default::default(),
+        }));
+
+        let pending_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("pending"),
+            url: server.url("pending/"),
+            headers: Default::default(),
+            files: Default::default(),
+        }));
+
+        let not_found_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("not-found"),
+            url: server.url("not-found/"),
+            headers: Default::default(),
+            files: Default::default(),
+        }));
+
+        FailingSymbolServer {
+            server,
+            times_accessed,
+            accept_source,
+            reject_source,
+            pending_source,
+            not_found_source,
+        }
+    }
+}
 // make sure procspawn works.
 procspawn::enable_test_support!();
