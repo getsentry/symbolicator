@@ -210,7 +210,7 @@ async fn download_stream(
     futures::pin_mut!(stream);
 
     let mut throughput_recorder =
-        MeasureSourceDownloadGuard::new("source.stream", source.source_metric_key());
+        MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
     let result: Result<_, DownloadError> = async {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
@@ -328,7 +328,7 @@ fn measure_download_time<'a, F, T, E>(
 where
     F: 'a + Future<Output = Result<T, E>>,
 {
-    let guard = MeasureSourceDownloadGuard::new("source.connect", source_name);
+    let guard = MeasureSourceDownloadGuard::new("source.download.connect", source_name);
     async move {
         let output = f.await;
         guard.done(&output);
