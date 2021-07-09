@@ -105,7 +105,7 @@ impl HttpDownloader {
 
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(file_source, stream, destination, timeout).await
+                    super::download_stream(source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",

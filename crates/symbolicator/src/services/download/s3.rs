@@ -183,7 +183,7 @@ impl S3Downloader {
             self.streaming_timeout,
         );
 
-        super::download_stream(file_source, stream, destination, timeout).await
+        super::download_stream(source, stream, destination, timeout).await
     }
 
     pub fn list_files(
