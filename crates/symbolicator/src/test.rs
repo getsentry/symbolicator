@@ -289,9 +289,6 @@ impl FailingSymbolServer {
 
         let server = Server::new(reject.or(not_found).or(pending));
 
-        // The sources use the same identifier ("local") as the local file system source to avoid
-        // differences when changing the bucket in tests.
-
         let files_config =
             CommonSourceConfig::with_layout(crate::sources::DirectoryLayoutType::Unified);
 

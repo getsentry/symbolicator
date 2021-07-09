@@ -340,7 +340,7 @@ mod tests {
             // * we hit the symbol source exactly once for the initial request
             // * the second try should *not* hit the symbol source, but should rather be served by the cache
 
-            // server rejects the request
+            // server rejects the request (500)
             let find_object = FindObject {
                 sources: Arc::new([server.reject_source.clone()]),
                 ..find_object
@@ -352,7 +352,7 @@ mod tests {
             assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
             assert_eq!(server.accesses(), 0);
 
-            // server responds with not found
+            // server responds with not found (404)
             let find_object = FindObject {
                 sources: Arc::new([server.not_found_source.clone()]),
                 ..find_object
@@ -364,7 +364,7 @@ mod tests {
             assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
             assert_eq!(server.accesses(), 0);
 
-            // server accepts the request, but never sends any reply
+            // server accepts the request, but never sends any reply (timeout)
             let find_object = FindObject {
                 sources: Arc::new([server.pending_source.clone()]),
                 ..find_object
