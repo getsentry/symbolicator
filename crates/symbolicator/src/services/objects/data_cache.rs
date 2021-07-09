@@ -275,24 +275,24 @@ impl CacheItemRequest for FetchFileDataRequest {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::cache::Cache;
+    use crate::cache::{Cache, CacheStatus};
     use crate::config::{CacheConfig, CacheConfigs, Config};
     use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::sources::FileType;
-    use crate::test;
+    use crate::test::{self, tempdir};
 
     use symbolic::common::DebugId;
+    use tempfile::TempDir;
 
-    fn objects_actor() -> ObjectsActor {
+    fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let meta_cache = Cache::from_config(
             "meta",
-            None,
+            Some(tempdir.path().join("meta")),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
         )
@@ -300,7 +300,7 @@ mod tests {
 
         let data_cache = Cache::from_config(
             "data",
-            None,
+            Some(tempdir.path().join("data")),
             None,
             CacheConfig::from(CacheConfigs::default().downloaded),
         )
@@ -308,7 +308,7 @@ mod tests {
 
         let config = Arc::new(Config {
             connect_to_reserved_ips: true,
-            download_timeout: Duration::from_secs(1),
+            download_timeout: Duration::from_millis(10),
             ..Config::default()
         });
 
@@ -321,20 +321,61 @@ mod tests {
         test::setup();
 
         let server = test::FailingSymbolServer::new();
+        let cachedir = tempdir();
+        let objects_actor = objects_actor(&cachedir);
 
-        let objects_actor = objects_actor();
+        test::spawn_compat(move || async move {
+            let find_object = FindObject {
+                // A request for a bcsymbolmap will expand to only one file that is being looked up.
+                // Other filetypes will lead to multiple requests, trying different file extensions, etc
+                filetypes: &[FileType::BcSymbolMap],
+                purpose: ObjectPurpose::Debug,
+                scope: Scope::Global,
+                identifier: DebugId::default().into(),
+                sources: Arc::new([]),
+            };
 
-        let find_object = FindObject {
-            filetypes: FileType::all(),
-            purpose: ObjectPurpose::Debug,
-            scope: Scope::Global,
-            identifier: DebugId::default().into(),
-            sources: Arc::new([server.reject_source]),
-        };
+            // for each of the different symbol sources, we assert that:
+            // * we get a negative cache result no matter how often we try
+            // * we hit the symbol source exactly once for the initial request
+            // * the second try should *not* hit the symbol source, but should rather be served by the cache
 
-        objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(server.times_accessed.load(Ordering::SeqCst), 1);
-        objects_actor.find(find_object).await.unwrap();
-        assert_eq!(server.times_accessed.load(Ordering::SeqCst), 1);
+            // server rejects the request
+            let find_object = FindObject {
+                sources: Arc::new([server.reject_source.clone()]),
+                ..find_object
+            };
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(server.accesses(), 1);
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(server.accesses(), 0);
+
+            // server responds with not found
+            let find_object = FindObject {
+                sources: Arc::new([server.not_found_source.clone()]),
+                ..find_object
+            };
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(server.accesses(), 1);
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(server.accesses(), 0);
+
+            // server accepts the request, but never sends any reply
+            let find_object = FindObject {
+                sources: Arc::new([server.pending_source.clone()]),
+                ..find_object
+            };
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(server.accesses(), 1);
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(server.accesses(), 0);
+        })
+        .await;
     }
 }

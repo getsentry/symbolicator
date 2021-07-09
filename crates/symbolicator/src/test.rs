@@ -248,9 +248,9 @@ struct GoAway;
 impl Reject for GoAway {}
 
 pub(crate) struct FailingSymbolServer {
-    pub(crate) server: Server,
-    pub(crate) times_accessed: Arc<AtomicUsize>,
-    pub(crate) accept_source: SourceConfig,
+    #[allow(unused)]
+    server: Server,
+    times_accessed: Arc<AtomicUsize>,
     pub(crate) reject_source: SourceConfig,
     pub(crate) pending_source: SourceConfig,
     pub(crate) not_found_source: SourceConfig,
@@ -261,90 +261,72 @@ impl FailingSymbolServer {
         let times_accessed = Arc::new(AtomicUsize::new(0));
 
         let times = times_accessed.clone();
-        let reject = warp::path("reject")
-            .and(warp::fs::dir(fixture("symbols")))
-            .and_then(move |_| {
-                let times = Arc::clone(&times);
-                async move {
-                    (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-                    Err::<File, _>(warp::reject::custom(GoAway))
-                }
-            });
-
-        let times = times_accessed.clone();
-        let not_found = warp::path("not-found")
-            .and(warp::fs::dir(fixture("symbols")))
-            .and_then(move |_| {
-                let times = Arc::clone(&times);
-                async move {
-                    (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-                    Err::<File, _>(warp::reject::not_found())
-                }
-            });
-
-        let times = times_accessed.clone();
-        let pending = warp::path("pending")
-            .and(warp::fs::dir(fixture("symbols")))
-            .and_then(move |_| {
-                let times = Arc::clone(&times);
-                (*times).fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-                std::future::pending::<Result<File, Rejection>>()
-            });
-
-        let times = times_accessed.clone();
-        let accept = warp::path("accept")
-            .and(warp::fs::dir(fixture("symbols")))
-            .map(move |file| {
-                let times = Arc::clone(&times);
+        let reject = warp::path("reject").and_then(move || {
+            let times = Arc::clone(&times);
+            async move {
                 (*times).fetch_add(1, Ordering::SeqCst);
 
-                file
-            });
+                Err::<File, _>(warp::reject::custom(GoAway))
+            }
+        });
 
-        let server = Server::new(reject.or(not_found).or(pending).or(accept));
+        let times = times_accessed.clone();
+        let not_found = warp::path("not-found").and_then(move || {
+            let times = Arc::clone(&times);
+            async move {
+                (*times).fetch_add(1, Ordering::SeqCst);
+
+                Err::<File, _>(warp::reject::not_found())
+            }
+        });
+
+        let times = times_accessed.clone();
+        let pending = warp::path("pending").and_then(move || {
+            (*times).fetch_add(1, Ordering::SeqCst);
+
+            std::future::pending::<Result<File, Rejection>>()
+        });
+
+        let server = Server::new(reject.or(not_found).or(pending));
 
         // The sources use the same identifier ("local") as the local file system source to avoid
         // differences when changing the bucket in tests.
 
-        let accept_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("accept"),
-            url: server.url("accept/"),
-            headers: Default::default(),
-            files: Default::default(),
-        }));
+        let files_config =
+            CommonSourceConfig::with_layout(crate::sources::DirectoryLayoutType::Unified);
 
         let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
             id: SourceId::new("reject"),
             url: server.url("reject/"),
             headers: Default::default(),
-            files: Default::default(),
+            files: files_config.clone(),
         }));
 
         let pending_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
             id: SourceId::new("pending"),
             url: server.url("pending/"),
             headers: Default::default(),
-            files: Default::default(),
+            files: files_config.clone(),
         }));
 
         let not_found_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
             id: SourceId::new("not-found"),
             url: server.url("not-found/"),
             headers: Default::default(),
-            files: Default::default(),
+            files: files_config,
         }));
 
         FailingSymbolServer {
             server,
             times_accessed,
-            accept_source,
             reject_source,
             pending_source,
             not_found_source,
         }
+    }
+
+    pub(crate) fn accesses(&self) -> usize {
+        self.times_accessed.swap(0, Ordering::SeqCst)
     }
 }
 // make sure procspawn works.
