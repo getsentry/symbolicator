@@ -9,6 +9,7 @@
 - Update symbolic to allow processing PDB files with broken inlinee records. ([#477](https://github.com/getsentry/symbolicator/pull/477))
 - Update symbolic to correctly apply bcsymbolmaps to symbol and filenames coming from DWARF. ([#479](https://github.com/getsentry/symbolicator/pull/479))
 - Make the timeout for downloading files configurable. ([#482](https://github.com/getsentry/symbolicator/pull/482))
+- Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484))
 
 ### Tools
 
