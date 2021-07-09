@@ -247,8 +247,9 @@ pub struct Config {
     #[serde(with = "humantime_serde")]
     pub max_download_timeout: Duration,
 
-    /// The timeout per GB for streaming downloads. If the
-    /// size of the download is not known, assume 2GB.
+    /// The timeout per GB for streaming downloads.
+    ///
+    /// We default this to half of the `max_download_timeout` duration, assuming a maximum download size of 2GB.
     #[serde(with = "humantime_serde")]
     pub streaming_timeout: Duration,
 }
