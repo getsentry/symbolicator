@@ -12,13 +12,12 @@ use reqwest::{header, Client};
 use url::Url;
 
 use super::{
-    content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation,
-    USER_AGENT,
+    content_length_timeout, with_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri,
+    SourceLocation, USER_AGENT,
 };
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
-use tokio::time::error::Elapsed;
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -55,15 +54,13 @@ impl HttpRemoteDif {
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
-    download_timeout: Duration,
     streaming_timeout: Duration,
 }
 
 impl HttpDownloader {
-    pub fn new(client: Client, download_timeout: Duration, streaming_timeout: Duration) -> Self {
+    pub fn new(client: Client, streaming_timeout: Duration) -> Self {
         Self {
             client,
-            download_timeout,
             streaming_timeout,
         }
     }
@@ -72,10 +69,10 @@ impl HttpDownloader {
         &self,
         file_source: HttpRemoteDif,
         destination: PathBuf,
-    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
+    ) -> Result<DownloadStatus, DownloadError> {
         let download_url = match file_source.url() {
             Ok(x) => x,
-            Err(_) => return Ok(Ok(DownloadStatus::NotFound)),
+            Err(_) => return Ok(DownloadStatus::NotFound),
         };
         let headers = file_source.source.headers.clone();
         let source = RemoteDif::from(file_source);
@@ -98,19 +95,17 @@ impl HttpDownloader {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
 
-                    let timeout = content_length_timeout(
-                        response
-                            .headers()
-                            .get(header::CONTENT_LENGTH)
-                            .and_then(|hv| hv.to_str().ok())
-                            .and_then(|s| s.parse::<u32>().ok()),
-                        self.streaming_timeout,
-                        self.download_timeout,
-                    );
+                    let content_length = response
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|hv| hv.to_str().ok())
+                        .and_then(|s| s.parse::<u32>().ok());
+
+                    let timeout = content_length_timeout(content_length, self.streaming_timeout);
 
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    tokio::time::timeout(
+                    with_timeout(
                         timeout,
                         super::download_stream(file_source, stream, destination),
                     )
@@ -121,12 +116,12 @@ impl HttpDownloader {
                         download_url,
                         response.status()
                     );
-                    Ok(Ok(DownloadStatus::NotFound))
+                    Ok(DownloadStatus::NotFound)
                 }
             }
             Err(e) => {
                 log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(Ok(DownloadStatus::NotFound)) // must be wrong type
+                Ok(DownloadStatus::NotFound) // must be wrong type
             }
         }
     }
@@ -172,7 +167,7 @@ mod tests {
         let loc = SourceLocation::new("hello.txt");
         let file_source = HttpRemoteDif::new(http_source, loc);
 
-        let downloader = HttpDownloader::new(Client::new());
+        let downloader = HttpDownloader::new(Client::new(), Duration::from_secs(30));
         let download_status = downloader
             .download_source(file_source, dest.clone())
             .await
@@ -199,7 +194,7 @@ mod tests {
         let loc = SourceLocation::new("i-do-not-exist");
         let file_source = HttpRemoteDif::new(http_source, loc);
 
-        let downloader = HttpDownloader::new(Client::new());
+        let downloader = HttpDownloader::new(Client::new(), Duration::from_secs(30));
         let download_status = downloader.download_source(file_source, dest).await.unwrap();
 
         assert_eq!(download_status, DownloadStatus::NotFound);

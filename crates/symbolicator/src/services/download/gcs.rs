@@ -12,7 +12,6 @@ use parking_lot::Mutex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::time::error::Elapsed;
 use url::Url;
 
 use super::locations::SourceLocation;
@@ -140,15 +139,13 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 pub struct GcsDownloader {
     token_cache: Mutex<GcsTokenCache>,
     client: reqwest::Client,
-    download_timeout: std::time::Duration,
 }
 
 impl GcsDownloader {
-    pub fn new(client: Client, download_timeout: std::time::Duration) -> Self {
+    pub fn new(client: Client) -> Self {
         Self {
             token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
             client,
-            download_timeout,
         }
     }
 
@@ -201,7 +198,7 @@ impl GcsDownloader {
         Ok(token)
     }
 
-    async fn download_source_inner(
+    pub async fn download_source(
         &self,
         file_source: GcsRemoteDif,
         destination: PathBuf,
@@ -257,18 +254,6 @@ impl GcsDownloader {
                 Ok(DownloadStatus::NotFound)
             }
         }
-    }
-
-    pub async fn download_source(
-        &self,
-        file_source: GcsRemoteDif,
-        destination: PathBuf,
-    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
-        tokio::time::timeout(
-            self.download_timeout,
-            self.download_source_inner(file_source, destination),
-        )
-        .await
     }
 
     pub fn list_files(

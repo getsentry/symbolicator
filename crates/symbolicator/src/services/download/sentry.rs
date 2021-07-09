@@ -10,13 +10,15 @@ use std::time::{Duration, Instant};
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
-use reqwest::StatusCode;
+use reqwest::{header, StatusCode};
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::time::error::Elapsed;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, USER_AGENT};
+use super::{
+    content_length_timeout, with_timeout, DownloadError, DownloadStatus, FileType, RemoteDif,
+    RemoteDifUri, USER_AGENT,
+};
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
@@ -90,7 +92,6 @@ pub enum SentryError {
 pub struct SentryDownloader {
     client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
-    download_timeout: Duration,
     streaming_timeout: Duration,
 }
 
@@ -104,15 +105,10 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(
-        client: reqwest::Client,
-        download_timeout: Duration,
-        streaming_timeout: Duration,
-    ) -> Self {
+    pub fn new(client: reqwest::Client, streaming_timeout: Duration) -> Self {
         Self {
             client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
-            download_timeout,
             streaming_timeout,
         }
     }
@@ -242,7 +238,7 @@ impl SentryDownloader {
         Ok(file_ids)
     }
 
-    async fn download_source_inner(
+    pub async fn download_source(
         &self,
         file_source: SentryRemoteDif,
         destination: PathBuf,
@@ -278,19 +274,6 @@ impl SentryDownloader {
         }
     }
 
-    pub async fn download_source(
-        &self,
-        file_source: SentryRemoteDif,
-        destination: PathBuf,
-    ) -> Result<Result<DownloadStatus, DownloadError>, Elapsed> {
-        let timeout = todo!();
-        tokio::time::timeout(
-            timeout,
-            self.download_source_inner(file_source, destination),
-        )
-        .await
-    }
-
     async fn download_source_once(
         &self,
         file_source: SentryRemoteDif,
@@ -311,9 +294,17 @@ impl SentryDownloader {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
+
+                    let content_length = response
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|hv| hv.to_str().ok())
+                        .and_then(|s| s.parse::<u32>().ok());
+
+                    let timeout = content_length_timeout(content_length, self.streaming_timeout);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination).await
+                    with_timeout(timeout, super::download_stream(source, stream, destination)).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
