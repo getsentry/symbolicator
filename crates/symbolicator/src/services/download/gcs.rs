@@ -18,7 +18,6 @@ use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
-use crate::utils::futures as future_utils;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
@@ -201,43 +200,6 @@ impl GcsDownloader {
     }
 
     pub async fn download_source(
-        &self,
-        file_source: GcsRemoteDif,
-        destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
-        let retries = future_utils::retry(|| {
-            self.download_source_once(file_source.clone(), destination.clone())
-        });
-
-        let key = file_source.key();
-        let bucket = file_source.source.bucket.as_str();
-        match retries.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from GCS {} (from {}): {:?}",
-                    &key,
-                    bucket,
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
-            Ok(status) => {
-                log::debug!("Fetched debug file from GCS {} (from {})", &key, bucket);
-                Ok(status)
-            }
-            Err(err) => {
-                log::debug!(
-                    "Failed to fetch debug file from GCS {} (from {}): {}",
-                    &key,
-                    bucket,
-                    err
-                );
-                Err(err)
-            }
-        }
-    }
-
-    async fn download_source_once(
         &self,
         file_source: GcsRemoteDif,
         destination: PathBuf,

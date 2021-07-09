@@ -17,7 +17,6 @@ use super::{
 };
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
-use crate::utils::futures as future_utils;
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -66,40 +65,6 @@ impl HttpDownloader {
     }
 
     pub async fn download_source(
-        &self,
-        file_source: HttpRemoteDif,
-        destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
-        let retries = future_utils::retry(|| {
-            self.download_source_once(file_source.clone(), destination.clone())
-        });
-
-        let download_url = file_source.url().ok();
-        match retries.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from {:?}: {:?}",
-                    download_url,
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
-            Ok(status) => {
-                log::debug!("Fetched debug file from {:?}: {:?}", download_url, status);
-                Ok(status)
-            }
-            Err(err) => {
-                log::debug!(
-                    "Failed to fetch debug file from {:?}: {}",
-                    download_url,
-                    err
-                );
-                Err(err)
-            }
-        }
-    }
-
-    async fn download_source_once(
         &self,
         file_source: HttpRemoteDif,
         destination: PathBuf,

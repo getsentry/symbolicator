@@ -14,7 +14,7 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
-use crate::utils::futures::{m, measure};
+use crate::utils::futures::{self as future_utils, m, measure};
 use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
@@ -99,12 +99,52 @@ impl DownloadService {
         source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        match source {
-            RemoteDif::Sentry(inner) => self.sentry.download_source(inner, destination).await,
-            RemoteDif::Http(inner) => self.http.download_source(inner, destination).await,
-            RemoteDif::S3(inner) => self.s3.download_source(inner, destination).await,
-            RemoteDif::Gcs(inner) => self.gcs.download_source(inner, destination).await,
-            RemoteDif::Filesystem(inner) => self.fs.download_source(inner, destination).await,
+        let result = match &source {
+            RemoteDif::Sentry(inner) => {
+                future_utils::retry(|| {
+                    self.sentry
+                        .download_source(inner.clone(), destination.clone())
+                })
+                .await
+            }
+            RemoteDif::Http(inner) => {
+                future_utils::retry(|| {
+                    self.http
+                        .download_source(inner.clone(), destination.clone())
+                })
+                .await
+            }
+            RemoteDif::S3(inner) => {
+                future_utils::retry(|| self.s3.download_source(inner.clone(), destination.clone()))
+                    .await
+            }
+            RemoteDif::Gcs(inner) => {
+                future_utils::retry(|| self.gcs.download_source(inner.clone(), destination.clone()))
+                    .await
+            }
+            RemoteDif::Filesystem(inner) => {
+                future_utils::retry(|| self.fs.download_source(inner.clone(), destination.clone()))
+                    .await
+            }
+        };
+
+        match result {
+            Ok(DownloadStatus::NotFound) => {
+                log::debug!(
+                    "Did not fetch debug file from {:?}: {:?}",
+                    source,
+                    DownloadStatus::NotFound
+                );
+                Ok(DownloadStatus::NotFound)
+            }
+            Ok(status) => {
+                log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                Ok(status)
+            }
+            Err(err) => {
+                log::debug!("Failed to fetch debug file from {:?}: {}", source, err);
+                Err(err)
+            }
         }
     }
 
