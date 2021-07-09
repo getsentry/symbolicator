@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::prelude::*;
+use futures::TryStreamExt;
 use parking_lot::Mutex;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -242,9 +242,17 @@ impl SentryDownloader {
             self.download_source_once(file_source.clone(), destination.clone())
         });
         match retries.await {
+            Ok(DownloadStatus::NotFound) => {
+                log::debug!(
+                    "Did not fetch debug file from {:?}: {:?}",
+                    file_source.url(),
+                    DownloadStatus::NotFound
+                );
+                Ok(DownloadStatus::NotFound)
+            }
             Ok(status) => {
                 log::debug!(
-                    "Fetched debug file from {}: {:?}",
+                    "Fetched debug file from {:?}: {:?}",
                     file_source.url(),
                     status
                 );
@@ -252,7 +260,7 @@ impl SentryDownloader {
             }
             Err(err) => {
                 log::debug!(
-                    "Failed to fetch debug file from {}: {}",
+                    "Failed to fetch debug file from {:?}: {}",
                     file_source.url(),
                     err
                 );
@@ -263,33 +271,38 @@ impl SentryDownloader {
 
     async fn download_source_once(
         &self,
-        source: SentryRemoteDif,
+        file_source: SentryRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let request = self
             .client
-            .get(source.url())
+            .get(file_source.url())
             .header("User-Agent", USER_AGENT)
-            .bearer_auth(&source.source.token)
+            .bearer_auth(&file_source.source.token)
             .send();
+
+        let download_url = file_source.url();
+        let source = RemoteDif::from(file_source);
+        let request = super::measure_download_time(source.source_metric_key(), request);
+
         match request.await {
             Ok(response) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting {}", source.url());
+                    log::trace!("Success hitting {}", download_url);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
-                        source.url(),
+                        download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }
             }
             Err(e) => {
-                log::trace!("Skipping response from {}: {}", source.url(), e);
+                log::trace!("Skipping response from {}: {}", download_url, e);
                 Ok(DownloadStatus::NotFound) // must be wrong type
             }
         }

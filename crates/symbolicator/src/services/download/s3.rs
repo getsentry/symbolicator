@@ -141,16 +141,17 @@ impl S3Downloader {
         log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
-        let result = self
-            .get_s3_client(source_key)
-            .get_object(rusoto_s3::GetObjectRequest {
-                key: key.clone(),
-                bucket: bucket.clone(),
-                ..Default::default()
-            })
-            .await;
+        let client = self.get_s3_client(source_key);
+        let request = client.get_object(rusoto_s3::GetObjectRequest {
+            key: key.clone(),
+            bucket: bucket.clone(),
+            ..Default::default()
+        });
 
-        let response = match result {
+        let source = RemoteDif::from(file_source);
+        let request = super::measure_download_time(source.source_metric_key(), request);
+
+        let response = match request.await {
             Ok(response) => response,
             Err(err) => {
                 // For missing files, Amazon returns different status codes based on the given
@@ -171,7 +172,7 @@ impl S3Downloader {
             }
         };
 
-        super::download_stream(file_source, stream, destination).await
+        super::download_stream(source, stream, destination).await
     }
 
     pub fn list_files(

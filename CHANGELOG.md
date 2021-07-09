@@ -15,6 +15,10 @@
 
 - `symsorter` no longer emits files with empty debug identifiers. ([#469](https://github.com/getsentry/symbolicator/pull/469))
 
+### Internal
+
+- Measure how long it takes to download sources from external servers. ([#483](https://github.com/getsentry/symbolicator/pull/483))
+
 ## 0.3.4
 
 ### Features

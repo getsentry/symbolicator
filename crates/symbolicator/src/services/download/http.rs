@@ -66,32 +66,33 @@ impl HttpDownloader {
             Ok(x) => x,
             Err(_) => return Ok(DownloadStatus::NotFound),
         };
+        let headers = file_source.source.headers.clone();
+        let source = RemoteDif::from(file_source);
 
         log::debug!("Fetching debug file from {}", download_url);
-        let response = future_utils::retry(|| {
+        let request = future_utils::retry(|| {
             let mut builder = self.client.get(download_url.clone());
 
-            for (key, value) in file_source.source.headers.iter() {
+            for (key, value) in headers.iter() {
                 if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
                     builder = builder.header(key, value.as_str());
                 }
             }
-
-            builder.header(header::USER_AGENT, USER_AGENT).send()
+            let request = builder.header(header::USER_AGENT, USER_AGENT).send();
+            super::measure_download_time(source.source_metric_key(), request)
         });
 
-        match response.await {
-            Ok(response) => {
-                if response.status().is_success() {
+        match request.await {
+            Ok(request) => {
+                if request.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
-                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-                    super::download_stream(file_source, stream, destination).await
+                    let stream = request.bytes_stream().map_err(DownloadError::Reqwest);
+                    super::download_stream(source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
                         download_url,
-                        response.status()
+                        request.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }

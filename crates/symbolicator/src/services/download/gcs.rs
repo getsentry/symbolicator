@@ -204,44 +204,40 @@ impl GcsDownloader {
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
-        log::debug!(
-            "Fetching from GCS: {} (from {})",
-            &key,
-            file_source.source.bucket
-        );
+        let bucket = file_source.source.bucket.clone();
+        log::debug!("Fetching from GCS: {} (from {})", &key, bucket);
         let token = self.get_token(&file_source.source.source_key).await?;
         log::debug!("Got valid GCS token");
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
             .map_err(|_| GcsError::InvalidUrl)?;
-        // Append path segements manually for proper encoding
+        // Append path segments manually for proper encoding
         url.path_segments_mut()
             .map_err(|_| GcsError::InvalidUrl)?
-            .extend(&[&file_source.source.bucket, "o", &key]);
+            .extend(&[&bucket, "o", &key]);
 
-        let response = future_utils::retry(|| {
-            self.client
+        let source = RemoteDif::from(file_source);
+        let request = future_utils::retry(|| {
+            let request = self
+                .client
                 .get(url.clone())
                 .header("authorization", format!("Bearer {}", token.access_token))
-                .send()
+                .send();
+            super::measure_download_time(source.source_metric_key(), request)
         });
 
-        match response.await {
+        match request.await {
             Ok(response) => {
                 if response.status().is_success() {
-                    log::trace!(
-                        "Success hitting GCS {} (from {})",
-                        &key,
-                        file_source.source.bucket
-                    );
+                    log::trace!("Success hitting GCS {} (from {})", &key, bucket);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(file_source, stream, destination).await
+                    super::download_stream(source, stream, destination).await
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
-                        &file_source.source.bucket,
+                        &bucket,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
@@ -251,7 +247,7 @@ impl GcsDownloader {
                 log::trace!(
                     "Skipping response from GCS {} (from {}): {} ({:?})",
                     &key,
-                    &file_source.source.bucket,
+                    &bucket,
                     &e,
                     &e
                 );
