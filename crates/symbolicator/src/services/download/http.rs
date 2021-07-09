@@ -12,8 +12,8 @@ use reqwest::{header, Client};
 use url::Url;
 
 use super::{
-    content_length_timeout, with_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri,
-    SourceLocation, USER_AGENT,
+    content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation,
+    USER_AGENT,
 };
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
@@ -105,11 +105,7 @@ impl HttpDownloader {
 
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    with_timeout(
-                        timeout,
-                        super::download_stream(file_source, stream, destination),
-                    )
-                    .await
+                    super::download_stream(file_source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",

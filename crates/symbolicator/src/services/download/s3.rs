@@ -17,9 +17,7 @@ use rusoto_core::credential::ProvideAwsCredentials;
 use rusoto_core::region::Region;
 
 use super::locations::SourceLocation;
-use super::{
-    content_length_timeout, with_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri,
-};
+use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
@@ -185,11 +183,7 @@ impl S3Downloader {
             self.streaming_timeout,
         );
 
-        with_timeout(
-            timeout,
-            super::download_stream(file_source, stream, destination),
-        )
-        .await
+        super::download_stream(file_source, stream, destination, timeout).await
     }
 
     pub fn list_files(

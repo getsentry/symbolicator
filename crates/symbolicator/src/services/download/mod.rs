@@ -88,7 +88,7 @@ impl DownloadService {
             sentry: sentry::SentryDownloader::new(trusted_client, streaming_timeout),
             http: http::HttpDownloader::new(restricted_client.clone(), streaming_timeout),
             s3: s3::S3Downloader::new(streaming_timeout),
-            gcs: gcs::GcsDownloader::new(restricted_client),
+            gcs: gcs::GcsDownloader::new(restricted_client, streaming_timeout),
             fs: filesystem::FilesystemDownloader::new(),
         })
     }
@@ -200,33 +200,41 @@ async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
+    timeout: Duration,
 ) -> Result<DownloadStatus, DownloadError> {
     let source = source.into();
 
     // All file I/O in this function is blocking!
     log::trace!("Downloading from {}", source);
-    let mut file = File::create(&destination)
-        .await
-        .map_err(DownloadError::BadDestination)?;
-    futures::pin_mut!(stream);
+    let future = async {
+        let mut file = File::create(&destination)
+            .await
+            .map_err(DownloadError::BadDestination)?;
+        futures::pin_mut!(stream);
 
-    let mut throughput_recorder =
-        MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
-    let result: Result<_, DownloadError> = async {
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            let chunk = chunk.as_ref();
-            throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            file.write_all(chunk).await.map_err(DownloadError::Write)?;
+        let mut throughput_recorder =
+            MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
+        let result: Result<_, DownloadError> = async {
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                let chunk = chunk.as_ref();
+                throughput_recorder.add_bytes_transferred(chunk.len() as u64);
+                file.write_all(chunk).await.map_err(DownloadError::Write)?;
+            }
+            Ok(())
         }
-        Ok(())
-    }
-    .await;
-    throughput_recorder.done(&result);
-    result?;
+        .await;
+        throughput_recorder.done(&result);
+        result?;
 
-    file.flush().await.map_err(DownloadError::Write)?;
-    Ok(DownloadStatus::Completed)
+        file.flush().await.map_err(DownloadError::Write)?;
+        Ok(DownloadStatus::Completed)
+    };
+
+    match tokio::time::timeout(timeout, future).await {
+        Ok(res) => res,
+        Err(_) => Err(DownloadError::Canceled),
+    }
 }
 
 /// State of the [`MeasureSourceDownloadGuard`].
@@ -380,17 +388,6 @@ impl Iterator for SourceLocationIter<'_> {
 fn content_length_timeout(content_length: Option<u32>, streaming_timeout: Duration) -> Duration {
     let length = content_length.unwrap_or(2 * 1024 * 1024 * 1024);
     (streaming_timeout * (length / (1024 * 1024 * 1024))).max(Duration::from_secs(1))
-}
-
-/// Run a future with the given timeout. If the future times out, return [`DownloadError::Canceled`].
-pub async fn with_timeout<T, F>(timeout: Duration, future: F) -> Result<T, DownloadError>
-where
-    F: Future<Output = Result<T, DownloadError>>,
-{
-    match tokio::time::timeout(timeout, future).await {
-        Ok(res) => res,
-        Err(_) => Err(DownloadError::Canceled),
-    }
 }
 
 #[cfg(test)]

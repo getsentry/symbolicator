@@ -16,8 +16,8 @@ use thiserror::Error;
 use url::Url;
 
 use super::{
-    content_length_timeout, with_timeout, DownloadError, DownloadStatus, FileType, RemoteDif,
-    RemoteDifUri, USER_AGENT,
+    content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
+    USER_AGENT,
 };
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
@@ -304,7 +304,7 @@ impl SentryDownloader {
                     let timeout = content_length_timeout(content_length, self.streaming_timeout);
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    with_timeout(timeout, super::download_stream(source, stream, destination)).await
+                    super::download_stream(source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
