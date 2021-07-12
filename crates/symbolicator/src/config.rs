@@ -244,6 +244,9 @@ pub struct Config {
     pub processing_pool_size: usize,
 
     /// The maximum timeout for downloads.
+    ///
+    /// This is the upper limit the download service will take for downloading from a single
+    /// source, regardless of how many retries are involved.
     #[serde(with = "humantime_serde")]
     pub max_download_timeout: Duration,
 
