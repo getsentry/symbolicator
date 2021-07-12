@@ -243,42 +243,6 @@ impl SentryDownloader {
         file_source: SentryRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let retries = future_utils::retry(|| {
-            self.download_source_once(file_source.clone(), destination.clone())
-        });
-        match retries.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from {:?}: {:?}",
-                    file_source.url(),
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
-            Ok(status) => {
-                log::debug!(
-                    "Fetched debug file from {:?}: {:?}",
-                    file_source.url(),
-                    status
-                );
-                Ok(status)
-            }
-            Err(err) => {
-                log::debug!(
-                    "Failed to fetch debug file from {:?}: {}",
-                    file_source.url(),
-                    err
-                );
-                Err(err)
-            }
-        }
-    }
-
-    async fn download_source_once(
-        &self,
-        file_source: SentryRemoteDif,
-        destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
         let request = self
             .client
             .get(file_source.url())

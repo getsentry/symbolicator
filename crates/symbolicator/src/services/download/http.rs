@@ -17,7 +17,6 @@ use super::{
 };
 use crate::sources::{FileType, HttpSourceConfig};
 use crate::types::ObjectId;
-use crate::utils::futures as future_utils;
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -74,21 +73,18 @@ impl HttpDownloader {
             Ok(x) => x,
             Err(_) => return Ok(DownloadStatus::NotFound),
         };
-        let headers = file_source.source.headers.clone();
-        let source = RemoteDif::from(file_source);
 
         log::debug!("Fetching debug file from {}", download_url);
-        let request = future_utils::retry(|| {
-            let mut builder = self.client.get(download_url.clone());
+        let mut builder = self.client.get(download_url.clone());
 
-            for (key, value) in headers.iter() {
-                if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                    builder = builder.header(key, value.as_str());
-                }
+        for (key, value) in file_source.source.headers.iter() {
+            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                builder = builder.header(key, value.as_str());
             }
-            let request = builder.header(header::USER_AGENT, USER_AGENT).send();
-            super::measure_download_time(source.source_metric_key(), request)
-        });
+        }
+        let source = RemoteDif::from(file_source);
+        let request = builder.header(header::USER_AGENT, USER_AGENT).send();
+        let request = super::measure_download_time(source.source_metric_key(), request);
 
         match request.await {
             Ok(response) => {
