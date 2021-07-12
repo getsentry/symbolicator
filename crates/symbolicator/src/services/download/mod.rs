@@ -200,7 +200,7 @@ async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
-    timeout: Duration,
+    timeout: Option<Duration>,
 ) -> Result<DownloadStatus, DownloadError> {
     let source = source.into();
 
@@ -231,9 +231,12 @@ async fn download_stream(
         Ok(DownloadStatus::Completed)
     };
 
-    match tokio::time::timeout(timeout, future).await {
-        Ok(res) => res,
-        Err(_) => Err(DownloadError::Canceled),
+    match timeout {
+        Some(timeout) => match tokio::time::timeout(timeout, future).await {
+            Ok(res) => res,
+            Err(_) => Err(DownloadError::Canceled),
+        },
+        None => future.await,
     }
 }
 
@@ -383,11 +386,12 @@ impl Iterator for SourceLocationIter<'_> {
     }
 }
 
-/// Computes a download timeout based on a content length. If the content length is
-/// `None` (i.e., unknown), assume 2GB. The minimum timeout is 1s.
-fn content_length_timeout(content_length: Option<u32>, streaming_timeout: Duration) -> Duration {
-    let length = content_length.unwrap_or(2 * 1024 * 1024 * 1024);
-    (streaming_timeout * (length / (1024 * 1024 * 1024))).max(Duration::from_secs(1))
+/// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
+///
+/// The minimum timeout returned by this function is 1s.
+fn content_length_timeout(content_length: u32, streaming_timeout: Duration) -> Duration {
+    let gb = content_length / (1024 * 1024 * 1024);
+    (streaming_timeout * gb).max(Duration::from_secs(1))
 }
 
 #[cfg(test)]

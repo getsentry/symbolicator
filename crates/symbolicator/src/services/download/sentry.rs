@@ -301,7 +301,8 @@ impl SentryDownloader {
                         .and_then(|hv| hv.to_str().ok())
                         .and_then(|s| s.parse::<u32>().ok());
 
-                    let timeout = content_length_timeout(content_length, self.streaming_timeout);
+                    let timeout =
+                        content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await

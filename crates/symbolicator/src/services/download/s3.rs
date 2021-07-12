@@ -176,12 +176,10 @@ impl S3Downloader {
             }
         };
 
-        let timeout = content_length_timeout(
-            response
-                .content_length
-                .and_then(|cl| u32::try_from(cl).ok()),
-            self.streaming_timeout,
-        );
+        let content_length = response
+            .content_length
+            .and_then(|cl| u32::try_from(cl).ok());
+        let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
 
         super::download_stream(source, stream, destination, timeout).await
     }
