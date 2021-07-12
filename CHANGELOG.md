@@ -10,7 +10,6 @@
 - Update symbolic to correctly apply bcsymbolmaps to symbol and filenames coming from DWARF. ([#479](https://github.com/getsentry/symbolicator/pull/479))
 - Update symbolic to correctly restore registers when using compact unwinding. ([#487](https://github.com/getsentry/symbolicator/pull/487))
 - Make timeouts for downloading files configurable. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489))
-- Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484))
 
 ### Tools
 
