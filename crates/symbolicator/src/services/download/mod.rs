@@ -99,36 +99,26 @@ impl DownloadService {
         source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let result = match &source {
-            RemoteDif::Sentry(inner) => {
-                future_utils::retry(|| {
+        let result = future_utils::retry(|| async {
+            let destination = destination.clone();
+            match &source {
+                RemoteDif::Sentry(inner) => {
                     self.sentry
-                        .download_source(inner.clone(), destination.clone())
-                })
-                .await
+                        .download_source(inner.clone(), destination)
+                        .await
+                }
+                RemoteDif::Http(inner) => {
+                    self.http.download_source(inner.clone(), destination).await
+                }
+                RemoteDif::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
+                RemoteDif::Gcs(inner) => self.gcs.download_source(inner.clone(), destination).await,
+                RemoteDif::Filesystem(inner) => {
+                    self.fs.download_source(inner.clone(), destination).await
+                }
             }
-            RemoteDif::Http(inner) => {
-                future_utils::retry(|| {
-                    self.http
-                        .download_source(inner.clone(), destination.clone())
-                })
-                .await
-            }
-            RemoteDif::S3(inner) => {
-                future_utils::retry(|| self.s3.download_source(inner.clone(), destination.clone()))
-                    .await
-            }
-            RemoteDif::Gcs(inner) => {
-                future_utils::retry(|| self.gcs.download_source(inner.clone(), destination.clone()))
-                    .await
-            }
-            RemoteDif::Filesystem(inner) => {
-                future_utils::retry(|| self.fs.download_source(inner.clone(), destination.clone()))
-                    .await
-            }
-        };
+        });
 
-        match result {
+        match result.await {
             Ok(DownloadStatus::NotFound) => {
                 log::debug!(
                     "Did not fetch debug file from {:?}: {:?}",
