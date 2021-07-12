@@ -11,8 +11,7 @@ use std::sync::Arc;
 use tokio::fs;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, RemoteDif};
-use crate::services::download::RemoteDifUri;
+use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, FilesystemSourceConfig};
 use crate::types::ObjectId;
 

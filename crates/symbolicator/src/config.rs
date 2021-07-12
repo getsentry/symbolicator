@@ -243,9 +243,20 @@ pub struct Config {
     /// Number of subprocesses in the internal processing pool.
     pub processing_pool_size: usize,
 
-    /// The timeout for downloads.
+    /// The maximum timeout for downloads.
+    ///
+    /// This is the upper limit the download service will take for downloading from a single
+    /// source, regardless of how many retries are involved.
     #[serde(with = "humantime_serde")]
-    pub download_timeout: Duration,
+    pub max_download_timeout: Duration,
+
+    /// The timeout per GB for streaming downloads.
+    ///
+    /// For downloads with a known size, this timeout applies per individual
+    /// download attempt. If the download size is not known, it is ignored and
+    /// only `max_download_timeout` applies.
+    #[serde(with = "humantime_serde")]
+    pub streaming_timeout: Duration,
 }
 
 impl Config {
@@ -309,7 +320,8 @@ impl Default for Config {
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
-            download_timeout: Duration::from_secs(300),
+            max_download_timeout: Duration::from_secs(300),
+            streaming_timeout: Duration::from_secs(150),
         }
     }
 }

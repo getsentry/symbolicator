@@ -9,13 +9,13 @@ use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
 use jsonwebtoken::EncodingKey;
 use parking_lot::Mutex;
-use reqwest::Client;
+use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
+use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
 use crate::utils::futures as future_utils;
@@ -139,13 +139,15 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 pub struct GcsDownloader {
     token_cache: Mutex<GcsTokenCache>,
     client: reqwest::Client,
+    streaming_timeout: std::time::Duration,
 }
 
 impl GcsDownloader {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: Client, streaming_timeout: std::time::Duration) -> Self {
         Self {
             token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
             client,
+            streaming_timeout,
         }
     }
 
@@ -230,9 +232,18 @@ impl GcsDownloader {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting GCS {} (from {})", &key, bucket);
+
+                    let content_length = response
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|hv| hv.to_str().ok())
+                        .and_then(|s| s.parse::<u32>().ok());
+
+                    let timeout =
+                        content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination).await
+                    super::download_stream(source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
@@ -326,7 +337,7 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(Client::new(), std::time::Duration::from_secs(30));
 
         let object_id = ObjectId {
             code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
@@ -350,7 +361,7 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(Client::new(), std::time::Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -377,7 +388,7 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(Client::new(), std::time::Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -404,7 +415,7 @@ mod tests {
         };
 
         let source = gcs_source(broken_credentials);
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(Client::new(), std::time::Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

@@ -10,12 +10,15 @@ use std::time::{Duration, Instant};
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
-use reqwest::StatusCode;
+use reqwest::{header, StatusCode};
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, USER_AGENT};
+use super::{
+    content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
+    USER_AGENT,
+};
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
@@ -89,6 +92,7 @@ pub enum SentryError {
 pub struct SentryDownloader {
     client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
+    streaming_timeout: Duration,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -101,10 +105,11 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(client: reqwest::Client, streaming_timeout: Duration) -> Self {
         Self {
             client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            streaming_timeout,
         }
     }
 
@@ -289,9 +294,18 @@ impl SentryDownloader {
             Ok(response) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
+
+                    let content_length = response
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|hv| hv.to_str().ok())
+                        .and_then(|s| s.parse::<u32>().ok());
+
+                    let timeout =
+                        content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination).await
+                    super::download_stream(source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",

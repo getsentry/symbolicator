@@ -3,9 +3,11 @@
 //! Specifically this supports the [`S3SourceConfig`] source.
 
 use std::any::type_name;
+use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
@@ -15,7 +17,7 @@ use rusoto_core::credential::ProvideAwsCredentials;
 use rusoto_core::region::Region;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
+use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
@@ -72,6 +74,7 @@ impl S3RemoteDif {
 pub struct S3Downloader {
     http_client: Arc<rusoto_core::HttpClient>,
     client_cache: Mutex<ClientCache>,
+    streaming_timeout: Duration,
 }
 
 impl fmt::Debug for S3Downloader {
@@ -84,10 +87,11 @@ impl fmt::Debug for S3Downloader {
 }
 
 impl S3Downloader {
-    pub fn new() -> Self {
+    pub fn new(streaming_timeout: Duration) -> Self {
         Self {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
+            streaming_timeout,
         }
     }
 
@@ -172,7 +176,12 @@ impl S3Downloader {
             }
         };
 
-        super::download_stream(source, stream, destination).await
+        let content_length = response
+            .content_length
+            .and_then(|cl| u32::try_from(cl).ok());
+        let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
+
+        super::download_stream(source, stream, destination, timeout).await
     }
 
     pub fn list_files(
@@ -340,7 +349,7 @@ mod tests {
         test::setup();
 
         let source = s3_source(s3_source_key!());
-        let downloader = S3Downloader::new();
+        let downloader = S3Downloader::new(Duration::from_secs(30));
 
         let object_id = ObjectId {
             code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
@@ -367,7 +376,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new();
+        let downloader = S3Downloader::new(Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -396,7 +405,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new();
+        let downloader = S3Downloader::new(Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -424,7 +433,7 @@ mod tests {
             secret_key: "".to_owned(),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new();
+        let downloader = S3Downloader::new(Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

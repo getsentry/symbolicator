@@ -81,13 +81,14 @@ impl DownloadService {
         let trusted_client = crate::utils::http::create_client(&config, true);
         let restricted_client = crate::utils::http::create_client(&config, false);
 
+        let streaming_timeout = config.streaming_timeout;
         Arc::new(Self {
             config,
             worker: tokio::runtime::Handle::current(),
-            sentry: sentry::SentryDownloader::new(trusted_client),
-            http: http::HttpDownloader::new(restricted_client.clone()),
-            s3: s3::S3Downloader::new(),
-            gcs: gcs::GcsDownloader::new(restricted_client),
+            sentry: sentry::SentryDownloader::new(trusted_client, streaming_timeout),
+            http: http::HttpDownloader::new(restricted_client.clone(), streaming_timeout),
+            s3: s3::S3Downloader::new(streaming_timeout),
+            gcs: gcs::GcsDownloader::new(restricted_client, streaming_timeout),
             fs: filesystem::FilesystemDownloader::new(),
         })
     }
@@ -130,7 +131,7 @@ impl DownloadService {
         // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
         let _guard = self.worker.enter();
         let job = slf.dispatch_download(source, destination).bind_hub(hub);
-        let job = tokio::time::timeout(self.config.download_timeout, job);
+        let job = tokio::time::timeout(self.config.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, job);
 
         // Map all SpawnError variants into DownloadError::Canceled.
@@ -199,33 +200,44 @@ async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: PathBuf,
+    timeout: Option<Duration>,
 ) -> Result<DownloadStatus, DownloadError> {
     let source = source.into();
 
     // All file I/O in this function is blocking!
     log::trace!("Downloading from {}", source);
-    let mut file = File::create(&destination)
-        .await
-        .map_err(DownloadError::BadDestination)?;
-    futures::pin_mut!(stream);
+    let future = async {
+        let mut file = File::create(&destination)
+            .await
+            .map_err(DownloadError::BadDestination)?;
+        futures::pin_mut!(stream);
 
-    let mut throughput_recorder =
-        MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
-    let result: Result<_, DownloadError> = async {
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            let chunk = chunk.as_ref();
-            throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            file.write_all(chunk).await.map_err(DownloadError::Write)?;
+        let mut throughput_recorder =
+            MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
+        let result: Result<_, DownloadError> = async {
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                let chunk = chunk.as_ref();
+                throughput_recorder.add_bytes_transferred(chunk.len() as u64);
+                file.write_all(chunk).await.map_err(DownloadError::Write)?;
+            }
+            Ok(())
         }
-        Ok(())
-    }
-    .await;
-    throughput_recorder.done(&result);
-    result?;
+        .await;
+        throughput_recorder.done(&result);
+        result?;
 
-    file.flush().await.map_err(DownloadError::Write)?;
-    Ok(DownloadStatus::Completed)
+        file.flush().await.map_err(DownloadError::Write)?;
+        Ok(DownloadStatus::Completed)
+    };
+
+    match timeout {
+        Some(timeout) => match tokio::time::timeout(timeout, future).await {
+            Ok(res) => res,
+            Err(_) => Err(DownloadError::Canceled),
+        },
+        None => future.await,
+    }
 }
 
 /// State of the [`MeasureSourceDownloadGuard`].
@@ -372,6 +384,14 @@ impl Iterator for SourceLocationIter<'_> {
 
         self.next.pop().map(SourceLocation::new)
     }
+}
+
+/// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
+///
+/// The minimum timeout returned by this function is 1s.
+fn content_length_timeout(content_length: u32, streaming_timeout: Duration) -> Duration {
+    let gb = content_length / (1024 * 1024 * 1024);
+    (streaming_timeout * gb).max(Duration::from_secs(1))
 }
 
 #[cfg(test)]
