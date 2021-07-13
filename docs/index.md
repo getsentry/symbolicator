@@ -73,15 +73,18 @@ metrics:
   sources. See [Security](#security). Defaults to `false`.
 - `processing_pool_size`: The number of subprocesses in Symbolicator's internal
   processing pool. Defaults to the total number of logical CPUs on the machine.
+
+> All time units for the following configuration settings can be either a time
+expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,
+`hours`, `d`, `days`, `w`, `weeks`, `M`, `months`, `y`, `years`.
+
 - `max_download_timeout`: The timeout for downloading debug files.
 - `connect_timeout`: The timeout for establishing a connection to a symbol
   server to download debug files.
 - `streaming_timeout`: The timeout for streaming the contents of a debug file.
 - `caches`: Fine-tune cache expiry.
-  All time units can be either a time expression like `1s`.  Units
-  can be `s`, `seconds`, `m`, `minutes`, `h`, `hours`, `d`, `days`,
-  `w`, `weeks`, `M`, `months`, `y`, `years`.  Or they can be `null`
-  in which case the cache will never expire.
+
+> Time units for caches may also be `null` to disable cache expiration.
 
   - `downloaded`: Fine-tune caches for downloaded files.
      - `max_unused_for`: Maximum duration to keep a file since last

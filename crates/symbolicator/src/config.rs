@@ -209,7 +209,7 @@ pub struct CacheConfigs {
     pub diagnostics: DiagnosticsCacheConfig,
 }
 
-/// See README.md for more information on config values.
+/// See docs/index.md for more information on config values.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -421,6 +421,32 @@ mod tests {
     }
 
     #[test]
+    fn test_unspecified_dl_timeouts() {
+        let yaml = r#"
+            sources: []
+        "#;
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
+        let default_cfg = Config::default();
+        assert_eq!(cfg.max_download_timeout, default_cfg.max_download_timeout);
+        assert_eq!(cfg.connect_timeout, default_cfg.connect_timeout);
+        assert_eq!(cfg.streaming_timeout, default_cfg.streaming_timeout);
+    }
+
+    #[test]
+    fn test_zero_second_dl_timeouts() {
+        // 0s download timeouts will not be set to defaults
+        let yaml = r#"
+            max_download_timeout: 0s
+            connect_timeout: 0s
+            streaming_timeout: 0s
+        "#;
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
+        assert_eq!(cfg.max_download_timeout, Duration::from_secs(0));
+        assert_eq!(cfg.connect_timeout, Duration::from_secs(0));
+        assert_eq!(cfg.streaming_timeout, Duration::from_secs(0));
+    }
+
+    #[test]
     fn test_unknown_fields() {
         // Unknown fields should not cause failure
         let yaml = r#"
@@ -430,5 +456,13 @@ mod tests {
         "#;
         let cfg = Config::from_reader(yaml.as_bytes());
         assert!(cfg.is_ok());
+    }
+
+    #[test]
+    fn test_empty_file() {
+        // Empty files aren't supported
+        let yaml = r#""#;
+        let result = Config::from_reader(yaml.as_bytes());
+        assert!(result.is_err());
     }
 }
