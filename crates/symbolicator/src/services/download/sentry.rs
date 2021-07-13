@@ -92,6 +92,7 @@ pub enum SentryError {
 pub struct SentryDownloader {
     client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
+    connect_timeout: Duration,
     streaming_timeout: Duration,
 }
 
@@ -105,10 +106,15 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client, streaming_timeout: Duration) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        connect_timeout: Duration,
+        streaming_timeout: Duration,
+    ) -> Self {
         Self {
             client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            connect_timeout,
             streaming_timeout,
         }
     }
@@ -252,10 +258,11 @@ impl SentryDownloader {
 
         let download_url = file_source.url();
         let source = RemoteDif::from(file_source);
+        let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
         match request.await {
-            Ok(response) => {
+            Ok(Ok(response)) => {
                 if response.status().is_success() {
                     log::trace!("Success hitting {}", download_url);
 
@@ -279,10 +286,12 @@ impl SentryDownloader {
                     Ok(DownloadStatus::NotFound)
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 log::trace!("Skipping response from {}: {}", download_url, e);
                 Ok(DownloadStatus::NotFound) // must be wrong type
             }
+            // Timed out
+            Err(_) => Err(DownloadError::Canceled),
         }
     }
 }

@@ -81,14 +81,26 @@ impl DownloadService {
         let trusted_client = crate::utils::http::create_client(&config, true);
         let restricted_client = crate::utils::http::create_client(&config, false);
 
-        let streaming_timeout = config.streaming_timeout;
+        let Config {
+            connect_timeout,
+            streaming_timeout,
+            ..
+        } = *config;
         Arc::new(Self {
             config,
             worker: tokio::runtime::Handle::current(),
-            sentry: sentry::SentryDownloader::new(trusted_client, streaming_timeout),
-            http: http::HttpDownloader::new(restricted_client.clone(), streaming_timeout),
-            s3: s3::S3Downloader::new(streaming_timeout),
-            gcs: gcs::GcsDownloader::new(restricted_client, streaming_timeout),
+            sentry: sentry::SentryDownloader::new(
+                trusted_client,
+                connect_timeout,
+                streaming_timeout,
+            ),
+            http: http::HttpDownloader::new(
+                restricted_client.clone(),
+                connect_timeout,
+                streaming_timeout,
+            ),
+            s3: s3::S3Downloader::new(connect_timeout, streaming_timeout),
+            gcs: gcs::GcsDownloader::new(restricted_client, connect_timeout, streaming_timeout),
             fs: filesystem::FilesystemDownloader::new(),
         })
     }

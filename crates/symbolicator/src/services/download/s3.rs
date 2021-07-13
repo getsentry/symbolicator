@@ -74,6 +74,7 @@ impl S3RemoteDif {
 pub struct S3Downloader {
     http_client: Arc<rusoto_core::HttpClient>,
     client_cache: Mutex<ClientCache>,
+    connect_timeout: Duration,
     streaming_timeout: Duration,
 }
 
@@ -87,10 +88,11 @@ impl fmt::Debug for S3Downloader {
 }
 
 impl S3Downloader {
-    pub fn new(streaming_timeout: Duration) -> Self {
+    pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
         Self {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
+            connect_timeout,
             streaming_timeout,
         }
     }
@@ -153,11 +155,12 @@ impl S3Downloader {
         });
 
         let source = RemoteDif::from(file_source);
+        let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
         let response = match request.await {
-            Ok(response) => response,
-            Err(err) => {
+            Ok(Ok(response)) => response,
+            Ok(Err(err)) => {
                 // For missing files, Amazon returns different status codes based on the given
                 // permissions.
                 // - To fetch existing objects, `GetObject` is required.
@@ -165,6 +168,10 @@ impl S3Downloader {
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
                 return Ok(DownloadStatus::NotFound);
+            }
+            Err(_) => {
+                // Timed out
+                return Err(DownloadError::Canceled);
             }
         };
 
@@ -349,7 +356,7 @@ mod tests {
         test::setup();
 
         let source = s3_source(s3_source_key!());
-        let downloader = S3Downloader::new(Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
 
         let object_id = ObjectId {
             code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
@@ -376,7 +383,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -405,7 +412,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -433,7 +440,7 @@ mod tests {
             secret_key: "".to_owned(),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

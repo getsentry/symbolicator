@@ -250,6 +250,13 @@ pub struct Config {
     #[serde(with = "humantime_serde")]
     pub max_download_timeout: Duration,
 
+    /// The timeout for the initial HEAD request in a download.
+    ///
+    /// This timeout applies to each individual attempt to establish a
+    /// connection with a symbol source if retries take place.
+    #[serde(with = "humantime_serde")]
+    pub connect_timeout: Duration,
+
     /// The timeout per GB for streaming downloads.
     ///
     /// For downloads with a known size, this timeout applies per individual
@@ -321,6 +328,7 @@ impl Default for Config {
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
             max_download_timeout: Duration::from_secs(300),
+            connect_timeout: Duration::from_secs(300),
             streaming_timeout: Duration::from_secs(150),
         }
     }
