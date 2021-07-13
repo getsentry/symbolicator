@@ -447,18 +447,6 @@ mod tests {
     }
 
     #[test]
-    fn test_null_dl_timeouts() {
-        // Null download timeouts aren't supported unlike cache timeouts
-        let yaml = r#"
-            max_download_timeout: null
-            connect_timeout: null
-            streaming_timeout: null
-        "#;
-        let result = Config::from_reader(yaml.as_bytes());
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_unknown_fields() {
         // Unknown fields should not cause failure
         let yaml = r#"
