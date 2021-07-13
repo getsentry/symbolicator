@@ -10,9 +10,9 @@
 - Update symbolic to correctly apply bcsymbolmaps to symbol and filenames coming from DWARF. ([#479](https://github.com/getsentry/symbolicator/pull/479))
 - Update symbolic to correctly restore registers when using compact unwinding. ([#487](https://github.com/getsentry/symbolicator/pull/487))
 - Make various timeouts related to downloading files configurable. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489), [#491](https://github.com/getsentry/symbolicator/pull/491))
-- Introduced the `max_download_timeout` config setting. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489))
-- Introduced the `streaming_timeout` config setting. ([#489](https://github.com/getsentry/symbolicator/pull/489))
-- Introduced the `connect_timeout` config setting. ([#491](https://github.com/getsentry/symbolicator/pull/491))
+- Introduced the `max_download_timeout` config setting for source downloads. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489))
+- Introduced the `streaming_timeout` config setting for source downloads. ([#489](https://github.com/getsentry/symbolicator/pull/489))
+- Introduced the `connect_timeout` config setting for source downloads. ([#491](https://github.com/getsentry/symbolicator/pull/491))
 - GCS, S3, HTTP, and local filesystem sources: Attempt to retry failed downloads at least once. ([#485](https://github.com/getsentry/symbolicator/pull/485))
 
 ### Tools
