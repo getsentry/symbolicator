@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -369,10 +369,163 @@ fn write_symcache(
     SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
 
     let mut file = writer.into_inner().map_err(io::Error::from)?;
+
     if bcsymbolmap_handle.is_some() {
+        file.flush()?;
+        file.seek(SeekFrom::End(0))?;
         file.write_all(SYMBOLMAP_MARKER)?;
     }
     file.sync_all()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::sync::Arc;
+
+    use symbolic::common::DebugId;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::cache::Caches;
+    use crate::config::{CacheConfigs, Config};
+    use crate::services::bitcode::BitcodeService;
+    use crate::services::DownloadService;
+    use crate::sources::{
+        CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceConfig, SourceId,
+    };
+    use crate::test::{self, fixture};
+    use crate::utils::futures::ThreadPool;
+
+    /// Creates a `SymCacheActor` with the given cache directory
+    /// and timeout for download cache misses.
+    fn symcache_actor(cache_dir: PathBuf, timeout: Duration) -> SymCacheActor {
+        let mut cache_config = CacheConfigs::default();
+        cache_config.downloaded.retry_misses_after = Some(timeout);
+
+        let config = Arc::new(Config {
+            cache_dir: Some(cache_dir),
+            connect_to_reserved_ips: true,
+            caches: cache_config,
+            ..Default::default()
+        });
+
+        let cpu_pool = ThreadPool::new();
+        let caches = Caches::from_config(&config).unwrap();
+        caches.clear_tmp(&config).unwrap();
+        let downloader = DownloadService::new(config);
+        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
+        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
+
+        SymCacheActor::new(caches.symcaches, objects, bitcode, cpu_pool)
+    }
+
+    /// Tests that a symcache is regenerated when it was created without a BcSymbolMap
+    /// and a BcSymbolMap has since become available.
+    ///
+    /// We construct a symcache 3 times under varying conditions:
+    /// 1. No symbol map is not there
+    /// 2. The symbol map is there, but its absence is still cached, so it is
+    ///    not downloaded
+    /// 3. The download cache has expired, so the symbol map is now
+    ///    actually available.
+    ///
+    /// Lookups in the symcache should return obfuscated names in
+    /// 1 and 2 and unobfuscated names in 3.
+    ///
+    /// 2 is specifically intended to make sure that the SymCacheActor
+    /// doesn't constantly try to download the symbol map.
+    ///
+    /// TODO: This test currently does not work because step 2
+    /// results in unobfuscated names. For some reason the
+    /// SymCacheActor downloads the symbol map immediately,
+    /// even though the negative cache should still be valid.
+    #[tokio::test]
+    async fn test_symcache_refresh() {
+        test::setup();
+
+        const TIMEOUT: Duration = Duration::from_millis(500);
+
+        let cache_dir = test::tempdir();
+        let symbol_dir = test::tempdir();
+
+        // Create directories for the symbol file and the bcsymbolmap
+        let macho_dir = symbol_dir.path().join("2d/10c42f591d3265b14778ba0868073f/");
+        let symbol_map_dir = symbol_dir.path().join("c8/374b6d6e9634d8ae38efaa5fec424f/");
+
+        fs::create_dir_all(&symbol_map_dir).unwrap();
+        fs::create_dir_all(&macho_dir).unwrap();
+
+        // Copy the symbol file to the temporary symbol directory
+        fs::copy(
+            fixture("symbols/2d10c42f-591d-3265-b147-78ba0868073f.dwarf-hidden"),
+            macho_dir.join("debuginfo"),
+        )
+        .unwrap();
+
+        let source = SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
+            id: SourceId::new("local"),
+            path: symbol_dir.path().to_owned(),
+            files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
+        }));
+
+        let identifier = ObjectId::from(DebugId::from_uuid(
+            Uuid::parse_str("2d10c42f-591d-3265-b147-78ba0868073f").unwrap(),
+        ));
+
+        let fetch_symcache = FetchSymCache {
+            object_type: ObjectType::Macho,
+            identifier,
+            sources: Arc::new([source]),
+            scope: Scope::Global,
+        };
+
+        let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT);
+
+        test::spawn_compat(move || async move {
+            // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
+            // symcache will be obfuscated.
+            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+            let symcache = symcache_file.parse().unwrap().unwrap();
+            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+            assert_eq!(line_info.filename(), "__hidden#42_");
+            assert_eq!(line_info.symbol(), "__hidden#0_");
+
+            // Copy the plist and bcsymbolmap to the temporary symbol directory so that the SymCacheActor can find them.
+            fs::copy(
+                fixture("symbols/2d10c42f-591d-3265-b147-78ba0868073f.plist"),
+                macho_dir.join("uuidmap"),
+            )
+            .unwrap();
+
+            fs::copy(
+                fixture("symbols/c8374b6d-6e96-34d8-ae38-efaa5fec424f.bcsymbolmap"),
+                symbol_map_dir.join("bcsymbolmap"),
+            )
+            .unwrap();
+
+            // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
+            // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
+            // be obfuscated like before.
+            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+            let symcache = symcache_file.parse().unwrap().unwrap();
+            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+            assert_eq!(line_info.filename(), "__hidden#42_");
+            assert_eq!(line_info.symbol(), "__hidden#0_");
+
+            // Sleep long enough for the negative cache entry to become invalid.
+            std::thread::sleep(TIMEOUT);
+
+            // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
+            // symcache are unobfuscated.
+            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+            let symcache = symcache_file.parse().unwrap().unwrap();
+            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+            assert_eq!(line_info.filename(), "Sources/Sentry/SentryMessage.m");
+            assert_eq!(line_info.symbol(), "-[SentryMessage initWithFormatted:]");
+        })
+        .await;
+    }
 }
