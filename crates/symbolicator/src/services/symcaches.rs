@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +26,8 @@ use crate::types::{
 };
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 use crate::utils::sentry::ConfigureScope;
+
+const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -129,9 +131,8 @@ struct FetchSymCacheInternal {
     /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
 
-    /// The bitcode service, use to fetch
-    /// [`BcSymbolMap`](symbolic::debuginfo::macho::BcSymbolMap).
-    bitcode_svc: BitcodeService,
+    /// The result of fetching the BcSymbolMap
+    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
@@ -158,9 +159,8 @@ struct FetchSymCacheInternal {
 async fn fetch_difs_and_compute_symcache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
-    sources: Arc<[SourceConfig]>,
     objects_actor: ObjectsActor,
-    bitcode_svc: BitcodeService,
+    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
     threadpool: ThreadPool,
 ) -> Result<CacheStatus, SymCacheError> {
     let object_handle = objects_actor
@@ -171,14 +171,6 @@ async fn fetch_difs_and_compute_symcache(
     if object_handle.status() != CacheStatus::Positive {
         return Ok(object_handle.status());
     }
-
-    let bcsymbolmap_handle = match object_meta.object_id().debug_id {
-        Some(debug_id) => bitcode_svc
-            .fetch_bcsymbolmap(debug_id, object_meta.scope().clone(), sources.clone())
-            .await
-            .map_err(SymCacheError::BcSymbolMapError)?,
-        None => None,
-    };
 
     let compute_future = async move {
         let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {
@@ -210,9 +202,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),
-            self.request.sources.clone(),
             self.objects_actor.clone(),
-            self.bitcode_svc.clone(),
+            self.bcsymbolmap_handle.clone(),
             self.threadpool.clone(),
         );
 
@@ -230,8 +221,11 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
+        let had_symbolmap = data.ends_with(SYMBOLMAP_MARKER);
         SymCache::parse(data)
-            .map(|symcache| symcache.is_latest())
+            .map(|symcache| {
+                symcache.is_latest() && had_symbolmap == self.bcsymbolmap_handle.is_some()
+            })
             .unwrap_or(false)
     }
 
@@ -295,11 +289,26 @@ impl SymCacheActor {
 
         match meta {
             Some(handle) => {
+                // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
+                // fetch request is not cached
+                let bcsymbolmap_handle = match handle.object_id().debug_id {
+                    Some(debug_id) => self
+                        .bitcode_svc
+                        .fetch_bcsymbolmap(
+                            debug_id,
+                            handle.scope().clone(),
+                            request.sources.clone(),
+                        )
+                        .await
+                        .map_err(SymCacheError::BcSymbolMapError)?,
+                    None => None,
+                };
+
                 self.symcaches
                     .compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
-                        bitcode_svc: self.bitcode_svc.clone(),
+                        bcsymbolmap_handle,
                         object_meta: handle,
                         threadpool: self.threadpool.clone(),
                         candidates,
@@ -359,7 +368,10 @@ fn write_symcache(
 
     SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
 
-    let file = writer.into_inner().map_err(io::Error::from)?;
+    let mut file = writer.into_inner().map_err(io::Error::from)?;
+    if bcsymbolmap_handle.is_some() {
+        file.write_all(SYMBOLMAP_MARKER)?;
+    }
     file.sync_all()?;
 
     Ok(())
