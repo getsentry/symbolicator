@@ -430,10 +430,10 @@ impl Iterator for SourceLocationIter<'_> {
 
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
-/// The minimum timeout returned by this function is 1s.
-fn content_length_timeout(content_length: u32, streaming_timeout: Duration) -> Duration {
-    let gb = content_length / (1024 * 1024 * 1024);
-    (streaming_timeout * gb).max(Duration::from_secs(1))
+/// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
+fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Duration {
+    let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
+    timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }
 
 #[cfg(test)]
@@ -505,5 +505,25 @@ mod tests {
         assert!(!file_list.is_empty());
         let item = &file_list[0];
         assert_eq!(item.source_id(), source.id());
+    }
+
+    #[test]
+    fn test_content_length_timeout() {
+        let timeout_per_gb = Duration::from_secs(30);
+        let one_gb = 1024 * 1024 * 1024;
+
+        let timeout = |content_length| content_length_timeout(content_length, timeout_per_gb);
+
+        // very short file
+        assert_eq!(timeout(100), Duration::from_secs(10));
+
+        // 0.5 GB
+        assert_eq!(timeout(one_gb / 2), timeout_per_gb / 2);
+
+        // 1 GB
+        assert_eq!(timeout(one_gb), timeout_per_gb);
+
+        // 1.5 GB
+        assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
     }
 }
