@@ -456,6 +456,641 @@ impl SymbolicationActor {
 
         request_id
     }
+
+    async fn do_symbolicate(
+        self,
+        request: SymbolicateStacktraces,
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let serialize_dif_candidates = request.options.dif_candidates;
+
+        let f = self.do_symbolicate_impl(request);
+        let f = timeout_compat(Duration::from_secs(3600), f);
+        let f = measure("symbolicate", m::timed_result, f);
+
+        let mut response = f
+            .await
+            .map(|res| res.map_err(SymbolicationError::from))
+            .unwrap_or(Err(SymbolicationError::Timeout))?;
+
+        if !serialize_dif_candidates {
+            response.clear_dif_candidates();
+        }
+
+        Ok(response)
+    }
+
+    async fn do_symbolicate_impl(
+        self,
+        request: SymbolicateStacktraces,
+    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
+        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
+        let stacktraces = request.stacktraces.clone();
+        let sources = request.sources.clone();
+        let scope = request.scope.clone();
+        let signal = request.signal;
+        let origin = request.origin;
+
+        let symcache_lookup = symcache_lookup
+            .fetch_symcaches(self.symcaches, request)
+            .await;
+
+        let future = async move {
+            let mut metrics = StacktraceMetrics::default();
+            let stacktraces: Vec<_> = stacktraces
+                .into_iter()
+                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
+                .collect();
+
+            let mut modules: Vec<_> = symcache_lookup
+                .inner
+                .into_iter()
+                .map(|entry| {
+                    metric!(
+                        counter("symbolication.debug_status") += 1,
+                        "status" => entry.object_info.debug_status.name()
+                    );
+
+                    (entry.module_index, entry.object_info)
+                })
+                .collect();
+
+            // bring modules back into the original order
+            modules.sort_by_key(|&(index, _)| index);
+            let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
+
+            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
+
+            CompletedSymbolicationResponse {
+                signal,
+                stacktraces,
+                modules,
+                ..Default::default()
+            }
+        };
+
+        let mut response = self
+            .threadpool
+            .spawn_handle(future.bind_hub(sentry::Hub::current()))
+            .await
+            .context("Symbolication future cancelled")?;
+
+        let source_lookup = source_lookup
+            .fetch_sources(self.objects, scope, sources, &response)
+            .await?;
+
+        let future = async move {
+            let debug_sessions = source_lookup.prepare_debug_sessions();
+
+            for trace in &mut response.stacktraces {
+                for frame in &mut trace.frames {
+                    let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                        _ => continue,
+                    };
+
+                    let result = source_lookup.get_context_lines(
+                        &debug_sessions,
+                        frame.raw.instruction_addr.0,
+                        frame.raw.addr_mode,
+                        abs_path,
+                        lineno,
+                        5,
+                    );
+
+                    if let Some((pre_context, context_line, post_context)) = result {
+                        frame.raw.pre_context = pre_context;
+                        frame.raw.context_line = Some(context_line);
+                        frame.raw.post_context = post_context;
+                    }
+                }
+            }
+            response
+        };
+
+        self.threadpool
+            .spawn_handle(future.bind_hub(sentry::Hub::current()))
+            .await
+            .context("Source lookup future cancelled")
+    }
+
+    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
+        self.create_symbolication_request(self.clone().do_symbolicate(request))
+    }
+
+    /// Polls the status for a started symbolication task.
+    ///
+    /// If the timeout is set and no result is ready within the given time,
+    /// [`SymbolicationResponse::Pending`] is returned.
+    // TODO(flub): once the callers are updated to be `async fn` this can take `&self` again.
+    pub async fn get_response(
+        self,
+        request_id: RequestId,
+        timeout: Option<u64>,
+    ) -> Option<SymbolicationResponse> {
+        let channel_opt = self.requests.lock().get(&request_id).cloned();
+        match channel_opt {
+            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
+            None => {
+                // This is okay to occur during deploys, but if it happens all the time we have a state
+                // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
+                // scopes).
+                metric!(counter("symbolication.request_id_unknown") += 1);
+                None
+            }
+        }
+    }
+
+    /// Join a procspawn handle with a timeout.
+    ///
+    /// This handles the procspawn result, makes sure to appropriately log any failures and
+    /// save the minidump for debugging.  Returns a simple result converted to the
+    /// [`SymbolicationError`].
+    fn join_procspawn<T, E>(
+        handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
+        timeout: Duration,
+        metric: &str,
+        minidump: &[u8],
+        minidump_cache: crate::cache::Cache,
+    ) -> Result<T, anyhow::Error>
+    where
+        T: Serialize + DeserializeOwned,
+        E: Into<anyhow::Error> + Serialize + DeserializeOwned,
+    {
+        match handle.join_timeout(timeout) {
+            Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
+            Ok(Err(err)) => Err(err.into()),
+            Err(perr) => {
+                let reason = if perr.is_timeout() {
+                    "timeout"
+                } else if perr.is_panic() {
+                    "panic"
+                } else if perr.is_remote_close() {
+                    "remote-close"
+                } else if perr.is_cancellation() {
+                    "canceled"
+                } else {
+                    "unknown"
+                };
+                metric!(counter(metric) += 1, "reason" => reason);
+                if !perr.is_timeout() {
+                    Self::save_minidump(minidump, minidump_cache)
+                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
+                        .map(|r| {
+                            if let Some(path) = r {
+                                sentry::configure_scope(|scope| {
+                                    scope.set_extra(
+                                        "crashed_minidump",
+                                        sentry::protocol::Value::String(
+                                            path.to_string_lossy().to_string(),
+                                        ),
+                                    );
+                                });
+                            }
+                        })
+                        .ok();
+                }
+                Err(anyhow::Error::new(perr))
+            }
+        }
+    }
+
+    /// Save a minidump to temporary location.
+    fn save_minidump(
+        minidump: &[u8],
+        failed_cache: crate::cache::Cache,
+    ) -> anyhow::Result<Option<PathBuf>> {
+        if let Some(dir) = failed_cache.cache_dir() {
+            std::fs::create_dir_all(dir)?;
+            let tmp = tempfile::Builder::new()
+                .prefix("minidump")
+                .suffix(".dmp")
+                .tempfile_in(dir)?;
+            tmp.as_file().write_all(&*minidump)?;
+            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
+            Ok(Some(path))
+        } else {
+            log::debug!("No diagnostics retention configured, not saving minidump");
+            Ok(None)
+        }
+    }
+
+    async fn load_cfi_caches(
+        &self,
+        scope: Scope,
+        requests: &[(CodeModuleId, &RawObjectInfo)],
+        sources: Arc<[SourceConfig]>,
+    ) -> Vec<CfiCacheResult> {
+        let mut futures = Vec::with_capacity(requests.len());
+
+        for (code_id, object_info) in requests {
+            let sources = sources.clone();
+            let scope = scope.clone();
+
+            let fut = async move {
+                let result = self
+                    .cficaches
+                    .fetch(FetchCfiCache {
+                        object_type: object_info.ty,
+                        identifier: object_id_from_object_info(object_info),
+                        sources,
+                        scope,
+                    })
+                    .await;
+                ((*code_id).to_owned(), result)
+            };
+
+            // Clone hub because of join_all concurrency.
+            futures.push(fut.bind_hub(Hub::new_from_top(Hub::current())));
+        }
+
+        future::join_all(futures).await
+    }
+
+    /// Unwind the stack from a minidump.
+    ///
+    /// This processes the minidump to stackwalk all the threads found in the minidump.
+    ///
+    /// The `cfi_results` will contain all modules found in the minidump and the result of trying
+    /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`].
+    ///
+    /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
+    /// Once it has stacktraces it creates the list of used modules and returns the
+    /// un-symbolicated stacktraces in a structure suitable for requesting symbolication.
+    ///
+    /// The module list returned is usable for symbolication itself and is also directly
+    /// used in the final symbolication response of the public API.  It will contain all
+    /// modules which either have been referenced by any of the frames in the stacktraces or
+    /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
+    /// similar which are mapped in the address space but do not actually contain executable
+    /// modules.
+    async fn stackwalk_minidump_with_cfi(
+        &self,
+        minidump: Bytes,
+        cfi_caches: &CfiCacheModules,
+    ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
+        let pool = self.spawnpool.clone();
+        let diagnostics_cache = self.diagnostics_cache.clone();
+        let cfi_caches = cfi_caches.for_processing();
+        let lazy = async move {
+            let spawn_time = std::time::SystemTime::now();
+            let spawn_result = pool.spawn(
+                (
+                    procspawn::serde::Json(cfi_caches),
+                    minidump.clone(),
+                    spawn_time,
+                ),
+                |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                    let procspawn::serde::Json(cfi_caches) = cfi_caches;
+
+                    if let Ok(duration) = spawn_time.elapsed() {
+                        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
+                    }
+
+                    // Stackwalk the minidump.
+                    let cfi = load_cfi_for_processor(cfi_caches);
+                    let minidump = ByteView::from_slice(&minidump);
+                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+                    let minidump_state = MinidumpState::new(&process_state);
+                    let object_type = minidump_state.object_type();
+
+                    let referenced_modules = process_state
+                        .referenced_modules()
+                        .into_iter()
+                        .filter_map(|code_module| {
+                            Some((
+                                code_module.id()?,
+                                object_info_from_minidump_module(object_type, code_module),
+                            ))
+                        })
+                        .collect();
+                    let all_modules = process_state
+                        .modules()
+                        .into_iter()
+                        .map(|code_module| {
+                            (
+                                code_module.id(),
+                                object_info_from_minidump_module(object_type, code_module),
+                            )
+                        })
+                        .collect();
+
+                    // Finally iterate through the threads and build the stacktraces to
+                    // return, marking modules as used when they are referenced by a frame.
+                    let requesting_thread_index: Option<usize> =
+                        process_state.requesting_thread().try_into().ok();
+                    let threads = process_state.threads();
+                    let mut stacktraces = Vec::with_capacity(threads.len());
+                    for (index, thread) in threads.iter().enumerate() {
+                        let registers = match thread.frames().get(0) {
+                            Some(frame) => map_symbolic_registers(
+                                frame.registers(minidump_state.system_info.cpu_arch),
+                            ),
+                            None => Registers::new(),
+                        };
+
+                        // Trim infinite recursions explicitly because those do not
+                        // correlate to minidump size. Every other kind of bloated
+                        // input data we know is already trimmed/rejected by raw
+                        // byte size alone.
+                        let frame_count = thread.frames().len().min(20000);
+                        let mut frames = Vec::with_capacity(frame_count);
+                        for frame in thread.frames().iter().take(frame_count) {
+                            let return_address =
+                                frame.return_address(minidump_state.system_info.cpu_arch);
+
+                            frames.push(RawFrame {
+                                instruction_addr: HexValue(return_address),
+                                package: frame.module().map(CodeModule::code_file),
+                                trust: frame.trust(),
+                                ..RawFrame::default()
+                            });
+                        }
+
+                        stacktraces.push(RawStacktrace {
+                            is_requesting: requesting_thread_index.map(|r| r == index),
+                            thread_id: Some(thread.thread_id().into()),
+                            registers,
+                            frames,
+                        });
+                    }
+
+                    Ok(procspawn::serde::Json(StackWalkMinidumpResult {
+                        all_modules,
+                        referenced_modules,
+                        stacktraces,
+                        minidump_state,
+                    }))
+                },
+            );
+
+            Self::join_procspawn(
+                spawn_result,
+                Duration::from_secs(60),
+                "minidump.stackwalk.spawn.error",
+                &minidump,
+                diagnostics_cache,
+            )
+        };
+
+        Ok(self
+            .threadpool
+            .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
+            .await?
+            .context("Minidump stackwalk future cancelled")?)
+    }
+
+    async fn do_stackwalk_minidump(
+        self,
+        scope: Scope,
+        minidump: Vec<u8>,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
+        let future = async move {
+            let minidump = Bytes::from(minidump);
+
+            log::debug!("Processing minidump ({} bytes)", minidump.len());
+            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
+
+            let mut cfi_caches = CfiCacheModules::new();
+
+            let mut iterations = 0;
+
+            let result = loop {
+                iterations += 1;
+
+                let result = self
+                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
+                    .await?;
+
+                let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
+                    .referenced_modules
+                    .iter()
+                    .filter(|(id, _)| !cfi_caches.has_module(id))
+                    .map(|t| (t.0, &t.1))
+                    .collect();
+
+                // We put a hard limit of 5 iterations here.
+                // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+                if missing_modules.is_empty() || iterations >= 5 {
+                    break result;
+                }
+
+                let loaded_caches = self
+                    .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
+                    .await;
+                cfi_caches.extend(loaded_caches);
+            };
+
+            let StackWalkMinidumpResult {
+                all_modules,
+                stacktraces,
+                minidump_state,
+                ..
+            } = result;
+
+            metric!(time_raw("minidump.stackwalk.iterations") = iterations);
+
+            // Start building the module list for the symbolication response.
+            let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
+            module_builder.process_stacktraces(&stacktraces);
+
+            let request = SymbolicateStacktraces {
+                modules: module_builder.build(),
+                scope,
+                sources,
+                origin: StacktraceOrigin::Minidump,
+                signal: None,
+                stacktraces,
+                options,
+            };
+            Ok::<_, anyhow::Error>((request, minidump_state))
+        };
+
+        let future = timeout_compat(Duration::from_secs(3600), future);
+        let future = measure("minidump_stackwalk", m::timed_result, future);
+        future
+            .await
+            .map(|ret| ret.map_err(SymbolicationError::from))
+            .unwrap_or(Err(SymbolicationError::Timeout))
+    }
+
+    async fn do_process_minidump(
+        self,
+        scope: Scope,
+        minidump: Vec<u8>,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self
+            .clone()
+            .do_stackwalk_minidump(scope, minidump, sources, options)
+            .await?;
+
+        let mut response = self.do_symbolicate(request).await?;
+        state.merge_into(&mut response);
+
+        Ok(response)
+    }
+
+    pub fn process_minidump(
+        &self,
+        scope: Scope,
+        minidump: Vec<u8>,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> RequestId {
+        self.create_symbolication_request(
+            self.clone()
+                .do_process_minidump(scope, minidump, sources, options),
+        )
+    }
+
+    async fn parse_apple_crash_report(
+        &self,
+        scope: Scope,
+        minidump: Vec<u8>,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
+        let parse_future = async {
+            let report = AppleCrashReport::from_reader(Cursor::new(minidump))?;
+            let mut metadata = report.metadata;
+
+            let arch = report
+                .code_type
+                .as_ref()
+                .and_then(|code_type| code_type.split(' ').next())
+                .and_then(|word| word.parse().ok())
+                .unwrap_or_default();
+
+            let modules = report
+                .binary_images
+                .into_iter()
+                .map(map_apple_binary_image)
+                .collect();
+
+            let mut stacktraces = Vec::with_capacity(report.threads.len());
+
+            for thread in report.threads {
+                let registers = thread
+                    .registers
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(name, addr)| (name, HexValue(addr.0)))
+                    .collect();
+
+                let frames = thread
+                    .frames
+                    .into_iter()
+                    .map(|frame| RawFrame {
+                        instruction_addr: HexValue(frame.instruction_addr.0),
+                        package: frame.module,
+                        ..RawFrame::default()
+                    })
+                    .collect();
+
+                stacktraces.push(RawStacktrace {
+                    thread_id: Some(thread.id),
+                    is_requesting: Some(thread.crashed),
+                    registers,
+                    frames,
+                });
+            }
+
+            let request = SymbolicateStacktraces {
+                modules,
+                scope,
+                sources,
+                origin: StacktraceOrigin::AppleCrashReport,
+                signal: None,
+                stacktraces,
+                options,
+            };
+
+            let mut system_info = SystemInfo {
+                os_name: metadata.remove("OS Version").unwrap_or_default(),
+                device_model: metadata.remove("Hardware Model").unwrap_or_default(),
+                cpu_arch: arch,
+                ..SystemInfo::default()
+            };
+
+            if let Some(captures) = OS_MACOS_REGEX.captures(&system_info.os_name) {
+                system_info.os_version = captures
+                    .name("version")
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                system_info.os_build = captures
+                    .name("build")
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                system_info.os_name = "macOS".to_string();
+            }
+
+            // https://developer.apple.com/library/archive/technotes/tn2151/_index.html
+            let crash_reason = metadata.remove("Exception Type");
+            let crash_details = report
+                .application_specific_information
+                .or_else(|| metadata.remove("Exception Message"))
+                .or_else(|| metadata.remove("Exception Subtype"))
+                .or_else(|| metadata.remove("Exception Codes"));
+
+            let state = AppleCrashReportState {
+                timestamp: report.timestamp,
+                system_info,
+                crash_reason,
+                crash_details,
+            };
+
+            Ok((request, state))
+        };
+
+        let future = async move {
+            self.threadpool
+                .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
+                .await
+                .context("Parse applecrashreport future cancelled")
+        };
+
+        let future = timeout_compat(Duration::from_secs(1200), future);
+        let future = measure("parse_apple_crash_report", m::timed_result, future);
+        future
+            .await
+            .map(|res| res.map_err(SymbolicationError::from))
+            .unwrap_or(Err(SymbolicationError::Timeout))?
+    }
+
+    async fn do_process_apple_crash_report(
+        self,
+        scope: Scope,
+        report: Vec<u8>,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self
+            .parse_apple_crash_report(scope, report, sources, options)
+            .await?;
+        let mut response = self.do_symbolicate(request).await?;
+
+        state.merge_into(&mut response);
+        Ok(response)
+    }
+
+    pub fn process_apple_crash_report(
+        &self,
+        scope: Scope,
+        apple_crash_report: Vec<u8>,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> RequestId {
+        self.create_symbolication_request(self.clone().do_process_apple_crash_report(
+            scope,
+            apple_crash_report,
+            sources,
+            options,
+        ))
+    }
 }
 
 async fn wrap_response_channel(
@@ -1415,152 +2050,6 @@ pub struct SymbolicateStacktraces {
     pub options: RequestOptions,
 }
 
-impl SymbolicationActor {
-    async fn do_symbolicate(
-        self,
-        request: SymbolicateStacktraces,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let serialize_dif_candidates = request.options.dif_candidates;
-
-        let f = self.do_symbolicate_impl(request);
-        let f = timeout_compat(Duration::from_secs(3600), f);
-        let f = measure("symbolicate", m::timed_result, f);
-
-        let mut response = f
-            .await
-            .map(|res| res.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))?;
-
-        if !serialize_dif_candidates {
-            response.clear_dif_candidates();
-        }
-
-        Ok(response)
-    }
-
-    async fn do_symbolicate_impl(
-        self,
-        request: SymbolicateStacktraces,
-    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
-        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
-        let stacktraces = request.stacktraces.clone();
-        let sources = request.sources.clone();
-        let scope = request.scope.clone();
-        let signal = request.signal;
-        let origin = request.origin;
-
-        let symcache_lookup = symcache_lookup
-            .fetch_symcaches(self.symcaches, request)
-            .await;
-
-        let future = async move {
-            let mut metrics = StacktraceMetrics::default();
-            let stacktraces: Vec<_> = stacktraces
-                .into_iter()
-                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
-                .collect();
-
-            let mut modules: Vec<_> = symcache_lookup
-                .inner
-                .into_iter()
-                .map(|entry| {
-                    metric!(
-                        counter("symbolication.debug_status") += 1,
-                        "status" => entry.object_info.debug_status.name()
-                    );
-
-                    (entry.module_index, entry.object_info)
-                })
-                .collect();
-
-            // bring modules back into the original order
-            modules.sort_by_key(|&(index, _)| index);
-            let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
-
-            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
-
-            CompletedSymbolicationResponse {
-                signal,
-                stacktraces,
-                modules,
-                ..Default::default()
-            }
-        };
-
-        let mut response = self
-            .threadpool
-            .spawn_handle(future.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Symbolication future cancelled")?;
-
-        let source_lookup = source_lookup
-            .fetch_sources(self.objects, scope, sources, &response)
-            .await?;
-
-        let future = async move {
-            let debug_sessions = source_lookup.prepare_debug_sessions();
-
-            for trace in &mut response.stacktraces {
-                for frame in &mut trace.frames {
-                    let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
-                        _ => continue,
-                    };
-
-                    let result = source_lookup.get_context_lines(
-                        &debug_sessions,
-                        frame.raw.instruction_addr.0,
-                        frame.raw.addr_mode,
-                        abs_path,
-                        lineno,
-                        5,
-                    );
-
-                    if let Some((pre_context, context_line, post_context)) = result {
-                        frame.raw.pre_context = pre_context;
-                        frame.raw.context_line = Some(context_line);
-                        frame.raw.post_context = post_context;
-                    }
-                }
-            }
-            response
-        };
-
-        self.threadpool
-            .spawn_handle(future.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Source lookup future cancelled")
-    }
-
-    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
-        self.create_symbolication_request(self.clone().do_symbolicate(request))
-    }
-
-    /// Polls the status for a started symbolication task.
-    ///
-    /// If the timeout is set and no result is ready within the given time,
-    /// [`SymbolicationResponse::Pending`] is returned.
-    // TODO(flub): once the callers are updated to be `async fn` this can take `&self` again.
-    pub async fn get_response(
-        self,
-        request_id: RequestId,
-        timeout: Option<u64>,
-    ) -> Option<SymbolicationResponse> {
-        let channel_opt = self.requests.lock().get(&request_id).cloned();
-        match channel_opt {
-            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
-            None => {
-                // This is okay to occur during deploys, but if it happens all the time we have a state
-                // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
-                // scopes).
-                metric!(counter("symbolication.request_id_unknown") += 1);
-                None
-            }
-        }
-    }
-}
-
 type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 
 /// Contains some meta-data about a minidump.
@@ -1682,354 +2171,6 @@ struct StackWalkMinidumpResult {
     minidump_state: MinidumpState,
 }
 
-impl SymbolicationActor {
-    /// Join a procspawn handle with a timeout.
-    ///
-    /// This handles the procspawn result, makes sure to appropriately log any failures and
-    /// save the minidump for debugging.  Returns a simple result converted to the
-    /// [`SymbolicationError`].
-    fn join_procspawn<T, E>(
-        handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
-        timeout: Duration,
-        metric: &str,
-        minidump: &[u8],
-        minidump_cache: crate::cache::Cache,
-    ) -> Result<T, anyhow::Error>
-    where
-        T: Serialize + DeserializeOwned,
-        E: Into<anyhow::Error> + Serialize + DeserializeOwned,
-    {
-        match handle.join_timeout(timeout) {
-            Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
-            Ok(Err(err)) => Err(err.into()),
-            Err(perr) => {
-                let reason = if perr.is_timeout() {
-                    "timeout"
-                } else if perr.is_panic() {
-                    "panic"
-                } else if perr.is_remote_close() {
-                    "remote-close"
-                } else if perr.is_cancellation() {
-                    "canceled"
-                } else {
-                    "unknown"
-                };
-                metric!(counter(metric) += 1, "reason" => reason);
-                if !perr.is_timeout() {
-                    Self::save_minidump(minidump, minidump_cache)
-                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
-                        .map(|r| {
-                            if let Some(path) = r {
-                                sentry::configure_scope(|scope| {
-                                    scope.set_extra(
-                                        "crashed_minidump",
-                                        sentry::protocol::Value::String(
-                                            path.to_string_lossy().to_string(),
-                                        ),
-                                    );
-                                });
-                            }
-                        })
-                        .ok();
-                }
-                Err(anyhow::Error::new(perr))
-            }
-        }
-    }
-
-    /// Save a minidump to temporary location.
-    fn save_minidump(
-        minidump: &[u8],
-        failed_cache: crate::cache::Cache,
-    ) -> anyhow::Result<Option<PathBuf>> {
-        if let Some(dir) = failed_cache.cache_dir() {
-            std::fs::create_dir_all(dir)?;
-            let tmp = tempfile::Builder::new()
-                .prefix("minidump")
-                .suffix(".dmp")
-                .tempfile_in(dir)?;
-            tmp.as_file().write_all(&*minidump)?;
-            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
-            Ok(Some(path))
-        } else {
-            log::debug!("No diagnostics retention configured, not saving minidump");
-            Ok(None)
-        }
-    }
-
-    async fn load_cfi_caches(
-        &self,
-        scope: Scope,
-        requests: &[(CodeModuleId, &RawObjectInfo)],
-        sources: Arc<[SourceConfig]>,
-    ) -> Vec<CfiCacheResult> {
-        let mut futures = Vec::with_capacity(requests.len());
-
-        for (code_id, object_info) in requests {
-            let sources = sources.clone();
-            let scope = scope.clone();
-
-            let fut = async move {
-                let result = self
-                    .cficaches
-                    .fetch(FetchCfiCache {
-                        object_type: object_info.ty,
-                        identifier: object_id_from_object_info(object_info),
-                        sources,
-                        scope,
-                    })
-                    .await;
-                ((*code_id).to_owned(), result)
-            };
-
-            // Clone hub because of join_all concurrency.
-            futures.push(fut.bind_hub(Hub::new_from_top(Hub::current())));
-        }
-
-        future::join_all(futures).await
-    }
-
-    /// Unwind the stack from a minidump.
-    ///
-    /// This processes the minidump to stackwalk all the threads found in the minidump.
-    ///
-    /// The `cfi_results` will contain all modules found in the minidump and the result of trying
-    /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`].
-    ///
-    /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
-    /// Once it has stacktraces it creates the list of used modules and returns the
-    /// un-symbolicated stacktraces in a structure suitable for requesting symbolication.
-    ///
-    /// The module list returned is usable for symbolication itself and is also directly
-    /// used in the final symbolication response of the public API.  It will contain all
-    /// modules which either have been referenced by any of the frames in the stacktraces or
-    /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
-    /// similar which are mapped in the address space but do not actually contain executable
-    /// modules.
-    async fn stackwalk_minidump_with_cfi(
-        &self,
-        minidump: Bytes,
-        cfi_caches: &CfiCacheModules,
-    ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
-        let pool = self.spawnpool.clone();
-        let diagnostics_cache = self.diagnostics_cache.clone();
-        let cfi_caches = cfi_caches.for_processing();
-        let lazy = async move {
-            let spawn_time = std::time::SystemTime::now();
-            let spawn_result = pool.spawn(
-                (
-                    procspawn::serde::Json(cfi_caches),
-                    minidump.clone(),
-                    spawn_time,
-                ),
-                |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
-                    let procspawn::serde::Json(cfi_caches) = cfi_caches;
-
-                    if let Ok(duration) = spawn_time.elapsed() {
-                        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
-                    }
-
-                    // Stackwalk the minidump.
-                    let cfi = load_cfi_for_processor(cfi_caches);
-                    let minidump = ByteView::from_slice(&minidump);
-                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
-                    let minidump_state = MinidumpState::new(&process_state);
-                    let object_type = minidump_state.object_type();
-
-                    let referenced_modules = process_state
-                        .referenced_modules()
-                        .into_iter()
-                        .filter_map(|code_module| {
-                            Some((
-                                code_module.id()?,
-                                object_info_from_minidump_module(object_type, code_module),
-                            ))
-                        })
-                        .collect();
-                    let all_modules = process_state
-                        .modules()
-                        .into_iter()
-                        .map(|code_module| {
-                            (
-                                code_module.id(),
-                                object_info_from_minidump_module(object_type, code_module),
-                            )
-                        })
-                        .collect();
-
-                    // Finally iterate through the threads and build the stacktraces to
-                    // return, marking modules as used when they are referenced by a frame.
-                    let requesting_thread_index: Option<usize> =
-                        process_state.requesting_thread().try_into().ok();
-                    let threads = process_state.threads();
-                    let mut stacktraces = Vec::with_capacity(threads.len());
-                    for (index, thread) in threads.iter().enumerate() {
-                        let registers = match thread.frames().get(0) {
-                            Some(frame) => map_symbolic_registers(
-                                frame.registers(minidump_state.system_info.cpu_arch),
-                            ),
-                            None => Registers::new(),
-                        };
-
-                        // Trim infinite recursions explicitly because those do not
-                        // correlate to minidump size. Every other kind of bloated
-                        // input data we know is already trimmed/rejected by raw
-                        // byte size alone.
-                        let frame_count = thread.frames().len().min(20000);
-                        let mut frames = Vec::with_capacity(frame_count);
-                        for frame in thread.frames().iter().take(frame_count) {
-                            let return_address =
-                                frame.return_address(minidump_state.system_info.cpu_arch);
-
-                            frames.push(RawFrame {
-                                instruction_addr: HexValue(return_address),
-                                package: frame.module().map(CodeModule::code_file),
-                                trust: frame.trust(),
-                                ..RawFrame::default()
-                            });
-                        }
-
-                        stacktraces.push(RawStacktrace {
-                            is_requesting: requesting_thread_index.map(|r| r == index),
-                            thread_id: Some(thread.thread_id().into()),
-                            registers,
-                            frames,
-                        });
-                    }
-
-                    Ok(procspawn::serde::Json(StackWalkMinidumpResult {
-                        all_modules,
-                        referenced_modules,
-                        stacktraces,
-                        minidump_state,
-                    }))
-                },
-            );
-
-            Self::join_procspawn(
-                spawn_result,
-                Duration::from_secs(60),
-                "minidump.stackwalk.spawn.error",
-                &minidump,
-                diagnostics_cache,
-            )
-        };
-
-        Ok(self
-            .threadpool
-            .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
-            .await?
-            .context("Minidump stackwalk future cancelled")?)
-    }
-
-    async fn do_stackwalk_minidump(
-        self,
-        scope: Scope,
-        minidump: Vec<u8>,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
-        let future = async move {
-            let minidump = Bytes::from(minidump);
-
-            log::debug!("Processing minidump ({} bytes)", minidump.len());
-            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-
-            let mut cfi_caches = CfiCacheModules::new();
-
-            let mut iterations = 0;
-
-            let result = loop {
-                iterations += 1;
-
-                let result = self
-                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
-                    .await?;
-
-                let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
-                    .referenced_modules
-                    .iter()
-                    .filter(|(id, _)| !cfi_caches.has_module(id))
-                    .map(|t| (t.0, &t.1))
-                    .collect();
-
-                // We put a hard limit of 5 iterations here.
-                // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-                if missing_modules.is_empty() || iterations >= 5 {
-                    break result;
-                }
-
-                let loaded_caches = self
-                    .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
-                    .await;
-                cfi_caches.extend(loaded_caches);
-            };
-
-            let StackWalkMinidumpResult {
-                all_modules,
-                stacktraces,
-                minidump_state,
-                ..
-            } = result;
-
-            metric!(time_raw("minidump.stackwalk.iterations") = iterations);
-
-            // Start building the module list for the symbolication response.
-            let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
-            module_builder.process_stacktraces(&stacktraces);
-
-            let request = SymbolicateStacktraces {
-                modules: module_builder.build(),
-                scope,
-                sources,
-                origin: StacktraceOrigin::Minidump,
-                signal: None,
-                stacktraces,
-                options,
-            };
-            Ok::<_, anyhow::Error>((request, minidump_state))
-        };
-
-        let future = timeout_compat(Duration::from_secs(3600), future);
-        let future = measure("minidump_stackwalk", m::timed_result, future);
-        future
-            .await
-            .map(|ret| ret.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))
-    }
-
-    async fn do_process_minidump(
-        self,
-        scope: Scope,
-        minidump: Vec<u8>,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let (request, state) = self
-            .clone()
-            .do_stackwalk_minidump(scope, minidump, sources, options)
-            .await?;
-
-        let mut response = self.do_symbolicate(request).await?;
-        state.merge_into(&mut response);
-
-        Ok(response)
-    }
-
-    pub fn process_minidump(
-        &self,
-        scope: Scope,
-        minidump: Vec<u8>,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> RequestId {
-        self.create_symbolication_request(
-            self.clone()
-                .do_process_minidump(scope, minidump, sources, options),
-        )
-    }
-}
-
 #[derive(Debug)]
 struct AppleCrashReportState {
     timestamp: Option<DateTime<Utc>>,
@@ -2075,153 +2216,6 @@ fn map_apple_binary_image(image: apple_crash_report_parser::BinaryImage) -> Comp
     };
 
     raw_info.into()
-}
-
-impl SymbolicationActor {
-    async fn parse_apple_crash_report(
-        &self,
-        scope: Scope,
-        minidump: Vec<u8>,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
-        let parse_future = async {
-            let report = AppleCrashReport::from_reader(Cursor::new(minidump))?;
-            let mut metadata = report.metadata;
-
-            let arch = report
-                .code_type
-                .as_ref()
-                .and_then(|code_type| code_type.split(' ').next())
-                .and_then(|word| word.parse().ok())
-                .unwrap_or_default();
-
-            let modules = report
-                .binary_images
-                .into_iter()
-                .map(map_apple_binary_image)
-                .collect();
-
-            let mut stacktraces = Vec::with_capacity(report.threads.len());
-
-            for thread in report.threads {
-                let registers = thread
-                    .registers
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|(name, addr)| (name, HexValue(addr.0)))
-                    .collect();
-
-                let frames = thread
-                    .frames
-                    .into_iter()
-                    .map(|frame| RawFrame {
-                        instruction_addr: HexValue(frame.instruction_addr.0),
-                        package: frame.module,
-                        ..RawFrame::default()
-                    })
-                    .collect();
-
-                stacktraces.push(RawStacktrace {
-                    thread_id: Some(thread.id),
-                    is_requesting: Some(thread.crashed),
-                    registers,
-                    frames,
-                });
-            }
-
-            let request = SymbolicateStacktraces {
-                modules,
-                scope,
-                sources,
-                origin: StacktraceOrigin::AppleCrashReport,
-                signal: None,
-                stacktraces,
-                options,
-            };
-
-            let mut system_info = SystemInfo {
-                os_name: metadata.remove("OS Version").unwrap_or_default(),
-                device_model: metadata.remove("Hardware Model").unwrap_or_default(),
-                cpu_arch: arch,
-                ..SystemInfo::default()
-            };
-
-            if let Some(captures) = OS_MACOS_REGEX.captures(&system_info.os_name) {
-                system_info.os_version = captures
-                    .name("version")
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                system_info.os_build = captures
-                    .name("build")
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                system_info.os_name = "macOS".to_string();
-            }
-
-            // https://developer.apple.com/library/archive/technotes/tn2151/_index.html
-            let crash_reason = metadata.remove("Exception Type");
-            let crash_details = report
-                .application_specific_information
-                .or_else(|| metadata.remove("Exception Message"))
-                .or_else(|| metadata.remove("Exception Subtype"))
-                .or_else(|| metadata.remove("Exception Codes"));
-
-            let state = AppleCrashReportState {
-                timestamp: report.timestamp,
-                system_info,
-                crash_reason,
-                crash_details,
-            };
-
-            Ok((request, state))
-        };
-
-        let future = async move {
-            self.threadpool
-                .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
-                .await
-                .context("Parse applecrashreport future cancelled")
-        };
-
-        let future = timeout_compat(Duration::from_secs(1200), future);
-        let future = measure("parse_apple_crash_report", m::timed_result, future);
-        future
-            .await
-            .map(|res| res.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))?
-    }
-
-    async fn do_process_apple_crash_report(
-        self,
-        scope: Scope,
-        report: Vec<u8>,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let (request, state) = self
-            .parse_apple_crash_report(scope, report, sources, options)
-            .await?;
-        let mut response = self.do_symbolicate(request).await?;
-
-        state.merge_into(&mut response);
-        Ok(response)
-    }
-
-    pub fn process_apple_crash_report(
-        &self,
-        scope: Scope,
-        apple_crash_report: Vec<u8>,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> RequestId {
-        self.create_symbolication_request(self.clone().do_process_apple_crash_report(
-            scope,
-            apple_crash_report,
-            sources,
-            options,
-        ))
-    }
 }
 
 fn map_symbolic_registers(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<String, HexValue> {
