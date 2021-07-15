@@ -517,10 +517,10 @@ mod tests {
         // very short file
         assert_eq!(timeout(100), Duration::from_secs(10));
 
-        // 0.5GB
+        // 0.5 GB
         assert_eq!(timeout(one_gb / 2), timeout_per_gb / 2);
 
-        // 1GB
+        // 1 GB
         assert_eq!(timeout(one_gb), timeout_per_gb);
 
         // 1.5 GB
