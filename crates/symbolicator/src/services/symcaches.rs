@@ -437,11 +437,6 @@ mod tests {
     ///
     /// 2 is specifically intended to make sure that the SymCacheActor
     /// doesn't constantly try to download the symbol map.
-    ///
-    /// TODO: This test currently does not work because step 2
-    /// results in unobfuscated names. For some reason the
-    /// SymCacheActor downloads the symbol map immediately,
-    /// even though the negative cache should still be valid.
     #[tokio::test]
     async fn test_symcache_refresh() {
         test::setup();
