@@ -27,6 +27,7 @@ use crate::types::{
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 use crate::utils::sentry::ConfigureScope;
 
+/// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 
 /// Errors happening while generating a symcache.
