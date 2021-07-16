@@ -66,6 +66,8 @@ pub fn execute() -> Result<()> {
     let _sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
+        session_mode: sentry::SessionMode::Request,
+        auto_session_tracking: false,
         ..Default::default()
     });
 

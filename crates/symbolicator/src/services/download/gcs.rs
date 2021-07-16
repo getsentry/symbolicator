@@ -9,16 +9,15 @@ use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
 use jsonwebtoken::EncodingKey;
 use parking_lot::Mutex;
-use reqwest::Client;
+use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
 use super::locations::SourceLocation;
-use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
+use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
-use crate::utils::futures as future_utils;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
@@ -139,13 +138,21 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 pub struct GcsDownloader {
     token_cache: Mutex<GcsTokenCache>,
     client: reqwest::Client,
+    connect_timeout: std::time::Duration,
+    streaming_timeout: std::time::Duration,
 }
 
 impl GcsDownloader {
-    pub fn new(client: Client) -> Self {
+    pub fn new(
+        client: Client,
+        connect_timeout: std::time::Duration,
+        streaming_timeout: std::time::Duration,
+    ) -> Self {
         Self {
             token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
             client,
+            connect_timeout,
+            streaming_timeout,
         }
     }
 
@@ -204,58 +211,66 @@ impl GcsDownloader {
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
-        log::debug!(
-            "Fetching from GCS: {} (from {})",
-            &key,
-            file_source.source.bucket
-        );
+        let bucket = file_source.source.bucket.clone();
+        log::debug!("Fetching from GCS: {} (from {})", &key, bucket);
         let token = self.get_token(&file_source.source.source_key).await?;
         log::debug!("Got valid GCS token");
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
             .map_err(|_| GcsError::InvalidUrl)?;
-        // Append path segements manually for proper encoding
+        // Append path segments manually for proper encoding
         url.path_segments_mut()
             .map_err(|_| GcsError::InvalidUrl)?
-            .extend(&[&file_source.source.bucket, "o", &key]);
+            .extend(&[&bucket, "o", &key]);
 
-        let response = future_utils::retry(|| {
-            self.client
-                .get(url.clone())
-                .header("authorization", format!("Bearer {}", token.access_token))
-                .send()
-        });
+        let source = RemoteDif::from(file_source);
+        let request = self
+            .client
+            .get(url.clone())
+            .header("authorization", format!("Bearer {}", token.access_token))
+            .send();
+        let request = tokio::time::timeout(self.connect_timeout, request);
+        let request = super::measure_download_time(source.source_metric_key(), request);
 
-        match response.await {
-            Ok(response) => {
+        match request.await {
+            Ok(Ok(response)) => {
                 if response.status().is_success() {
-                    log::trace!(
-                        "Success hitting GCS {} (from {})",
-                        &key,
-                        file_source.source.bucket
-                    );
+                    log::trace!("Success hitting GCS {} (from {})", &key, bucket);
+
+                    let content_length = response
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|hv| hv.to_str().ok())
+                        .and_then(|s| s.parse::<u32>().ok());
+
+                    let timeout =
+                        content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(file_source, stream, destination).await
+                    super::download_stream(source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
-                        &file_source.source.bucket,
+                        &bucket,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 log::trace!(
                     "Skipping response from GCS {} (from {}): {} ({:?})",
                     &key,
-                    &file_source.source.bucket,
+                    &bucket,
                     &e,
                     &e
                 );
                 Ok(DownloadStatus::NotFound)
+            }
+            Err(_) => {
+                // Timeout
+                Err(DownloadError::Canceled)
             }
         }
     }
@@ -330,7 +345,11 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(30),
+        );
 
         let object_id = ObjectId {
             code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
@@ -354,7 +373,11 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(30),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -381,7 +404,11 @@ mod tests {
         test::setup();
 
         let source = gcs_source(gcs_source_key!());
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(30),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -408,7 +435,11 @@ mod tests {
         };
 
         let source = gcs_source(broken_credentials);
-        let downloader = GcsDownloader::new(Client::new());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(30),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

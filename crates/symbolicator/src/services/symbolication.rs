@@ -129,149 +129,99 @@ impl<'a> SymCacheLookupResult<'a> {
 
 /// The CFI modules referenced by a minidump for CFI processing.
 ///
-/// This is populated from the [`CfiCacheResult`], which is the result of looking up the
-/// modules determined to be referenced by this minidump by
-/// [`SymbolicationActor::get_referenced_modules_from_minidump`].  It contains the CFI cache
-/// status of the modules and allows loading the CFI from the caches for the correct
-/// minidump stackwalking.
+/// This is continuously updated with [`CfiCacheResult`] from referenced modules that have not yet
+/// been fetched.  It contains the CFI cache status of the modules and allows loading the CFI from
+/// the caches for the correct minidump stackwalking.
 ///
 /// It maintains the status of the object file availability itself as well as any features
 /// provided by it.  This can later be used to compile the required modules information
 /// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
 /// this.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 struct CfiCacheModules {
+    /// We have to make sure to hold onto a reference to the CfiCacheFile,
+    /// to make sure it will not be evicted in the middle of reading it in the procspawn
+    cache_files: Vec<Arc<CfiCacheFile>>,
     inner: BTreeMap<CodeModuleId, CfiModule>,
 }
 
 impl CfiCacheModules {
     /// Creates a new CFI cache entries for code modules.
-    fn new<'a>(cfi_caches: impl Iterator<Item = &'a CfiCacheResult>) -> Self {
-        let inner = cfi_caches
-            .map(|(code_id, cache_result)| {
-                let cfi_module = match cache_result {
-                    Ok(cfi_cache) => {
-                        let cfi_status = match cfi_cache.status() {
-                            CacheStatus::Positive => ObjectFileStatus::Found,
-                            CacheStatus::Negative => ObjectFileStatus::Missing,
-                            CacheStatus::Malformed => {
-                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                                log::warn!("Error while parsing cficache: {}", LogError(&err));
-                                ObjectFileStatus::from(&err)
-                            }
-                        };
-                        let cfi_path = match cfi_cache.status() {
-                            CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
-                            _ => None,
-                        };
-                        CfiModule {
-                            features: cfi_cache.features(),
-                            cfi_status,
-                            cfi_path,
-                            cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
-                            ..Default::default()
-                        }
-                    }
-                    Err(err) => {
-                        log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
-                        CfiModule {
-                            cfi_status: ObjectFileStatus::from(err.as_ref()),
-                            ..Default::default()
-                        }
-                    }
-                };
-                (*code_id, cfi_module)
-            })
-            .collect();
-        Self { inner }
+    fn new() -> Self {
+        Self {
+            cache_files: vec![],
+            inner: Default::default(),
+        }
     }
 
-    /// Load the CFI information from the cache.
-    ///
-    /// This reads the CFI caches from disk and returns them in a format suitable for the
-    /// breakpad processor to stackwalk.  Loading the caches from disk may update the
-    /// [`CfiModule::cfi_status`].
-    fn load_cfi(&mut self) -> BTreeMap<CodeModuleId, CfiCache> {
+    /// Check if the Cache already contains the module with the given `id`.
+    fn has_module(&self, id: &CodeModuleId) -> bool {
+        self.inner.contains_key(id)
+    }
+
+    /// Extend the CacheModules with the fetched caches represented by
+    /// [`CfiCacheResult`].
+    fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
+        self.cache_files.extend(
+            cfi_caches
+                .iter()
+                .filter_map(|(_, cache_result)| cache_result.as_ref().ok())
+                .map(Arc::clone),
+        );
+
+        let iter = cfi_caches.into_iter().map(|(code_id, cache_result)| {
+            let cfi_module = match cache_result {
+                Ok(cfi_cache) => {
+                    let cfi_status = match cfi_cache.status() {
+                        CacheStatus::Positive => ObjectFileStatus::Found,
+                        CacheStatus::Negative => ObjectFileStatus::Missing,
+                        CacheStatus::Malformed => {
+                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            log::warn!("Error while parsing cficache: {}", LogError(&err));
+                            ObjectFileStatus::from(&err)
+                        }
+                    };
+                    let cfi_path = match cfi_cache.status() {
+                        CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
+                        _ => None,
+                    };
+                    CfiModule {
+                        features: cfi_cache.features(),
+                        cfi_status,
+                        cfi_path,
+                        cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
+                        ..Default::default()
+                    }
+                }
+                Err(err) => {
+                    log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    CfiModule {
+                        cfi_status: ObjectFileStatus::from(err.as_ref()),
+                        ..Default::default()
+                    }
+                }
+            };
+            (code_id, cfi_module)
+        });
+        self.inner.extend(iter)
+    }
+
+    /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
+    fn for_processing(&self) -> Vec<(CodeModuleId, PathBuf)> {
         self.inner
-            .iter_mut()
-            .filter_map(|(code_id, cfi_module)| {
-                let path = cfi_module.cfi_path.as_ref()?;
-                let bytes = ByteView::open(path)
-                    .map_err(|err| {
-                        log::error!("Error while reading cficache: {}", LogError(&err));
-                        cfi_module.cfi_status = ObjectFileStatus::Missing;
-                        err
-                    })
-                    .ok()?;
-                let cfi_cache = CfiCache::from_bytes(bytes)
-                    .map_err(|err| {
-                        // This mostly never happens since we already checked the files
-                        // after downloading and they would have been tagged with
-                        // CacheStatus::Malformed.
-                        log::error!("Error while loading cficache: {}", LogError(&err));
-                        cfi_module.cfi_status = ObjectFileStatus::Other;
-                        err
-                    })
-                    .ok()?;
-                Some((*code_id, cfi_cache))
-            })
+            .iter()
+            .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
             .collect()
     }
 
-    /// Marks a module as scanned for CFI.
-    ///
-    /// If during stack unwinding the module was scanned that means we needed its CFI but we
-    /// did not have it.  We need to keep track of this because it may indicate we didn't
-    /// fetch a CFI file we needed, or we thought a CFI module was missing but it wasn't
-    /// needed.  So this also updates the [`CfiModule::cfi_status`] field.
-    fn mark_scanned(&mut self, code_id: CodeModuleId) {
-        let mut cfi_module = self.inner.entry(code_id).or_insert_with(|| {
-            // We report this error once per missing module in a minidump.
-            sentry::capture_message(
-                "Referenced module not found during initial stack scan",
-                sentry::Level::Error,
-            );
-            CfiModule {
-                cfi_status: ObjectFileStatus::Missing,
-                ..Default::default()
-            }
-        });
-        cfi_module.scanned = true;
-    }
-
-    /// Marks a module's CFI as used during stack unwinding.
-    ///
-    /// This will ensure it does not get the [`ObjectFileStatus::Unused`] status in
-    /// [`CfiCacheModules::finalize`].
-    fn mark_used(&mut self, code_id: CodeModuleId) {
-        let mut cfi_module = self.inner.entry(code_id).or_insert_with(|| {
-            // We report this error once per missing module in a minidump.
-            sentry::capture_message("Module marked as used but not found", sentry::Level::Error);
-            CfiModule {
-                cfi_status: ObjectFileStatus::Missing,
-                ..Default::default()
-            }
-        });
-        cfi_module.cfi_used = true;
-    }
-
-    /// Processes the [`CfiModule::scanned`] information to update the final module status.
-    ///
-    /// All modules which were not scanned should have [`ObjectFileStatus::Unused`].  This
-    /// processes all the [`CfiModule`]s and updates their [`CfiModule::cfi_status`] as
-    /// required.
-    fn finalize(mut self) -> BTreeMap<CodeModuleId, CfiModule> {
-        for cfi_module in self.inner.values_mut() {
-            if !cfi_module.scanned && !cfi_module.cfi_used {
-                cfi_module.cfi_status = ObjectFileStatus::Unused;
-            }
-        }
+    /// Returns the inner Map.
+    fn into_inner(self) -> BTreeMap<CodeModuleId, CfiModule> {
         self.inner
     }
 }
 
 /// A module which was referenced in a minidump and processing information for it.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct CfiModule {
     /// Combined features provided by all the DIFs we found for this module.
     features: ObjectFeatures,
@@ -303,52 +253,23 @@ struct ModuleListBuilder {
 
 impl ModuleListBuilder {
     fn new(
-        mut cfi_caches: CfiCacheModules,
-        minidump_process_state: &ProcessState,
-        executable_type: ObjectType,
+        cfi_caches: CfiCacheModules,
+        modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
     ) -> Self {
-        // Firstly mark modules for which we needed CFI information during unwinding.  This
-        // will insert entries into cfi_caches for modules which were missing.
-        for thread in minidump_process_state.threads() {
-            for frame_pair in thread.frames().windows(2) {
-                if let [prev_frame, next_frame] = frame_pair {
-                    if let Some(code_id) = prev_frame.module().and_then(|m| m.id()) {
-                        match next_frame.trust() {
-                            FrameTrust::Scan => {
-                                cfi_caches.mark_scanned(code_id);
-                            }
-                            FrameTrust::CFIScan => {
-                                cfi_caches.mark_scanned(code_id);
-                                cfi_caches.mark_used(code_id);
-                            }
-                            FrameTrust::CFI => {
-                                cfi_caches.mark_used(code_id);
-                            }
-                            _ => (),
-                        }
-                    }
-                }
-            }
-        }
-
         // Now build the CompletedObjectInfo for all modules
-        let cfi_caches: BTreeMap<CodeModuleId, CfiModule> = cfi_caches.finalize();
-        let mut inner: Vec<(CompleteObjectInfo, bool)> = minidump_process_state
-            .modules()
+        let cfi_caches = cfi_caches.into_inner();
+
+        let mut inner: Vec<(CompleteObjectInfo, bool)> = modules
             .into_iter()
-            .map(|code_module| {
-                let mut obj_info: CompleteObjectInfo =
-                    object_info_from_minidump_module(executable_type, code_module).into();
+            .map(|(id, raw_info)| {
+                let mut obj_info: CompleteObjectInfo = raw_info.into();
 
                 // If we loaded this module into the CFI cache, update the info object with
                 // this status.
-                if let Some(code_id) = code_module.id() {
+                if let Some(code_id) = id {
                     match cfi_caches.get(&code_id) {
                         None => {
-                            // If it was not picked up from by initial
-                            // get_referenced_modules nor marked as scanned during
-                            // stackwalking, it can only be unused.
-                            obj_info.unwind_status = Some(ObjectFileStatus::Unused);
+                            obj_info.unwind_status = None;
                         }
                         Some(cfi_module) => {
                             obj_info.unwind_status = Some(cfi_module.cfi_status);
@@ -357,10 +278,6 @@ impl ModuleListBuilder {
                         }
                     }
                 }
-                metric!(
-                    counter("symbolication.unwind_status") += 1,
-                    "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
-                );
 
                 (obj_info, false)
             })
@@ -371,31 +288,58 @@ impl ModuleListBuilder {
         Self { inner }
     }
 
-    /// Marks the module loaded at the given address as referenced.
-    ///
-    /// The respective module will always be included in the final list of modules.
-    pub fn mark_referenced(&mut self, addr: u64) {
+    /// Finds the index of the module (for lookup in `self.modules`) that covers the gives `addr`.
+    fn find_module_index(&self, addr: u64) -> Option<usize> {
         let search_index = self
             .inner
             .binary_search_by_key(&addr, |(info, _)| info.raw.image_addr.0);
 
-        let info_index = match search_index {
+        let info_idx = match search_index {
             Ok(index) => index,
-            Err(0) => return,
+            Err(0) => return None,
             Err(index) => index - 1,
         };
 
-        let (info, marked) = &mut self.inner[info_index];
+        let (info, _marked) = &self.inner[info_idx];
         let HexValue(image_addr) = info.raw.image_addr;
-        let should_mark = match info.raw.image_size {
+        let includes_addr = match info.raw.image_size {
             Some(size) => addr < image_addr + size,
             // If there is no image size, the image implicitly counts up to the next image. Because
             // we know that the search address is somewhere in this range, we can mark it.
             None => true,
         };
 
-        if should_mark {
-            *marked = true;
+        if includes_addr {
+            Some(info_idx)
+        } else {
+            None
+        }
+    }
+
+    /// Walks all the `stacktraces`, marking modules as being referenced based on the frames addr.
+    fn process_stacktraces(&mut self, stacktraces: &[RawStacktrace]) {
+        for trace in stacktraces {
+            for frame in &trace.frames {
+                let addr = frame.instruction_addr.0;
+                self.mark_referenced(addr);
+            }
+        }
+    }
+
+    /// Marks the module loaded at the given address as referenced.
+    ///
+    /// The respective module will always be included in the final list of modules.
+    pub fn mark_referenced(&mut self, addr: u64) {
+        let info_index = match self.find_module_index(addr) {
+            Some(idx) => idx,
+            None => return,
+        };
+
+        let (info, marked) = &mut self.inner[info_index];
+        *marked = true;
+
+        if info.unwind_status.is_none() {
+            info.unwind_status = Some(ObjectFileStatus::Missing);
         }
     }
 
@@ -403,8 +347,22 @@ impl ModuleListBuilder {
     pub fn build(self) -> Vec<CompleteObjectInfo> {
         self.inner
             .into_iter()
-            .filter(|(info, marked)| *marked || info.raw.debug_id.is_some())
-            .map(|(info, _)| info)
+            .filter_map(|(mut info, marked)| {
+                let include = marked || info.raw.debug_id.is_some();
+                if !include {
+                    return None;
+                }
+                // Reset the unwind status to `unused` for all objects that were not being referenced
+                // in the final stack traces.
+                if !marked || info.unwind_status.is_none() {
+                    info.unwind_status = Some(ObjectFileStatus::Unused);
+                }
+                metric!(
+                    counter("symbolication.unwind_status") += 1,
+                    "status" => info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
+                );
+                Some(info)
+            })
             .collect()
     }
 }
@@ -608,7 +566,7 @@ impl SourceLookup {
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
                 if let Some(i) =
-                    self.get_object_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                    self.get_module_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
                 {
                     referenced_objects.insert(i);
                 }
@@ -666,29 +624,32 @@ impl SourceLookup {
         })
     }
 
-    pub fn prepare_debug_sessions(&self) -> Vec<Option<ObjectDebugSession<'_>>> {
+    pub fn prepare_debug_sessions(&self) -> BTreeMap<usize, Option<ObjectDebugSession<'_>>> {
         self.inner
             .iter()
             .map(|entry| {
-                entry
-                    .source_object
-                    .as_ref()
-                    .and_then(|o| o.0.get().debug_session().ok())
+                (
+                    entry.module_index,
+                    entry
+                        .source_object
+                        .as_ref()
+                        .and_then(|o| o.0.get().debug_session().ok()),
+                )
             })
             .collect()
     }
 
     pub fn get_context_lines(
         &self,
-        debug_sessions: &[Option<ObjectDebugSession<'_>>],
+        debug_sessions: &BTreeMap<usize, Option<ObjectDebugSession<'_>>>,
         addr: u64,
         addr_mode: AddrMode,
         abs_path: &str,
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let index = self.get_object_index_by_addr(addr, addr_mode)?;
-        let session = debug_sessions[index].as_ref()?;
+        let index = self.get_module_index_by_addr(addr, addr_mode)?;
+        let session = debug_sessions[&index].as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
         let lineno = lineno as usize;
@@ -706,7 +667,7 @@ impl SourceLookup {
         Some((pre_context, context, post_context))
     }
 
-    fn get_object_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
+    fn get_module_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
         match addr_mode {
             AddrMode::Abs => {
                 for entry in self.inner.iter() {
@@ -1183,7 +1144,7 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     };
 
     // C start/main
-    if matches!(function, "main" | "start") {
+    if matches!(function, "main" | "start" | "_start") {
         return true;
     }
 
@@ -1209,8 +1170,15 @@ fn record_symbolication_metrics(
     let origin = origin.to_string();
 
     let platform = modules
-        .first()
-        .map(|m| m.raw.ty)
+        .iter()
+        .filter_map(|m| {
+            if m.raw.ty == ObjectType::Unknown {
+                None
+            } else {
+                Some(m.raw.ty)
+            }
+        })
+        .next()
         .unwrap_or(ObjectType::Unknown)
         .to_string();
 
@@ -1381,7 +1349,9 @@ fn symbolicate_stacktrace(
     {
         metrics.truncated_traces += 1;
     }
-    if stacktrace.frames.len() < 5 {
+    // macOS has some extremely short but perfectly fine stacks, such as:
+    // `__workq_kernreturn` > `_pthread_wqthread` > `start_wqthread`
+    if stacktrace.frames.len() < 3 {
         metrics.short_traces += 1;
     }
 
@@ -1675,69 +1645,44 @@ impl MinidumpState {
     }
 }
 
+/// Load the CFI information from the cache.
+///
+/// This reads the CFI caches from disk and returns them in a format suitable for the
+/// breakpad processor to stackwalk.
+fn load_cfi_for_processor(
+    cfi: Vec<(CodeModuleId, PathBuf)>,
+) -> BTreeMap<CodeModuleId, CfiCache<'static>> {
+    cfi.into_iter()
+        .filter_map(|(code_id, cfi_path)| {
+            let bytes = ByteView::open(cfi_path)
+                .map_err(|err| {
+                    log::error!("Error while reading cficache: {}", LogError(&err));
+                    err
+                })
+                .ok()?;
+            let cfi_cache = CfiCache::from_bytes(bytes)
+                .map_err(|err| {
+                    // This mostly never happens since we already checked the files
+                    // after downloading and they would have been tagged with
+                    // CacheStatus::Malformed.
+                    log::error!("Error while loading cficache: {}", LogError(&err));
+                    err
+                })
+                .ok()?;
+            Some((code_id, cfi_cache))
+        })
+        .collect()
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StackWalkMinidumpResult {
+    all_modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
+    referenced_modules: Vec<(CodeModuleId, RawObjectInfo)>,
+    stacktraces: Vec<RawStacktrace>,
+    minidump_state: MinidumpState,
+}
+
 impl SymbolicationActor {
-    /// Extract the modules from a minidump.
-    ///
-    /// The modules are needed before we know which DIFs are needed to stackwalk this
-    /// minidump.  The minidumps are processed in a subprocess to avoid crashes from the
-    /// native library bringing down symbolicator.
-    ///
-    /// This will perform stackwalking without having the full CFI information required.
-    /// This results in more stack scanning, generally leading to a superset of the actual
-    /// referenced modules.  This reduces the total number of CFI DIFs we try and fetch as
-    /// usually minidumps contain a large number of modules which are entirely unused.  It
-    /// is however possible we miss some modules which are used after all.
-    async fn get_referenced_modules_from_minidump(
-        &self,
-        minidump: Bytes,
-    ) -> Result<Vec<(CodeModuleId, RawObjectInfo)>, anyhow::Error> {
-        let pool = self.spawnpool.clone();
-        let diagnostics_cache = self.diagnostics_cache.clone();
-        let lazy = async move {
-            let spawn_time = std::time::SystemTime::now();
-            let spawn_result = pool.spawn(
-                (minidump.clone(), spawn_time),
-                |(minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
-                    if let Ok(duration) = spawn_time.elapsed() {
-                        metric!(timer("minidump.modules.spawn.duration") = duration);
-                    }
-                    log::debug!("Processing minidump ({} bytes)", minidump.len());
-                    metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
-                    let state =
-                        ProcessState::from_minidump(&ByteView::from_slice(&minidump), None)?;
-
-                    let object_type = MinidumpState::new(&state).object_type();
-
-                    let cfi_modules = state
-                        .referenced_modules()
-                        .into_iter()
-                        .filter_map(|code_module| {
-                            Some((
-                                code_module.id()?,
-                                object_info_from_minidump_module(object_type, code_module),
-                            ))
-                        })
-                        .collect();
-
-                    Ok(procspawn::serde::Json(cfi_modules))
-                },
-            );
-
-            Self::join_procspawn(
-                spawn_result,
-                Duration::from_secs(20),
-                "minidump.modules.spawn.error",
-                &minidump,
-                diagnostics_cache,
-            )
-        };
-
-        self.threadpool
-            .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Getting minidump referenced modules future cancelled")?
-    }
-
     /// Join a procspawn handle with a timeout.
     ///
     /// This handles the procspawn result, makes sure to appropriately log any failures and
@@ -1815,7 +1760,7 @@ impl SymbolicationActor {
     async fn load_cfi_caches(
         &self,
         scope: Scope,
-        requests: Vec<(CodeModuleId, RawObjectInfo)>,
+        requests: &[(CodeModuleId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
         let mut futures = Vec::with_capacity(requests.len());
@@ -1829,12 +1774,12 @@ impl SymbolicationActor {
                     .cficaches
                     .fetch(FetchCfiCache {
                         object_type: object_info.ty,
-                        identifier: object_id_from_object_info(&object_info),
+                        identifier: object_id_from_object_info(object_info),
                         sources,
                         scope,
                     })
                     .await;
-                (code_id, result)
+                ((*code_id).to_owned(), result)
             };
 
             // Clone hub because of join_all concurrency.
@@ -1848,8 +1793,7 @@ impl SymbolicationActor {
     ///
     /// This processes the minidump to stackwalk all the threads found in the minidump.
     ///
-    /// The `cfi_results` must contain all modules found in the minidump (extracted using
-    /// [`SymbolicationActor::get_referenced_modules_from_minidump`]) and the result of trying
+    /// The `cfi_results` will contain all modules found in the minidump and the result of trying
     /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`].
     ///
     /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
@@ -1864,16 +1808,12 @@ impl SymbolicationActor {
     /// modules.
     async fn stackwalk_minidump_with_cfi(
         &self,
-        scope: Scope,
         minidump: Bytes,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-        cfi_results: Vec<CfiCacheResult>,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), anyhow::Error> {
-        let cfi_caches = CfiCacheModules::new(cfi_results.iter());
-
+        cfi_caches: &CfiCacheModules,
+    ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
         let pool = self.spawnpool.clone();
         let diagnostics_cache = self.diagnostics_cache.clone();
+        let cfi_caches = cfi_caches.for_processing();
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
@@ -1883,24 +1823,39 @@ impl SymbolicationActor {
                     spawn_time,
                 ),
                 |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
-                    let procspawn::serde::Json(mut cfi_caches) = cfi_caches;
+                    let procspawn::serde::Json(cfi_caches) = cfi_caches;
 
                     if let Ok(duration) = spawn_time.elapsed() {
                         metric!(timer("minidump.stackwalk.spawn.duration") = duration);
                     }
 
                     // Stackwalk the minidump.
-                    let cfi = cfi_caches.load_cfi();
+                    let cfi = load_cfi_for_processor(cfi_caches);
                     let minidump = ByteView::from_slice(&minidump);
                     let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
                     let minidump_state = MinidumpState::new(&process_state);
+                    let object_type = minidump_state.object_type();
 
-                    // Start building the module list for the symbolication response.
-                    let mut module_builder = ModuleListBuilder::new(
-                        cfi_caches,
-                        &process_state,
-                        minidump_state.object_type(),
-                    );
+                    let referenced_modules = process_state
+                        .referenced_modules()
+                        .into_iter()
+                        .filter_map(|code_module| {
+                            Some((
+                                code_module.id()?,
+                                object_info_from_minidump_module(object_type, code_module),
+                            ))
+                        })
+                        .collect();
+                    let all_modules = process_state
+                        .modules()
+                        .into_iter()
+                        .map(|code_module| {
+                            (
+                                code_module.id(),
+                                object_info_from_minidump_module(object_type, code_module),
+                            )
+                        })
+                        .collect();
 
                     // Finally iterate through the threads and build the stacktraces to
                     // return, marking modules as used when they are referenced by a frame.
@@ -1925,7 +1880,6 @@ impl SymbolicationActor {
                         for frame in thread.frames().iter().take(frame_count) {
                             let return_address =
                                 frame.return_address(minidump_state.system_info.cpu_arch);
-                            module_builder.mark_referenced(return_address);
 
                             frames.push(RawFrame {
                                 instruction_addr: HexValue(return_address),
@@ -1943,45 +1897,29 @@ impl SymbolicationActor {
                         });
                     }
 
-                    Ok(procspawn::serde::Json((
-                        module_builder.build(),
+                    Ok(procspawn::serde::Json(StackWalkMinidumpResult {
+                        all_modules,
+                        referenced_modules,
                         stacktraces,
                         minidump_state,
-                    )))
+                    }))
                 },
             );
 
-            let (modules, stacktraces, minidump_state) = Self::join_procspawn(
+            Self::join_procspawn(
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
                 &minidump,
                 diagnostics_cache,
-            )?;
-
-            let request = SymbolicateStacktraces {
-                modules,
-                scope,
-                sources,
-                origin: StacktraceOrigin::Minidump,
-                signal: None,
-                stacktraces,
-                options,
-            };
-
-            Ok((request, minidump_state))
+            )
         };
 
-        let result = self
+        Ok(self
             .threadpool
             .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Minidump stackwalk future cancelled")?;
-
-        // keep the results until symbolication has finished to ensure we don't drop
-        // temporary files prematurely.
-        drop(cfi_results);
-        result
+            .await?
+            .context("Minidump stackwalk future cancelled")?)
     }
 
     async fn do_stackwalk_minidump(
@@ -1994,16 +1932,62 @@ impl SymbolicationActor {
         let future = async move {
             let minidump = Bytes::from(minidump);
 
-            let referenced_modules = self
-                .get_referenced_modules_from_minidump(minidump.clone())
-                .await?;
+            log::debug!("Processing minidump ({} bytes)", minidump.len());
+            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
 
-            let cfi_caches = self
-                .load_cfi_caches(scope.clone(), referenced_modules, sources.clone())
-                .await;
+            let mut cfi_caches = CfiCacheModules::new();
 
-            self.stackwalk_minidump_with_cfi(scope, minidump, sources, options, cfi_caches)
-                .await
+            let mut iterations = 0;
+
+            let result = loop {
+                iterations += 1;
+
+                let result = self
+                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
+                    .await?;
+
+                let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
+                    .referenced_modules
+                    .iter()
+                    .filter(|(id, _)| !cfi_caches.has_module(id))
+                    .map(|t| (t.0, &t.1))
+                    .collect();
+
+                // We put a hard limit of 5 iterations here.
+                // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+                if missing_modules.is_empty() || iterations >= 5 {
+                    break result;
+                }
+
+                let loaded_caches = self
+                    .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
+                    .await;
+                cfi_caches.extend(loaded_caches);
+            };
+
+            let StackWalkMinidumpResult {
+                all_modules,
+                stacktraces,
+                minidump_state,
+                ..
+            } = result;
+
+            metric!(time_raw("minidump.stackwalk.iterations") = iterations);
+
+            // Start building the module list for the symbolication response.
+            let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
+            module_builder.process_stacktraces(&stacktraces);
+
+            let request = SymbolicateStacktraces {
+                modules: module_builder.build(),
+                scope,
+                sources,
+                origin: StacktraceOrigin::Minidump,
+                signal: None,
+                stacktraces,
+                options,
+            };
+            Ok::<_, anyhow::Error>((request, minidump_state))
         };
 
         let future = timeout_compat(Duration::from_secs(3600), future);
@@ -2629,7 +2613,7 @@ mod tests {
     }
 
     fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {
-        RawObjectInfo {
+        let mut info: CompleteObjectInfo = RawObjectInfo {
             ty: ObjectType::Elf,
             code_id: None,
             code_file: None,
@@ -2638,7 +2622,9 @@ mod tests {
             image_addr: HexValue(addr),
             image_size: size,
         }
-        .into()
+        .into();
+        info.unwind_status = Some(ObjectFileStatus::Unused);
+        info
     }
 
     #[test]

@@ -209,7 +209,7 @@ pub struct CacheConfigs {
     pub diagnostics: DiagnosticsCacheConfig,
 }
 
-/// See README.md for more information on config values.
+/// See docs/index.md for more information on config values.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -242,6 +242,28 @@ pub struct Config {
 
     /// Number of subprocesses in the internal processing pool.
     pub processing_pool_size: usize,
+
+    /// The maximum timeout for downloads.
+    ///
+    /// This is the upper limit the download service will take for downloading from a single
+    /// source, regardless of how many retries are involved.
+    #[serde(with = "humantime_serde")]
+    pub max_download_timeout: Duration,
+
+    /// The timeout for the initial HEAD request in a download.
+    ///
+    /// This timeout applies to each individual attempt to establish a
+    /// connection with a symbol source if retries take place.
+    #[serde(with = "humantime_serde")]
+    pub connect_timeout: Duration,
+
+    /// The timeout per GB for streaming downloads.
+    ///
+    /// For downloads with a known size, this timeout applies per individual
+    /// download attempt. If the download size is not known, it is ignored and
+    /// only `max_download_timeout` applies.
+    #[serde(with = "humantime_serde")]
+    pub streaming_timeout: Duration,
 }
 
 impl Config {
@@ -305,6 +327,9 @@ impl Default for Config {
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
+            max_download_timeout: Duration::from_secs(300),
+            connect_timeout: Duration::from_secs(300),
+            streaming_timeout: Duration::from_secs(150),
         }
     }
 }
@@ -396,6 +421,32 @@ mod tests {
     }
 
     #[test]
+    fn test_unspecified_dl_timeouts() {
+        let yaml = r#"
+            sources: []
+        "#;
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
+        let default_cfg = Config::default();
+        assert_eq!(cfg.max_download_timeout, default_cfg.max_download_timeout);
+        assert_eq!(cfg.connect_timeout, default_cfg.connect_timeout);
+        assert_eq!(cfg.streaming_timeout, default_cfg.streaming_timeout);
+    }
+
+    #[test]
+    fn test_zero_second_dl_timeouts() {
+        // 0s download timeouts will not be set to defaults
+        let yaml = r#"
+            max_download_timeout: 0s
+            connect_timeout: 0s
+            streaming_timeout: 0s
+        "#;
+        let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
+        assert_eq!(cfg.max_download_timeout, Duration::from_secs(0));
+        assert_eq!(cfg.connect_timeout, Duration::from_secs(0));
+        assert_eq!(cfg.streaming_timeout, Duration::from_secs(0));
+    }
+
+    #[test]
     fn test_unknown_fields() {
         // Unknown fields should not cause failure
         let yaml = r#"
@@ -405,5 +456,13 @@ mod tests {
         "#;
         let cfg = Config::from_reader(yaml.as_bytes());
         assert!(cfg.is_ok());
+    }
+
+    #[test]
+    fn test_empty_file() {
+        // Empty files aren't supported
+        let yaml = r#""#;
+        let result = Config::from_reader(yaml.as_bytes());
+        assert!(result.is_err());
     }
 }

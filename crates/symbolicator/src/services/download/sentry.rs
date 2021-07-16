@@ -8,14 +8,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::prelude::*;
+use futures::TryStreamExt;
 use parking_lot::Mutex;
-use reqwest::StatusCode;
+use reqwest::{header, StatusCode};
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use super::{DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri, USER_AGENT};
+use super::{
+    content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
+    USER_AGENT,
+};
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
@@ -89,6 +92,8 @@ pub enum SentryError {
 pub struct SentryDownloader {
     client: reqwest::Client,
     index_cache: Mutex<SentryIndexCache>,
+    connect_timeout: Duration,
+    streaming_timeout: Duration,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -101,10 +106,16 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        connect_timeout: Duration,
+        streaming_timeout: Duration,
+    ) -> Self {
         Self {
             client,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            connect_timeout,
+            streaming_timeout,
         }
     }
 
@@ -238,60 +249,49 @@ impl SentryDownloader {
         file_source: SentryRemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let retries = future_utils::retry(|| {
-            self.download_source_once(file_source.clone(), destination.clone())
-        });
-        match retries.await {
-            Ok(status) => {
-                log::debug!(
-                    "Fetched debug file from {}: {:?}",
-                    file_source.url(),
-                    status
-                );
-                Ok(status)
-            }
-            Err(err) => {
-                log::debug!(
-                    "Failed to fetch debug file from {}: {}",
-                    file_source.url(),
-                    err
-                );
-                Err(err)
-            }
-        }
-    }
-
-    async fn download_source_once(
-        &self,
-        source: SentryRemoteDif,
-        destination: PathBuf,
-    ) -> Result<DownloadStatus, DownloadError> {
         let request = self
             .client
-            .get(source.url())
+            .get(file_source.url())
             .header("User-Agent", USER_AGENT)
-            .bearer_auth(&source.source.token)
+            .bearer_auth(&file_source.source.token)
             .send();
+
+        let download_url = file_source.url();
+        let source = RemoteDif::from(file_source);
+        let request = tokio::time::timeout(self.connect_timeout, request);
+        let request = super::measure_download_time(source.source_metric_key(), request);
+
         match request.await {
-            Ok(response) => {
+            Ok(Ok(response)) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting {}", source.url());
+                    log::trace!("Success hitting {}", download_url);
+
+                    let content_length = response
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|hv| hv.to_str().ok())
+                        .and_then(|s| s.parse::<u32>().ok());
+
+                    let timeout =
+                        content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination).await
+                    super::download_stream(source, stream, destination, timeout).await
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
-                        source.url(),
+                        download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 }
             }
-            Err(e) => {
-                log::trace!("Skipping response from {}: {}", source.url(), e);
+            Ok(Err(e)) => {
+                log::trace!("Skipping response from {}: {}", download_url, e);
                 Ok(DownloadStatus::NotFound) // must be wrong type
             }
+            // Timed out
+            Err(_) => Err(DownloadError::Canceled),
         }
     }
 }

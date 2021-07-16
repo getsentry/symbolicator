@@ -125,7 +125,7 @@ pub struct FilesystemSourceConfig {
 /// The types of Amazon IAM credentials providers we support.
 ///
 /// For details on the AWS side, see:
-/// https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html.
+/// <https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html>.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AwsCredentialsProvider {

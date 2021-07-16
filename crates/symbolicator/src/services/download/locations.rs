@@ -42,7 +42,7 @@ impl SourceLocation {
 
     /// Returns this location as a local (relative) Path.
     pub fn path(&self) -> &Path {
-        &Path::new(&self.0)
+        Path::new(&self.0)
     }
 
     /// Returns this location relative to the given base.
@@ -184,6 +184,23 @@ impl RemoteDif {
         }
     }
 
+    /// Returns a key that uniquely identifies the source for metrics.
+    ///
+    /// If this is a built-in source the source_id is returned, otherwise this falls
+    /// back to the source type name.
+    pub fn source_metric_key(&self) -> &str {
+        let id = self.source_id().as_str();
+        // The IDs of built-in sources (see: SENTRY_BUILTIN_SOURCES in sentry) always start with
+        // "sentry:" (e.g. "sentry:electron") and are safe to use as a key. If this is a custom
+        // source, then the source_id is a random string which inflates the cardinality of this
+        // metric as the tag values will greatly vary.
+        if id.starts_with("sentry:") {
+            id
+        } else {
+            self.source_type_name()
+        }
+    }
+
     /// Returns a URI for the location of the object file.
     ///
     /// There is no guarantee about any format of this URI, for some sources it could be
@@ -240,7 +257,7 @@ impl RemoteDifUri {
     pub fn from_parts(scheme: &str, host: &str, path: &str) -> Self {
         Url::parse(&format!("{}://{}/", scheme, host))
             .and_then(|base| base.join(path))
-            .map(|url| RemoteDifUri::new(url.into_string()))
+            .map(RemoteDifUri::new)
             .unwrap_or_else(|_| {
                 // All these Result-returning operations *should* be infallible and this
                 // branch should never be used.  Nevertheless, for panic-safety we default
