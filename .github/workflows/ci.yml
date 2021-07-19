@@ -175,7 +175,7 @@ jobs:
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
         run: |
-          cargo run -- run
+          cargo run -- run &
           make test-symbolicator
 
   doc-comments:
