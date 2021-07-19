@@ -13,7 +13,6 @@
 - Introduced the `max_download_timeout` config setting for source downloads. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489))
 - Introduced the `streaming_timeout` config setting for source downloads. ([#489](https://github.com/getsentry/symbolicator/pull/489))
 - Introduced the `connect_timeout` config setting for source downloads. ([#491](https://github.com/getsentry/symbolicator/pull/491))
-- GCS, S3, HTTP, and local filesystem sources: Attempt to retry failed downloads at least once. ([#485](https://github.com/getsentry/symbolicator/pull/485))
 - Refresh symcaches when a new `BcSymbolMap` becomes available. ([#493](https://github.com/getsentry/symbolicator/pull/493))
 
 ### Tools

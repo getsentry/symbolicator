@@ -18,6 +18,7 @@ use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
+use crate::utils::futures as future_utils;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
@@ -224,13 +225,15 @@ impl GcsDownloader {
             .extend(&[&bucket, "o", &key]);
 
         let source = RemoteDif::from(file_source);
-        let request = self
-            .client
-            .get(url.clone())
-            .header("authorization", format!("Bearer {}", token.access_token))
-            .send();
-        let request = tokio::time::timeout(self.connect_timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
+        let request = future_utils::retry(|| {
+            let request = self
+                .client
+                .get(url.clone())
+                .header("authorization", format!("Bearer {}", token.access_token))
+                .send();
+            let request = tokio::time::timeout(self.connect_timeout, request);
+            super::measure_download_time(source.source_metric_key(), request)
+        });
 
         match request.await {
             Ok(Ok(response)) => {
