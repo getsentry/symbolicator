@@ -308,7 +308,7 @@ mod tests {
 
         let config = Arc::new(Config {
             connect_to_reserved_ips: true,
-            download_timeout: Duration::from_millis(10),
+            max_download_timeout: Duration::from_millis(10),
             ..Config::default()
         });
 
