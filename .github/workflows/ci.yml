@@ -123,18 +123,22 @@ jobs:
       - name: Checkout Symbolicator
         uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+      # - name: Install rust stable toolchain
+      #   uses: actions-rs/toolchain@v1
+      #   with:
+      #     toolchain: stable
+      #     profile: minimal
+      #     override: true
 
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+      # - name: Cache rust cargo artifacts
+      #   uses: swatinem/rust-cache@v1
 
-      - name: Build rust
-        run: cargo build --locked
+      # - name: Build rust
+      #   run: cargo build --locked
+
+      - name: Build Symbolicator Docker image
+        run: |
+          docker build -t us.gcr.io/sentryio/symbolicator:$GITHUB_SHA .
 
       # Checkout Sentry and run integration tests against latest Symbolicator
       - name: Checkout sentry
@@ -173,7 +177,6 @@ jobs:
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
         run: |
-          docker build -t us.gcr.io/sentryio/symbolicator:$GITHUB_SHA .
           docker run \
             -d \
             -v $PWD/config/symbolicator/:/etc/symbolicator \
