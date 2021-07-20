@@ -133,8 +133,11 @@ jobs:
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
 
-      - name: Build rust
+      - name: Build Relay
         run: cargo build --locked
+
+      - name: Run Relay
+        run: ./target/debug/symbolicator run
 
       # Checkout Sentry and run integration tests against latest Symbolicator
       - name: Checkout sentry
@@ -173,7 +176,6 @@ jobs:
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
         run: |
-          cargo run -- run &
           make test-symbolicator
 
   doc-comments:
