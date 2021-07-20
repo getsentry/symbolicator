@@ -136,7 +136,7 @@ jobs:
       - name: Build Symbolicator
         run: cargo build --locked
 
-      - name: Run Relay
+      - name: Run Symbolicator
         run: ./target/debug/symbolicator run &
 
       # Checkout Sentry and run integration tests against latest Symbolicator
