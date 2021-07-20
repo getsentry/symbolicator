@@ -173,7 +173,7 @@ jobs:
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
         run: |
-          docker build -t us.gcr.io/sentryio/symbolicator:$GITHUB_SHA
+          docker build -t us.gcr.io/sentryio/symbolicator:$GITHUB_SHA .
           docker run \
             -d \
             -v $PWD/config/symbolicator/:/etc/symbolicator \
