@@ -24,7 +24,7 @@ pub fn run(config: Config) -> Result<()> {
     metric!(counter("server.starting") += 1);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
+        .worker_threads(4)
         .thread_name("symbolicator")
         .enable_all()
         .build()
