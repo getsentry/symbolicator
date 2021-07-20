@@ -167,7 +167,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                 Err(e) => {
                     log::error!("Error while downloading file: {}", LogError(&e));
-                    return Ok(CacheStatus::Negative);
+                    return Ok(CacheStatus::Malformed);
                 }
 
                 Ok(DownloadStatus::Completed) => {
