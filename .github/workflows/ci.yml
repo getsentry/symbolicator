@@ -133,7 +133,7 @@ jobs:
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
 
-      - name: Build Relay
+      - name: Build Symbolicator
         run: cargo build --locked
 
       - name: Run Relay
