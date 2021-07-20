@@ -31,11 +31,11 @@ pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
     /// object file and cached that file.
     Positive,
-    /// A cache item that represents the absence of something. E.g. we encountered a 404 or an error
-    /// while trying to download a file, and cached that fact. Represented by an empty file.
+    /// A cache item that represents the absence of something. E.g. we encountered a 404 or a client
+    /// error while trying to download a file, and cached that fact. Represented by an empty file.
     Negative,
-    /// We are unable to create or use the cache item. E.g. we failed to create a symcache. See
-    /// docs for [`MALFORMED_MARKER`].
+    /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
+    /// encountered a non-400 error while downloading a file. See docs for [`MALFORMED_MARKER`].
     Malformed,
 }
 

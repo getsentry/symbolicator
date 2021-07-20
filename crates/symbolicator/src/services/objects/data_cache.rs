@@ -130,9 +130,9 @@ impl CacheItemRequest for FetchFileDataRequest {
     /// debug ID of our request is extracted first.  Finally the object is parsed with
     /// symbolic to ensure it is not malformed.
     ///
-    /// If there is an error with downloading or decompression then an `Err` of
-    /// [`ObjectError`] is returned.  However if only the final object file parsing failed
-    /// then an `Ok` with [`CacheStatus::Malformed`] is returned.
+    /// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
+    /// parsing the final object file failed, or there is an error downloading the file an `Ok` with
+    /// [`CacheStatus::Malformed`] is returned.
     ///
     /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
     /// returned.
@@ -346,10 +346,10 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
             assert_eq!(server.accesses(), 1);
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
             assert_eq!(server.accesses(), 0);
         })
         .await;
