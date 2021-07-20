@@ -170,8 +170,6 @@ jobs:
         uses: ./.github/actions/setup-sentry
         with:
           workdir: sentry
-          snuba: true
-          kafka: true
 
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
