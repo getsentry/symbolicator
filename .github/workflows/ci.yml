@@ -141,8 +141,6 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: getsentry/sentry
-          # XXX: Temporary change
-          ref: armenzg/reusable-workflow
           path: sentry
 
       - uses: actions/setup-python@v2
