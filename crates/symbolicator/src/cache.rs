@@ -35,7 +35,7 @@ pub enum CacheStatus {
     /// error while trying to download a file, and cached that fact. Represented by an empty file.
     Negative,
     /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
-    /// encountered a non-400 error while downloading a file. See docs for [`MALFORMED_MARKER`].
+    /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
     Malformed,
 }
 
