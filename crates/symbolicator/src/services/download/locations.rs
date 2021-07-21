@@ -223,6 +223,7 @@ impl ConfigureScope for RemoteDif {
         scope.set_tag("source.id", self.source_id());
         scope.set_tag("source.type", self.source_type_name());
         scope.set_tag("source.is_public", self.is_public());
+        scope.set_tag("source.uri", self.uri());
     }
 }
 
