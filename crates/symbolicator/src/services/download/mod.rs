@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
+use reqwest::StatusCode;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
@@ -49,6 +50,8 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
+    #[error("rejected by server")]
+    Rejected(StatusCode),
 }
 
 /// Completion status of a successful download request.
@@ -131,16 +134,15 @@ impl DownloadService {
         });
 
         match result.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from {:?}: {:?}",
-                    source,
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
             Ok(status) => {
-                log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                match status {
+                    DownloadStatus::Completed => {
+                        log::debug!("Did not fetch debug file from {:?}: {:?}", source, status);
+                    }
+                    DownloadStatus::NotFound => {
+                        log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                    }
+                };
                 Ok(status)
             }
             Err(err) => {
@@ -238,6 +240,11 @@ impl DownloadService {
 /// Download the source from a stream.
 ///
 /// This is common functionality used by many downloaders.
+///
+/// # Errors
+/// - [`DownloadError::BadDestination`]: could not create a file at the given destination
+/// - [`DownloadError::Write`]: unable to write a chunk of the source to the destination
+/// - [`DownloadError::Cancelled`]: stream timed out
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,

@@ -66,6 +66,14 @@ impl HttpDownloader {
         }
     }
 
+    /// Downloads a source hosted on an HTTP server.
+    ///
+    /// # Errors
+    /// - [`GcsError::InvalidUrl`]: the url was malformed and/or could not be parsed
+    /// - [`DownloadError::Reqwest`]: unable to begin streaming the source, or the initial HEAD
+    ///   request encountered an error
+    /// - [`DownloadError::Rejected`]: the initial HEAD request received a non-successful response
+    /// - [`DownloadError::Cancelled`]: the request timed out
     pub async fn download_source(
         &self,
         file_source: HttpRemoteDif,
@@ -106,18 +114,25 @@ impl HttpDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
+                } else if response.status().is_client_error() {
+                    log::trace!(
+                        "Unexpected client error status code from {}: {}",
+                        download_url,
+                        response.status()
+                    );
+                    Ok(DownloadStatus::NotFound)
                 } else {
                     log::trace!(
                         "Unexpected status code from {}: {}",
                         download_url,
                         response.status()
                     );
-                    Ok(DownloadStatus::NotFound)
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {
                 log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(DownloadStatus::NotFound) // must be wrong type
+                Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             Err(_) => {
                 // Timeout

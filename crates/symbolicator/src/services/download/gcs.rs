@@ -205,6 +205,14 @@ impl GcsDownloader {
         Ok(token)
     }
 
+    /// Downloads a source hosted on GCS.
+    ///
+    /// # Errors
+    /// - [`GcsError::InvalidUrl`]: the url was malformed and/or could not be parsed
+    /// - [`DownloadError::Reqwest`]: unable to begin streaming the source, or the initial HEAD
+    ///   request encountered an error
+    /// - [`DownloadError::Rejected`]: the initial HEAD request received a non-successful response
+    /// - [`DownloadError::Cancelled`]: the request timed out
     pub async fn download_source(
         &self,
         file_source: GcsRemoteDif,
@@ -248,6 +256,14 @@ impl GcsDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
+                } else if response.status().is_client_error() {
+                    log::trace!(
+                        "Unexpected client error status code from GCS {} (from {}): {}",
+                        &key,
+                        &bucket,
+                        response.status()
+                    );
+                    Ok(DownloadStatus::NotFound)
                 } else {
                     log::trace!(
                         "Unexpected status code from GCS {} (from {}): {}",
@@ -255,7 +271,7 @@ impl GcsDownloader {
                         &bucket,
                         response.status()
                     );
-                    Ok(DownloadStatus::NotFound)
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {
@@ -266,7 +282,7 @@ impl GcsDownloader {
                     &e,
                     &e
                 );
-                Ok(DownloadStatus::NotFound)
+                Err(DownloadError::Reqwest(e))
             }
             Err(_) => {
                 // Timeout

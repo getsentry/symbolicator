@@ -137,6 +137,11 @@ impl S3Downloader {
         rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
 
+    /// Downloads a source hosted on an S3 bucket.
+    ///
+    /// # Errors
+    /// - [`DownloadError::Io`]: unable to begin streaming the source
+    /// - [`DownloadError::Cancelled`]: the request timed out
     pub async fn download_source(
         &self,
         file_source: S3RemoteDif,
