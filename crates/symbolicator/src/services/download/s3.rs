@@ -137,6 +137,11 @@ impl S3Downloader {
         rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
 
+    /// Downloads a source hosted on an S3 bucket.
+    ///
+    /// # Directly thrown errors
+    /// - [`DownloadError::Io`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: S3RemoteDif,
@@ -164,7 +169,7 @@ impl S3Downloader {
                 // For missing files, Amazon returns different status codes based on the given
                 // permissions.
                 // - To fetch existing objects, `GetObject` is required.
-                // - If `ListBucket` is premitted, a 404 is returned for missing objects.
+                // - If `ListBucket` is permitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
                 return Ok(DownloadStatus::NotFound);
