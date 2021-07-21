@@ -13,7 +13,7 @@ use symbolic::{
 };
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheKey, CacheStatus, MalformedCause};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -136,8 +136,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 let status = if let Err(e) = write_cficache(&path, &*object) {
                     log::warn!("Could not write cficache: {}", e);
                     sentry::capture_error(&e);
-
-                    CacheStatus::Malformed
+                    CacheStatus::Malformed(MalformedCause::BadObject)
                 } else {
                     CacheStatus::Positive
                 };

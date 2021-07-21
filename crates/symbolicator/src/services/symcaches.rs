@@ -13,7 +13,7 @@ use symbolic::debuginfo::Object;
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheKey, CacheStatus, MalformedCause};
 use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::objects::{
@@ -104,7 +104,11 @@ impl SymCacheFile {
                 SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(SymCacheError::Malformed),
+            CacheStatus::Malformed(MalformedCause::BadObject)
+            | CacheStatus::Malformed(MalformedCause::Unknown) => Err(SymCacheError::Malformed),
+            CacheStatus::Malformed(MalformedCause::DownloadError) => {
+                Err(SymCacheError::Fetching(ObjectError::Malformed))
+            }
         }
     }
 
@@ -179,7 +183,7 @@ async fn fetch_difs_and_compute_symcache(
             Err(err) => {
                 log::warn!("Failed to write symcache: {}", err);
                 sentry::capture_error(&err);
-                CacheStatus::Malformed
+                CacheStatus::Malformed(MalformedCause::BadObject)
             }
         };
         Ok(status)

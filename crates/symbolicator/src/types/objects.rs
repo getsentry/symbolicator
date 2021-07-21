@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::CacheStatus;
+use crate::cache::{CacheStatus, MalformedCause};
 use crate::services::download::RemoteDifUri;
 use crate::sources::SourceId;
 
@@ -150,7 +150,11 @@ impl ObjectUseInfo {
                     ObjectUseInfo::None
                 }
             }
-            CacheStatus::Malformed => ObjectUseInfo::Malformed,
+            CacheStatus::Malformed(MalformedCause::BadObject)
+            | CacheStatus::Malformed(MalformedCause::Unknown) => ObjectUseInfo::Malformed,
+            CacheStatus::Malformed(MalformedCause::DownloadError) => ObjectUseInfo::Error {
+                details: String::from("unable to download file"),
+            },
         }
     }
 }

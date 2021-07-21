@@ -27,6 +27,37 @@ use crate::types::Scope;
 pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum MalformedCause {
+    BadObject,
+    DownloadError,
+    Unknown,
+}
+
+impl From<&[u8]> for MalformedCause {
+    fn from(value: &[u8]) -> Self {
+        if value == b"badobject" {
+            Self::BadObject
+        } else if value == b"downloaderror" {
+            Self::DownloadError
+        } else {
+            Self::Unknown
+        }
+    }
+}
+
+impl From<MalformedCause> for &[u8] {
+    fn from(val: MalformedCause) -> Self {
+        match val {
+            MalformedCause::BadObject => b"badobject",
+            MalformedCause::DownloadError => b"downloaderror",
+            // TODO: This could cause us to erase valid causes in the future if we introduce new
+            // variants. Maybe we should store the unrecognized cause inside of Unknown?
+            MalformedCause::Unknown => &[],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
     /// object file and cached that file.
@@ -36,7 +67,7 @@ pub enum CacheStatus {
     Negative,
     /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
     /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
-    Malformed,
+    Malformed(MalformedCause),
 }
 
 impl AsRef<str> for CacheStatus {
@@ -44,7 +75,7 @@ impl AsRef<str> for CacheStatus {
         match self {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
-            CacheStatus::Malformed => "malformed",
+            CacheStatus::Malformed(_) => "malformed",
         }
     }
 }
@@ -52,7 +83,8 @@ impl AsRef<str> for CacheStatus {
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
         if s.starts_with(MALFORMED_MARKER) {
-            CacheStatus::Malformed
+            let cause = s.get(MALFORMED_MARKER.len()..).unwrap_or_default();
+            CacheStatus::Malformed(MalformedCause::from(cause))
         } else if s.is_empty() {
             CacheStatus::Negative
         } else {
@@ -77,9 +109,10 @@ impl CacheStatus {
             CacheStatus::Negative => {
                 File::create(path)?;
             }
-            CacheStatus::Malformed => {
+            CacheStatus::Malformed(cause) => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
+                f.write_all(cause.into())?;
             }
         }
 
@@ -201,8 +234,9 @@ impl Cache {
         // States a cache item can be in:
         // * negative/empty: An empty file. Represents a failed download. mtime is used to indicate
         //   when the failed download happened (when the file was created)
-        // * malformed: A file with the content `b"malformed"`. Represents a failed symcache
-        //   conversion. mtime indicates when we attempted to convert.
+        // * malformed: A file with the content `b"malformed"`, `b"malformedbadobject"` or
+        //   `b"malformeddownloaderror". Represents a failed symcache conversion. mtime indicates
+        //   when we attempted to convert.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
         let metadata = path.metadata()?;
@@ -624,6 +658,8 @@ mod tests {
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
         File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
+        File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedbadobject")?;
+        File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"malformeddownloaderror")?;
 
         sleep(Duration::from_millis(10));
 

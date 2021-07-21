@@ -10,6 +10,7 @@ use futures::future::{self, Future, TryFutureExt};
 use sentry::SentryFutureExt;
 use symbolic::debuginfo;
 
+use crate::cache::MalformedCause;
 use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
 use crate::services::cacher::Cacher;
@@ -446,7 +447,13 @@ fn create_candidate_info(
                     features: meta_handle.features(),
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                CacheStatus::Malformed(MalformedCause::BadObject)
+                | CacheStatus::Malformed(MalformedCause::Unknown) => ObjectDownloadInfo::Malformed,
+                CacheStatus::Malformed(MalformedCause::DownloadError) => {
+                    ObjectDownloadInfo::Error {
+                        details: "unable to download file".to_string(),
+                    }
+                }
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),

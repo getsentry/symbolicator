@@ -29,7 +29,7 @@ use symbolic::minidump::processor::{
 };
 use thiserror::Error;
 
-use crate::cache::CacheStatus;
+use crate::cache::{CacheStatus, MalformedCause};
 use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
@@ -175,8 +175,14 @@ impl CfiCacheModules {
                     let cfi_status = match cfi_cache.status() {
                         CacheStatus::Positive => ObjectFileStatus::Found,
                         CacheStatus::Negative => ObjectFileStatus::Missing,
-                        CacheStatus::Malformed => {
+                        CacheStatus::Malformed(MalformedCause::BadObject)
+                        | CacheStatus::Malformed(MalformedCause::Unknown) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            log::warn!("Error while parsing cficache: {}", LogError(&err));
+                            ObjectFileStatus::from(&err)
+                        }
+                        CacheStatus::Malformed(MalformedCause::DownloadError) => {
+                            let err = CfiCacheError::Fetching(ObjectError::Malformed);
                             log::warn!("Error while parsing cficache: {}", LogError(&err));
                             ObjectFileStatus::from(&err)
                         }

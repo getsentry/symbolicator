@@ -18,7 +18,7 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheKey, CacheStatus, MalformedCause};
 use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
@@ -111,7 +111,7 @@ impl FetchFileRequest {
                     match decompress_object_file(&download_file, decompressed_path) {
                         Ok(file) => file,
                         Err(_) => {
-                            return Ok(CacheStatus::Malformed);
+                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
                         }
                     };
 
@@ -125,7 +125,7 @@ impl FetchFileRequest {
                             let kind = self.kind.to_string();
                             metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                             log::debug!("Failed to parse bcsymbolmap: {}", err);
-                            return Ok(CacheStatus::Malformed);
+                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
                         }
                     }
                     AuxDifKind::UuidMap => {
@@ -133,7 +133,7 @@ impl FetchFileRequest {
                             let kind = self.kind.to_string();
                             metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                             log::debug!("Failed to parse plist: {}", err);
-                            return Ok(CacheStatus::Malformed);
+                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
                         }
                     }
                 }

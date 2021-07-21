@@ -20,10 +20,10 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 
-use crate::cache::{CacheKey, CacheStatus};
+use crate::cache::{CacheKey, CacheStatus, MalformedCause};
 use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CachePath};
-use crate::services::download::{DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadError, DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
@@ -71,7 +71,12 @@ impl ObjectHandle {
         match self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(ObjectError::Malformed),
+            CacheStatus::Malformed(MalformedCause::BadObject)
+            | CacheStatus::Malformed(MalformedCause::Unknown) => Err(ObjectError::Malformed),
+            CacheStatus::Malformed(MalformedCause::DownloadError) => {
+                // TODO: how can we restore the original error?
+                Err(ObjectError::Download(DownloadError::Canceled))
+            }
         }
     }
 
@@ -167,7 +172,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                 Err(e) => {
                     log::error!("Error while downloading file: {}", LogError(&e));
-                    return Ok(CacheStatus::Malformed);
+                    return Ok(CacheStatus::Malformed(MalformedCause::DownloadError));
                 }
 
                 Ok(DownloadStatus::Completed) => {
@@ -183,7 +188,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             // the error comes from a corrupt file than a local file system error.
             let mut decompressed = match decompress_result {
                 Ok(decompressed) => decompressed,
-                Err(_) => return Ok(CacheStatus::Malformed),
+                Err(_) => return Ok(CacheStatus::Malformed(MalformedCause::BadObject)),
             };
 
             // Seek back to the start and parse this object so we can deal with it.
@@ -194,7 +199,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             let view = ByteView::map_file(decompressed)?;
             let archive = match Archive::parse(&view) {
                 Ok(archive) => archive,
-                Err(_) => return Ok(CacheStatus::Malformed),
+                Err(_) => return Ok(CacheStatus::Malformed(MalformedCause::BadObject)),
             };
             let mut persist_file = fs::File::create(&path)?;
             if archive.is_multi() {
@@ -207,7 +212,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                     Some(object) => object,
                     None => {
                         if archive.objects().any(|r| r.is_err()) {
-                            return Ok(CacheStatus::Malformed);
+                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
                         } else {
                             return Ok(CacheStatus::Negative);
                         }
@@ -219,7 +224,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                 // Attempt to parse the object to capture errors. The result can be
                 // discarded as the object's data is the entire ByteView.
                 if archive.object_by_index(0).is_err() {
-                    return Ok(CacheStatus::Malformed);
+                    return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
                 }
 
                 io::copy(&mut view.as_ref(), &mut persist_file)?;
@@ -278,7 +283,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::cache::{Cache, CacheStatus};
+    use crate::cache::{Cache, CacheStatus, MalformedCause};
     use crate::config::{CacheConfig, CacheConfigs, Config};
     use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::Scope;
@@ -337,7 +342,7 @@ mod tests {
 
             // for each of the different symbol sources, we assert that:
             // * we get a negative cache result no matter how often we try
-            // * we hit the symbol source exactly once for the initial request
+            // * we hit the symbol source once for the initial request, then another 3 times to retry
             // * the second try should *not* hit the symbol source, but should rather be served by the cache
 
             // server rejects the request (500)
@@ -346,11 +351,25 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
-            assert_eq!(server.accesses(), 1);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::Malformed(MalformedCause::DownloadError)
+            );
+            assert_eq!(
+                server.accesses(),
+                4,
+                "hit the symbol source once, with 3 retries"
+            );
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
-            assert_eq!(server.accesses(), 0);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::Malformed(MalformedCause::DownloadError)
+            );
+            assert_eq!(
+                server.accesses(),
+                0,
+                "hit the symbol source zero times, went straight to cache"
+            );
         })
         .await;
     }
@@ -424,10 +443,17 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::Malformed(MalformedCause::DownloadError)
+            );
+            // Timeouts don't retry ):
             assert_eq!(server.accesses(), 1);
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::Malformed(MalformedCause::DownloadError)
+            );
             assert_eq!(server.accesses(), 0);
         })
         .await;
