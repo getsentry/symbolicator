@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
+use reqwest::StatusCode;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
@@ -51,6 +52,9 @@ pub enum DownloadError {
     Sentry(#[from] sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[source] s3::S3Error),
+    /// Typically means the initial HEAD request received a non-200, non-400 response.
+    #[error("failed to download: {0}")]
+    Rejected(StatusCode),
 }
 
 /// Completion status of a successful download request.
@@ -133,16 +137,15 @@ impl DownloadService {
         });
 
         match result.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from {:?}: {:?}",
-                    source,
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
             Ok(status) => {
-                log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                match status {
+                    DownloadStatus::Completed => {
+                        log::debug!("Did not fetch debug file from {:?}: {:?}", source, status);
+                    }
+                    DownloadStatus::NotFound => {
+                        log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                    }
+                };
                 Ok(status)
             }
             Err(err) => {
@@ -240,6 +243,11 @@ impl DownloadService {
 /// Download the source from a stream.
 ///
 /// This is common functionality used by many downloaders.
+///
+/// # Errors
+/// - [`DownloadError::BadDestination`]
+/// - [`DownloadError::Write`]
+/// - [`DownloadError::Cancelled`]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
