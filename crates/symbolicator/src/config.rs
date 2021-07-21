@@ -328,7 +328,7 @@ impl Default for Config {
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
             max_download_timeout: Duration::from_secs(300),
-            connect_timeout: Duration::from_secs(60),
+            connect_timeout: Duration::from_secs(15),
             streaming_timeout: Duration::from_secs(150),
         }
     }
