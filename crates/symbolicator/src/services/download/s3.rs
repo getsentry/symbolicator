@@ -139,9 +139,9 @@ impl S3Downloader {
 
     /// Downloads a source hosted on an S3 bucket.
     ///
-    /// # Errors
-    /// - [`DownloadError::Io`]: unable to begin streaming the source
-    /// - [`DownloadError::Cancelled`]: the request timed out
+    /// # Directly thrown errors
+    /// - [`DownloadError::Io`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: S3RemoteDif,

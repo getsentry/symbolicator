@@ -207,12 +207,11 @@ impl GcsDownloader {
 
     /// Downloads a source hosted on GCS.
     ///
-    /// # Errors
-    /// - [`GcsError::InvalidUrl`]: the url was malformed and/or could not be parsed
-    /// - [`DownloadError::Reqwest`]: unable to begin streaming the source, or the initial HEAD
-    ///   request encountered an error
-    /// - [`DownloadError::Rejected`]: the initial HEAD request received a non-successful response
-    /// - [`DownloadError::Cancelled`]: the request timed out
+    /// # Directly thrown errors
+    /// - [`GcsError::InvalidUrl`]
+    /// - [`DownloadError::Reqwest`]
+    /// - [`DownloadError::Rejected`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: GcsRemoteDif,

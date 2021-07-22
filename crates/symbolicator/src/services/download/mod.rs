@@ -38,6 +38,8 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 pub enum DownloadError {
     #[error("failed to download")]
     Io(#[source] std::io::Error),
+    /// Generally used when unable to begin streaming the source, or the initial HEAD request
+    /// encountered an error
     #[error("failed to download")]
     Reqwest(#[source] reqwest::Error),
     #[error("bad file destination")]
@@ -50,6 +52,8 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
+    /// Typically means the initial HEAD request received a non-200, non-400 response. 400s are
+    /// covered elsewhere.
     #[error("rejected by server")]
     Rejected(StatusCode),
 }
