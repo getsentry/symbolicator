@@ -49,6 +49,8 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry: {0}")]
     Sentry(#[from] sentry::SentryError),
+    #[error("failed to fetch data from S3")]
+    S3(#[source] s3::S3Error),
 }
 
 /// Completion status of a successful download request.
