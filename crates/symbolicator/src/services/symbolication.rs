@@ -32,6 +32,7 @@ use thiserror::Error;
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::services::download::DownloadError;
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
 use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::sources::{FileType, SourceConfig};
@@ -178,6 +179,16 @@ impl CfiCacheModules {
                         CacheStatus::Malformed => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
                             log::warn!("Error while parsing cficache: {}", LogError(&err));
+                            ObjectFileStatus::from(&err)
+                        }
+                        CacheStatus::DownloadError => {
+                            let err = CfiCacheError::Fetching(ObjectError::Download(
+                                DownloadError::CachedFailure,
+                            ));
+                            log::warn!(
+                                "Error while downloading cficache's DIF: {}",
+                                LogError(&err)
+                            );
                             ObjectFileStatus::from(&err)
                         }
                     };
@@ -831,6 +842,10 @@ impl SymCacheLookup {
                     Ok(symcache) => match symcache.parse() {
                         Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
                         Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
+                        // TODO: probably could do this better
+                        Err(SymCacheError::Fetching(ObjectError::Download(
+                            DownloadError::CachedFailure,
+                        ))) => (Some(symcache), ObjectFileStatus::FetchingFailed),
                         Err(e) => (None, (&e).into()),
                     },
                     Err(e) => (None, (&*e).into()),

@@ -36,6 +36,10 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 /// Errors happening while downloading from sources.
 #[derive(Debug, Error)]
 pub enum DownloadError {
+    // A download failure retrieved from cache
+    #[error("failed to download")]
+    // TODO: wrap around a string and return that instead
+    CachedFailure,
     #[error("failed to download")]
     Io(#[source] std::io::Error),
     /// Generally used when unable to begin streaming the source, or the initial HEAD request

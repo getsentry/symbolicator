@@ -151,6 +151,10 @@ impl ObjectUseInfo {
                 }
             }
             CacheStatus::Malformed => ObjectUseInfo::Malformed,
+            CacheStatus::DownloadError => ObjectUseInfo::Error {
+                // TODO: add download error
+                details: String::from("add download error to this later"),
+            },
         }
     }
 }

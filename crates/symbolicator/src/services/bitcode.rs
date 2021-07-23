@@ -95,13 +95,19 @@ impl FetchFileRequest {
         match self
             .download_svc
             .download(self.file_source, download_file.path().to_path_buf())
-            .await?
+            .await
         {
-            DownloadStatus::NotFound => {
+            Err(_download_error) => {
+                log::debug!("Unable to download DIF for {}", cache_key);
+                // TODO: stuff download error message in
+                // let error_msg = format!("{}", download_error);
+                Ok(CacheStatus::DownloadError)
+            }
+            Ok(DownloadStatus::NotFound) => {
                 log::debug!("No auxiliary DIF file found for {}", cache_key);
                 Ok(CacheStatus::Negative)
             }
-            DownloadStatus::Completed => {
+            Ok(DownloadStatus::Completed) => {
                 let download_dir = download_file
                     .path()
                     .parent()

@@ -43,6 +43,7 @@ impl fmt::Display for ObjectError {
         write!(f, "ObjectError: ")?;
         match self {
             ObjectError::Io(_, _) => write!(f, "failed to download (I/O error)")?,
+            // TODO: does this overwrite the inner error's display string?
             ObjectError::Download(_) => write!(f, "failed to download")?,
             ObjectError::Persisting(_) => write!(f, "failed persisting data")?,
             ObjectError::NoTempDir => write!(f, "unable to get directory for tempfiles")?,
@@ -324,7 +325,7 @@ impl ObjectsActor {
     }
 }
 
-/// Select the best [ObjectMetaHandle`] out of all lookups from the meta-cache.
+/// Select the best [`ObjectMetaHandle`] out of all lookups from the meta-cache.
 ///
 /// The lookups are expected to be in order or preference, so if two files are equally good
 /// the first one will be chosen.  If the file list is emtpy, `None` is returned in the
@@ -394,6 +395,8 @@ fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -
             ObjectPurpose::Source => meta_handle.features.has_sources,
         }
     } else {
+        // TODO: shouldn't this be false if the cache status isn't positive? it has no features, not
+        // some features?
         true
     }
 }
@@ -447,6 +450,10 @@ fn create_candidate_info(
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
                 CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                CacheStatus::DownloadError => ObjectDownloadInfo::Error {
+                    // TODO: add download error
+                    details: String::from("add download error to this later"),
+                },
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),

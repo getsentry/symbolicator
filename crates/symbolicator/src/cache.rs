@@ -26,6 +26,8 @@ use crate::types::Scope;
 /// yet.
 pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
+pub const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
@@ -34,9 +36,11 @@ pub enum CacheStatus {
     /// A cache item that represents the absence of something. E.g. we encountered a 404 or a client
     /// error while trying to download a file, and cached that fact. Represented by an empty file.
     Negative,
-    /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
-    /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
+    /// We are unable to create or use the cache item. E.g. we failed to create a symcache. See docs
+    /// for [`MALFORMED_MARKER`].
     Malformed,
+    /// couldn't download the thing
+    DownloadError,
 }
 
 impl AsRef<str> for CacheStatus {
@@ -45,6 +49,7 @@ impl AsRef<str> for CacheStatus {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
             CacheStatus::Malformed => "malformed",
+            CacheStatus::DownloadError => "downloaderror",
         }
     }
 }
@@ -53,6 +58,9 @@ impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
         if s == MALFORMED_MARKER {
             CacheStatus::Malformed
+        } else if s.starts_with(DOWNLOAD_ERROR_MARKER) {
+            // TODO: load error message into this
+            CacheStatus::DownloadError
         } else if s.is_empty() {
             CacheStatus::Negative
         } else {
@@ -80,6 +88,11 @@ impl CacheStatus {
             CacheStatus::Malformed => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
+            }
+            CacheStatus::DownloadError => {
+                let mut f = File::create(path)?;
+                f.write_all(DOWNLOAD_ERROR_MARKER)?;
+                // TODO: write contents of error
             }
         }
 
@@ -199,8 +212,12 @@ impl Cache {
         // * most filesystems are mounted with noatime
         //
         // States a cache item can be in:
-        // * negative/empty: An empty file. Represents a failed download. mtime is used to indicate
-        //   when the failed download happened (when the file was created)
+        // * negative/empty: An empty file. Represents a failed download where the DIF could not be
+        //   found. mtime is used to indicate when the failed download happened (when the file was
+        //   created)
+        // * downloaderror: A file with the content `b"downloaderror"`. Represents a failed download
+        //   that doesn't fall under negative/empty. mtime is also used to indicate when the failed
+        //   download happened.
         // * malformed: A file with the content `b"malformed"`. Represents a failed symcache
         //   conversion. mtime indicates when we attempted to convert.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
@@ -220,7 +237,19 @@ impl Cache {
             false
         };
 
-        let is_negative = metadata.len() == 0;
+        let is_download_error = if DOWNLOAD_ERROR_MARKER.len() as u64 == metadata.len() {
+            let mut file = File::open(path)?;
+            let mut buf = vec![0; DOWNLOAD_ERROR_MARKER.len()];
+            file.read_exact(&mut buf)?;
+
+            log::trace!("First {} bytes: {:?}", buf.len(), buf);
+            buf == DOWNLOAD_ERROR_MARKER
+        } else {
+            false
+        };
+
+        // download errors use the same expiration/retry strategy and mtime calculation as negative
+        let is_negative = metadata.len() == 0 || is_download_error;
 
         if is_malformed {
             // Immediately expire malformed items that have been created before this process started.
@@ -642,6 +671,48 @@ mod tests {
         basenames.sort();
 
         assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_download_error() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
+
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(50)),
+                ..Default::default()
+            }),
+        )?;
+
+        // File has same amount of chars as "downloaderror", check that optimization works
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"honkhonkquack")?;
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"downloaderror")?;
+
+        sleep(Duration::from_millis(100));
+        // Hasn't expired
+        File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"downloaderror")?;
+
+        cache.cleanup()?;
+
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        basenames.sort();
+
+        assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
 
         Ok(())
     }

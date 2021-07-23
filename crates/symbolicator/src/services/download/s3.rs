@@ -175,12 +175,12 @@ impl S3Downloader {
                 // - If `ListBucket` is permitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
-
-                if matches!(err, RusotoError::Service(_)) {
-                    return Ok(DownloadStatus::NotFound);
-                } else {
-                    return Err(DownloadError::S3(err));
+                if let RusotoError::Unknown(response) = &err {
+                    if response.status.is_client_error() {
+                        return Ok(DownloadStatus::NotFound);
+                    }
                 }
+                return Err(DownloadError::S3(err));
             }
             Err(_) => {
                 // Timed out

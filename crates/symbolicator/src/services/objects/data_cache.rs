@@ -23,6 +23,7 @@ use tempfile::tempfile_in;
 use crate::cache::{CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CachePath};
+use crate::services::download::DownloadError;
 use crate::services::download::{DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
@@ -72,6 +73,8 @@ impl ObjectHandle {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectError::Malformed),
+            // TODO: copy error string over
+            CacheStatus::DownloadError => Err(ObjectError::Download(DownloadError::CachedFailure)),
         }
     }
 
@@ -164,10 +167,10 @@ impl CacheItemRequest for FetchFileDataRequest {
                     log::debug!("No debug file found for {}", cache_key);
                     return Ok(CacheStatus::Negative);
                 }
-
+                // TODO: return CacheStatus::DownloadError
                 Err(e) => {
-                    log::error!("Error while downloading file: {}", LogError(&e));
-                    return Ok(CacheStatus::Malformed);
+                    log::debug!("Error while downloading file: {}", LogError(&e));
+                    return Ok(CacheStatus::DownloadError);
                 }
 
                 Ok(DownloadStatus::Completed) => {
@@ -346,10 +349,10 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
-            assert_eq!(server.accesses(), 1);
+            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
+            assert_eq!(server.accesses(), 1 + 3); // first hit + 3 retries
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
             assert_eq!(server.accesses(), 0);
         })
         .await;
@@ -424,10 +427,10 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
-            assert_eq!(server.accesses(), 1);
+            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
+            assert_eq!(server.accesses(), 1); // timeouts don't get retried?
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
             assert_eq!(server.accesses(), 0);
         })
         .await;

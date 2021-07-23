@@ -27,6 +27,8 @@ use crate::types::{
 use crate::utils::futures::{BoxedFuture, ThreadPool};
 use crate::utils::sentry::ConfigureScope;
 
+use super::download::DownloadError;
+
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 
@@ -105,6 +107,9 @@ impl SymCacheFile {
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(SymCacheError::Malformed),
+            CacheStatus::DownloadError => Err(SymCacheError::Fetching(ObjectError::Download(
+                DownloadError::CachedFailure,
+            ))),
         }
     }
 

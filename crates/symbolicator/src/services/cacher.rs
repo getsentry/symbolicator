@@ -186,9 +186,11 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         // This is also reported for "negative cache hits": When we cached the 404 response from a
-        // server as empty file.
+        // server as empty file, as well as other download errors.
         metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
         metric!(
+            // TODO: what does it mean when this is a cache status that wraps around variable length
+            // content? should we fix these to just the marker length if this is Malformed and DownloadError?
             time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
             "hit" => "true"
         );
