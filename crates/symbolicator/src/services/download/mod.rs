@@ -52,7 +52,9 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
-    /// Typically means the initial HEAD request received a non-200, non-400 response. 400s are
+    #[error("failed to fetch data from S3")]
+    S3(#[source] s3::S3Error),
+    /// Typically means the initial HEAD request received a non-200 or non-400 response. 400s are
     /// covered elsewhere.
     #[error("failed to download")]
     Rejected(StatusCode),

@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
-use rusoto_s3::S3;
+use rusoto_core::RusotoError;
+use rusoto_s3::{GetObjectError, S3};
 
 use rusoto_core::credential::ProvideAwsCredentials;
 use rusoto_core::region::Region;
@@ -86,6 +87,8 @@ impl fmt::Debug for S3Downloader {
             .finish()
     }
 }
+
+pub type S3Error = RusotoError<GetObjectError>;
 
 impl S3Downloader {
     pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
@@ -172,7 +175,12 @@ impl S3Downloader {
                 // - If `ListBucket` is permitted, a 404 is returned for missing objects.
                 // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
-                return Ok(DownloadStatus::NotFound);
+
+                if matches!(err, RusotoError::Service(_)) {
+                    return Ok(DownloadStatus::NotFound);
+                } else {
+                    return Err(DownloadError::S3(err));
+                }
             }
             Err(_) => {
                 // Timed out
