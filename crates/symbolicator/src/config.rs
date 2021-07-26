@@ -246,7 +246,8 @@ pub struct Config {
     /// The maximum timeout for downloads.
     ///
     /// This is the upper limit the download service will take for downloading from a single
-    /// source, regardless of how many retries are involved.
+    /// source, regardless of how many retries are involved. The default is set to 315s,
+    /// just above the amount of time it would take for a 4MB/s connection to download 2GB.
     #[serde(with = "humantime_serde")]
     pub max_download_timeout: Duration,
 
@@ -261,7 +262,9 @@ pub struct Config {
     ///
     /// For downloads with a known size, this timeout applies per individual
     /// download attempt. If the download size is not known, it is ignored and
-    /// only `max_download_timeout` applies.
+    /// only `max_download_timeout` applies. The default is set to 250s,
+    /// just above the amount of time it would take for a 4MB/s connection to
+    /// download 1GB.
     #[serde(with = "humantime_serde")]
     pub streaming_timeout: Duration,
 }
@@ -327,9 +330,11 @@ impl Default for Config {
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
-            max_download_timeout: Duration::from_secs(300),
+            // Allow a 4MB/s connection to download 2GB without timing out
+            max_download_timeout: Duration::from_secs(315),
             connect_timeout: Duration::from_secs(15),
-            streaming_timeout: Duration::from_secs(150),
+            // Allow a 4MB/s connection to download 1GB without timing out
+            streaming_timeout: Duration::from_secs(250),
         }
     }
 }
