@@ -325,7 +325,7 @@ impl ObjectsActor {
     }
 }
 
-/// Select the best [ObjectMetaHandle`] out of all lookups from the meta-cache.
+/// Select the best [`ObjectMetaHandle`] out of all lookups from the meta-cache.
 ///
 /// The lookups are expected to be in order or preference, so if two files are equally good
 /// the first one will be chosen.  If the file list is emtpy, `None` is returned in the
@@ -442,16 +442,22 @@ fn create_candidate_info(
 ) -> ObjectCandidate {
     match meta_lookup {
         Ok(meta_handle) => {
-            let download = match meta_handle.status {
+            let download = match &meta_handle.status {
                 CacheStatus::Positive => ObjectDownloadInfo::Ok {
                     features: meta_handle.features(),
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed(MalformedCause::BadObject)
-                | CacheStatus::Malformed(MalformedCause::Unknown) => ObjectDownloadInfo::Malformed,
-                CacheStatus::Malformed(MalformedCause::DownloadError) => {
+                CacheStatus::Malformed(MalformedCause::BadObject(_)) => {
+                    ObjectDownloadInfo::Malformed
+                }
+                CacheStatus::Malformed(MalformedCause::DownloadError(details)) => {
                     ObjectDownloadInfo::Error {
-                        details: "unable to download file".to_string(),
+                        details: details.clone(),
+                    }
+                }
+                CacheStatus::Malformed(MalformedCause::Unknown(details)) => {
+                    ObjectDownloadInfo::Error {
+                        details: details.clone(),
                     }
                 }
             };

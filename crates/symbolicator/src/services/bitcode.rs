@@ -110,8 +110,9 @@ impl FetchFileRequest {
                 let mut decompressed =
                     match decompress_object_file(&download_file, decompressed_path) {
                         Ok(file) => file,
-                        Err(_) => {
-                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
+                        Err(err) => {
+                            let cause = MalformedCause::BadObject(format!("{}", err));
+                            return Ok(CacheStatus::Malformed(cause));
                         }
                     };
 
@@ -125,7 +126,9 @@ impl FetchFileRequest {
                             let kind = self.kind.to_string();
                             metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                             log::debug!("Failed to parse bcsymbolmap: {}", err);
-                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
+
+                            let cause = MalformedCause::BadObject(format!("{}", err));
+                            return Ok(CacheStatus::Malformed(cause));
                         }
                     }
                     AuxDifKind::UuidMap => {
@@ -133,7 +136,9 @@ impl FetchFileRequest {
                             let kind = self.kind.to_string();
                             metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                             log::debug!("Failed to parse plist: {}", err);
-                            return Ok(CacheStatus::Malformed(MalformedCause::BadObject));
+
+                            let cause = MalformedCause::BadObject(format!("{}", err));
+                            return Ok(CacheStatus::Malformed(cause));
                         }
                     }
                 }

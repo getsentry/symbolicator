@@ -26,38 +26,67 @@ use crate::types::Scope;
 /// yet.
 pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub const BAD_OBJECT_MARKER: &[u8] = b"badobject";
+pub const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum MalformedCause {
-    BadObject,
-    DownloadError,
-    Unknown,
+    BadObject(String),
+    DownloadError(String),
+    Unknown(String),
+    // TODO: add Timeout?
 }
 
 impl From<&[u8]> for MalformedCause {
     fn from(value: &[u8]) -> Self {
-        if value == b"badobject" {
-            Self::BadObject
-        } else if value == b"downloaderror" {
-            Self::DownloadError
+        if value.starts_with(BAD_OBJECT_MARKER) {
+            let raw = value.get(BAD_OBJECT_MARKER.len()..).unwrap_or_default();
+            let details = String::from_utf8(raw.into()).unwrap_or_else(|err| {
+                log::debug!(
+                    "Unable to read details of malformed cache file for a bad object: {}",
+                    err
+                );
+                String::from("Malformed object")
+            });
+            Self::BadObject(details)
+        } else if value.starts_with(DOWNLOAD_ERROR_MARKER) {
+            let raw = value.get(DOWNLOAD_ERROR_MARKER.len()..).unwrap_or_default();
+            let details = String::from_utf8(raw.into()).unwrap_or_else(|err| {
+                log::debug!(
+                    "Unable to read details of malformed cache file for an unfetchable source: {}",
+                    err
+                );
+                String::from("Unfetchable source")
+            });
+            Self::DownloadError(details)
         } else {
-            Self::Unknown
+            let details = String::from_utf8(value.into()).unwrap_or_else(|err| {
+                log::debug!(
+                    "Unable to read details of malformed cache file for a bad source of unknown causes: {}",
+                    err
+                );
+                String::from("Unknown malformed source")
+            });
+            Self::Unknown(details)
         }
     }
 }
 
-impl From<MalformedCause> for &[u8] {
+impl From<MalformedCause> for Vec<u8> {
     fn from(val: MalformedCause) -> Self {
         match val {
-            MalformedCause::BadObject => b"badobject",
-            MalformedCause::DownloadError => b"downloaderror",
-            // TODO: This could cause us to erase valid causes in the future if we introduce new
-            // variants. Maybe we should store the unrecognized cause inside of Unknown?
-            MalformedCause::Unknown => &[],
+            MalformedCause::BadObject(description) => {
+                [BAD_OBJECT_MARKER, &description.into_bytes()].concat()
+            }
+            MalformedCause::DownloadError(description) => {
+                [DOWNLOAD_ERROR_MARKER, &description.into_bytes()].concat()
+            }
+            MalformedCause::Unknown(description) => description.into_bytes(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
     /// object file and cached that file.
@@ -75,7 +104,11 @@ impl AsRef<str> for CacheStatus {
         match self {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
-            CacheStatus::Malformed(_) => "malformed",
+            CacheStatus::Malformed(MalformedCause::BadObject(_)) => "malformed (bad object)",
+            CacheStatus::Malformed(MalformedCause::DownloadError(_)) => {
+                "malformed (download error)"
+            }
+            CacheStatus::Malformed(MalformedCause::Unknown(_)) => "malformed (unknown)",
         }
     }
 }
@@ -97,7 +130,7 @@ impl CacheStatus {
     /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
     /// file to the final cache location.  Otherwise it writes corresponding marker in the
     /// cache location.
-    pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
+    pub fn persist_item(&self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
         let dir = path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
         })?;
@@ -112,7 +145,8 @@ impl CacheStatus {
             CacheStatus::Malformed(cause) => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
-                f.write_all(cause.into())?;
+                let details: Vec<u8> = cause.clone().into();
+                f.write_all(&details)?;
             }
         }
 

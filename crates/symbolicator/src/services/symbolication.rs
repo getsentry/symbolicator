@@ -175,15 +175,31 @@ impl CfiCacheModules {
                     let cfi_status = match cfi_cache.status() {
                         CacheStatus::Positive => ObjectFileStatus::Found,
                         CacheStatus::Negative => ObjectFileStatus::Missing,
-                        CacheStatus::Malformed(MalformedCause::BadObject)
-                        | CacheStatus::Malformed(MalformedCause::Unknown) => {
+                        CacheStatus::Malformed(MalformedCause::BadObject(details)) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            log::warn!("Error while parsing cficache: {}", LogError(&err));
+                            log::warn!(
+                                "Error while parsing cficache: {} ({})",
+                                LogError(&err),
+                                details
+                            );
                             ObjectFileStatus::from(&err)
                         }
-                        CacheStatus::Malformed(MalformedCause::DownloadError) => {
+                        CacheStatus::Malformed(MalformedCause::DownloadError(details)) => {
                             let err = CfiCacheError::Fetching(ObjectError::Malformed);
-                            log::warn!("Error while parsing cficache: {}", LogError(&err));
+                            log::warn!(
+                                "Error while parsing cficache: {} ({})",
+                                LogError(&err),
+                                details
+                            );
+                            ObjectFileStatus::from(&err)
+                        }
+                        CacheStatus::Malformed(MalformedCause::Unknown(details)) => {
+                            let err = CfiCacheError::Canceled;
+                            log::warn!(
+                                "Error while parsing cficache: {} ({})",
+                                LogError(&err),
+                                details
+                            );
                             ObjectFileStatus::from(&err)
                         }
                     };

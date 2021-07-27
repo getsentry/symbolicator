@@ -104,9 +104,11 @@ impl SymCacheFile {
                 SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(MalformedCause::BadObject)
-            | CacheStatus::Malformed(MalformedCause::Unknown) => Err(SymCacheError::Malformed),
-            CacheStatus::Malformed(MalformedCause::DownloadError) => {
+            CacheStatus::Malformed(MalformedCause::BadObject(_)) => Err(SymCacheError::Malformed),
+            CacheStatus::Malformed(MalformedCause::DownloadError(_)) => {
+                Err(SymCacheError::Fetching(ObjectError::Malformed))
+            }
+            CacheStatus::Malformed(MalformedCause::Unknown(_)) => {
                 Err(SymCacheError::Fetching(ObjectError::Malformed))
             }
         }
@@ -173,8 +175,8 @@ async fn fetch_difs_and_compute_symcache(
         .await
         .map_err(SymCacheError::Fetching)?;
 
-    if object_handle.status() != CacheStatus::Positive {
-        return Ok(object_handle.status());
+    if object_handle.status() != &CacheStatus::Positive {
+        return Ok(object_handle.status().clone());
     }
 
     let compute_future = async move {
@@ -183,7 +185,7 @@ async fn fetch_difs_and_compute_symcache(
             Err(err) => {
                 log::warn!("Failed to write symcache: {}", err);
                 sentry::capture_error(&err);
-                CacheStatus::Malformed(MalformedCause::BadObject)
+                CacheStatus::Malformed(MalformedCause::BadObject(format!("{}", err)))
             }
         };
         Ok(status)
@@ -250,7 +252,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         candidates.set_debug(
             self.object_meta.source_id().clone(),
             &self.object_meta.uri(),
-            ObjectUseInfo::from_derived_status(status, self.object_meta.status()),
+            ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
         );
 
         SymCacheFile {

@@ -54,7 +54,7 @@ pub enum DownloadError {
     Sentry(#[from] sentry::SentryError),
     /// Typically means the initial HEAD request received a non-200, non-400 response. 400s are
     /// covered elsewhere.
-    #[error("rejected by server")]
+    #[error("rejected by server ({0})")]
     Rejected(StatusCode),
 }
 
@@ -246,9 +246,9 @@ impl DownloadService {
 /// This is common functionality used by many downloaders.
 ///
 /// # Errors
-/// - [`DownloadError::BadDestination`]: could not create a file at the given destination
-/// - [`DownloadError::Write`]: unable to write a chunk of the source to the destination
-/// - [`DownloadError::Cancelled`]: stream timed out
+/// - [`DownloadError::BadDestination`]
+/// - [`DownloadError::Write`]
+/// - [`DownloadError::Canceled`]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,

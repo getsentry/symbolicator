@@ -136,11 +136,11 @@ impl ObjectUseInfo {
     ///
     /// [`symcaches`]: crate::services::symcaches
     /// [`cficaches`]: crate::services::cficaches
-    pub fn from_derived_status(derived: CacheStatus, original: CacheStatus) -> Self {
+    pub fn from_derived_status(derived: &CacheStatus, original: &CacheStatus) -> Self {
         match derived {
             CacheStatus::Positive => ObjectUseInfo::Ok,
             CacheStatus::Negative => {
-                if original == CacheStatus::Positive {
+                if original == &CacheStatus::Positive {
                     ObjectUseInfo::Error {
                         details: String::from("Object file no longer available"),
                     }
@@ -150,10 +150,14 @@ impl ObjectUseInfo {
                     ObjectUseInfo::None
                 }
             }
-            CacheStatus::Malformed(MalformedCause::BadObject)
-            | CacheStatus::Malformed(MalformedCause::Unknown) => ObjectUseInfo::Malformed,
-            CacheStatus::Malformed(MalformedCause::DownloadError) => ObjectUseInfo::Error {
-                details: String::from("unable to download file"),
+            CacheStatus::Malformed(MalformedCause::BadObject(_)) => ObjectUseInfo::Malformed,
+            CacheStatus::Malformed(MalformedCause::DownloadError(details)) => {
+                ObjectUseInfo::Error {
+                    details: details.clone(),
+                }
+            }
+            CacheStatus::Malformed(MalformedCause::Unknown(details)) => ObjectUseInfo::Error {
+                details: details.clone(),
             },
         }
     }
