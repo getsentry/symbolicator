@@ -169,6 +169,21 @@ impl CacheItemRequest for FetchFileDataRequest {
                 .await;
 
             match status {
+                Err(DownloadError::Canceled) => {
+                    log::debug!("Timed out while downloading DIF for {}", cache_key);
+                    let cause = MalformedCause::Timeout;
+                    return Ok(CacheStatus::Malformed(cause));
+                }
+                Err(err @ DownloadError::Reqwest(_)) => {
+                    log::debug!("Failed to download DIF for {}: {}", cache_key, err);
+                    let cause = MalformedCause::DownloadError(format!("{}", err));
+                    return Ok(CacheStatus::Malformed(cause));
+                }
+                Err(err @ DownloadError::Rejected(_)) => {
+                    log::debug!("Failed to download DIF for {}: {}", cache_key, err);
+                    let cause = MalformedCause::DownloadError(format!("{}", err));
+                    return Ok(CacheStatus::Malformed(cause));
+                }
                 Err(e) => {
                     log::error!("Error while downloading file: {}", LogError(&e));
                     let cause = MalformedCause::DownloadError(format!("{}", e));
