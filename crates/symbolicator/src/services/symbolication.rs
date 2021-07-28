@@ -853,6 +853,9 @@ impl SymCacheLookup {
                     Ok(symcache) => match symcache.parse() {
                         Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
                         Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
+                        Err(SymCacheError::Fetching(ObjectError::Malformed)) => {
+                            (Some(symcache), ObjectFileStatus::FetchingFailed)
+                        }
                         Err(e) => (None, (&e).into()),
                     },
                     Err(e) => (None, (&*e).into()),

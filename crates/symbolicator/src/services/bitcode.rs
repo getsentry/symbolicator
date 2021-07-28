@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Error};
+use anyhow::{anyhow, Context, Error};
 use futures::compat::Future01CompatExt;
 use futures::{future, FutureExt, TryFutureExt};
 use sentry::{Hub, SentryFutureExt};
@@ -25,6 +25,8 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
+
+use super::download::DownloadError;
 
 /// Handle to a valid BCSymbolMap.
 ///
@@ -95,13 +97,13 @@ impl FetchFileRequest {
         match self
             .download_svc
             .download(self.file_source, download_file.path().to_path_buf())
-            .await?
+            .await
         {
-            DownloadStatus::NotFound => {
+            Ok(DownloadStatus::NotFound) => {
                 log::debug!("No auxiliary DIF file found for {}", cache_key);
                 Ok(CacheStatus::Negative)
             }
-            DownloadStatus::Completed => {
+            Ok(DownloadStatus::Completed) => {
                 let download_dir = download_file
                     .path()
                     .parent()
@@ -150,6 +152,22 @@ impl FetchFileRequest {
 
                 Ok(CacheStatus::Positive)
             }
+            Err(DownloadError::Canceled) => {
+                log::debug!("Timed out while downloading DIF for {}", cache_key);
+                let cause = MalformedCause::DownloadError(String::from("timeout"));
+                Ok(CacheStatus::Malformed(cause))
+            }
+            Err(err @ DownloadError::Reqwest(_)) => {
+                log::debug!("Failed to download DIF for {}: {}", cache_key, err);
+                let cause = MalformedCause::DownloadError(format!("{}", err));
+                Ok(CacheStatus::Malformed(cause))
+            }
+            Err(err @ DownloadError::Rejected(_)) => {
+                log::debug!("Failed to download DIF for {}: {}", cache_key, err);
+                let cause = MalformedCause::DownloadError(format!("{}", err));
+                Ok(CacheStatus::Malformed(cause))
+            }
+            Err(err) => Err(anyhow!(err)),
         }
     }
 }
