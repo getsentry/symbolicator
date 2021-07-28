@@ -51,7 +51,7 @@ impl AsRef<str> for CacheStatus {
 
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
-        if s == MALFORMED_MARKER {
+        if s.starts_with(MALFORMED_MARKER) {
             CacheStatus::Malformed
         } else if s.is_empty() {
             CacheStatus::Negative
@@ -209,7 +209,7 @@ impl Cache {
 
         log::trace!("File length: {}", metadata.len());
 
-        let is_malformed = if MALFORMED_MARKER.len() as u64 == metadata.len() {
+        let is_malformed = if MALFORMED_MARKER.len() as u64 <= metadata.len() {
             let mut file = File::open(path)?;
             let mut buf = vec![0; MALFORMED_MARKER.len()];
             file.read_exact(&mut buf)?;
@@ -620,8 +620,10 @@ mod tests {
         // File has same amount of chars as "malformed", check that optimization works
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
         File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
+        File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
 
         sleep(Duration::from_millis(10));
 
@@ -641,7 +643,7 @@ mod tests {
 
         basenames.sort();
 
-        assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+        assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
 
         Ok(())
     }
