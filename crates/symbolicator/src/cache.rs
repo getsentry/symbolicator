@@ -287,15 +287,29 @@ impl Cache {
 
         log::trace!("File length: {}", metadata.len());
 
-        let is_malformed = if MALFORMED_MARKER.len() as u64 <= metadata.len() {
+        // TODO: there's probably a cleaner way to write the entire block below
+        let (is_malformed, is_retryable) = if metadata.len() >= MALFORMED_MARKER.len() as u64 {
+            let max_to_read = MALFORMED_MARKER.len() + DOWNLOAD_ERROR_MARKER.len();
+            let amount_to_read = max_to_read.min(metadata.len() as usize);
+
             let mut file = File::open(path)?;
-            let mut buf = vec![0; MALFORMED_MARKER.len()];
+            let mut buf = vec![0; amount_to_read];
             file.read_exact(&mut buf)?;
 
             log::trace!("First {} bytes: {:?}", buf.len(), buf);
-            buf == MALFORMED_MARKER
+            if buf.starts_with(&[MALFORMED_MARKER, DOWNLOAD_ERROR_MARKER].concat())
+                || buf.starts_with(&[MALFORMED_MARKER, TIMEOUT_MARKER].concat())
+            {
+                (false, true)
+            } else if buf.starts_with(&[MALFORMED_MARKER, BAD_OBJECT_MARKER].concat())
+                || buf.starts_with(MALFORMED_MARKER)
+            {
+                (true, false)
+            } else {
+                (false, false)
+            }
         } else {
-            false
+            (false, false)
         };
 
         let is_negative = metadata.len() == 0;
@@ -321,7 +335,7 @@ impl Cache {
             }
         }
 
-        let max_mtime = if is_negative {
+        let max_mtime = if is_negative || is_retryable {
             self.cache_config.retry_misses_after()
         } else {
             self.cache_config.max_unused_for()
@@ -686,6 +700,8 @@ mod tests {
         Ok(())
     }
 
+    // Primary focus is to make sure that all malformed files are correctly detected regardless of
+    // the pruning strategy used for them
     #[test]
     fn test_cleanup_malformed() -> Result<()> {
         use std::fs::create_dir_all;
@@ -704,15 +720,19 @@ mod tests {
         File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
         File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedbadobject")?;
         File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"malformeddownloaderror")?;
+        File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"malformedtimeout")?;
 
-        sleep(Duration::from_millis(10));
+        sleep(Duration::from_millis(100));
 
         // Creation of this struct == "process startup"
         let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
             None,
-            CacheConfig::Derived(Default::default()),
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(50)),
+                ..Default::default()
+            }),
         )?;
 
         cache.cleanup()?;
@@ -724,6 +744,54 @@ mod tests {
         basenames.sort();
 
         assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_expired_malformed() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
+
+        // File has same amount of chars as "downloaderror", check that optimization works
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"honkhonkquack")?;
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        // These have a timeout
+        File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"malformeddownloaderror")?;
+        File::create(tempdir.path().join("foo/keepthis4"))?.write_all(b"malformedtimeout")?;
+        // These are cleaned immediately
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
+        File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
+        File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"malformedbadobject")?;
+
+        sleep(Duration::from_millis(10));
+
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(50)),
+                ..Default::default()
+            }),
+        )?;
+
+        cache.cleanup()?;
+
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        basenames.sort();
+
+        assert_eq!(
+            basenames,
+            vec!["keepthis", "keepthis2", "keepthis3", "keepthis4"]
+        );
 
         Ok(())
     }
