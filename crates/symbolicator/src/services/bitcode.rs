@@ -94,11 +94,12 @@ impl FetchFileRequest {
         let download_file = self.cache.tempfile()?;
         let cache_key = self.get_cache_key();
 
-        match self
+        let status = self
             .download_svc
             .download(self.file_source, download_file.path().to_path_buf())
-            .await
-        {
+            .await;
+
+        match status {
             Ok(DownloadStatus::NotFound) => {
                 log::debug!("No auxiliary DIF file found for {}", cache_key);
                 Ok(CacheStatus::Negative)
