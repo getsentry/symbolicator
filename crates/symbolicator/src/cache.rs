@@ -28,13 +28,14 @@ pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
 pub const BAD_OBJECT_MARKER: &[u8] = b"badobject";
 pub const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
+pub const TIMEOUT_MARKER: &[u8] = b"timeout";
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum MalformedCause {
     BadObject(String),
     DownloadError(String),
     Unknown(String),
-    // TODO: add Timeout?
+    Timeout,
 }
 
 impl From<&[u8]> for MalformedCause {
@@ -59,6 +60,8 @@ impl From<&[u8]> for MalformedCause {
                 String::from("Unfetchable source")
             });
             Self::DownloadError(details)
+        } else if value.starts_with(TIMEOUT_MARKER) {
+            Self::Timeout
         } else {
             let details = String::from_utf8(value.into()).unwrap_or_else(|err| {
                 log::debug!(
@@ -81,6 +84,7 @@ impl From<MalformedCause> for Vec<u8> {
             MalformedCause::DownloadError(description) => {
                 [DOWNLOAD_ERROR_MARKER, &description.into_bytes()].concat()
             }
+            MalformedCause::Timeout => TIMEOUT_MARKER.to_vec(),
             MalformedCause::Unknown(description) => description.into_bytes(),
         }
     }
@@ -109,6 +113,7 @@ impl AsRef<str> for CacheStatus {
             CacheStatus::Malformed(MalformedCause::DownloadError(_)) => {
                 "malformed (download error)"
             }
+            CacheStatus::Malformed(MalformedCause::Timeout) => "malformed (download timeout)",
             CacheStatus::Malformed(MalformedCause::Unknown(_)) => "malformed (unknown)",
         }
     }

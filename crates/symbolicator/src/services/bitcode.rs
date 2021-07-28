@@ -154,7 +154,7 @@ impl FetchFileRequest {
             }
             Err(DownloadError::Canceled) => {
                 log::debug!("Timed out while downloading DIF for {}", cache_key);
-                let cause = MalformedCause::DownloadError(String::from("timeout"));
+                let cause = MalformedCause::Timeout;
                 Ok(CacheStatus::Malformed(cause))
             }
             Err(err @ DownloadError::Reqwest(_)) => {

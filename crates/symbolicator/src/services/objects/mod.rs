@@ -455,6 +455,9 @@ fn create_candidate_info(
                         details: details.clone(),
                     }
                 }
+                CacheStatus::Malformed(MalformedCause::Timeout) => ObjectDownloadInfo::Error {
+                    details: String::from("download timed out"),
+                },
                 CacheStatus::Malformed(MalformedCause::Unknown(details)) => {
                     ObjectDownloadInfo::Error {
                         details: details.clone(),

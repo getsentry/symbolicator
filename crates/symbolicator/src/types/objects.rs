@@ -156,6 +156,9 @@ impl ObjectUseInfo {
                     details: details.clone(),
                 }
             }
+            CacheStatus::Malformed(MalformedCause::Timeout) => ObjectUseInfo::Error {
+                details: String::from("Download timed out"),
+            },
             CacheStatus::Malformed(MalformedCause::Unknown(details)) => ObjectUseInfo::Error {
                 details: details.clone(),
             },

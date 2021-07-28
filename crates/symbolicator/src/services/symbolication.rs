@@ -193,6 +193,14 @@ impl CfiCacheModules {
                             );
                             ObjectFileStatus::from(&err)
                         }
+                        CacheStatus::Malformed(MalformedCause::Timeout) => {
+                            let err = CfiCacheError::Fetching(ObjectError::Timeout);
+                            log::warn!(
+                                "Error while parsing cficache: {} (download timed out)",
+                                LogError(&err),
+                            );
+                            ObjectFileStatus::from(&err)
+                        }
                         CacheStatus::Malformed(MalformedCause::Unknown(details)) => {
                             let err = CfiCacheError::Canceled;
                             log::warn!(

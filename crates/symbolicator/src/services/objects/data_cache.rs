@@ -72,9 +72,13 @@ impl ObjectHandle {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(MalformedCause::BadObject(_)) => Err(ObjectError::Malformed),
-            // TODO: are these Ok(None)? this probably determines the backoff strat?
             CacheStatus::Malformed(MalformedCause::DownloadError(_))
+            | CacheStatus::Malformed(MalformedCause::Timeout)
             | CacheStatus::Malformed(MalformedCause::Unknown(_)) => {
+                // `DownloadError::Canceled` is normally exclusively used for timeouts, but
+                // `parse()` _should_ never be invoked when the cache isn't positive to begin with.
+                // If we've gotten this far then there're bigger problems higher up in the call
+                // stack to deal with.
                 Err(ObjectError::Download(DownloadError::Canceled))
             }
         }
@@ -458,18 +462,14 @@ mod tests {
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
                 result.meta.unwrap().status,
-                CacheStatus::Malformed(MalformedCause::DownloadError(String::from(
-                    "download was cancelled"
-                )))
+                CacheStatus::Malformed(MalformedCause::Timeout)
             );
             // Timeouts don't retry ):
             assert_eq!(server.accesses(), 1);
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
                 result.meta.unwrap().status,
-                CacheStatus::Malformed(MalformedCause::DownloadError(String::from(
-                    "download was cancelled"
-                )))
+                CacheStatus::Malformed(MalformedCause::Timeout)
             );
             assert_eq!(server.accesses(), 0);
         })

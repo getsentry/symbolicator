@@ -105,10 +105,12 @@ impl SymCacheFile {
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(MalformedCause::BadObject(_)) => Err(SymCacheError::Malformed),
-            CacheStatus::Malformed(MalformedCause::DownloadError(_)) => {
-                Err(SymCacheError::Fetching(ObjectError::Malformed))
-            }
-            CacheStatus::Malformed(MalformedCause::Unknown(_)) => {
+            CacheStatus::Malformed(MalformedCause::DownloadError(_))
+            | CacheStatus::Malformed(MalformedCause::Timeout)
+            | CacheStatus::Malformed(MalformedCause::Unknown(_)) => {
+                // This isn't the most correct error to return but `parse()` _should_ never be
+                // invoked when the cache isn't positive to begin with. If we've gotten this far
+                // then there're bigger problems higher up in the call stack to deal with.
                 Err(SymCacheError::Fetching(ObjectError::Malformed))
             }
         }
