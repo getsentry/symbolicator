@@ -99,6 +99,7 @@ pub enum CacheStatus {
     Malformed(MalformedCause),
 }
 
+// Used for metrics
 impl AsRef<str> for CacheStatus {
     fn as_ref(&self) -> &str {
         match self {
@@ -268,9 +269,13 @@ impl Cache {
         // States a cache item can be in:
         // * negative/empty: An empty file. Represents a failed download. mtime is used to indicate
         //   when the failed download happened (when the file was created)
-        // * malformed: A file with the content `b"malformed"`, `b"malformedbadobject"` or
-        //   `b"malformeddownloaderror". Represents a failed symcache conversion. mtime indicates
-        //   when we attempted to convert.
+        // * malformed: A file that starts with `b"malformed"`. Its contents should be one of the
+        //   following permutations:
+        //   - `b"malformed"` + b"some error description"
+        //   - `b"malformedbadobject"` + b"some error description"
+        //   - `b"malformeddownloaderror"` + b"some error description"
+        //   Like negative/empty, it represents a failed download and mtime represents when the
+        //   failure occurred. This covers all non-400 download errors.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
         let metadata = path.metadata()?;
