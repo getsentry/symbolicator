@@ -284,14 +284,14 @@ impl SentryDownloader {
 
                     super::download_stream(source, stream, destination, timeout).await
                 } else if response.status().is_client_error() {
-                    log::trace!(
+                    log::debug!(
                         "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 } else {
-                    log::trace!(
+                    log::debug!(
                         "Unexpected status code from {}: {}",
                         download_url,
                         response.status()
@@ -300,7 +300,7 @@ impl SentryDownloader {
                 }
             }
             Ok(Err(e)) => {
-                log::trace!("Skipping response from {}: {}", download_url, e);
+                log::debug!("Skipping response from {}: {}", download_url, e);
                 Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             // Timed out

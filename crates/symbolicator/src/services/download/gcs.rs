@@ -256,7 +256,7 @@ impl GcsDownloader {
 
                     super::download_stream(source, stream, destination, timeout).await
                 } else if response.status().is_client_error() {
-                    log::trace!(
+                    log::debug!(
                         "Unexpected client error status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
@@ -264,7 +264,7 @@ impl GcsDownloader {
                     );
                     Ok(DownloadStatus::NotFound)
                 } else {
-                    log::trace!(
+                    log::debug!(
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
@@ -274,7 +274,7 @@ impl GcsDownloader {
                 }
             }
             Ok(Err(e)) => {
-                log::trace!(
+                log::debug!(
                     "Skipping response from GCS {} (from {}): {} ({:?})",
                     &key,
                     &bucket,
