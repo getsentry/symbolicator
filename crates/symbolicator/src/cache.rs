@@ -75,18 +75,23 @@ impl From<&[u8]> for MalformedCause {
     }
 }
 
-impl From<MalformedCause> for Vec<u8> {
-    fn from(val: MalformedCause) -> Self {
-        match val {
-            MalformedCause::BadObject(description) => {
-                [BAD_OBJECT_MARKER, &description.into_bytes()].concat()
+impl MalformedCause {
+    pub fn write_to<W: Write>(&self, mut writer: W) -> Result<(), io::Error> {
+        match self {
+            Self::BadObject(description) => {
+                writer.write_all(BAD_OBJECT_MARKER)?;
+                writer.write_all(description.as_bytes())?;
             }
-            MalformedCause::DownloadError(description) => {
-                [DOWNLOAD_ERROR_MARKER, &description.into_bytes()].concat()
+            Self::DownloadError(description) => {
+                writer.write_all(DOWNLOAD_ERROR_MARKER)?;
+                writer.write_all(description.as_bytes())?;
             }
-            MalformedCause::Timeout => TIMEOUT_MARKER.to_vec(),
-            MalformedCause::Unknown(description) => description.into_bytes(),
+            Self::Timeout => {
+                writer.write_all(TIMEOUT_MARKER)?;
+            }
+            Self::Unknown(description) => writer.write_all(description.as_bytes())?,
         }
+        Ok(())
     }
 }
 
@@ -151,8 +156,7 @@ impl CacheStatus {
             CacheStatus::Malformed(cause) => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
-                let details: Vec<u8> = cause.clone().into();
-                f.write_all(&details)?;
+                cause.write_to(f)?;
             }
         }
 
