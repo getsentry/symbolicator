@@ -145,6 +145,7 @@ impl S3Downloader {
     /// # Directly thrown errors
     /// - [`DownloadError::Io`]
     /// - [`DownloadError::Canceled`]
+    /// - [`DownloadError::S3`]
     pub async fn download_source(
         &self,
         file_source: S3RemoteDif,

@@ -147,10 +147,10 @@ impl DownloadService {
             Ok(status) => {
                 match status {
                     DownloadStatus::Completed => {
-                        log::debug!("Did not fetch debug file from {:?}: {:?}", source, status);
+                        log::debug!("Fetched debug file from {:?}: {:?}", source, status);
                     }
                     DownloadStatus::NotFound => {
-                        log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                        log::debug!("Did not fetch debug file from {:?}: {:?}", source, status);
                     }
                 };
                 Ok(status)
@@ -254,7 +254,7 @@ impl DownloadService {
 /// # Errors
 /// - [`DownloadError::BadDestination`]
 /// - [`DownloadError::Write`]
-/// - [`DownloadError::Cancelled`]
+/// - [`DownloadError::Canceled`]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,

@@ -226,7 +226,7 @@ impl Cache {
 
         log::trace!("File length: {}", metadata.len());
 
-        let is_malformed = if MALFORMED_MARKER.len() as u64 == metadata.len() {
+        let is_malformed = if metadata.len() == MALFORMED_MARKER.len() as u64 {
             let mut file = File::open(path)?;
             let mut buf = vec![0; MALFORMED_MARKER.len()];
             file.read_exact(&mut buf)?;
@@ -237,7 +237,7 @@ impl Cache {
             false
         };
 
-        let is_download_error = if DOWNLOAD_ERROR_MARKER.len() as u64 == metadata.len() {
+        let is_download_error = if metadata.len() == DOWNLOAD_ERROR_MARKER.len() as u64 {
             let mut file = File::open(path)?;
             let mut buf = vec![0; DOWNLOAD_ERROR_MARKER.len()];
             file.read_exact(&mut buf)?;
