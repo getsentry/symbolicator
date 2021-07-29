@@ -479,7 +479,8 @@ mod tests {
                 result.meta.unwrap().status,
                 CacheStatus::Malformed(MalformedCause::Timeout)
             );
-            // Timeouts don't retry ):
+            // TODO: test out all 3 different types of timeouts, this only covers the top
+            // level timeout that spans both the HEAD and the stream portions of a download
             assert_eq!(server.accesses(), 1);
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
