@@ -283,42 +283,17 @@ impl Cache {
         //   - `b"malformed"` + b"some error description"
         //   - `b"malformedbadobject"` + b"some error description"
         //   - `b"malformeddownloaderror"` + b"some error description"
-        //   Like negative/empty, it represents a failed download and mtime represents when the
-        //   failure occurred. This covers all non-400 download errors.
+        //   Like negative/empty, it represents a failed download or a failed symcache conversion.
+        //   mtime represents when the failure occurred. This covers all non-400 download errors.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
         let metadata = path.metadata()?;
 
         log::trace!("File length: {}", metadata.len());
 
-        // TODO: there's probably a cleaner way to write the entire block below
-        let (is_malformed, is_retryable) = if metadata.len() >= MALFORMED_MARKER.len() as u64 {
-            let max_to_read = MALFORMED_MARKER.len() + DOWNLOAD_ERROR_MARKER.len();
-            let amount_to_read = max_to_read.min(metadata.len() as usize);
+        let strategy = cleanup_strategy(path)?;
 
-            let mut file = File::open(path)?;
-            let mut buf = vec![0; amount_to_read];
-            file.read_exact(&mut buf)?;
-
-            log::trace!("First {} bytes: {:?}", buf.len(), buf);
-            if buf.starts_with(&[MALFORMED_MARKER, DOWNLOAD_ERROR_MARKER].concat())
-                || buf.starts_with(&[MALFORMED_MARKER, TIMEOUT_MARKER].concat())
-            {
-                (false, true)
-            } else if buf.starts_with(&[MALFORMED_MARKER, BAD_OBJECT_MARKER].concat())
-                || buf.starts_with(MALFORMED_MARKER)
-            {
-                (true, false)
-            } else {
-                (false, false)
-            }
-        } else {
-            (false, false)
-        };
-
-        let is_negative = metadata.len() == 0;
-
-        if is_malformed {
+        if strategy == CleanupStrategy::Malformed {
             // Immediately expire malformed items that have been created before this process started.
             // See docstring of MALFORMED_MARKER
 
@@ -339,7 +314,7 @@ impl Cache {
             }
         }
 
-        let max_mtime = if is_negative || is_retryable {
+        let max_mtime = if strategy == CleanupStrategy::Negative {
             self.cache_config.retry_misses_after()
         } else {
             self.cache_config.max_unused_for()
@@ -357,8 +332,7 @@ impl Cache {
             None
         };
 
-        Ok(!is_negative
-            && !is_malformed
+        Ok(strategy == CleanupStrategy::None
             && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true))
     }
 
@@ -389,6 +363,62 @@ impl Cache {
             }
             None => Ok(NamedTempFile::new()?),
         }
+    }
+}
+
+/// Cleanup strategies for cache items. These aren't named after the strategies themselves right now
+/// due to how difficult it is to put a name to them. They're loosely named after the type of cache
+/// entry they should be used on instead.
+#[derive(Debug, PartialEq)]
+enum CleanupStrategy {
+    /// Clean up after it is untouched for a fixed period of time.
+    None,
+    /// Clean up after a forced cool-off period so it can be re-downloaded.
+    Negative,
+    /// Clean up after it is untouched for a fixed period of time. Immediately clean up if the item
+    /// was last touched before the process executing cleanup started.
+    Malformed,
+}
+
+/// Reads a cache item at a given path and returns the cleanup strategy that should be used
+/// for the item.
+fn cleanup_strategy(path: &Path) -> io::Result<CleanupStrategy> {
+    let metadata = path.metadata()?;
+    if metadata.len() == 0 {
+        return Ok(CleanupStrategy::Negative);
+    }
+    // Whatever it is, it's not malformed or negative so just leave it be
+    if metadata.len() < MALFORMED_MARKER.len() as u64 {
+        return Ok(CleanupStrategy::None);
+    }
+
+    let mut file = File::open(path)?;
+    let mut buf = vec![0; MALFORMED_MARKER.len()];
+    file.read_exact(&mut buf)?;
+
+    log::trace!("First {} bytes: {:?}", buf.len(), buf);
+
+    // Not malformed so just leave it be
+    if buf != MALFORMED_MARKER {
+        return Ok(CleanupStrategy::None);
+    }
+
+    // We're cheating here and working off of the knowledge that
+    // DOWNLOAD_ERROR_MARKER is the longest of all known malformed cause markers
+    let max_to_read = DOWNLOAD_ERROR_MARKER.len();
+    let left_to_read = metadata.len() as usize - MALFORMED_MARKER.len();
+    let amount_to_read = max_to_read.min(left_to_read);
+    buf = vec![0; amount_to_read];
+
+    file.read_exact(&mut buf)?;
+    log::trace!("Next {} bytes: {:?}", buf.len(), buf);
+
+    if buf.starts_with(DOWNLOAD_ERROR_MARKER) || buf.starts_with(TIMEOUT_MARKER) {
+        Ok(CleanupStrategy::Negative)
+    } else {
+        // It's either a genuinely malformed object, or we have no idea kind of
+        // malformed it is so just going to treat it like it's malformed
+        Ok(CleanupStrategy::Malformed)
     }
 }
 
@@ -700,6 +730,120 @@ mod tests {
         basenames.sort();
 
         assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_strategy_positive() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/keepbeep"))?.write_all(b"toot")?;
+        File::create(tempdir.path().join("honk/keepbeep2"))?.write_all(b"honk")?;
+        File::create(tempdir.path().join("honk/keepbeep3"))?.write_all(b"honkhonkbeepbeep")?;
+        File::create(tempdir.path().join("honk/keepbeep4"))?.write_all(b"malform")?;
+
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/keepbeep").as_path())?,
+            CleanupStrategy::None,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/keepbeep2").as_path())?,
+            CleanupStrategy::None,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/keepbeep3").as_path())?,
+            CleanupStrategy::None,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/keepbeep4").as_path())?,
+            CleanupStrategy::None,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_strategy_negative() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/retrybeep"))?.write_all(b"")?;
+
+        File::create(tempdir.path().join("honk/retrybeep2"))?.write_all(b"malformedtimeout")?;
+
+        File::create(tempdir.path().join("honk/retrybeep3"))?
+            .write_all(b"malformedtimeouthonk honk")?;
+
+        File::create(tempdir.path().join("honk/retrybeep4"))?
+            .write_all(b"malformeddownloaderror")?;
+
+        File::create(tempdir.path().join("honk/retrybeep5"))?
+            .write_all(b"malformeddownloaderrorhonkhonkbeepbeep")?;
+
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/retrybeep").as_path())?,
+            CleanupStrategy::Negative,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/retrybeep2").as_path())?,
+            CleanupStrategy::Negative,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/retrybeep3").as_path())?,
+            CleanupStrategy::Negative,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/retrybeep4").as_path())?,
+            CleanupStrategy::Negative,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/retrybeep5").as_path())?,
+            CleanupStrategy::Negative,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_strategy_malformed() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"malformed")?;
+
+        File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"malformedhonkbeep")?;
+
+        File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"malformedbadobject")?;
+
+        File::create(tempdir.path().join("honk/badbeep4"))?.write_all(b"malformedbadobjecthonk")?;
+
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/badbeep").as_path())?,
+            CleanupStrategy::Malformed,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/badbeep2").as_path())?,
+            CleanupStrategy::Malformed,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/badbeep3").as_path())?,
+            CleanupStrategy::Malformed,
+        );
+        assert_eq!(
+            cleanup_strategy(tempdir.path().join("honk/badbeep4").as_path())?,
+            CleanupStrategy::Malformed,
+        );
 
         Ok(())
     }
