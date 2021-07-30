@@ -1,12 +1,12 @@
+use std::io::Write;
+
 use actix_web::{error, multipart, App, Error, HttpMessage, HttpRequest, Json, Query, State};
 use futures::{compat::Stream01CompatExt, StreamExt};
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
-use crate::utils::multipart::{
-    read_multipart_file, read_multipart_request_options, read_multipart_sources,
-};
+use crate::utils::multipart::{read_multipart_request_options, read_multipart_sources};
 use crate::utils::sentry::ConfigureScope;
 
 async fn handle_minidump_request(
@@ -32,17 +32,34 @@ async fn handle_minidump_request(
 
         let content_disposition = field.content_disposition();
         match content_disposition.as_ref().and_then(|d| d.get_name()) {
-            Some("upload_file_minidump") => minidump = Some(read_multipart_file(field).await?),
+            Some("upload_file_minidump") => {
+                let minidump_file = tempfile::Builder::new()
+                    .prefix("minidump")
+                    .suffix(".dmp")
+                    .tempfile()?;
+                let (mut file, temp_path) = minidump_file.into_parts();
+
+                let mut stream = field.compat();
+                // it would have been nice to use `tokio::io::copy`, or at least the non-blocking
+                // `tokio::fs::File` / `tokio::io::AsyncWriteExt`, but that needs to run in the
+                // context of a tokio 1 executor, which these futures do not.
+                //let mut file = tokio::fs::File::from_std(file);
+                while let Some(chunk) = stream.next().await {
+                    file.write_all(&chunk?)?;
+                }
+
+                minidump = Some(temp_path)
+            }
             Some("sources") => sources = read_multipart_sources(field).await?.into(),
             Some("options") => options = read_multipart_request_options(field).await?,
             _ => (), // Always ignore unknown fields.
         }
     }
 
-    let minidump = minidump.ok_or_else(|| error::ErrorBadRequest("missing minidump"))?;
+    let minidump_file = minidump.ok_or_else(|| error::ErrorBadRequest("missing minidump"))?;
 
     let symbolication = state.symbolication();
-    let request_id = symbolication.process_minidump(params.scope, minidump, sources, options);
+    let request_id = symbolication.process_minidump(params.scope, minidump_file, sources, options);
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

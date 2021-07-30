@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use std::future::Future;
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
-use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
@@ -27,7 +26,7 @@ use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
-use tempfile::NamedTempFile;
+use tempfile::TempPath;
 use thiserror::Error;
 
 use crate::cache::CacheStatus;
@@ -1770,12 +1769,12 @@ impl SymbolicationActor {
     /// modules.
     async fn stackwalk_minidump_with_cfi(
         &self,
-        minidump_file: &NamedTempFile,
+        minidump_file: &TempPath,
         cfi_caches: &CfiCacheModules,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
         let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
-        let minidump_path = minidump_file.path().to_owned();
+        let minidump_path = minidump_file.to_path_buf();
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
@@ -1889,30 +1888,18 @@ impl SymbolicationActor {
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
-        minidump: Vec<u8>,
+        minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
-            let minidump = Bytes::from(minidump);
-
-            log::debug!("Processing minidump ({} bytes)", minidump.len());
-            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
+            let len = minidump_file.metadata()?.len();
+            log::debug!("Processing minidump ({} bytes)", len);
+            metric!(time_raw("minidump.upload.size") = len);
 
             let mut cfi_caches = CfiCacheModules::new();
 
             let mut iterations = 0;
-
-            let mut minidump_file = tempfile::Builder::new();
-            minidump_file.prefix("minidump").suffix(".dmp");
-            let minidump_file = if let Some(dir) = self.diagnostics_cache.cache_dir() {
-                std::fs::create_dir_all(dir)?;
-                minidump_file.tempfile_in(dir)
-            } else {
-                minidump_file.tempfile()
-            }?;
-
-            minidump_file.as_file().write_all(&*minidump)?;
 
             let result = loop {
                 iterations += 1;
@@ -1923,20 +1910,23 @@ impl SymbolicationActor {
                 {
                     Ok(res) => res,
                     Err(err) => {
-                        if self.diagnostics_cache.cache_dir().is_some() {
-                            match minidump_file.keep() {
-                                Ok((_file, path)) => {
-                                    sentry::configure_scope(|scope| {
-                                        scope.set_extra(
-                                            "crashed_minidump",
-                                            sentry::protocol::Value::String(
-                                                path.to_string_lossy().to_string(),
-                                            ),
-                                        );
-                                    });
-                                }
-                                Err(e) => log::error!("Failed to save minidump {:?}", &e),
-                            };
+                        if let Some(dir) = self.diagnostics_cache.cache_dir() {
+                            if let Some(file_name) = minidump_file.file_name() {
+                                let path = dir.join(file_name);
+                                match minidump_file.persist(&path) {
+                                    Ok(_) => {
+                                        sentry::configure_scope(|scope| {
+                                            scope.set_extra(
+                                                "crashed_minidump",
+                                                sentry::protocol::Value::String(
+                                                    path.to_string_lossy().to_string(),
+                                                ),
+                                            );
+                                        });
+                                    }
+                                    Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                                };
+                            }
                         } else {
                             log::debug!("No diagnostics retention configured, not saving minidump");
                         }
@@ -2002,13 +1992,13 @@ impl SymbolicationActor {
     async fn do_process_minidump(
         self,
         scope: Scope,
-        minidump: Vec<u8>,
+        minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
             .clone()
-            .do_stackwalk_minidump(scope, minidump, sources, options)
+            .do_stackwalk_minidump(scope, minidump_file, sources, options)
             .await?;
 
         let mut response = self.do_symbolicate(request).await?;
@@ -2020,14 +2010,16 @@ impl SymbolicationActor {
     pub fn process_minidump(
         &self,
         scope: Scope,
-        minidump: Vec<u8>,
+        minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
-        self.create_symbolication_request(
-            self.clone()
-                .do_process_minidump(scope, minidump, sources, options),
-        )
+        self.create_symbolication_request(self.clone().do_process_minidump(
+            scope,
+            minidump_file,
+            sources,
+            options,
+        ))
     }
 }
 
@@ -2283,9 +2275,12 @@ impl From<&SymCacheError> for ObjectFileStatus {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::NamedTempFile;
+
     use super::*;
 
     use std::fs;
+    use std::io::Write;
 
     use crate::config::Config;
     use crate::services::Service;
@@ -2477,11 +2472,13 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = test::read_fixture(path);
+        let mut minidump_file = NamedTempFile::new()?;
+        minidump_file.write_all(&minidump)?;
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request_id = symbolication.process_minidump(
                 Scope::Global,
-                minidump,
+                minidump_file.into_temp_path(),
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
