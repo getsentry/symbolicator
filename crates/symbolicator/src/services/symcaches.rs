@@ -105,7 +105,8 @@ impl SymCacheFile {
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(SymCacheError::Malformed),
-            CacheStatus::CacheSpecificError => Err(SymCacheError::Malformed),
+            // TODO: revisit once we want to start writing CacheSpecificError to cache
+            CacheStatus::CacheSpecificError(_) => Err(SymCacheError::Malformed),
         }
     }
 

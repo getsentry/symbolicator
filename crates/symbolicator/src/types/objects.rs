@@ -151,7 +151,8 @@ impl ObjectUseInfo {
                 }
             }
             CacheStatus::Malformed(_) => ObjectUseInfo::Malformed,
-            CacheStatus::CacheSpecificError => ObjectUseInfo::Malformed,
+            // TODO: Use ObjectUseInfo::Error once we want to start writing CacheSpecificErrors to cache
+            CacheStatus::CacheSpecificError(_) => ObjectUseInfo::Malformed,
         }
     }
 }

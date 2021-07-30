@@ -72,7 +72,8 @@ impl ObjectHandle {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
-            CacheStatus::CacheSpecificError => Err(ObjectError::Malformed),
+            // TODO: replace with ObjectError::Error once we want to start writing CacheSpecificErrors to cache
+            CacheStatus::CacheSpecificError(_) => Err(ObjectError::Malformed),
         }
     }
 

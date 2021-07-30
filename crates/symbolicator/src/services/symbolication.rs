@@ -184,7 +184,8 @@ impl CfiCacheModules {
                             );
                             ObjectFileStatus::from(&err)
                         }
-                        CacheStatus::CacheSpecificError => ObjectFileStatus::Malformed,
+                        // TODO: revisit this once CacheSpecificError starts being used
+                        CacheStatus::CacheSpecificError(_) => ObjectFileStatus::Malformed,
                     };
                     let cfi_path = match cfi_cache.status() {
                         CacheStatus::Positive => Some(cfi_cache.path().to_owned()),

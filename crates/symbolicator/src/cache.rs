@@ -55,7 +55,7 @@ pub enum CacheStatus {
     /// Currently unused. All cache statuses detected as this variant will be converted to
     /// [`CacheStatus::Malformed`].  See docs for [`CACHE_SPECIFIC_ERROR_MARKER`].
     #[allow(dead_code)]
-    CacheSpecificError,
+    CacheSpecificError(String),
 }
 
 impl AsRef<str> for CacheStatus {
@@ -64,7 +64,7 @@ impl AsRef<str> for CacheStatus {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
             CacheStatus::Malformed(_) => "malformed",
-            CacheStatus::CacheSpecificError => "cache-specific error",
+            CacheStatus::CacheSpecificError(_) => "cache-specific error",
         }
     }
 }
@@ -76,9 +76,12 @@ impl CacheStatus {
             let err_msg = String::from_utf8_lossy(raw_message);
             CacheStatus::Malformed(err_msg.into_owned())
         } else if s.starts_with(CACHE_SPECIFIC_ERROR_MARKER) {
-            CacheStatus::Malformed(String::from(
-                "failed to create entry due to a cache-specific problem",
-            ))
+            let raw_message = s
+                .get(CACHE_SPECIFIC_ERROR_MARKER.len()..)
+                .unwrap_or_default();
+            let err_msg = String::from_utf8_lossy(raw_message);
+            // TODO: switch to CacheSpecificError once we want to start writing CacheSpecificErrors to cache
+            CacheStatus::Malformed(err_msg.into_owned())
         } else if s.is_empty() {
             CacheStatus::Negative
         } else {
@@ -108,9 +111,11 @@ impl CacheStatus {
                 f.write_all(MALFORMED_MARKER)?;
                 f.write_all(details.as_bytes())?;
             }
-            CacheStatus::CacheSpecificError => {
+            CacheStatus::CacheSpecificError(details) => {
                 let mut f = File::create(path)?;
+                // TODO: use CACHE_SPECIFIC_ERROR_MARKER once we want to start writing CacheSpecificErrors to cache
                 f.write_all(MALFORMED_MARKER)?;
+                f.write_all(details.as_bytes())?;
             }
         }
 
@@ -351,7 +356,7 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
         // strategies are used based on which cache's file is being assessed here.
         // This won't kick in until `CacheStatus::from_content` stops classifying
         // files with CacheSpecificError contents as Malformed.
-        CacheStatus::CacheSpecificError => match cache_config {
+        CacheStatus::CacheSpecificError(_) => match cache_config {
             CacheConfig::Downloaded(_) => ExpirationStrategy::Negative,
             CacheConfig::Derived(_) => ExpirationStrategy::Malformed,
             CacheConfig::Diagnostics(_) => ExpirationStrategy::None,
