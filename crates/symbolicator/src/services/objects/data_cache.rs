@@ -71,17 +71,18 @@ impl ObjectHandle {
     // Interestingly all usages of parse() check to make sure that self.status == Positive before
     // actually invoking parse()
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        match self.status {
+        match &self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectError::Malformed),
-            // TODO: copy error string over
-            CacheStatus::DownloadError => Err(ObjectError::Download(DownloadError::CachedFailure)),
+            CacheStatus::DownloadError(err_msg) => Err(ObjectError::Download(
+                DownloadError::CachedFailure(err_msg.clone()),
+            )),
         }
     }
 
-    pub fn status(&self) -> CacheStatus {
-        self.status
+    pub fn status(&self) -> &CacheStatus {
+        &self.status
     }
 
     pub fn scope(&self) -> &Scope {
@@ -173,10 +174,10 @@ impl CacheItemRequest for FetchFileDataRequest {
                     log::debug!("No debug file found for {}", cache_key);
                     return Ok(CacheStatus::Negative);
                 }
-                // TODO: return CacheStatus::DownloadError
                 Err(e) => {
                     log::debug!("Error while downloading file: {}", LogError(&e));
-                    return Ok(CacheStatus::DownloadError);
+                    let err_msg = format!("{:#}", e);
+                    return Ok(CacheStatus::DownloadError(err_msg));
                 }
 
                 Ok(DownloadStatus::Completed) => {
@@ -355,10 +356,20 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::DownloadError(String::from(
+                    "failed to download: 500 Internal Server Error"
+                ))
+            );
             assert_eq!(server.accesses(), 1 + 3); // first hit + 3 retries
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::DownloadError(String::from(
+                    "failed to download: 500 Internal Server Error"
+                ))
+            );
             assert_eq!(server.accesses(), 0);
         })
         .await;
@@ -433,10 +444,16 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::DownloadError(String::from("download was cancelled"))
+            );
             assert_eq!(server.accesses(), 1); // timeouts don't get retried?
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::DownloadError);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::DownloadError(String::from("download was cancelled"))
+            );
             assert_eq!(server.accesses(), 0);
         })
         .await;

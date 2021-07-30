@@ -26,6 +26,8 @@ use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
 
+use super::download::DownloadError;
+
 /// Handle to a valid BCSymbolMap.
 ///
 /// While this handle points to the raw data, this data is guaranteed to be valid, you can
@@ -97,11 +99,14 @@ impl FetchFileRequest {
             .download(self.file_source, download_file.path().to_path_buf())
             .await
         {
-            Err(_download_error) => {
+            Err(DownloadError::CachedFailure(error_msg)) => {
                 log::debug!("Unable to download DIF for {}", cache_key);
-                // TODO: stuff download error message in
-                // let error_msg = format!("{}", download_error);
-                Ok(CacheStatus::DownloadError)
+                Ok(CacheStatus::DownloadError(error_msg))
+            }
+            Err(download_error) => {
+                log::debug!("Unable to download DIF for {}", cache_key);
+                let error_msg = format!("{:#}", download_error);
+                Ok(CacheStatus::DownloadError(error_msg))
             }
             Ok(DownloadStatus::NotFound) => {
                 log::debug!("No auxiliary DIF file found for {}", cache_key);

@@ -70,8 +70,8 @@ impl ObjectMetaHandle {
         self.file_source.uri()
     }
 
-    pub fn status(&self) -> CacheStatus {
-        self.status
+    pub fn status(&self) -> &CacheStatus {
+        &self.status
     }
 
     pub fn scope(&self) -> &Scope {
@@ -130,7 +130,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         }
                     }
 
-                    Ok(object_handle.status)
+                    Ok(object_handle.status.clone())
                 })
         };
 

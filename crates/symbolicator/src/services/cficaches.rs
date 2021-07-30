@@ -78,8 +78,8 @@ pub struct CfiCacheFile {
 
 impl CfiCacheFile {
     /// Returns the status of this cache file.
-    pub fn status(&self) -> CacheStatus {
-        self.status
+    pub fn status(&self) -> &CacheStatus {
+        &self.status
     }
 
     /// Returns the features of the object file this symcache was constructed from.
@@ -129,8 +129,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
             let future = async move {
-                if object.status() != CacheStatus::Positive {
-                    return Ok(object.status());
+                if object.status() != &CacheStatus::Positive {
+                    return Ok(object.status().clone());
                 }
 
                 let status = if let Err(e) = write_cficache(&path, &*object) {
@@ -183,7 +183,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         candidates.set_unwind(
             self.meta_handle.source_id().clone(),
             &self.meta_handle.uri(),
-            ObjectUseInfo::from_derived_status(status, self.meta_handle.status()),
+            ObjectUseInfo::from_derived_status(&status, self.meta_handle.status()),
         );
 
         CfiCacheFile {

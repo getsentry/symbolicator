@@ -28,7 +28,7 @@ pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
 pub const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
     /// object file and cached that file.
@@ -40,7 +40,7 @@ pub enum CacheStatus {
     /// for [`MALFORMED_MARKER`].
     Malformed,
     /// couldn't download the thing
-    DownloadError,
+    DownloadError(String),
 }
 
 impl AsRef<str> for CacheStatus {
@@ -49,7 +49,7 @@ impl AsRef<str> for CacheStatus {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
             CacheStatus::Malformed => "malformed",
-            CacheStatus::DownloadError => "downloaderror",
+            CacheStatus::DownloadError(_) => "downloaderror",
         }
     }
 }
@@ -59,8 +59,9 @@ impl CacheStatus {
         if s == MALFORMED_MARKER {
             CacheStatus::Malformed
         } else if s.starts_with(DOWNLOAD_ERROR_MARKER) {
-            // TODO: load error message into this
-            CacheStatus::DownloadError
+            let raw_message = s.get(DOWNLOAD_ERROR_MARKER.len()..).unwrap_or_default();
+            let err_msg = String::from_utf8_lossy(raw_message);
+            CacheStatus::DownloadError(err_msg.into_owned())
         } else if s.is_empty() {
             CacheStatus::Negative
         } else {
@@ -73,7 +74,7 @@ impl CacheStatus {
     /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
     /// file to the final cache location.  Otherwise it writes corresponding marker in the
     /// cache location.
-    pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
+    pub fn persist_item(&self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
         let dir = path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
         })?;
@@ -89,10 +90,10 @@ impl CacheStatus {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
             }
-            CacheStatus::DownloadError => {
+            CacheStatus::DownloadError(message) => {
                 let mut f = File::create(path)?;
                 f.write_all(DOWNLOAD_ERROR_MARKER)?;
-                // TODO: write contents of error
+                f.write_all(message.as_bytes())?;
             }
         }
 

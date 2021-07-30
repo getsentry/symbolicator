@@ -101,15 +101,15 @@ pub struct SymCacheFile {
 
 impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        match self.status {
+        match &self.status {
             CacheStatus::Positive => Ok(Some(
                 SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(SymCacheError::Malformed),
-            CacheStatus::DownloadError => Err(SymCacheError::Fetching(ObjectError::Download(
-                DownloadError::CachedFailure,
-            ))),
+            CacheStatus::DownloadError(err_msg) => Err(SymCacheError::Fetching(
+                ObjectError::Download(DownloadError::CachedFailure(err_msg.clone())),
+            )),
         }
     }
 
@@ -174,8 +174,8 @@ async fn fetch_difs_and_compute_symcache(
         .await
         .map_err(SymCacheError::Fetching)?;
 
-    if object_handle.status() != CacheStatus::Positive {
-        return Ok(object_handle.status());
+    if object_handle.status() != &CacheStatus::Positive {
+        return Ok(object_handle.status().clone());
     }
 
     let compute_future = async move {
@@ -255,7 +255,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         candidates.set_debug(
             self.object_meta.source_id().clone(),
             &self.object_meta.uri(),
-            ObjectUseInfo::from_derived_status(status, self.object_meta.status()),
+            ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
         );
 
         SymCacheFile {

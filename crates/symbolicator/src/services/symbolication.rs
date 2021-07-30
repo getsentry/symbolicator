@@ -187,7 +187,7 @@ impl CfiCacheModules {
                         }
                         // This is only ever found in cfi caches if the underlying object in the
                         // data cache has a download error
-                        CacheStatus::DownloadError => ObjectFileStatus::FetchingFailed,
+                        CacheStatus::DownloadError(_) => ObjectFileStatus::FetchingFailed,
                     };
                     let cfi_path = match cfi_cache.status() {
                         CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
@@ -840,7 +840,7 @@ impl SymCacheLookup {
                         Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
                         Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
                         Err(SymCacheError::Fetching(ObjectError::Download(
-                            DownloadError::CachedFailure,
+                            DownloadError::CachedFailure(_),
                         ))) => (Some(symcache), ObjectFileStatus::FetchingFailed),
                         Err(e) => (None, (&e).into()),
                     },
