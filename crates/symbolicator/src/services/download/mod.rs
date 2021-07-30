@@ -50,9 +50,11 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry: {0}")]
     Sentry(#[from] sentry::SentryError),
+    #[allow(unused)]
     #[error("failed to fetch data from S3")]
     S3(#[source] s3::S3Error),
     /// Typically means the initial HEAD request received a non-200, non-400 response.
+    #[allow(unused)]
     #[error("failed to download: {0}")]
     Rejected(StatusCode),
 }
@@ -247,7 +249,7 @@ impl DownloadService {
 /// # Errors
 /// - [`DownloadError::BadDestination`]
 /// - [`DownloadError::Write`]
-/// - [`DownloadError::Cancelled`]
+/// - [`DownloadError::Canceled`]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
