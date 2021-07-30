@@ -27,6 +27,7 @@ use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
+use tempfile::NamedTempFile;
 use thiserror::Error;
 
 use crate::cache::CacheStatus;
@@ -1692,8 +1693,6 @@ impl SymbolicationActor {
         handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
         timeout: Duration,
         metric: &str,
-        minidump: &[u8],
-        minidump_cache: crate::cache::Cache,
     ) -> Result<T, anyhow::Error>
     where
         T: Serialize + DeserializeOwned,
@@ -1715,45 +1714,8 @@ impl SymbolicationActor {
                     "unknown"
                 };
                 metric!(counter(metric) += 1, "reason" => reason);
-                if !perr.is_timeout() {
-                    Self::save_minidump(minidump, minidump_cache)
-                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
-                        .map(|r| {
-                            if let Some(path) = r {
-                                sentry::configure_scope(|scope| {
-                                    scope.set_extra(
-                                        "crashed_minidump",
-                                        sentry::protocol::Value::String(
-                                            path.to_string_lossy().to_string(),
-                                        ),
-                                    );
-                                });
-                            }
-                        })
-                        .ok();
-                }
                 Err(anyhow::Error::new(perr))
             }
-        }
-    }
-
-    /// Save a minidump to temporary location.
-    fn save_minidump(
-        minidump: &[u8],
-        failed_cache: crate::cache::Cache,
-    ) -> anyhow::Result<Option<PathBuf>> {
-        if let Some(dir) = failed_cache.cache_dir() {
-            std::fs::create_dir_all(dir)?;
-            let tmp = tempfile::Builder::new()
-                .prefix("minidump")
-                .suffix(".dmp")
-                .tempfile_in(dir)?;
-            tmp.as_file().write_all(&*minidump)?;
-            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
-            Ok(Some(path))
-        } else {
-            log::debug!("No diagnostics retention configured, not saving minidump");
-            Ok(None)
         }
     }
 
@@ -1808,21 +1770,21 @@ impl SymbolicationActor {
     /// modules.
     async fn stackwalk_minidump_with_cfi(
         &self,
-        minidump: Bytes,
+        minidump_file: &NamedTempFile,
         cfi_caches: &CfiCacheModules,
-    ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
+    ) -> anyhow::Result<StackWalkMinidumpResult> {
         let pool = self.spawnpool.clone();
-        let diagnostics_cache = self.diagnostics_cache.clone();
         let cfi_caches = cfi_caches.for_processing();
+        let minidump_path = minidump_file.path().to_owned();
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
                 (
                     procspawn::serde::Json(cfi_caches),
-                    minidump.clone(),
+                    minidump_path,
                     spawn_time,
                 ),
-                |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcessMinidumpError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
 
                     if let Ok(duration) = spawn_time.elapsed() {
@@ -1831,7 +1793,11 @@ impl SymbolicationActor {
 
                     // Stackwalk the minidump.
                     let cfi = load_cfi_for_processor(cfi_caches);
-                    let minidump = ByteView::from_slice(&minidump);
+                    // we cannot map an `io::Error` into `MinidumpNotFound` since there is no public
+                    // constructor on `ProcessResult`. Passing in an empty buffer should result in
+                    // the same error though.
+                    let minidump =
+                        ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
                     let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
                     let minidump_state = MinidumpState::new(&process_state);
                     let object_type = minidump_state.object_type();
@@ -1910,8 +1876,6 @@ impl SymbolicationActor {
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
-                &minidump,
-                diagnostics_cache,
             )
         };
 
@@ -1939,12 +1903,49 @@ impl SymbolicationActor {
 
             let mut iterations = 0;
 
+            let mut minidump_file = tempfile::Builder::new();
+            minidump_file.prefix("minidump").suffix(".dmp");
+            let minidump_file = if let Some(dir) = self.diagnostics_cache.cache_dir() {
+                std::fs::create_dir_all(dir)?;
+                minidump_file.tempfile_in(dir)
+            } else {
+                minidump_file.tempfile()
+            }?;
+
+            minidump_file.as_file().write_all(&*minidump)?;
+
             let result = loop {
                 iterations += 1;
 
-                let result = self
-                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
-                    .await?;
+                let result = match self
+                    .stackwalk_minidump_with_cfi(&minidump_file, &cfi_caches)
+                    .await
+                {
+                    Ok(res) => res,
+                    Err(err) => {
+                        if self.diagnostics_cache.cache_dir().is_some() {
+                            match minidump_file.keep() {
+                                Ok((_file, path)) => {
+                                    sentry::configure_scope(|scope| {
+                                        scope.set_extra(
+                                            "crashed_minidump",
+                                            sentry::protocol::Value::String(
+                                                path.to_string_lossy().to_string(),
+                                            ),
+                                        );
+                                    });
+                                }
+                                Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                            };
+                        } else {
+                            log::debug!("No diagnostics retention configured, not saving minidump");
+                        }
+
+                        // we explicitly match and return here, otherwise the borrow checker will
+                        // complain that `minidump_file` is being moved into `save_minidump`
+                        return Err(err);
+                    }
+                };
 
                 let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
                     .referenced_modules
