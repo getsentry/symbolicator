@@ -1,12 +1,12 @@
-use std::io::Write;
-
 use actix_web::{error, multipart, App, Error, HttpMessage, HttpRequest, Json, Query, State};
 use futures::{compat::Stream01CompatExt, StreamExt};
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
-use crate::utils::multipart::{read_multipart_request_options, read_multipart_sources};
+use crate::utils::multipart::{
+    read_multipart_file, read_multipart_request_options, read_multipart_sources,
+};
 use crate::utils::sentry::ConfigureScope;
 
 async fn handle_minidump_request(
@@ -39,14 +39,7 @@ async fn handle_minidump_request(
                     .tempfile()?;
                 let (mut file, temp_path) = minidump_file.into_parts();
 
-                let mut stream = field.compat();
-                // it would have been nice to use `tokio::io::copy`, or at least the non-blocking
-                // `tokio::fs::File` / `tokio::io::AsyncWriteExt`, but that needs to run in the
-                // context of a tokio 1 executor, which these futures do not.
-                //let mut file = tokio::fs::File::from_std(file);
-                while let Some(chunk) = stream.next().await {
-                    file.write_all(&chunk?)?;
-                }
+                read_multipart_file(field, &mut file).await?;
 
                 minidump = Some(temp_path)
             }

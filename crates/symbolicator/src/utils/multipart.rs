@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::Write;
+
 use actix_web::{dev::Payload, error, multipart, Error};
 use futures::{compat::Stream01CompatExt, StreamExt};
 
@@ -26,15 +29,20 @@ pub async fn read_multipart_data(
     Ok(body)
 }
 
-pub async fn read_multipart_file(field: multipart::Field<Payload>) -> Result<Vec<u8>, Error> {
-    let mut body = Vec::with_capacity(512);
+pub async fn read_multipart_file(
+    field: multipart::Field<Payload>,
+    file: &mut File,
+) -> Result<(), Error> {
     let mut stream = field.compat();
-
+    // it would have been nice to use `tokio::io::copy`, or at least the non-blocking
+    // `tokio::fs::File` / `tokio::io::AsyncWriteExt`, but that needs to run in the
+    // context of a tokio 1 executor, which these futures do not.
+    //let mut file = tokio::fs::File::from_std(file);
     while let Some(chunk) = stream.next().await {
-        body.extend_from_slice(&chunk?);
+        file.write_all(&chunk?)?;
     }
 
-    Ok(body)
+    Ok(())
 }
 
 pub async fn read_multipart_sources(

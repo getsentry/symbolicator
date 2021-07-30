@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
+use std::fs::File;
 use std::future::Future;
-use std::io::Cursor;
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2074,12 +2074,12 @@ impl SymbolicationActor {
     async fn parse_apple_crash_report(
         &self,
         scope: Scope,
-        minidump: Vec<u8>,
+        report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
-            let report = AppleCrashReport::from_reader(Cursor::new(minidump))?;
+            let report = AppleCrashReport::from_reader(report)?;
             let mut metadata = report.metadata;
 
             let arch = report
@@ -2188,7 +2188,7 @@ impl SymbolicationActor {
     async fn do_process_apple_crash_report(
         self,
         scope: Scope,
-        report: Vec<u8>,
+        report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
@@ -2204,7 +2204,7 @@ impl SymbolicationActor {
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
-        apple_crash_report: Vec<u8>,
+        apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
@@ -2520,7 +2520,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = test::read_fixture("apple_crash_report.txt");
+        let report_file = std::fs::File::open("apple_crash_report.txt")?;
         let response = test::spawn_compat(move || async move {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
