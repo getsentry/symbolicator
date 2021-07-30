@@ -50,7 +50,7 @@ pub enum CacheStatus {
     /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
     Malformed,
     /// Currently unused. All cache statuses detected as this variant will be converted to
-    /// [`CacheStatus::Malformed`].
+    /// [`CacheStatus::Malformed`].  See docs for [`DOWNLOAD_ERROR_MARKER`].
     #[allow(dead_code)]
     DownloadError,
 }
