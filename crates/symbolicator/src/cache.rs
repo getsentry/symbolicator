@@ -327,8 +327,8 @@ impl From<CacheStatus> for ExpirationStrategy {
         match status {
             CacheStatus::Positive => Self::None,
             CacheStatus::Negative => Self::Negative,
-            CacheStatus::Malformed(_) => Self::Malformed,
-            CacheStatus::DownloadError(_) => Self::Malformed,
+            CacheStatus::Malformed => Self::Malformed,
+            CacheStatus::DownloadError => Self::Malformed,
         }
     }
 }
@@ -678,6 +678,10 @@ mod tests {
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
         File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
+        File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"dlerr")?;
+        File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"dlerrhonk")?;
+        File::create(tempdir.path().join("foo/killthis5"))?.write_all(b"dlerrmalformed")?;
+        File::create(tempdir.path().join("foo/killthis6"))?.write_all(b"malformeddlerr")?;
 
         sleep(Duration::from_millis(10));
 
