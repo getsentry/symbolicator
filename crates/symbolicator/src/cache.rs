@@ -322,6 +322,17 @@ enum ExpirationStrategy {
     Malformed,
 }
 
+impl From<CacheStatus> for ExpirationStrategy {
+    fn from(status: CacheStatus) -> Self {
+        match status {
+            CacheStatus::Positive => Self::None,
+            CacheStatus::Negative => Self::Negative,
+            CacheStatus::Malformed(_) => Self::Malformed,
+            CacheStatus::DownloadError(_) => Self::Malformed,
+        }
+    }
+}
+
 /// Reads a cache item at a given path and returns the cleanup strategy that should be used
 /// for the item.
 fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
@@ -335,13 +346,7 @@ fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
     log::trace!("First {} bytes: {:?}", buf.len(), buf);
     file.read_exact(&mut buf)?;
 
-    let strategy = match CacheStatus::from_content(&buf) {
-        CacheStatus::Positive => ExpirationStrategy::None,
-        CacheStatus::Negative => ExpirationStrategy::Negative,
-        CacheStatus::Malformed => ExpirationStrategy::Malformed,
-        CacheStatus::DownloadError => ExpirationStrategy::Malformed,
-    };
-
+    let strategy = ExpirationStrategy::from(CacheStatus::from_content(&buf));
     Ok(strategy)
 }
 
