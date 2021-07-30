@@ -4,6 +4,8 @@
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::convert::TryInto;
+use std::error::Error;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -37,31 +39,51 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 #[derive(Debug, Error)]
 pub enum DownloadError {
     // A download failure retrieved from cache
-    #[error("failed to download")]
-    // TODO: wrap around a string and return that instead
-    CachedFailure,
-    #[error("failed to download")]
+    CachedFailure(String),
     Io(#[source] std::io::Error),
     /// Generally used when unable to begin streaming the source, or the initial HEAD request
     /// encountered an error
-    #[error("failed to download")]
     Reqwest(#[source] reqwest::Error),
-    #[error("bad file destination")]
     BadDestination(#[source] std::io::Error),
-    #[error("failed writing the downloaded file")]
     Write(#[source] std::io::Error),
-    #[error("download was cancelled")]
     Canceled,
-    #[error("failed to fetch data from GCS")]
     Gcs(#[from] gcs::GcsError),
-    #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
-    #[error("failed to fetch data from S3")]
     S3(#[source] s3::S3Error),
     /// Typically means the initial HEAD request received a non-200 or non-400 response. 400s are
     /// covered elsewhere.
-    #[error("failed to download")]
     Rejected(StatusCode),
+}
+
+impl fmt::Display for DownloadError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DownloadError::CachedFailure(err_msg) => write!(f, "failed to download: {}", err_msg)?,
+            DownloadError::Io(_) => write!(f, "failed to download")?,
+            DownloadError::Reqwest(_) => write!(f, "failed to download")?,
+            DownloadError::BadDestination(_) => write!(f, "bad file destination")?,
+            DownloadError::Write(_) => write!(f, "failed writing the downloaded file")?,
+            DownloadError::Canceled => write!(f, "download was cancelled")?,
+            DownloadError::Gcs(_) => write!(f, "failed to fetch data from GCS")?,
+            DownloadError::Sentry(_) => write!(f, "failed to fetch data from Sentry")?,
+            DownloadError::S3(_) => write!(f, "failed to fetch data from S3")?,
+            DownloadError::Rejected(status) => write!(f, "failed to download: {}", status)?,
+        }
+        if f.alternate() {
+            if let Some(source) = self.source() {
+                let mut deepest_source = source;
+                let mut next_src = source.source();
+                // can this go on forever?
+                while let Some(deeper_src) = next_src {
+                    deepest_source = deeper_src;
+                    next_src = deeper_src.source();
+                }
+                write!(f, ": ")?;
+                fmt::Display::fmt(deepest_source, f)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Completion status of a successful download request.

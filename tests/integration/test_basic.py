@@ -88,7 +88,7 @@ SUCCESS_WINDOWS = {
 }
 
 
-def _make_error_result(_details, source="microsoft"):
+def _make_error_result(details, source="microsoft"):
     response = {
         "stacktraces": [
             {
@@ -127,24 +127,22 @@ def _make_error_result(_details, source="microsoft"):
     if source in ["microsoft", "unknown", "broken"]:
         response["modules"][0]["candidates"] = [
             {
-                # TODO: update with correct error details
                 "download": {
                     "status": "error",
-                    "details": "add download error to this later",
+                    "details": details,
                 },
                 "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                 "source": source,
             },
             {
-                # TODO: update with correct error details
                 "download": {
                     "status": "error",
-                    "details": "add download error to this later",
+                    "details": details,
                 },
                 # why does only this one have debug?
                 "debug": {
                     "status": "error",
-                    "details": "add download error to this later",
+                    "details": details,
                 },
                 "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
                 "source": source,
@@ -209,7 +207,6 @@ MALFORMED_FILE = _make_unsuccessful_result("malformed")
 MALFORMED_NO_SOURCES = _make_unsuccessful_result("malformed", source=None)
 NO_SOURCES = _make_unsuccessful_result("missing", source=None)
 UNKNOWN_SOURCE = _make_unsuccessful_result("missing", source="unknown")
-DOWNLOAD_FAILURE = _make_error_result(_details="todo")
 
 
 @pytest.fixture(params=[True, False], ids=["cachedir", "no_cachedir"])
@@ -540,7 +537,9 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
             expected = _make_unsuccessful_result(status="missing", source="broken")
         else:
             # TODO: revisit
-            expected = _make_error_result(_details="todo", source="broken")
+            expected = _make_error_result(
+                details="failed to download: 500 Internal Server Error", source="broken"
+            )
 
         for module in expected.get("modules", []):
             for candidate in module.get("candidates", []):
@@ -690,7 +689,10 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
         assert_symbolication(response.json(), SUCCESS_WINDOWS)
     else:
         assert not hitcounter.hits
-        assert_symbolication(response.json(), DOWNLOAD_FAILURE)
+        restricted_download_failure = _make_error_result(
+            details="failed to download: destination is restricted"
+        )
+        assert_symbolication(response.json(), restricted_download_failure)
 
 
 def test_no_dif_candidates(symbolicator, hitcounter):
