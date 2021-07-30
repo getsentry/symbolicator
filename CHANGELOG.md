@@ -17,9 +17,10 @@
 - Refresh symcaches when a new `BcSymbolMap` becomes available. ([#493](https://github.com/getsentry/symbolicator/pull/493))
 - Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484), [#501](https://github.com/getsentry/symbolicator/pull/501))
 - New configuration option `hostname_tag` ([#513](https://github.com/getsentry/symbolicator/pull/513))
-- Introduced a new cache status to represent failures specific to the cache: Download failures that aren't related to the file being missing in download caches and conversion errors in derived caches. It is currently unused. ([#509](https://github.com/getsentry/symbolicator/pull/509))
+- Introduced a new cache status to represent failures specific to the cache: Download failures that aren't related to the file being missing in download caches and conversion errors in derived caches. Download failure entries expire after 1 hour, and conversion errors expire after 1 day, or after symbolicator is restarted. ([#509](https://github.com/getsentry/symbolicator/pull/509))
 - Malformed and Cache-specific Error cache entries now contain some diagnostic info. ([#510](https://github.com/getsentry/symbolicator/pull/510))
 - New configuration option `environment_tag` ([#517](https://github.com/getsentry/symbolicator/pull/517))
+- Source candidates which symbolicator has failed to download due to non-400 errors are now being returned in symbolication payloads. These candidates include additional diagnostic info which briefly describes the download error. ([#512](https://github.com/getsentry/symbolicator/pull/512))
 
 ### Fixes
 
