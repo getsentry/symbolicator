@@ -184,6 +184,10 @@ async fn fetch_difs_and_compute_symcache(
             Err(err) => {
                 log::warn!("Failed to write symcache: {}", err);
                 sentry::capture_error(&err);
+                // Cheating a little here: Even though this is a `SymCacheError` which includes
+                // variants not related to conversion, `write_symcache` only does work related
+                // to conversion and therefore any error captured by this is due to the conversion
+                // process failing. Marking those errors as Malformed is fine.
                 CacheStatus::Malformed
             }
         };

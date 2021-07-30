@@ -133,12 +133,16 @@ impl CacheItemRequest for FetchFileDataRequest {
     /// debug ID of our request is extracted first.  Finally the object is parsed with
     /// symbolic to ensure it is not malformed.
     ///
-    /// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
-    /// parsing the final object file failed, or there is an error downloading the file an `Ok` with
-    /// [`CacheStatus::Malformed`] is returned.
+    /// If there is an error during decompression then an `Err` of [`ObjectError`] is returned.
     ///
-    /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
+    /// If parsing the final object file failed, an `Ok` with [`CacheStatus::Malformed`] is
     /// returned.
+    ///
+    /// If there is an error downloading the object file, an `Ok` with [`CacheStatus::Error`] is
+    /// returned.
+    ///
+    /// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
+    /// be returned.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);

@@ -136,7 +136,10 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 let status = if let Err(e) = write_cficache(&path, &*object) {
                     log::warn!("Could not write cficache: {}", e);
                     sentry::capture_error(&e);
-
+                    // Cheating a little here: Even though this is a `CfiCacheError` which includes
+                    // variants not related to conversion, `write_cficache` only does work related
+                    // to conversion and therefore any error captured by this is due to the
+                    // conversion process failing. Marking those errors as Malformed is fine.
                     CacheStatus::Malformed
                 } else {
                     CacheStatus::Positive

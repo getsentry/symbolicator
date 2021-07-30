@@ -99,9 +99,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// expires before the metadata cache, so if the metadata needs to be re-computed then
     /// the data cache has probably also expired.
     ///
-    /// This returns an error if the download failed.  If the data cache has a
-    /// [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] status the same status is
-    /// returned.
+    /// This returns an error if the download failed.  If the data cache's entry is not
+    /// [`CacheStatus::Positive`], then the entry's not-positive state is returned.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -144,7 +143,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
 
     /// Returns the [`ObjectMetaHandle`] at the given cache key.
     ///
-    /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
+    /// If the `status` is not `CacheStatus::Positive` the metadata
     /// returned will contain the default [`ObjectMetaHandle::features`].
     fn load(
         &self,
@@ -153,8 +152,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
         data: ByteView<'static>,
         _: CachePath,
     ) -> Self::Item {
-        // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
-        // get the malformed marker.
+        // Non-`CacheStatus::Positive` statuses do not contain any data about their supported
+        // features, so just return the default set.
         let features = match status {
             CacheStatus::Positive => serde_json::from_slice(&data).unwrap_or_else(|err| {
                 log::error!(
