@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 
 use actix_web::{dev::Payload, error, multipart, Error};
 use futures::{compat::Stream01CompatExt, StreamExt};
@@ -41,6 +41,7 @@ pub async fn read_multipart_file(
     while let Some(chunk) = stream.next().await {
         file.write_all(&chunk?)?;
     }
+    file.seek(SeekFrom::Start(0))?;
 
     Ok(())
 }

@@ -2284,7 +2284,7 @@ mod tests {
 
     use crate::config::Config;
     use crate::services::Service;
-    use crate::test;
+    use crate::test::{self, fixture};
 
     /// Setup tests and create a test service.
     ///
@@ -2520,7 +2520,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = std::fs::File::open("apple_crash_report.txt")?;
+        let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
         let response = test::spawn_compat(move || async move {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
