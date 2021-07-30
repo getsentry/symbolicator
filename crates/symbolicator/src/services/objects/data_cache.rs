@@ -72,6 +72,7 @@ impl ObjectHandle {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed => Err(ObjectError::Malformed),
+            CacheStatus::DownloadError => Err(ObjectError::Malformed),
         }
     }
 

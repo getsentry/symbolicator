@@ -447,6 +447,7 @@ fn create_candidate_info(
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
                 CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                CacheStatus::DownloadError => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),

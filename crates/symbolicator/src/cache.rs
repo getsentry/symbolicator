@@ -26,6 +26,18 @@ use crate::types::Scope;
 /// yet.
 pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
+/// **Cache items of this type are currently not being created. This exists to make it easier to
+/// roll back changes.**
+///
+/// Content of cache items where downloading the file failed.
+///
+/// Items with this value will be expired after an hour.
+///
+/// The download error state is used as a way to distinguish between the absence of a file and an
+/// the failure to fetch a file that is known to be present, but unfetchable due to circumstantial
+/// errors. The former scenario is covered by the negative cache state.
+pub const DOWNLOAD_ERROR_MARKER: &[u8] = b"dlerr";
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
@@ -37,6 +49,10 @@ pub enum CacheStatus {
     /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
     /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
     Malformed,
+    /// Currently unused. All cache statuses detected as this variant will be converted to
+    /// [`CacheStatus::Malformed`].
+    #[allow(dead_code)]
+    DownloadError,
 }
 
 impl AsRef<str> for CacheStatus {
@@ -45,13 +61,14 @@ impl AsRef<str> for CacheStatus {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
             CacheStatus::Malformed => "malformed",
+            CacheStatus::DownloadError => "download error",
         }
     }
 }
 
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
-        if s.starts_with(MALFORMED_MARKER) {
+        if s.starts_with(MALFORMED_MARKER) || s.starts_with(DOWNLOAD_ERROR_MARKER) {
             CacheStatus::Malformed
         } else if s.is_empty() {
             CacheStatus::Negative
@@ -78,6 +95,10 @@ impl CacheStatus {
                 File::create(path)?;
             }
             CacheStatus::Malformed => {
+                let mut f = File::create(path)?;
+                f.write_all(MALFORMED_MARKER)?;
+            }
+            CacheStatus::DownloadError => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
             }

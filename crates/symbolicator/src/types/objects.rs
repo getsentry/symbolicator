@@ -151,6 +151,7 @@ impl ObjectUseInfo {
                 }
             }
             CacheStatus::Malformed => ObjectUseInfo::Malformed,
+            CacheStatus::DownloadError => ObjectUseInfo::Malformed,
         }
     }
 }
