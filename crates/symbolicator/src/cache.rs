@@ -230,45 +230,37 @@ impl Cache {
 
         log::trace!("File length: {}", metadata.len());
 
-        let is_malformed = if MALFORMED_MARKER.len() as u64 <= metadata.len() {
-            let mut file = File::open(path)?;
-            let mut buf = vec![0; MALFORMED_MARKER.len()];
-            file.read_exact(&mut buf)?;
+        let expiration_strategy = expiration_strategy(path)?;
+        let max_mtime: Option<Duration>;
+        match expiration_strategy {
+            ExpirationStrategy::None => {
+                max_mtime = self.cache_config.max_unused_for();
+            }
+            ExpirationStrategy::Negative => {
+                max_mtime = self.cache_config.retry_misses_after();
+            }
+            ExpirationStrategy::Malformed => {
+                max_mtime = self.cache_config.max_unused_for();
 
-            log::trace!("First {} bytes: {:?}", buf.len(), buf);
-            buf == MALFORMED_MARKER
-        } else {
-            false
-        };
+                // Immediately expire malformed items that have been created before this process started.
+                // See docstring of MALFORMED_MARKER
+                let created_at = metadata.modified()?;
 
-        let is_negative = metadata.len() == 0;
+                let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
+                    created_at.elapsed(),
+                    self.cache_config.retry_malformed_after(),
+                ) {
+                    elapsed > retry_malformed_after
+                } else {
+                    false
+                };
 
-        if is_malformed {
-            // Immediately expire malformed items that have been created before this process started.
-            // See docstring of MALFORMED_MARKER
-
-            let created_at = metadata.modified()?;
-
-            let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
-                created_at.elapsed(),
-                self.cache_config.retry_malformed_after(),
-            ) {
-                elapsed > retry_malformed_after
-            } else {
-                false
-            };
-
-            if created_at < self.start_time || retry_malformed {
-                log::trace!("Created at is older than start time");
-                return Err(io::ErrorKind::NotFound.into());
+                if created_at < self.start_time || retry_malformed {
+                    log::trace!("Created at is older than start time");
+                    return Err(io::ErrorKind::NotFound.into());
+                }
             }
         }
-
-        let max_mtime = if is_negative {
-            self.cache_config.retry_misses_after()
-        } else {
-            self.cache_config.max_unused_for()
-        };
 
         let mtime = if let Some(max_mtime) = max_mtime {
             let mtime = metadata.modified()?.elapsed().ok();
@@ -282,9 +274,9 @@ impl Cache {
             None
         };
 
-        Ok(!is_negative
-            && !is_malformed
-            && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true))
+        let touch_before_use = expiration_strategy == ExpirationStrategy::None
+            && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true);
+        Ok(touch_before_use)
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -315,6 +307,42 @@ impl Cache {
             None => Ok(NamedTempFile::new()?),
         }
     }
+}
+
+/// Expiration strategies for cache items. These aren't named after the strategies themselves right
+/// now but after the type of cache entry they should be used on instead.
+#[derive(Debug, PartialEq)]
+enum ExpirationStrategy {
+    /// Clean up after it is untouched for a fixed period of time.
+    None,
+    /// Clean up after a forced cool-off period so it can be re-downloaded.
+    Negative,
+    /// Clean up after it is untouched for a fixed period of time. Immediately clean up if the item
+    /// was last touched before the process executing cleanup started.
+    Malformed,
+}
+
+/// Reads a cache item at a given path and returns the cleanup strategy that should be used
+/// for the item.
+fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
+    let metadata = path.metadata()?;
+
+    let largest_sentinel = MALFORMED_MARKER.len().max(DOWNLOAD_ERROR_MARKER.len());
+    let readable_amount = largest_sentinel.min(metadata.len() as usize);
+    let mut file = File::open(path)?;
+    let mut buf = vec![0; readable_amount];
+
+    log::trace!("First {} bytes: {:?}", buf.len(), buf);
+    file.read_exact(&mut buf)?;
+
+    let strategy = match CacheStatus::from_content(&buf) {
+        CacheStatus::Positive => ExpirationStrategy::None,
+        CacheStatus::Negative => ExpirationStrategy::Negative,
+        CacheStatus::Malformed => ExpirationStrategy::Malformed,
+        CacheStatus::DownloadError => ExpirationStrategy::Malformed,
+    };
+
+    Ok(strategy)
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -665,6 +693,110 @@ mod tests {
         basenames.sort();
 
         assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expiration_strategy_positive() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/keepbeep"))?.write_all(b"toot")?;
+        File::create(tempdir.path().join("honk/keepbeep2"))?.write_all(b"honk")?;
+        File::create(tempdir.path().join("honk/keepbeep3"))?.write_all(b"honkhonkbeepbeep")?;
+        File::create(tempdir.path().join("honk/keepbeep4"))?.write_all(b"malform")?;
+        File::create(tempdir.path().join("honk/keepbeep5"))?.write_all(b"dler")?;
+
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/keepbeep").as_path())?,
+            ExpirationStrategy::None,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/keepbeep2").as_path())?,
+            ExpirationStrategy::None,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/keepbeep3").as_path())?,
+            ExpirationStrategy::None,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/keepbeep4").as_path())?,
+            ExpirationStrategy::None,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/keepbeep5").as_path())?,
+            ExpirationStrategy::None,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expiration_strategy_negative() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/retrybeep"))?.write_all(b"")?;
+
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/retrybeep").as_path())?,
+            ExpirationStrategy::Negative,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expiration_strategy_malformed() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"malformed")?;
+
+        File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"malformedhonkbeep")?;
+
+        File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"dlerr")?;
+
+        File::create(tempdir.path().join("honk/badbeep4"))?.write_all(b"dlerrhonkbeep")?;
+
+        File::create(tempdir.path().join("honk/badbeep5"))?.write_all(b"dlerrmalformed")?;
+
+        File::create(tempdir.path().join("honk/badbeep6"))?.write_all(b"malformeddlerr")?;
+
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/badbeep").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/badbeep2").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/badbeep3").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/badbeep4").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/badbeep5").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(tempdir.path().join("honk/badbeep6").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
 
         Ok(())
     }
