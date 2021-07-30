@@ -231,36 +231,32 @@ impl Cache {
         log::trace!("File length: {}", metadata.len());
 
         let expiration_strategy = expiration_strategy(path)?;
-        let max_mtime: Option<Duration>;
-        match expiration_strategy {
-            ExpirationStrategy::None => {
-                max_mtime = self.cache_config.max_unused_for();
-            }
-            ExpirationStrategy::Negative => {
-                max_mtime = self.cache_config.retry_misses_after();
-            }
-            ExpirationStrategy::Malformed => {
-                max_mtime = self.cache_config.max_unused_for();
 
-                // Immediately expire malformed items that have been created before this process started.
-                // See docstring of MALFORMED_MARKER
-                let created_at = metadata.modified()?;
+        if expiration_strategy == ExpirationStrategy::Malformed {
+            // Immediately expire malformed items that have been created before this process started.
+            // See docstring of MALFORMED_MARKER
+            let created_at = metadata.modified()?;
 
-                let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
-                    created_at.elapsed(),
-                    self.cache_config.retry_malformed_after(),
-                ) {
-                    elapsed > retry_malformed_after
-                } else {
-                    false
-                };
+            let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
+                created_at.elapsed(),
+                self.cache_config.retry_malformed_after(),
+            ) {
+                elapsed > retry_malformed_after
+            } else {
+                false
+            };
 
-                if created_at < self.start_time || retry_malformed {
-                    log::trace!("Created at is older than start time");
-                    return Err(io::ErrorKind::NotFound.into());
-                }
+            if created_at < self.start_time || retry_malformed {
+                log::trace!("Created at is older than start time");
+                return Err(io::ErrorKind::NotFound.into());
             }
         }
+
+        let max_mtime = if expiration_strategy == ExpirationStrategy::Negative {
+            self.cache_config.retry_misses_after()
+        } else {
+            self.cache_config.max_unused_for()
+        };
 
         let mtime = if let Some(max_mtime) = max_mtime {
             let mtime = metadata.modified()?.elapsed().ok();
