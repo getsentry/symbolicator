@@ -17,6 +17,7 @@
 - Refresh symcaches when a new `BcSymbolMap` becomes available. ([#493](https://github.com/getsentry/symbolicator/pull/493))
 - Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484), [#501](https://github.com/getsentry/symbolicator/pull/501))
 - New configuration option `hostname_tag` ([#513](https://github.com/getsentry/symbolicator/pull/513))
+- Introduced a new cache status to represent download failures that aren't related to the file being missing. It is currently unused. ([#509](https://github.com/getsentry/symbolicator/pull/509))
 
 ### Fixes
 
