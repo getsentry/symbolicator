@@ -446,7 +446,7 @@ fn create_candidate_info(
                     features: meta_handle.features(),
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
                 CacheStatus::CacheSpecificError => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {

@@ -71,13 +71,13 @@ impl ObjectHandle {
         match self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(ObjectError::Malformed),
+            CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
             CacheStatus::CacheSpecificError => Err(ObjectError::Malformed),
         }
     }
 
-    pub fn status(&self) -> CacheStatus {
-        self.status
+    pub fn status(&self) -> &CacheStatus {
+        &self.status
     }
 
     pub fn scope(&self) -> &Scope {
@@ -168,7 +168,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
                 Err(e) => {
                     log::error!("Error while downloading file: {}", LogError(&e));
-                    return Ok(CacheStatus::Malformed);
+                    return Ok(CacheStatus::Malformed(e.to_string()));
                 }
 
                 Ok(DownloadStatus::Completed) => {
@@ -184,7 +184,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             // the error comes from a corrupt file than a local file system error.
             let mut decompressed = match decompress_result {
                 Ok(decompressed) => decompressed,
-                Err(_) => return Ok(CacheStatus::Malformed),
+                Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
             };
 
             // Seek back to the start and parse this object so we can deal with it.
@@ -195,7 +195,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             let view = ByteView::map_file(decompressed)?;
             let archive = match Archive::parse(&view) {
                 Ok(archive) => archive,
-                Err(_) => return Ok(CacheStatus::Malformed),
+                Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
             };
             let mut persist_file = fs::File::create(&path)?;
             if archive.is_multi() {
@@ -207,8 +207,8 @@ impl CacheItemRequest for FetchFileDataRequest {
                 let object = match object_opt {
                     Some(object) => object,
                     None => {
-                        if archive.objects().any(|r| r.is_err()) {
-                            return Ok(CacheStatus::Malformed);
+                        if let Some(Err(err)) = archive.objects().find(|r| r.is_err()) {
+                            return Ok(CacheStatus::Malformed(err.to_string()));
                         } else {
                             return Ok(CacheStatus::Negative);
                         }
@@ -219,8 +219,8 @@ impl CacheItemRequest for FetchFileDataRequest {
             } else {
                 // Attempt to parse the object to capture errors. The result can be
                 // discarded as the object's data is the entire ByteView.
-                if archive.object_by_index(0).is_err() {
-                    return Ok(CacheStatus::Malformed);
+                if let Err(err) = archive.object_by_index(0) {
+                    return Ok(CacheStatus::Malformed(err.to_string()));
                 }
 
                 io::copy(&mut view.as_ref(), &mut persist_file)?;
@@ -425,10 +425,16 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::Malformed(String::from("download was cancelled"))
+            );
             assert_eq!(server.accesses(), 1);
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Malformed);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::Malformed(String::from("download was cancelled"))
+            );
             assert_eq!(server.accesses(), 0);
         })
         .await;

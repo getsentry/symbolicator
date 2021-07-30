@@ -41,7 +41,7 @@ pub const MALFORMED_MARKER: &[u8] = b"malformed";
 /// are covered by the negative cache state.
 pub const CACHE_SPECIFIC_ERROR_MARKER: &[u8] = b"cachespecificerror";
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CacheStatus {
     /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
     /// object file and cached that file.
@@ -51,7 +51,7 @@ pub enum CacheStatus {
     Negative,
     /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
     /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
-    Malformed,
+    Malformed(String),
     /// Currently unused. All cache statuses detected as this variant will be converted to
     /// [`CacheStatus::Malformed`].  See docs for [`CACHE_SPECIFIC_ERROR_MARKER`].
     #[allow(dead_code)]
@@ -63,7 +63,7 @@ impl AsRef<str> for CacheStatus {
         match self {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
-            CacheStatus::Malformed => "malformed",
+            CacheStatus::Malformed(_) => "malformed",
             CacheStatus::CacheSpecificError => "cache-specific error",
         }
     }
@@ -71,8 +71,14 @@ impl AsRef<str> for CacheStatus {
 
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
-        if s.starts_with(MALFORMED_MARKER) || s.starts_with(CACHE_SPECIFIC_ERROR_MARKER) {
-            CacheStatus::Malformed
+        if s.starts_with(MALFORMED_MARKER) {
+            let raw_message = s.get(MALFORMED_MARKER.len()..).unwrap_or_default();
+            let err_msg = String::from_utf8_lossy(raw_message);
+            CacheStatus::Malformed(err_msg.into_owned())
+        } else if s.starts_with(CACHE_SPECIFIC_ERROR_MARKER) {
+            CacheStatus::Malformed(String::from(
+                "failed to create entry due to a cache-specific problem",
+            ))
         } else if s.is_empty() {
             CacheStatus::Negative
         } else {
@@ -85,7 +91,7 @@ impl CacheStatus {
     /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
     /// file to the final cache location.  Otherwise it writes corresponding marker in the
     /// cache location.
-    pub fn persist_item(self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
+    pub fn persist_item(&self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
         let dir = path.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
         })?;
@@ -97,9 +103,10 @@ impl CacheStatus {
             CacheStatus::Negative => {
                 File::create(path)?;
             }
-            CacheStatus::Malformed => {
+            CacheStatus::Malformed(details) => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
+                f.write_all(details.as_bytes())?;
             }
             CacheStatus::CacheSpecificError => {
                 let mut f = File::create(path)?;
@@ -339,7 +346,7 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
     let strategy = match CacheStatus::from_content(&buf) {
         CacheStatus::Positive => ExpirationStrategy::None,
         CacheStatus::Negative => ExpirationStrategy::Negative,
-        CacheStatus::Malformed => ExpirationStrategy::Malformed,
+        CacheStatus::Malformed(_) => ExpirationStrategy::Malformed,
         // The nature of cache-specific errors depends on the cache type so different
         // strategies are used based on which cache's file is being assessed here.
         // This won't kick in until `CacheStatus::from_content` stops classifying
