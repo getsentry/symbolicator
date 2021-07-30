@@ -178,19 +178,16 @@ impl CfiCacheModules {
                         CacheStatus::Negative => ObjectFileStatus::Missing,
                         CacheStatus::Malformed => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            // A "Malformed" cfi cache entry could either mean the source itself is
+                            // malformed or conversion failed (due to IO or conversion itself
+                            // failing). Does this log add unnecessary noise because it doesn't
+                            // differentiate between the two?
                             log::warn!("Error while parsing cficache: {}", LogError(&err));
                             ObjectFileStatus::from(&err)
                         }
-                        CacheStatus::DownloadError => {
-                            let err = CfiCacheError::Fetching(ObjectError::Download(
-                                DownloadError::CachedFailure,
-                            ));
-                            log::warn!(
-                                "Error while downloading cficache's DIF: {}",
-                                LogError(&err)
-                            );
-                            ObjectFileStatus::from(&err)
-                        }
+                        // This is only ever found in cfi caches if the underlying object in the
+                        // data cache has a download error
+                        CacheStatus::DownloadError => ObjectFileStatus::FetchingFailed,
                     };
                     let cfi_path = match cfi_cache.status() {
                         CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
@@ -842,7 +839,6 @@ impl SymCacheLookup {
                     Ok(symcache) => match symcache.parse() {
                         Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
                         Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
-                        // TODO: probably could do this better
                         Err(SymCacheError::Fetching(ObjectError::Download(
                             DownloadError::CachedFailure,
                         ))) => (Some(symcache), ObjectFileStatus::FetchingFailed),

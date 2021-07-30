@@ -68,6 +68,8 @@ impl ObjectHandle {
         self.status == CacheStatus::Positive
     }
 
+    // Interestingly all usages of parse() check to make sure that self.status == Positive before
+    // actually invoking parse()
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
         match self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),

@@ -150,7 +150,10 @@ impl ObjectUseInfo {
                     ObjectUseInfo::None
                 }
             }
+            // If the original wasn't malformed to begin with but the derived caches are, does that
+            // necessarily mean that the object was unusable?
             CacheStatus::Malformed => ObjectUseInfo::Malformed,
+            // derived == DownloadError and original != DownloadError should never happen
             CacheStatus::DownloadError => ObjectUseInfo::Error {
                 // TODO: add download error
                 details: String::from("add download error to this later"),
