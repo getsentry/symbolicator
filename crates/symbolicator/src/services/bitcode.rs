@@ -45,8 +45,8 @@ impl BcSymbolMapHandle {
 
 /// The handle to be returned by [`CacheItemRequest`].
 ///
-/// This trait requires us to return a handle regardless of positive, negative or malformed
-/// cache status.  This is this handle but we do not expose it outside of this module, see
+/// This trait requires us to return a handle regardless of its cache status.
+/// This is this handle but we do not expose it outside of this module, see
 /// [`BcSymbolMapHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {

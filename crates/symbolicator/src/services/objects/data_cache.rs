@@ -142,6 +142,12 @@ impl CacheItemRequest for FetchFileDataRequest {
     ///
     /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
     /// returned.
+    ///
+    /// If there was an error downloading the object file, an `Ok` with
+    /// [`CacheStatus::CacheSpecificError`] is returned.
+    ///
+    /// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
+    /// be returned.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
