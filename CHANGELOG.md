@@ -18,6 +18,7 @@
 - Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484), [#501](https://github.com/getsentry/symbolicator/pull/501))
 - New configuration option `hostname_tag` ([#513](https://github.com/getsentry/symbolicator/pull/513))
 - Introduced a new cache status to represent failures specific to the cache: Download failures that aren't related to the file being missing in download caches and conversion errors in derived caches. It is currently unused. ([#509](https://github.com/getsentry/symbolicator/pull/509))
+- Malformed and Cache-specific Error cache entries now contain some diagnostic info. ([#510](https://github.com/getsentry/symbolicator/pull/510))
 
 ### Fixes
 
