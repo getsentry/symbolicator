@@ -150,9 +150,11 @@ impl ObjectUseInfo {
                     ObjectUseInfo::None
                 }
             }
+            // TODO: Use ObjectUseInfo::Error if original == Positive and derived == Malformed?
             CacheStatus::Malformed(_) => ObjectUseInfo::Malformed,
-            // TODO: Use ObjectUseInfo::Error once we want to start writing CacheSpecificErrors to cache
-            CacheStatus::CacheSpecificError(_) => ObjectUseInfo::Malformed,
+            CacheStatus::CacheSpecificError(message) => ObjectUseInfo::Error {
+                details: message.clone(),
+            },
         }
     }
 }

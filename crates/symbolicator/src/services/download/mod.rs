@@ -56,6 +56,8 @@ pub enum DownloadError {
     #[allow(unused)]
     #[error("failed to download: {0}")]
     Rejected(StatusCode),
+    #[error("failed to fetch object: {0}")]
+    CachedError(String),
 }
 
 impl DownloadError {
@@ -64,6 +66,7 @@ impl DownloadError {
             DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
             DownloadError::Sentry(inner) => format!("{}: {}", self, inner),
             DownloadError::S3(inner) => format!("{}: {}", self, inner),
+            DownloadError::CachedError(original_message) => original_message.clone(),
             _ => format!("{}", self),
         }
     }

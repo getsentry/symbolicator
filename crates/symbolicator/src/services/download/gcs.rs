@@ -271,9 +271,7 @@ impl GcsDownloader {
                         &bucket,
                         response.status()
                     );
-                    // TODO: switch to this once we start writing DownloadErrors
-                    // Err(DownloadError::Rejected(response.status()))
-                    Ok(DownloadStatus::NotFound)
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {
@@ -283,9 +281,7 @@ impl GcsDownloader {
                     &bucket,
                     &e
                 );
-                // TODO: switch to this once we start writing DownloadErrors
-                // Err(DownloadError::Reqwest(e))
-                Ok(DownloadStatus::NotFound)
+                Err(DownloadError::Reqwest(e))
             }
             Err(_) => {
                 // Timeout

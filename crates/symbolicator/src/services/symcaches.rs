@@ -99,13 +99,14 @@ pub struct SymCacheFile {
 
 impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        match self.status {
+        match &self.status {
             CacheStatus::Positive => Ok(Some(
                 SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(SymCacheError::Malformed),
-            // TODO: revisit once we want to start writing CacheSpecificError to cache
+            // If the cache entry is for a cache specific error, it must be
+            // from a previous symcache conversion attempt.
             CacheStatus::CacheSpecificError(_) => Err(SymCacheError::Malformed),
         }
     }

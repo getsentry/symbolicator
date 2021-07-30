@@ -23,6 +23,7 @@ use tempfile::tempfile_in;
 use crate::cache::{CacheKey, CacheStatus};
 use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CachePath};
+use crate::services::download::DownloadError;
 use crate::services::download::{DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
@@ -68,12 +69,15 @@ impl ObjectHandle {
     }
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        match self.status {
+        // Interestingly all usages of parse() check to make sure that self.status == Positive before
+        // actually invoking it.
+        match &self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
-            // TODO: replace with ObjectError::Error once we want to start writing CacheSpecificErrors to cache
-            CacheStatus::CacheSpecificError(_) => Err(ObjectError::Malformed),
+            CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(
+                DownloadError::CachedError(message.clone()),
+            )),
         }
     }
 
@@ -168,8 +172,8 @@ impl CacheItemRequest for FetchFileDataRequest {
                 }
 
                 Err(e) => {
-                    log::error!("Error while downloading file: {}", LogError(&e));
-                    return Ok(CacheStatus::Malformed(e.for_cache()));
+                    log::debug!("Error while downloading file: {}", LogError(&e));
+                    return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
                 }
 
                 Ok(DownloadStatus::Completed) => {

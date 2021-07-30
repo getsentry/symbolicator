@@ -441,14 +441,15 @@ fn create_candidate_info(
 ) -> ObjectCandidate {
     match meta_lookup {
         Ok(meta_handle) => {
-            let download = match meta_handle.status {
+            let download = match &meta_handle.status {
                 CacheStatus::Positive => ObjectDownloadInfo::Ok {
                     features: meta_handle.features(),
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
                 CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
-                // TODO: use ObjectDownloadInfo::Error once we want to start writing CacheSpecificErrors to cache
-                CacheStatus::CacheSpecificError(_) => ObjectDownloadInfo::Malformed,
+                CacheStatus::CacheSpecificError(message) => ObjectDownloadInfo::Error {
+                    details: message.clone(),
+                },
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),

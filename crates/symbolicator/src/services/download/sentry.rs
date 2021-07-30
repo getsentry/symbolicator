@@ -297,9 +297,7 @@ impl SentryDownloader {
                         download_url,
                         response.status()
                     );
-                    // TODO: use this once we start writing DownloadErrors to cache
-                    // Err(DownloadError::Rejected(response.status()))
-                    Ok(DownloadStatus::NotFound)
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {

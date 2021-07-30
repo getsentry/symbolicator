@@ -181,9 +181,7 @@ impl S3Downloader {
                         return Ok(DownloadStatus::NotFound);
                     }
                 }
-                // TODO: use this once we start writing DownloadErrors to cache
-                // return Err(err.into());
-                return Ok(DownloadStatus::NotFound);
+                return Err(err.into());
             }
             Err(_) => {
                 // Timed out
