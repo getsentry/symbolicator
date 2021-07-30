@@ -693,22 +693,112 @@ mod tests {
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
         File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
-        File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"cachespecificerror")?;
-        File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"cachespecificerrorhonk")?;
-        File::create(tempdir.path().join("foo/killthis5"))?
-            .write_all(b"cachespecificerrormalformed")?;
-        File::create(tempdir.path().join("foo/killthis6"))?
-            .write_all(b"malformedcachespecificerror")?;
 
         sleep(Duration::from_millis(10));
 
-        // Creation of this struct == "process startup"
+        // Creation of this struct == "process startup", this tests that all malformed files created
+        // before startup are cleaned
         let cache = Cache::from_config(
             "test",
             Some(tempdir.path().to_path_buf()),
             None,
-            CacheConfig::Derived(Default::default()),
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(20)),
+                ..Default::default()
+            }),
         )?;
+
+        cache.cleanup()?;
+
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        basenames.sort();
+
+        assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_cache_specific_error_derived() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
+
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"beeep")?;
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"cachespecificerror")?;
+        File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"cachespecificerrorhonk")?;
+        File::create(tempdir.path().join("foo/killthis3"))?
+            .write_all(b"cachespecificerrormalformed")?;
+        File::create(tempdir.path().join("foo/killthis4"))?
+            .write_all(b"malformedcachespecificerror")?;
+
+        // Creation of this struct == "process startup", this tests that all cache-specific error files created
+        // before startup are cleaned
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Derived(DerivedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(20)),
+                ..Default::default()
+            }),
+        )?;
+
+        sleep(Duration::from_millis(30));
+
+        cache.cleanup()?;
+
+        let mut basenames: Vec<_> = read_dir(tempdir.path().join("foo"))?
+            .map(|x| x.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        basenames.sort();
+
+        assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cleanup_cache_specific_error_download() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+        use std::thread::sleep;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("foo"))?;
+
+        File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"beeep")?;
+        File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+        File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+
+        File::create(tempdir.path().join("foo/killthis"))?.write_all(b"cachespecificerror")?;
+        File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"cachespecificerrorhonk")?;
+        File::create(tempdir.path().join("foo/killthis3"))?
+            .write_all(b"cachespecificerrormalformed")?;
+        File::create(tempdir.path().join("foo/killthis4"))?
+            .write_all(b"malformedcachespecificerror")?;
+
+        let cache = Cache::from_config(
+            "test",
+            Some(tempdir.path().to_path_buf()),
+            None,
+            CacheConfig::Downloaded(DownloadedCacheConfig {
+                retry_misses_after: Some(Duration::from_millis(20)),
+                ..Default::default()
+            }),
+        )?;
+
+        sleep(Duration::from_millis(30));
 
         cache.cleanup()?;
 
@@ -834,7 +924,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expiration_strategy_cache_specific_err() -> Result<()> {
+    fn test_expiration_strategy_cache_specific_err_derived() -> Result<()> {
         use std::fs::create_dir_all;
         use std::io::Write;
 
@@ -849,28 +939,86 @@ mod tests {
         File::create(tempdir.path().join("honk/badbeep3"))?
             .write_all(b"cachespecificerrormalformed")?;
 
-        let cache_configs = vec![
-            CacheConfig::Downloaded(Default::default()),
-            CacheConfig::Derived(Default::default()),
-            CacheConfig::Diagnostics(Default::default()),
-        ];
+        let config = CacheConfig::Derived(Default::default());
 
-        // For now all of these should use malformed's strategy since
-        // `CacheStatus::CacheSpecificError` behaves like `CacheStatus::Malformed` everywhere
-        for config in cache_configs {
-            assert_eq!(
-                expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
-                ExpirationStrategy::Malformed,
-            );
-            assert_eq!(
-                expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
-                ExpirationStrategy::Malformed,
-            );
-            assert_eq!(
-                expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
-                ExpirationStrategy::Malformed,
-            );
-        }
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
+            ExpirationStrategy::Malformed,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_expiration_strategy_cache_specific_err_diagnostics() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"cachespecificerror")?;
+
+        File::create(tempdir.path().join("honk/badbeep2"))?
+            .write_all(b"cachespecificerrorhonkbeep")?;
+
+        File::create(tempdir.path().join("honk/badbeep3"))?
+            .write_all(b"cachespecificerrormalformed")?;
+
+        let config = CacheConfig::Diagnostics(Default::default());
+
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
+            ExpirationStrategy::None,
+        );
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
+            ExpirationStrategy::None,
+        );
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
+            ExpirationStrategy::None,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_expiration_strategy_cache_specific_err_downloaded() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"cachespecificerror")?;
+
+        File::create(tempdir.path().join("honk/badbeep2"))?
+            .write_all(b"cachespecificerrorhonkbeep")?;
+
+        File::create(tempdir.path().join("honk/badbeep3"))?
+            .write_all(b"cachespecificerrormalformed")?;
+
+        let config = CacheConfig::Downloaded(Default::default());
+
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
+            ExpirationStrategy::Negative,
+        );
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
+            ExpirationStrategy::Negative,
+        );
+        assert_eq!(
+            expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
+            ExpirationStrategy::Negative,
+        );
         Ok(())
     }
 

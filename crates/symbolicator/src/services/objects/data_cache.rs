@@ -329,7 +329,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_negative_cache_server_error() {
+    async fn test_download_error_cache_server_error() {
         test::setup();
 
         let server = test::FailingSymbolServer::new();
@@ -348,8 +348,8 @@ mod tests {
             };
 
             // for each of the different symbol sources, we assert that:
-            // * we get a negative cache result no matter how often we try
-            // * we hit the symbol source exactly once for the initial request
+            // * we get a cache-specific error no matter how often we try
+            // * we hit the symbol source exactly once for the initial request, followed by 3 retries
             // * the second try should *not* hit the symbol source, but should rather be served by the cache
 
             // server rejects the request (500)
@@ -358,10 +358,20 @@ mod tests {
                 ..find_object
             };
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
-            assert_eq!(server.accesses(), 1);
+            assert_eq!(
+                result.meta.clone().unwrap().status,
+                CacheStatus::CacheSpecificError(String::from(
+                    "failed to download: 500 Internal Server Error"
+                ))
+            );
+            assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
             let result = objects_actor.find(find_object.clone()).await.unwrap();
-            assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::CacheSpecificError(String::from(
+                    "failed to download: 500 Internal Server Error"
+                ))
+            );
             assert_eq!(server.accesses(), 0);
         })
         .await;
@@ -407,7 +417,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_negative_cache_timeout() {
+    async fn test_download_error_cache_timeout() {
         test::setup();
 
         let server = test::FailingSymbolServer::new();
@@ -426,8 +436,8 @@ mod tests {
             };
 
             // for each of the different symbol sources, we assert that:
-            // * we get a negative cache result no matter how often we try
-            // * we hit the symbol source exactly once for the initial request
+            // * we get a cache-specific error no matter how often we try
+            // * we hit the symbol source exactly once for the initial request, followed by 3 retries
             // * the second try should *not* hit the symbol source, but should rather be served by the cache
 
             // server accepts the request, but never sends any reply (timeout)
@@ -438,13 +448,13 @@ mod tests {
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
                 result.meta.unwrap().status,
-                CacheStatus::Malformed(String::from("download was cancelled"))
+                CacheStatus::CacheSpecificError(String::from("download was cancelled"))
             );
             assert_eq!(server.accesses(), 1);
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
                 result.meta.unwrap().status,
-                CacheStatus::Malformed(String::from("download was cancelled"))
+                CacheStatus::CacheSpecificError(String::from("download was cancelled"))
             );
             assert_eq!(server.accesses(), 0);
         })
