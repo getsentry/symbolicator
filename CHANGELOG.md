@@ -16,6 +16,7 @@
 - GCS, S3, HTTP, and local filesystem sources: Attempt to retry failed downloads at least once. ([#485](https://github.com/getsentry/symbolicator/pull/485))
 - Refresh symcaches when a new `BcSymbolMap` becomes available. ([#493](https://github.com/getsentry/symbolicator/pull/493))
 - Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484), [#501](https://github.com/getsentry/symbolicator/pull/501))
+- New configuration option `hostname_tag` (#[513](https://github.com/getsentry/symbolicator/pull/513))
 
 ### Tools
 
