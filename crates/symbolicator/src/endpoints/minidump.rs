@@ -33,10 +33,13 @@ async fn handle_minidump_request(
         let content_disposition = field.content_disposition();
         match content_disposition.as_ref().and_then(|d| d.get_name()) {
             Some("upload_file_minidump") => {
-                let minidump_file = tempfile::Builder::new()
-                    .prefix("minidump")
-                    .suffix(".dmp")
-                    .tempfile()?;
+                let mut minidump_file = tempfile::Builder::new();
+                minidump_file.prefix("minidump").suffix(".dmp");
+                let minidump_file = if let Some(tmp_dir) = state.config().cache_dir("tmp") {
+                    minidump_file.tempfile_in(tmp_dir)
+                } else {
+                    minidump_file.tempfile()
+                }?;
                 let (mut file, temp_path) = minidump_file.into_parts();
 
                 read_multipart_file(field, &mut file).await?;
