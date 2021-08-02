@@ -384,9 +384,6 @@ name = "bytes"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b700ce4376041dcd0a327fd0097c41095743c4c8af8887265942faf1100bd040"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bzip2"
@@ -3619,7 +3616,6 @@ dependencies = [
  "apple-crash-report-parser",
  "backtrace",
  "base64 0.13.0",
- "bytes 1.0.1",
  "cadence",
  "chrono",
  "console",

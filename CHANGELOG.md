@@ -24,6 +24,7 @@
 ### Internal
 
 - Measure how long it takes to download sources from external servers. ([#483](https://github.com/getsentry/symbolicator/pull/483))
+- Avoid serialization overhead when processing large minidumps out-of-process. ([#508](https://github.com/getsentry/symbolicator/pull/508))
 
 ## 0.3.4
 

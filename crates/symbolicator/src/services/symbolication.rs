@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
+use std::fs::File;
 use std::future::Future;
-use std::io::{Cursor, Write};
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
-use bytes::Bytes;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
@@ -27,6 +26,7 @@ use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
+use tempfile::TempPath;
 use thiserror::Error;
 
 use crate::cache::CacheStatus;
@@ -1692,8 +1692,6 @@ impl SymbolicationActor {
         handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
         timeout: Duration,
         metric: &str,
-        minidump: &[u8],
-        minidump_cache: crate::cache::Cache,
     ) -> Result<T, anyhow::Error>
     where
         T: Serialize + DeserializeOwned,
@@ -1715,45 +1713,8 @@ impl SymbolicationActor {
                     "unknown"
                 };
                 metric!(counter(metric) += 1, "reason" => reason);
-                if !perr.is_timeout() {
-                    Self::save_minidump(minidump, minidump_cache)
-                        .map_err(|e| log::error!("Failed to save minidump {:?}", &e))
-                        .map(|r| {
-                            if let Some(path) = r {
-                                sentry::configure_scope(|scope| {
-                                    scope.set_extra(
-                                        "crashed_minidump",
-                                        sentry::protocol::Value::String(
-                                            path.to_string_lossy().to_string(),
-                                        ),
-                                    );
-                                });
-                            }
-                        })
-                        .ok();
-                }
                 Err(anyhow::Error::new(perr))
             }
-        }
-    }
-
-    /// Save a minidump to temporary location.
-    fn save_minidump(
-        minidump: &[u8],
-        failed_cache: crate::cache::Cache,
-    ) -> anyhow::Result<Option<PathBuf>> {
-        if let Some(dir) = failed_cache.cache_dir() {
-            std::fs::create_dir_all(dir)?;
-            let tmp = tempfile::Builder::new()
-                .prefix("minidump")
-                .suffix(".dmp")
-                .tempfile_in(dir)?;
-            tmp.as_file().write_all(&*minidump)?;
-            let (_file, path) = tmp.keep().map_err(|e| e.error)?;
-            Ok(Some(path))
-        } else {
-            log::debug!("No diagnostics retention configured, not saving minidump");
-            Ok(None)
         }
     }
 
@@ -1808,21 +1769,21 @@ impl SymbolicationActor {
     /// modules.
     async fn stackwalk_minidump_with_cfi(
         &self,
-        minidump: Bytes,
+        minidump_file: &TempPath,
         cfi_caches: &CfiCacheModules,
-    ) -> Result<StackWalkMinidumpResult, anyhow::Error> {
+    ) -> anyhow::Result<StackWalkMinidumpResult> {
         let pool = self.spawnpool.clone();
-        let diagnostics_cache = self.diagnostics_cache.clone();
         let cfi_caches = cfi_caches.for_processing();
+        let minidump_path = minidump_file.to_path_buf();
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
                 (
                     procspawn::serde::Json(cfi_caches),
-                    minidump.clone(),
+                    minidump_path,
                     spawn_time,
                 ),
-                |(cfi_caches, minidump, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcessMinidumpError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
 
                     if let Ok(duration) = spawn_time.elapsed() {
@@ -1831,7 +1792,11 @@ impl SymbolicationActor {
 
                     // Stackwalk the minidump.
                     let cfi = load_cfi_for_processor(cfi_caches);
-                    let minidump = ByteView::from_slice(&minidump);
+                    // we cannot map an `io::Error` into `MinidumpNotFound` since there is no public
+                    // constructor on `ProcessResult`. Passing in an empty buffer should result in
+                    // the same error though.
+                    let minidump =
+                        ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
                     let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
                     let minidump_state = MinidumpState::new(&process_state);
                     let object_type = minidump_state.object_type();
@@ -1910,8 +1875,6 @@ impl SymbolicationActor {
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
-                &minidump,
-                diagnostics_cache,
             )
         };
 
@@ -1925,15 +1888,14 @@ impl SymbolicationActor {
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
-        minidump: Vec<u8>,
+        minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
-            let minidump = Bytes::from(minidump);
-
-            log::debug!("Processing minidump ({} bytes)", minidump.len());
-            metric!(time_raw("minidump.upload.size") = minidump.len() as u64);
+            let len = minidump_file.metadata()?.len();
+            log::debug!("Processing minidump ({} bytes)", len);
+            metric!(time_raw("minidump.upload.size") = len);
 
             let mut cfi_caches = CfiCacheModules::new();
 
@@ -1942,9 +1904,38 @@ impl SymbolicationActor {
             let result = loop {
                 iterations += 1;
 
-                let result = self
-                    .stackwalk_minidump_with_cfi(minidump.clone(), &cfi_caches)
-                    .await?;
+                let result = match self
+                    .stackwalk_minidump_with_cfi(&minidump_file, &cfi_caches)
+                    .await
+                {
+                    Ok(res) => res,
+                    Err(err) => {
+                        if let Some(dir) = self.diagnostics_cache.cache_dir() {
+                            if let Some(file_name) = minidump_file.file_name() {
+                                let path = dir.join(file_name);
+                                match minidump_file.persist(&path) {
+                                    Ok(_) => {
+                                        sentry::configure_scope(|scope| {
+                                            scope.set_extra(
+                                                "crashed_minidump",
+                                                sentry::protocol::Value::String(
+                                                    path.to_string_lossy().to_string(),
+                                                ),
+                                            );
+                                        });
+                                    }
+                                    Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                                };
+                            }
+                        } else {
+                            log::debug!("No diagnostics retention configured, not saving minidump");
+                        }
+
+                        // we explicitly match and return here, otherwise the borrow checker will
+                        // complain that `minidump_file` is being moved into `save_minidump`
+                        return Err(err);
+                    }
+                };
 
                 let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
                     .referenced_modules
@@ -2001,13 +1992,13 @@ impl SymbolicationActor {
     async fn do_process_minidump(
         self,
         scope: Scope,
-        minidump: Vec<u8>,
+        minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
             .clone()
-            .do_stackwalk_minidump(scope, minidump, sources, options)
+            .do_stackwalk_minidump(scope, minidump_file, sources, options)
             .await?;
 
         let mut response = self.do_symbolicate(request).await?;
@@ -2019,14 +2010,16 @@ impl SymbolicationActor {
     pub fn process_minidump(
         &self,
         scope: Scope,
-        minidump: Vec<u8>,
+        minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
-        self.create_symbolication_request(
-            self.clone()
-                .do_process_minidump(scope, minidump, sources, options),
-        )
+        self.create_symbolication_request(self.clone().do_process_minidump(
+            scope,
+            minidump_file,
+            sources,
+            options,
+        ))
     }
 }
 
@@ -2081,12 +2074,12 @@ impl SymbolicationActor {
     async fn parse_apple_crash_report(
         &self,
         scope: Scope,
-        minidump: Vec<u8>,
+        report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
-            let report = AppleCrashReport::from_reader(Cursor::new(minidump))?;
+            let report = AppleCrashReport::from_reader(report)?;
             let mut metadata = report.metadata;
 
             let arch = report
@@ -2195,7 +2188,7 @@ impl SymbolicationActor {
     async fn do_process_apple_crash_report(
         self,
         scope: Scope,
-        report: Vec<u8>,
+        report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
@@ -2211,7 +2204,7 @@ impl SymbolicationActor {
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
-        apple_crash_report: Vec<u8>,
+        apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> RequestId {
@@ -2282,13 +2275,16 @@ impl From<&SymCacheError> for ObjectFileStatus {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::NamedTempFile;
+
     use super::*;
 
     use std::fs;
+    use std::io::Write;
 
     use crate::config::Config;
     use crate::services::Service;
-    use crate::test;
+    use crate::test::{self, fixture};
 
     /// Setup tests and create a test service.
     ///
@@ -2476,11 +2472,13 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = test::read_fixture(path);
+        let mut minidump_file = NamedTempFile::new()?;
+        minidump_file.write_all(&minidump)?;
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request_id = symbolication.process_minidump(
                 Scope::Global,
-                minidump,
+                minidump_file.into_temp_path(),
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
@@ -2522,7 +2520,7 @@ mod tests {
         let (service, _cache_dir) = setup_service();
         let (_symsrv, source) = test::symbol_server();
 
-        let report_file = test::read_fixture("apple_crash_report.txt");
+        let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
         let response = test::spawn_compat(move || async move {
             let request_id = service.symbolication().process_apple_crash_report(
                 Scope::Global,
