@@ -1267,20 +1267,16 @@ fn symbolicate_stacktrace(
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
 ) -> CompleteStacktrace {
-    let mut stacktrace = CompleteStacktrace {
-        thread_id: thread.thread_id,
-        is_requesting: thread.is_requesting,
-        registers: thread.registers.clone(),
-        frames: vec![],
-    };
+    let mut frames = vec![];
+    let mut frames_iter = thread.frames.into_iter().enumerate().peekable();
 
-    for (index, mut frame) in thread.frames.into_iter().enumerate() {
+    while let Some((index, mut frame)) = frames_iter.next() {
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
-            Ok(frames) => {
+            Ok(symbolicated_frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
                     metrics.scanned_frames += 1;
                 }
-                stacktrace.frames.extend(frames)
+                frames.extend(symbolicated_frames)
             }
             Err(status) => {
                 // Since symbolication failed, the function name was not demangled. In case there is
@@ -1316,6 +1312,23 @@ fn symbolicate_stacktrace(
                     continue;
                 }
 
+                // Certain linux compilers/libc combinations create a `DW_CFA_undefined: RIP` DWARF
+                // rule to say that `_start` has no return address. We do not support this and will
+                // thus use the previous rule for RIP, which might look up the register value on the
+                // stack, resulting in an unmapped garbage frame. We work around this by trimming the
+                // trailing garbage frame on the following conditions:
+                // * this is the last frame (via peek)
+                // * it is unmapped (UnknownImage)
+                // * the previous frame is `_start`
+                let is_start =
+                    |frame: &SymbolicatedFrame| frame.raw.function.as_deref() == Some("_start");
+                if status == FrameStatus::UnknownImage
+                    && frames_iter.peek().is_none()
+                    && frames.last().map_or(false, is_start)
+                {
+                    continue;
+                }
+
                 metrics.unsymbolicated_frames += 1;
                 match frame.trust {
                     FrameTrust::Scan => {
@@ -1330,7 +1343,7 @@ fn symbolicate_stacktrace(
                     metrics.unmapped_frames += 1;
                 }
 
-                stacktrace.frames.push(SymbolicatedFrame {
+                frames.push(SymbolicatedFrame {
                     status,
                     original_index: Some(index),
                     raw: frame,
@@ -1340,18 +1353,12 @@ fn symbolicate_stacktrace(
     }
 
     // we try to find a base frame among the bottom 5
-    if !stacktrace
-        .frames
-        .iter()
-        .rev()
-        .take(5)
-        .any(is_likely_base_frame)
-    {
+    if !frames.iter().rev().take(5).any(is_likely_base_frame) {
         metrics.truncated_traces += 1;
     }
     // macOS has some extremely short but perfectly fine stacks, such as:
     // `__workq_kernreturn` > `_pthread_wqthread` > `start_wqthread`
-    if stacktrace.frames.len() < 3 {
+    if frames.len() < 3 {
         metrics.short_traces += 1;
     }
 
@@ -1359,7 +1366,12 @@ fn symbolicate_stacktrace(
         metrics.bad_traces += 1;
     }
 
-    stacktrace
+    CompleteStacktrace {
+        thread_id: thread.thread_id,
+        is_requesting: thread.is_requesting,
+        registers: thread.registers,
+        frames,
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
