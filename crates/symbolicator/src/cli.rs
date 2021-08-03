@@ -73,7 +73,13 @@ pub fn execute() -> Result<()> {
 
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
-        metrics::configure_statsd(&config.metrics.prefix, statsd);
+        let hostname = config.metrics.hostname_tag.clone().and_then(|tag| {
+            hostname::get()
+                .ok()
+                .and_then(|s| s.into_string().ok())
+                .map(|name| (tag, name))
+        });
+        metrics::configure_statsd(&config.metrics.prefix, statsd, hostname);
     }
 
     procspawn::ProcConfig::new()

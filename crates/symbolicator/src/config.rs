@@ -55,6 +55,8 @@ pub struct Metrics {
     pub statsd: Option<String>,
     /// The prefix that should be added to all metrics.
     pub prefix: String,
+    /// A tag name to report the hostname to, for each metric. Defaults to not sending such a tag.
+    pub hostname_tag: Option<String>,
 }
 
 impl Default for Metrics {
@@ -65,6 +67,7 @@ impl Default for Metrics {
                 Err(_) => None,
             },
             prefix: "symbolicator".into(),
+            hostname_tag: None,
         }
     }
 }

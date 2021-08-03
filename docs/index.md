@@ -59,6 +59,7 @@ metrics:
       environment variable or in case it is not defined, then it defaults to `null`,
       which disables metric submission.
     - `prefix`: A prefix for every metric, defaults to `symbolicator`.
+    - `hostname_tag`: If set, report the current hostname under the given tag name for all metrics.
 - `sentry_dsn`: DSN to a Sentry project for internal error reporting. Defaults
   to `null`, which disables reporting to Sentry.
 - `sources`: An optional list of preconfigured sources. If these are configured
