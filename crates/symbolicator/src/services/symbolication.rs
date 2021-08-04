@@ -1267,16 +1267,16 @@ fn symbolicate_stacktrace(
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
 ) -> CompleteStacktrace {
-    let mut frames = vec![];
-    let mut frames_iter = thread.frames.into_iter().enumerate().peekable();
+    let mut symbolicated_frames = vec![];
+    let mut unsymbolicated_frames_iter = thread.frames.into_iter().enumerate().peekable();
 
-    while let Some((index, mut frame)) = frames_iter.next() {
+    while let Some((index, mut frame)) = unsymbolicated_frames_iter.next() {
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
-            Ok(symbolicated_frames) => {
+            Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
                     metrics.scanned_frames += 1;
                 }
-                frames.extend(symbolicated_frames)
+                symbolicated_frames.extend(frames)
             }
             Err(status) => {
                 // Since symbolication failed, the function name was not demangled. In case there is
@@ -1312,19 +1312,21 @@ fn symbolicate_stacktrace(
                     continue;
                 }
 
-                // Certain linux compilers/libc combinations create a `DW_CFA_undefined: RIP` DWARF
-                // rule to say that `_start` has no return address. We do not support this and will
-                // thus use the previous rule for RIP, which might look up the register value on the
-                // stack, resulting in an unmapped garbage frame. We work around this by trimming the
+                // Glibc inserts an explicit `DW_CFA_undefined: RIP` DWARF rule to say that `_start`
+                // has no return address.
+                // See https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/x86_64/start.S;h=1b3e36826b8a477474cee24d1c931429fbdf6d8f;hb=HEAD#l59
+                // We do not support this due to lack of breakpad support, and will thus use the
+                // previous rule for RIP, which says to look it up the value on the stack,
+                // resulting in an unmapped garbage frame. We work around this by trimming the
                 // trailing garbage frame on the following conditions:
-                // * this is the last frame (via peek)
                 // * it is unmapped (UnknownImage)
-                // * the previous frame is `_start`
+                // * this is the last frame to symbolicate (via peek)
+                // * the previous symbolicated frame is `_start`
                 let is_start =
                     |frame: &SymbolicatedFrame| frame.raw.function.as_deref() == Some("_start");
                 if status == FrameStatus::UnknownImage
-                    && frames_iter.peek().is_none()
-                    && frames.last().map_or(false, is_start)
+                    && unsymbolicated_frames_iter.peek().is_none()
+                    && symbolicated_frames.last().map_or(false, is_start)
                 {
                     continue;
                 }
@@ -1343,7 +1345,7 @@ fn symbolicate_stacktrace(
                     metrics.unmapped_frames += 1;
                 }
 
-                frames.push(SymbolicatedFrame {
+                symbolicated_frames.push(SymbolicatedFrame {
                     status,
                     original_index: Some(index),
                     raw: frame,
@@ -1353,12 +1355,17 @@ fn symbolicate_stacktrace(
     }
 
     // we try to find a base frame among the bottom 5
-    if !frames.iter().rev().take(5).any(is_likely_base_frame) {
+    if !symbolicated_frames
+        .iter()
+        .rev()
+        .take(5)
+        .any(is_likely_base_frame)
+    {
         metrics.truncated_traces += 1;
     }
     // macOS has some extremely short but perfectly fine stacks, such as:
     // `__workq_kernreturn` > `_pthread_wqthread` > `start_wqthread`
-    if frames.len() < 3 {
+    if symbolicated_frames.len() < 3 {
         metrics.short_traces += 1;
     }
 
@@ -1370,7 +1377,7 @@ fn symbolicate_stacktrace(
         thread_id: thread.thread_id,
         is_requesting: thread.is_requesting,
         registers: thread.registers,
-        frames,
+        frames: symbolicated_frames,
     }
 }
 
