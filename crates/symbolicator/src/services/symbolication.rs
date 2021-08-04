@@ -180,7 +180,7 @@ impl CfiCacheModules {
                             log::warn!("Error while parsing cficache: {}", LogError(&err));
                             ObjectFileStatus::from(&err)
                         }
-                        CacheStatus::DownloadError => ObjectFileStatus::Malformed,
+                        CacheStatus::CacheSpecificError => ObjectFileStatus::Malformed,
                     };
                     let cfi_path = match cfi_cache.status() {
                         CacheStatus::Positive => Some(cfi_cache.path().to_owned()),

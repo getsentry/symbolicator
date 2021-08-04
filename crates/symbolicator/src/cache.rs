@@ -29,14 +29,17 @@ pub const MALFORMED_MARKER: &[u8] = b"malformed";
 /// **Cache items of this type are currently not being created. This exists to make it easier to
 /// roll back changes.**
 ///
-/// Content of cache items where downloading the file failed.
+/// Content of cache items where an error has occurred, typically related to a cache-specific
+/// operation. For example, this would be download errors for download caches, and conversion errors
+/// for derived caches.
 ///
 /// Items with this value will be expired after an hour.
 ///
-/// The download error state is used as a way to distinguish between the absence of a file and an
-/// the failure to fetch a file that is known to be present, but unfetchable due to circumstantial
-/// errors. The former scenario is covered by the negative cache state.
-pub const DOWNLOAD_ERROR_MARKER: &[u8] = b"dlerr";
+/// Additional notes for download caches:
+/// This state is used as a way to distinguish between the absence of a file and the failure to
+/// fetch a file that is known to be present, but unfetchable due to transient errors. Absent files
+/// are covered by the negative cache state.
+pub const CACHE_SPECIFIC_ERROR_MARKER: &[u8] = b"cachespecificerror";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CacheStatus {
@@ -50,9 +53,9 @@ pub enum CacheStatus {
     /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
     Malformed,
     /// Currently unused. All cache statuses detected as this variant will be converted to
-    /// [`CacheStatus::Malformed`].  See docs for [`DOWNLOAD_ERROR_MARKER`].
+    /// [`CacheStatus::Malformed`].  See docs for [`CACHE_SPECIFIC_ERROR_MARKER`].
     #[allow(dead_code)]
-    DownloadError,
+    CacheSpecificError,
 }
 
 impl AsRef<str> for CacheStatus {
@@ -61,14 +64,14 @@ impl AsRef<str> for CacheStatus {
             CacheStatus::Positive => "positive",
             CacheStatus::Negative => "negative",
             CacheStatus::Malformed => "malformed",
-            CacheStatus::DownloadError => "download error",
+            CacheStatus::CacheSpecificError => "cache-specific error",
         }
     }
 }
 
 impl CacheStatus {
     pub fn from_content(s: &[u8]) -> CacheStatus {
-        if s.starts_with(MALFORMED_MARKER) || s.starts_with(DOWNLOAD_ERROR_MARKER) {
+        if s.starts_with(MALFORMED_MARKER) || s.starts_with(CACHE_SPECIFIC_ERROR_MARKER) {
             CacheStatus::Malformed
         } else if s.is_empty() {
             CacheStatus::Negative
@@ -98,7 +101,7 @@ impl CacheStatus {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
             }
-            CacheStatus::DownloadError => {
+            CacheStatus::CacheSpecificError => {
                 let mut f = File::create(path)?;
                 f.write_all(MALFORMED_MARKER)?;
             }
@@ -324,7 +327,7 @@ impl From<CacheStatus> for ExpirationStrategy {
             CacheStatus::Positive => Self::None,
             CacheStatus::Negative => Self::Negative,
             CacheStatus::Malformed => Self::Malformed,
-            CacheStatus::DownloadError => Self::Malformed,
+            CacheStatus::CacheSpecificError => Self::Malformed,
         }
     }
 }
@@ -334,7 +337,9 @@ impl From<CacheStatus> for ExpirationStrategy {
 fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
     let metadata = path.metadata()?;
 
-    let largest_sentinel = MALFORMED_MARKER.len().max(DOWNLOAD_ERROR_MARKER.len());
+    let largest_sentinel = MALFORMED_MARKER
+        .len()
+        .max(CACHE_SPECIFIC_ERROR_MARKER.len());
     let readable_amount = largest_sentinel.min(metadata.len() as usize);
     let mut file = File::open(path)?;
     let mut buf = vec![0; readable_amount];
@@ -674,10 +679,12 @@ mod tests {
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
         File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
-        File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"dlerr")?;
-        File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"dlerrhonk")?;
-        File::create(tempdir.path().join("foo/killthis5"))?.write_all(b"dlerrmalformed")?;
-        File::create(tempdir.path().join("foo/killthis6"))?.write_all(b"malformeddlerr")?;
+        File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"cachespecificerror")?;
+        File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"cachespecificerrorhonk")?;
+        File::create(tempdir.path().join("foo/killthis5"))?
+            .write_all(b"cachespecificerrormalformed")?;
+        File::create(tempdir.path().join("foo/killthis6"))?
+            .write_all(b"malformedcachespecificerror")?;
 
         sleep(Duration::from_millis(10));
 
@@ -770,13 +777,16 @@ mod tests {
 
         File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"malformedhonkbeep")?;
 
-        File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"dlerr")?;
+        File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"cachespecificerror")?;
 
-        File::create(tempdir.path().join("honk/badbeep4"))?.write_all(b"dlerrhonkbeep")?;
+        File::create(tempdir.path().join("honk/badbeep4"))?
+            .write_all(b"cachespecificerrorhonkbeep")?;
 
-        File::create(tempdir.path().join("honk/badbeep5"))?.write_all(b"dlerrmalformed")?;
+        File::create(tempdir.path().join("honk/badbeep5"))?
+            .write_all(b"cachespecificerrormalformed")?;
 
-        File::create(tempdir.path().join("honk/badbeep6"))?.write_all(b"malformeddlerr")?;
+        File::create(tempdir.path().join("honk/badbeep6"))?
+            .write_all(b"malformedcachespecificerror")?;
 
         assert_eq!(
             expiration_strategy(tempdir.path().join("honk/badbeep").as_path())?,
