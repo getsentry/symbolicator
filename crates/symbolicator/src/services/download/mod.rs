@@ -52,7 +52,7 @@ pub enum DownloadError {
     Sentry(#[from] sentry::SentryError),
     #[allow(unused)]
     #[error("failed to fetch data from S3")]
-    S3(#[source] s3::S3Error),
+    S3(#[from] s3::S3Error),
     /// Typically means the initial HEAD request received a non-200, non-400 response.
     #[allow(unused)]
     #[error("failed to download: {0}")]

@@ -182,7 +182,7 @@ impl S3Downloader {
                     }
                 }
                 // TODO: use this once we start writing DownloadErrors to cache
-                // return Err(DownloadError::S3(err));
+                // return Err(err.into());
                 return Ok(DownloadStatus::NotFound);
             }
             Err(_) => {
