@@ -46,17 +46,27 @@ pub enum DownloadError {
     Write(#[source] std::io::Error),
     #[error("download was cancelled")]
     Canceled,
-    #[error("failed to fetch data from GCS: {0}")]
+    #[error("failed to fetch data from GCS")]
     Gcs(#[from] gcs::GcsError),
-    #[error("failed to fetch data from Sentry: {0}")]
+    #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
-    #[allow(unused)]
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
     /// Typically means the initial HEAD request received a non-200, non-400 response.
     #[allow(unused)]
     #[error("failed to download: {0}")]
     Rejected(StatusCode),
+}
+
+impl DownloadError {
+    pub fn for_cache(&self) -> String {
+        match self {
+            DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
+            DownloadError::Sentry(inner) => format!("{}: {}", self, inner),
+            DownloadError::S3(inner) => format!("{}: {}", self, inner),
+            _ => format!("{}", self),
+        }
+    }
 }
 
 /// Completion status of a successful download request.
