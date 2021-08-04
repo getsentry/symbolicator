@@ -342,6 +342,8 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
         CacheStatus::Malformed => ExpirationStrategy::Malformed,
         // The nature of cache-specific errors depends on the cache type so different
         // strategies are used based on which cache's file is being assessed here.
+        // This won't kick in until `CacheStatus::from_content` stops classifying
+        // files with CacheSpecificError contents as Malformed.
         CacheStatus::CacheSpecificError => match cache_config {
             CacheConfig::Downloaded(_) => ExpirationStrategy::Negative,
             CacheConfig::Derived(_) => ExpirationStrategy::Malformed,
