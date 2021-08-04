@@ -233,7 +233,7 @@ impl Cache {
 
         log::trace!("File length: {}", metadata.len());
 
-        let expiration_strategy = expiration_strategy(path)?;
+        let expiration_strategy = expiration_strategy(&self.cache_config, path)?;
 
         if expiration_strategy == ExpirationStrategy::Malformed {
             // Immediately expire malformed items that have been created before this process started.
@@ -321,20 +321,9 @@ enum ExpirationStrategy {
     Malformed,
 }
 
-impl From<CacheStatus> for ExpirationStrategy {
-    fn from(status: CacheStatus) -> Self {
-        match status {
-            CacheStatus::Positive => Self::None,
-            CacheStatus::Negative => Self::Negative,
-            CacheStatus::Malformed => Self::Malformed,
-            CacheStatus::CacheSpecificError => Self::Malformed,
-        }
-    }
-}
-
 /// Reads a cache item at a given path and returns the cleanup strategy that should be used
 /// for the item.
-fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
+fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
     let metadata = path.metadata()?;
 
     let largest_sentinel = MALFORMED_MARKER
@@ -347,7 +336,18 @@ fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
     log::trace!("First {} bytes: {:?}", buf.len(), buf);
     file.read_exact(&mut buf)?;
 
-    let strategy = ExpirationStrategy::from(CacheStatus::from_content(&buf));
+    let strategy = match CacheStatus::from_content(&buf) {
+        CacheStatus::Positive => ExpirationStrategy::None,
+        CacheStatus::Negative => ExpirationStrategy::Negative,
+        CacheStatus::Malformed => ExpirationStrategy::Malformed,
+        // The nature of cache-specific errors depends on the cache type so different
+        // strategies are used based on which cache's file is being assessed here.
+        CacheStatus::CacheSpecificError => match cache_config {
+            CacheConfig::Downloaded(_) => ExpirationStrategy::Negative,
+            CacheConfig::Derived(_) => ExpirationStrategy::Malformed,
+            CacheConfig::Diagnostics(_) => ExpirationStrategy::None,
+        },
+    };
     Ok(strategy)
 }
 
@@ -723,26 +723,34 @@ mod tests {
         File::create(tempdir.path().join("honk/keepbeep4"))?.write_all(b"malform")?;
         File::create(tempdir.path().join("honk/keepbeep5"))?.write_all(b"dler")?;
 
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/keepbeep").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/keepbeep2").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/keepbeep3").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/keepbeep4").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/keepbeep5").as_path())?,
-            ExpirationStrategy::None,
-        );
+        let cache_configs = vec![
+            CacheConfig::Downloaded(Default::default()),
+            CacheConfig::Derived(Default::default()),
+            CacheConfig::Diagnostics(Default::default()),
+        ];
+
+        for config in cache_configs {
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/keepbeep").as_path())?,
+                ExpirationStrategy::None,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/keepbeep2").as_path())?,
+                ExpirationStrategy::None,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/keepbeep3").as_path())?,
+                ExpirationStrategy::None,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/keepbeep4").as_path())?,
+                ExpirationStrategy::None,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/keepbeep5").as_path())?,
+                ExpirationStrategy::None,
+            );
+        }
 
         Ok(())
     }
@@ -757,10 +765,18 @@ mod tests {
 
         File::create(tempdir.path().join("honk/retrybeep"))?.write_all(b"")?;
 
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/retrybeep").as_path())?,
-            ExpirationStrategy::Negative,
-        );
+        let cache_configs = vec![
+            CacheConfig::Downloaded(Default::default()),
+            CacheConfig::Derived(Default::default()),
+            CacheConfig::Diagnostics(Default::default()),
+        ];
+
+        for config in cache_configs {
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/retrybeep").as_path())?,
+                ExpirationStrategy::Negative,
+            );
+        }
 
         Ok(())
     }
@@ -777,42 +793,70 @@ mod tests {
 
         File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"malformedhonkbeep")?;
 
-        File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"cachespecificerror")?;
-
-        File::create(tempdir.path().join("honk/badbeep4"))?
-            .write_all(b"cachespecificerrorhonkbeep")?;
-
-        File::create(tempdir.path().join("honk/badbeep5"))?
-            .write_all(b"cachespecificerrormalformed")?;
-
-        File::create(tempdir.path().join("honk/badbeep6"))?
+        File::create(tempdir.path().join("honk/badbeep3"))?
             .write_all(b"malformedcachespecificerror")?;
 
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/badbeep").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/badbeep2").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/badbeep3").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/badbeep4").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/badbeep5").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(tempdir.path().join("honk/badbeep6").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
+        let cache_configs = vec![
+            CacheConfig::Downloaded(Default::default()),
+            CacheConfig::Derived(Default::default()),
+            CacheConfig::Diagnostics(Default::default()),
+        ];
 
+        for config in cache_configs {
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
+                ExpirationStrategy::Malformed,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
+                ExpirationStrategy::Malformed,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
+                ExpirationStrategy::Malformed,
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_expiration_strategy_cache_specific_err() -> Result<()> {
+        use std::fs::create_dir_all;
+        use std::io::Write;
+
+        let tempdir = tempdir()?;
+        create_dir_all(tempdir.path().join("honk"))?;
+
+        File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"cachespecificerror")?;
+
+        File::create(tempdir.path().join("honk/badbeep2"))?
+            .write_all(b"cachespecificerrorhonkbeep")?;
+
+        File::create(tempdir.path().join("honk/badbeep3"))?
+            .write_all(b"cachespecificerrormalformed")?;
+
+        let cache_configs = vec![
+            CacheConfig::Downloaded(Default::default()),
+            CacheConfig::Derived(Default::default()),
+            CacheConfig::Diagnostics(Default::default()),
+        ];
+
+        // For now all of these should use malformed's strategy since
+        // `CacheStatus::CacheSpecificError` behaves like `CacheStatus::Malformed` everywhere
+        for config in cache_configs {
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
+                ExpirationStrategy::Malformed,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
+                ExpirationStrategy::Malformed,
+            );
+            assert_eq!(
+                expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
+                ExpirationStrategy::Malformed,
+            );
+        }
         Ok(())
     }
 
