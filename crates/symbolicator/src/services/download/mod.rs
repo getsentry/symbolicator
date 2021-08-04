@@ -36,9 +36,9 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 /// Errors happening while downloading from sources.
 #[derive(Debug, Error)]
 pub enum DownloadError {
-    #[error("failed to download (IO)")]
+    #[error("failed to perform an IO operation")]
     Io(#[source] std::io::Error),
-    #[error("failed to download (streaming file)")]
+    #[error("failed to stream file")]
     Reqwest(#[source] reqwest::Error),
     #[error("bad file destination")]
     BadDestination(#[source] std::io::Error),
