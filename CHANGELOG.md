@@ -18,6 +18,10 @@
 - Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484), [#501](https://github.com/getsentry/symbolicator/pull/501))
 - New configuration option `hostname_tag` ([#513](https://github.com/getsentry/symbolicator/pull/513))
 
+### Fixes
+
+- Skip trailing garbage frames after `_start`. ([#514](https://github.com/getsentry/symbolicator/pull/514))
+
 ### Tools
 
 - `symsorter` no longer emits files with empty debug identifiers. ([#469](https://github.com/getsentry/symbolicator/pull/469))
