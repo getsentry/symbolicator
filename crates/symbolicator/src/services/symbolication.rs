@@ -1435,6 +1435,7 @@ pub struct SymbolicateStacktraces {
 }
 
 impl SymbolicationActor {
+    #[tracing::instrument(skip(self, request))]
     async fn do_symbolicate(
         self,
         request: SymbolicateStacktraces,
@@ -1737,6 +1738,7 @@ impl SymbolicationActor {
         }
     }
 
+    #[tracing::instrument(skip(self, scope, requests, sources))]
     async fn load_cfi_caches(
         &self,
         scope: Scope,
@@ -1786,6 +1788,7 @@ impl SymbolicationActor {
     /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
     /// similar which are mapped in the address space but do not actually contain executable
     /// modules.
+    #[tracing::instrument(skip(self, minidump_file, cfi_caches))]
     async fn stackwalk_minidump_with_cfi(
         &self,
         minidump_file: &TempPath,
@@ -1897,13 +1900,13 @@ impl SymbolicationActor {
             )
         };
 
-        Ok(self
-            .threadpool
+        self.threadpool
             .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
             .await?
-            .context("Minidump stackwalk future cancelled")?)
+            .context("Minidump stackwalk future cancelled")
     }
 
+    #[tracing::instrument(skip(self, scope, minidump_file, sources, options))]
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
@@ -2008,6 +2011,7 @@ impl SymbolicationActor {
             .unwrap_or(Err(SymbolicationError::Timeout))
     }
 
+    #[tracing::instrument(skip(self, scope, minidump_file, sources, options))]
     async fn do_process_minidump(
         self,
         scope: Scope,

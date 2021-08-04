@@ -38,13 +38,16 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.46.0"
 rusoto_credential = "0.46.0"
 rusoto_s3 = "0.46.0"
-sentry = { version = "0.23.0", features = ["debug-images", "log"] }
+sentry = { version = "0.23.0", git = "https://github.com/getsentry/sentry-rust", features = ["debug-images", "log", "tracing"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", version = "8.3.0", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
+tracing = "0.1.26"
+tracing-log = "0.1.2"
+tracing-subscriber = "0.2.19"
 thiserror = "1.0.26"
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio01 = { version = "0.1.22", package = "tokio" }

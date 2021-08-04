@@ -153,7 +153,7 @@ pub fn init_logging(config: &Config) {
     log::set_max_level(logger.filter());
 
     let breadcrumb_logger = Box::new(BreadcrumbLogger::new(logger));
-    log::set_boxed_logger(breadcrumb_logger).unwrap();
+    log::set_boxed_logger(breadcrumb_logger); //.unwrap();
 }
 
 /// A wrapper around an [`Error`](std::error::Error) that prints its causes.

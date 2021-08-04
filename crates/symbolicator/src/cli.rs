@@ -1,8 +1,11 @@
 //! Exposes the command line application.
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use structopt::StructOpt;
+use tracing_subscriber::prelude::*;
 
 use crate::cache;
 use crate::config::Config;
@@ -58,6 +61,20 @@ impl Cli {
     }
 }
 
+#[derive(Default)]
+struct SaveToDiskTransport {
+    n: AtomicUsize,
+}
+
+impl sentry::Transport for SaveToDiskTransport {
+    fn send_envelope(&self, envelope: sentry::Envelope) {
+        let num = self.n.fetch_add(1, Ordering::Relaxed);
+        let file_name = format!("envelope-{}.txt", num);
+        let mut file = std::fs::File::create(file_name).unwrap();
+        envelope.to_writer(&mut file).unwrap();
+    }
+}
+
 /// Runs the main application.
 pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
@@ -68,8 +85,15 @@ pub fn execute() -> Result<()> {
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
+        traces_sample_rate: 1.0,
+        //transport: Some(Arc::new(Arc::new(SaveToDiskTransport::default()))),
         ..Default::default()
     });
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(sentry::integrations::tracing::layer())
+        .init();
 
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
