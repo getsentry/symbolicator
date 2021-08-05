@@ -129,6 +129,10 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         let threadpool = self.threadpool.clone();
         let result = object.and_then(move |object| {
             let future = async move {
+                // The original has a download error so the cfi cache entry should just be negative.
+                if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
+                    return Ok(CacheStatus::Negative);
+                }
                 if object.status() != &CacheStatus::Positive {
                     return Ok(object.status().clone());
                 }

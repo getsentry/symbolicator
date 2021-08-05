@@ -172,6 +172,11 @@ async fn fetch_difs_and_compute_symcache(
         .await
         .map_err(SymCacheError::Fetching)?;
 
+    // The original has a download error so the sym cache entry should just be negative.
+    if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
+        return Ok(CacheStatus::Negative);
+    }
+
     if object_handle.status() != &CacheStatus::Positive {
         return Ok(object_handle.status().clone());
     }
