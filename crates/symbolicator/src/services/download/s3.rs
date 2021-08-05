@@ -181,9 +181,8 @@ impl S3Downloader {
                     RusotoError::Unknown(response) if response.status.is_client_error() => {
                         return Ok(DownloadStatus::NotFound)
                     }
-                    _ => return Err(DownloadError::S3(err)),
+                    _ => return Err(err.into()),
                 }
-                return Err(err.into());
             }
             Err(_) => {
                 // Timed out
