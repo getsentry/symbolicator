@@ -446,8 +446,9 @@ fn create_candidate_info(
                     features: meta_handle.features(),
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
-                CacheStatus::CacheSpecificError => ObjectDownloadInfo::Malformed,
+                CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
+                // TODO: use ObjectDownloadInfo::Error once we want to start writing CacheSpecificErrors to cache
+                CacheStatus::CacheSpecificError(_) => ObjectDownloadInfo::Malformed,
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),
