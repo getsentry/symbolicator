@@ -53,7 +53,6 @@ pub enum DownloadError {
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
     /// Typically means the initial HEAD request received a non-200, non-400 response.
-    #[allow(unused)]
     #[error("failed to download: {0}")]
     Rejected(StatusCode),
     #[error("failed to fetch object: {0}")]
