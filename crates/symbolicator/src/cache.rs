@@ -80,8 +80,7 @@ impl CacheStatus {
                 .get(CACHE_SPECIFIC_ERROR_MARKER.len()..)
                 .unwrap_or_default();
             let err_msg = String::from_utf8_lossy(raw_message);
-            // TODO: switch to CacheSpecificError once we want to start writing CacheSpecificErrors to cache
-            CacheStatus::Malformed(err_msg.into_owned())
+            CacheStatus::CacheSpecificError(err_msg.into_owned())
         } else if s.is_empty() {
             CacheStatus::Negative
         } else {
@@ -113,8 +112,7 @@ impl CacheStatus {
             }
             CacheStatus::CacheSpecificError(details) => {
                 let mut f = File::create(path)?;
-                // TODO: use CACHE_SPECIFIC_ERROR_MARKER once we want to start writing CacheSpecificErrors to cache
-                f.write_all(MALFORMED_MARKER)?;
+                f.write_all(CACHE_SPECIFIC_ERROR_MARKER)?;
                 f.write_all(details.as_bytes())?;
             }
         }
