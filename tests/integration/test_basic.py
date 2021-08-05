@@ -160,7 +160,7 @@ def _make_error_result(details, source="microsoft"):
                 "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
                 "code_file": "C:\\Windows\\System32\\kernel32.dll",
                 "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
-                "debug_status": "fetching_failed",
+                "debug_status": "missing",
                 "features": {
                     "has_debug_info": False,
                     "has_sources": False,
@@ -186,11 +186,6 @@ def _make_error_result(details, source="microsoft"):
             },
             {
                 "download": {
-                    "status": "error",
-                    "details": details,
-                },
-                # why does only this one have debug?
-                "debug": {
                     "status": "error",
                     "details": details,
                 },
@@ -688,7 +683,7 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
     else:
         assert not hitcounter.hits
         restricted_download_failure = _make_error_result(
-            details="failed to download (streaming file)"
+            details="failed to stream file"
         )
         assert_symbolication(response.json(), restricted_download_failure)
 
