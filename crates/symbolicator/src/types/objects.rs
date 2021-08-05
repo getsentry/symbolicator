@@ -137,23 +137,25 @@ impl ObjectUseInfo {
     /// [`symcaches`]: crate::services::symcaches
     /// [`cficaches`]: crate::services::cficaches
     pub fn from_derived_status(derived: &CacheStatus, original: &CacheStatus) -> Self {
-        match derived {
-            CacheStatus::Positive => ObjectUseInfo::Ok,
-            CacheStatus::Negative => {
-                if original == &CacheStatus::Positive {
-                    ObjectUseInfo::Error {
-                        details: String::from("Object file no longer available"),
-                    }
-                } else {
-                    // If the original cache was already missing then it will already be
-                    // reported and we do not want to report anything.
-                    ObjectUseInfo::None
-                }
-            }
-            // TODO: Use ObjectUseInfo::Error if original == Positive and derived == Malformed?
-            CacheStatus::Malformed(_) => ObjectUseInfo::Malformed,
-            CacheStatus::CacheSpecificError(message) => ObjectUseInfo::Error {
-                details: message.clone(),
+        type S = CacheStatus;
+        match (derived, original) {
+            // No matter what state the original was in, the derived cache was OK
+            (S::Positive, _) => ObjectUseInfo::Ok,
+            // Edge cases where the original stopped being available
+            (S::Negative, S::Positive) => ObjectUseInfo::Error {
+                details: String::from("Object file no longer available"),
+            },
+            (S::Malformed(_), S::Positive) => ObjectUseInfo::Error {
+                details: String::from("Object file no longer usable"),
+            },
+            // If there are any issues with the original those will already be reported.
+            (S::Negative, _) => ObjectUseInfo::None,
+            (S::Malformed(_), _) => ObjectUseInfo::Malformed,
+            // If there's a conversion error then it may be useful to mention
+            // in case symbolic is doing something wrong. It may make more sense for
+            // this to be Malformed.
+            (S::CacheSpecificError(message), _) => ObjectUseInfo::Error {
+                details: format!("Object file could not be converted: {}", message),
             },
         }
     }
