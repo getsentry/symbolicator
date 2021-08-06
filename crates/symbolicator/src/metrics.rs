@@ -6,8 +6,11 @@ use std::sync::Arc;
 use cadence::{Metric, MetricBuilder, StatsdClient, UdpMetricSink};
 use parking_lot::RwLock;
 
+// Type aliases to make the definition of [`MetricsClient`] more readable.
 type Hostname = String;
 type HostnameTag = String;
+type Environment = String;
+type EnvironmentTag = String;
 
 lazy_static::lazy_static! {
     static ref METRICS_CLIENT: RwLock<Option<Arc<MetricsClient>>> = RwLock::new(None);
@@ -35,6 +38,8 @@ pub struct MetricsClient {
     pub statsd_client: StatsdClient,
     /// The hostname and the tag to report it to.
     pub hostname: Option<(HostnameTag, Hostname)>,
+    /// The environment and the tag to report it to.
+    pub environment: Option<(EnvironmentTag, Environment)>,
 }
 
 impl MetricsClient {
@@ -44,6 +49,9 @@ impl MetricsClient {
         T: Metric + From<String>,
     {
         if let Some((tag, name)) = self.hostname.as_ref() {
+            metric = metric.with_tag(tag, name);
+        }
+        if let Some((tag, name)) = self.environment.as_ref() {
             metric = metric.with_tag(tag, name);
         }
         metric.send()
@@ -74,6 +82,7 @@ pub fn configure_statsd<A: ToSocketAddrs>(
     prefix: &str,
     host: A,
     hostname: Option<(HostnameTag, Hostname)>,
+    environment: Option<(EnvironmentTag, Environment)>,
 ) {
     let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
     if !addrs.is_empty() {
@@ -86,6 +95,7 @@ pub fn configure_statsd<A: ToSocketAddrs>(
     set_client(MetricsClient {
         statsd_client,
         hostname,
+        environment,
     });
 }
 

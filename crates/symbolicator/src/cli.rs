@@ -63,7 +63,7 @@ pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config()).context("failed loading config")?;
 
-    let _sentry = sentry::init(sentry::ClientOptions {
+    let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
         session_mode: sentry::SessionMode::Request,
@@ -79,7 +79,14 @@ pub fn execute() -> Result<()> {
                 .and_then(|s| s.into_string().ok())
                 .map(|name| (tag, name))
         });
-        metrics::configure_statsd(&config.metrics.prefix, statsd, hostname);
+        let environment = config.metrics.environment_tag.clone().and_then(|tag| {
+            sentry
+                .options()
+                .environment
+                .as_ref()
+                .map(|name| (tag, name.to_string()))
+        });
+        metrics::configure_statsd(&config.metrics.prefix, statsd, hostname, environment);
     }
 
     procspawn::ProcConfig::new()

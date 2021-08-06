@@ -57,6 +57,8 @@ pub struct Metrics {
     pub prefix: String,
     /// A tag name to report the hostname to, for each metric. Defaults to not sending such a tag.
     pub hostname_tag: Option<String>,
+    /// A tag name to report the environment to, for each metric. Defaults to not sending such a tag.
+    pub environment_tag: Option<String>,
 }
 
 impl Default for Metrics {
@@ -68,6 +70,7 @@ impl Default for Metrics {
             },
             prefix: "symbolicator".into(),
             hostname_tag: None,
+            environment_tag: None,
         }
     }
 }
