@@ -19,6 +19,7 @@
 - New configuration option `hostname_tag` ([#513](https://github.com/getsentry/symbolicator/pull/513))
 - Introduced a new cache status to represent failures specific to the cache: Download failures that aren't related to the file being missing in download caches and conversion errors in derived caches. It is currently unused. ([#509](https://github.com/getsentry/symbolicator/pull/509))
 - Malformed and Cache-specific Error cache entries now contain some diagnostic info. ([#510](https://github.com/getsentry/symbolicator/pull/510))
+- New configuration option `environment_tag` ([#517](https://github.com/getsentry/symbolicator/pull/517))
 
 ### Fixes
 
