@@ -16,7 +16,7 @@ use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
 use crate::types::Scope;
 
-/// Content of cache items whose writing failed.
+/// Starting content of cache items whose writing failed.
 ///
 /// Items with this value will be considered expired after the next process restart, or will be
 /// pruned once `symbolicator cleanup` runs. Independently of any `max_age` or `max_last_used`.
@@ -26,12 +26,9 @@ use crate::types::Scope;
 /// yet.
 pub const MALFORMED_MARKER: &[u8] = b"malformed";
 
-/// **Cache items of this type are currently not being created. This exists to make it easier to
-/// roll back changes.**
-///
-/// Content of cache items where an error has occurred, typically related to a cache-specific
-/// operation. For example, this would be download errors for download caches, and conversion errors
-/// for derived caches.
+/// Starting content of cache items where an error has occurred, typically related to a
+/// cache-specific operation. For example, this would be download errors for download caches, and
+/// conversion errors for derived caches.
 ///
 /// Items with this value will be expired after an hour.
 ///
@@ -48,13 +45,13 @@ pub enum CacheStatus {
     Positive,
     /// A cache item that represents the absence of something. E.g. we encountered a 404 or a client
     /// error while trying to download a file, and cached that fact. Represented by an empty file.
+    /// For the download cache, 403 errors do not fall under `Negative` but `CacheSpecificError`.
     Negative,
-    /// We are unable to create or use the cache item. E.g. we failed to create a symcache, or
-    /// encountered an error while downloading a file. See docs for [`MALFORMED_MARKER`].
+    /// We are unable to create or use the cache item. E.g. we failed to create a symcache.
+    /// See docs for [`MALFORMED_MARKER`].
     Malformed(String),
-    /// Currently unused. All cache statuses detected as this variant will be converted to
-    /// [`CacheStatus::Malformed`].  See docs for [`CACHE_SPECIFIC_ERROR_MARKER`].
-    #[allow(dead_code)]
+    /// We are unable to create the cache item due to an error exclusive to the type of cache the
+    /// entry is being created for. See docs for [`CACHE_SPECIFIC_ERROR_MARKER`].
     CacheSpecificError(String),
 }
 
