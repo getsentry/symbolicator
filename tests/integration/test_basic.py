@@ -139,7 +139,11 @@ def _make_unsuccessful_result(status, source="microsoft"):
     return response
 
 
-def _make_error_result(details, source="microsoft"):
+def _make_error_result(download_error, source="microsoft"):
+    """
+    Builds a standard error result. `download_error` should be an ObjectDownloadInfo.
+    """
+
     response = {
         "stacktraces": [
             {
@@ -177,18 +181,12 @@ def _make_error_result(details, source="microsoft"):
     if source in ["microsoft", "unknown", "broken"]:
         response["modules"][0]["candidates"] = [
             {
-                "download": {
-                    "status": "error",
-                    "details": details,
-                },
+                "download": download_error,
                 "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                 "source": source,
             },
             {
-                "download": {
-                    "status": "error",
-                    "details": details,
-                },
+                "download": download_error,
                 "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
                 "source": source,
             },
@@ -489,7 +487,7 @@ def test_timeouts(symbolicator, hitcounter):
 
 
 @pytest.mark.parametrize("bucket_type", ["http", "sentry"])
-@pytest.mark.parametrize("statuscode", [400, 500, 404])
+@pytest.mark.parametrize("statuscode", [400, 500, 404, 403])
 def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     input = dict(
         sources=[
@@ -529,7 +527,15 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     else:
         if statuscode == 500:
             expected = _make_error_result(
-                details="failed to download: 500 Internal Server Error", source="broken"
+                download_error={
+                    "status": "error",
+                    "details": "failed to download: 500 Internal Server Error",
+                },
+                source="broken",
+            )
+        elif statuscode == 403:
+            expected = _make_error_result(
+                download_error={"status": "noperm", "details": ""}, source="broken"
             )
         else:
             expected = _make_unsuccessful_result(status="missing", source="broken")
@@ -683,7 +689,7 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
     else:
         assert not hitcounter.hits
         restricted_download_failure = _make_error_result(
-            details="failed to stream file"
+            download_error={"status": "error", "details": "failed to stream file"}
         )
         assert_symbolication(response.json(), restricted_download_failure)
 

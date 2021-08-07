@@ -15,6 +15,7 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+use crate::cache::CacheStatus;
 use crate::utils::futures::{self as future_utils, m, measure};
 use crate::utils::paths::get_directory_paths;
 
@@ -52,6 +53,8 @@ pub enum DownloadError {
     Sentry(#[from] sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
+    #[error("missing permissions for file")]
+    Permissions,
     /// Typically means the initial HEAD request received a non-200, non-400 response.
     #[error("failed to download: {0}")]
     Rejected(StatusCode),
@@ -65,8 +68,24 @@ impl DownloadError {
             DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
             DownloadError::Sentry(inner) => format!("{}: {}", self, inner),
             DownloadError::S3(inner) => format!("{}: {}", self, inner),
+            DownloadError::Permissions => String::from("insufficient permissions"),
             DownloadError::CachedError(original_message) => original_message.clone(),
             _ => format!("{}", self),
+        }
+    }
+
+    pub fn from_cache(status: &CacheStatus) -> Option<Self> {
+        match status {
+            CacheStatus::Positive => None,
+            CacheStatus::Negative => None,
+            CacheStatus::Malformed(_) => None,
+            CacheStatus::CacheSpecificError(message) => {
+                if message.starts_with("insufficient permissions") {
+                    Some(Self::Permissions)
+                } else {
+                    Some(Self::CachedError(message.clone()))
+                }
+            }
         }
     }
 }

@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use futures::TryStreamExt;
 use parking_lot::Mutex;
+use reqwest::StatusCode;
 use rusoto_core::RusotoError;
 use rusoto_s3::{GetObjectError, S3};
 
@@ -169,15 +170,17 @@ impl S3Downloader {
         let response = match request.await {
             Ok(Ok(response)) => response,
             Ok(Err(err)) => {
-                // For missing files, Amazon returns different status codes based on the given
-                // permissions.
-                // - To fetch existing objects, `GetObject` is required.
-                // - If `ListBucket` is permitted, a 404 is returned for missing objects.
-                // - Otherwise, a 403 ("access denied") is returned.
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
 
+                // Do note that it's possible for Amazon to return different status codes when a
+                // file is missing. 403 is returned if the `ListBucket` permission isn't available,
+                // which means that a 403 returned below may actually be for a missing file.
+                // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
                 match &err {
                     RusotoError::Service(_) => return Ok(DownloadStatus::NotFound),
+                    RusotoError::Unknown(response) if response.status == StatusCode::FORBIDDEN => {
+                        return Err(DownloadError::Permissions)
+                    }
                     RusotoError::Unknown(response) if response.status.is_client_error() => {
                         return Ok(DownloadStatus::NotFound)
                     }
@@ -463,14 +466,11 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteDif::new(source, source_location);
 
-        let download_status = downloader
+        downloader
             .download_source(file_source, target_path.clone())
             .await
-            .unwrap();
+            .expect_err("authentication should fail");
 
-        // We anticipate 403 for regularly missing files if the ListBucket permission is not
-        // granted, therefore return `NotFound` instead of an authentication error.
-        assert_eq!(download_status, DownloadStatus::NotFound);
         assert!(!target_path.exists());
     }
 

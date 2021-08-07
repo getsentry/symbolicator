@@ -254,6 +254,7 @@ pub(crate) struct FailingSymbolServer {
     pub(crate) reject_source: SourceConfig,
     pub(crate) pending_source: SourceConfig,
     pub(crate) not_found_source: SourceConfig,
+    pub(crate) forbidden_source: SourceConfig,
 }
 
 impl FailingSymbolServer {
@@ -287,7 +288,20 @@ impl FailingSymbolServer {
             std::future::pending::<Result<File, Rejection>>()
         });
 
-        let server = Server::new(reject.or(not_found).or(pending));
+        let times = times_accessed.clone();
+        let forbidden = warp::path("forbidden").and_then(move || {
+            (*times).fetch_add(1, Ordering::SeqCst);
+
+            async move {
+                let result: Result<_, Rejection> = Ok(warp::reply::with_status(
+                    warp::reply(),
+                    warp::http::StatusCode::FORBIDDEN,
+                ));
+                result
+            }
+        });
+
+        let server = Server::new(reject.or(not_found).or(pending).or(forbidden));
 
         let files_config =
             CommonSourceConfig::with_layout(crate::sources::DirectoryLayoutType::Unified);
@@ -310,6 +324,13 @@ impl FailingSymbolServer {
             id: SourceId::new("not-found"),
             url: server.url("not-found/"),
             headers: Default::default(),
+            files: files_config.clone(),
+        }));
+
+        let forbidden_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("forbidden"),
+            url: server.url("forbidden/"),
+            headers: Default::default(),
             files: files_config,
         }));
 
@@ -319,6 +340,7 @@ impl FailingSymbolServer {
             reject_source,
             pending_source,
             not_found_source,
+            forbidden_source,
         }
     }
 
