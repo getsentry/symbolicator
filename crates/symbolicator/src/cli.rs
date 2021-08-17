@@ -79,12 +79,16 @@ pub fn execute() -> Result<()> {
         if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
             if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
                 tags.insert(hostname_tag, hostname);
+            } else {
+                log::error!("could not read host name");
             }
         };
         if let Some(environment_tag) = config.metrics.environment_tag.clone() {
             if let Some(environment) = sentry.options().environment.as_ref().map(|s| s.to_string())
             {
                 tags.insert(environment_tag, environment);
+            } else {
+                log::error!("environment name not available");
             }
         };
 
