@@ -139,7 +139,7 @@ def _make_unsuccessful_result(status, source="microsoft"):
     return response
 
 
-def _make_error_result(download_error, source="microsoft"):
+def _make_error_result(download_error, source="microsoft", bucket_type="http"):
     """
     Builds a standard error result. `download_error` should be an ObjectDownloadInfo.
     """
@@ -178,19 +178,31 @@ def _make_error_result(download_error, source="microsoft"):
         ],
         "status": "completed",
     }
+    prefix = "http://127.0.0.1:1234/msdl/"
+    if bucket_type == "s3":
+        prefix = "s3://symbolicator-test/"
+
     if source in ["microsoft", "unknown", "broken"]:
         response["modules"][0]["candidates"] = [
             {
                 "download": download_error,
-                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                 "source": source,
             },
             {
                 "download": download_error,
-                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
                 "source": source,
             },
         ]
+        if bucket_type != "http":
+            response["modules"][0]["candidates"].append(
+                {
+                    "download": download_error,
+                    "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.sym",
+                    "source": source,
+                }
+            )
     return response
 
 
@@ -487,7 +499,7 @@ def test_timeouts(symbolicator, hitcounter):
 
 
 @pytest.mark.parametrize("bucket_type", ["http", "sentry"])
-@pytest.mark.parametrize("statuscode", [400, 500, 404, 403])
+@pytest.mark.parametrize("statuscode", [400, 500, 404])
 def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     input = dict(
         sources=[
@@ -533,10 +545,6 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                 },
                 source="broken",
             )
-        elif statuscode == 403:
-            expected = _make_error_result(
-                download_error={"status": "noperm", "details": ""}, source="broken"
-            )
         else:
             expected = _make_unsuccessful_result(status="missing", source="broken")
 
@@ -549,6 +557,62 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                     )
 
         assert_symbolication(response, expected)
+
+
+# can't test gcs because you get JWT errors, meaningless to test sentry sources
+@pytest.mark.parametrize("bucket_type", ["http", "s3"])
+def test_no_permission(symbolicator, hitcounter, bucket_type):
+    if bucket_type == "http":
+        source_specific = {"layout": {"type": "symstore"}}
+    elif bucket_type == "s3":
+        source_specific = {"bucket": "symbolicator-test", "region": "us-east-1"}
+    elif bucket_type == "gcs":
+        source_specific = {
+            "bucket": "honk",
+            "private_key": "",
+            "client_email": "honk@sentry.io",
+        }
+    else:
+        source_specific = {}
+
+    source = {
+        "type": bucket_type,
+        "id": "broken",
+        "url": f"{hitcounter.url}/respond_statuscode/403/",
+    }
+    source.update(source_specific)
+
+    input = dict(
+        sources=[source],
+        options={
+            "dif_candidates": True,
+        },
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+    response = response.json()
+
+    expected = _make_error_result(
+        download_error={"status": "noperm", "details": ""},
+        source="broken",
+        bucket_type=bucket_type,
+    )
+
+    if bucket_type == "http":
+        for module in expected.get("modules", []):
+            for candidate in module.get("candidates", []):
+                if "location" in candidate:
+                    candidate["location"] = candidate["location"].replace(
+                        "/msdl/",
+                        "/respond_statuscode/403/",
+                    )
+
+    assert_symbolication(response, expected)
 
 
 def test_malformed_objects(symbolicator, hitcounter):
