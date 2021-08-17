@@ -64,7 +64,7 @@ pub enum DownloadError {
 
 impl DownloadError {
     /// This produces a user-facing string representation of a download error if it is a variant
-    /// that needs to be stored as a acheStatusCacheSpecificError entry in the download cache.
+    /// that needs to be stored as a `CacheStatus::CacheSpecificError` entry in the download cache.
     pub fn for_cache(&self) -> String {
         match self {
             DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
@@ -76,8 +76,9 @@ impl DownloadError {
         }
     }
 
-    /// This produces a user-facing string representation of a download error if it is a variant
-    /// that needs to be stored as a CacheSpecificError entry in the download cache.
+    /// If a given cache entry is `CacheStatus::CacheSpecificError`, this parses and extracts its
+    /// contents into a `DownloadError`. This will return none if a
+    /// non-`CacheStatus::CacheSpecificError` is provided.
     pub fn from_cache(status: &CacheStatus) -> Option<Self> {
         match status {
             CacheStatus::Positive => None,
