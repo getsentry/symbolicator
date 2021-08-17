@@ -1,4 +1,5 @@
 //! Exposes the command line application.
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -73,20 +74,21 @@ pub fn execute() -> Result<()> {
 
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
-        let hostname = config.metrics.hostname_tag.clone().and_then(|tag| {
-            hostname::get()
-                .ok()
-                .and_then(|s| s.into_string().ok())
-                .map(|name| (tag, name))
-        });
-        let environment = config.metrics.environment_tag.clone().and_then(|tag| {
-            sentry
-                .options()
-                .environment
-                .as_ref()
-                .map(|name| (tag, name.to_string()))
-        });
-        metrics::configure_statsd(&config.metrics.prefix, statsd, hostname, environment);
+        let mut tags = BTreeMap::new();
+
+        if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
+            if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
+                tags.insert(hostname_tag, hostname);
+            }
+        };
+        if let Some(environment_tag) = config.metrics.environment_tag.clone() {
+            if let Some(environment) = sentry.options().environment.as_ref().map(|s| s.to_string())
+            {
+                tags.insert(environment_tag, environment);
+            }
+        };
+
+        metrics::configure_statsd(&config.metrics.prefix, statsd, tags);
     }
 
     procspawn::ProcConfig::new()
