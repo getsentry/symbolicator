@@ -63,24 +63,28 @@ pub enum DownloadError {
 }
 
 impl DownloadError {
+    /// This produces a user-facing string representation of a download error if it is a variant
+    /// that needs to be stored as a acheStatusCacheSpecificError entry in the download cache.
     pub fn for_cache(&self) -> String {
         match self {
             DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
             DownloadError::Sentry(inner) => format!("{}: {}", self, inner),
             DownloadError::S3(inner) => format!("{}: {}", self, inner),
-            DownloadError::Permissions => String::from("insufficient permissions"),
+            DownloadError::Permissions => self.to_string(),
             DownloadError::CachedError(original_message) => original_message.clone(),
             _ => format!("{}", self),
         }
     }
 
+    /// This produces a user-facing string representation of a download error if it is a variant
+    /// that needs to be stored as a CacheSpecificError entry in the download cache.
     pub fn from_cache(status: &CacheStatus) -> Option<Self> {
         match status {
             CacheStatus::Positive => None,
             CacheStatus::Negative => None,
             CacheStatus::Malformed(_) => None,
             CacheStatus::CacheSpecificError(message) => {
-                if message.starts_with("insufficient permissions") {
+                if message.starts_with(&Self::Permissions.to_string()) {
                     Some(Self::Permissions)
                 } else {
                     Some(Self::CachedError(message.clone()))

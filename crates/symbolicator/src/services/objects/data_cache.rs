@@ -292,7 +292,7 @@ mod tests {
 
     use crate::cache::{Cache, CacheStatus};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::services::download::DownloadService;
+    use crate::services::download::{DownloadError, DownloadService};
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::sources::FileType;
@@ -493,13 +493,13 @@ mod tests {
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
                 result.meta.clone().unwrap().status,
-                CacheStatus::CacheSpecificError(String::from("insufficient permissions"))
+                CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
             );
             assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
             let result = objects_actor.find(find_object.clone()).await.unwrap();
             assert_eq!(
                 result.meta.unwrap().status,
-                CacheStatus::CacheSpecificError(String::from("insufficient permissions"))
+                CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
             );
             assert_eq!(server.accesses(), 0);
         })
