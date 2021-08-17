@@ -205,6 +205,13 @@ impl GcsDownloader {
         Ok(token)
     }
 
+    /// Downloads a source hosted on GCS.
+    ///
+    /// # Directly thrown errors
+    /// - [`GcsError::InvalidUrl`]
+    /// - [`DownloadError::Reqwest`]
+    /// - [`DownloadError::Rejected`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: GcsRemoteDif,
@@ -248,24 +255,37 @@ impl GcsDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
-                } else {
-                    log::trace!(
-                        "Unexpected status code from GCS {} (from {}): {}",
+                // If it's a client error, chances are either it's a 404 or it's permission-related.
+                } else if response.status().is_client_error() {
+                    log::debug!(
+                        "Unexpected client error status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
+                } else {
+                    log::debug!(
+                        "Unexpected status code from GCS {} (from {}): {}",
+                        &key,
+                        &bucket,
+                        response.status()
+                    );
+                    // TODO: switch to this once we start writing DownloadErrors
+                    // Err(DownloadError::Rejected(response.status()))
+                    Ok(DownloadStatus::NotFound)
                 }
             }
             Ok(Err(e)) => {
-                log::trace!(
+                log::debug!(
                     "Skipping response from GCS {} (from {}): {} ({:?})",
                     &key,
                     &bucket,
                     &e,
                     &e
                 );
+                // TODO: switch to this once we start writing DownloadErrors
+                // Err(DownloadError::Reqwest(e))
                 Ok(DownloadStatus::NotFound)
             }
             Err(_) => {

@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
+use reqwest::StatusCode;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
@@ -35,9 +36,9 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 /// Errors happening while downloading from sources.
 #[derive(Debug, Error)]
 pub enum DownloadError {
-    #[error("failed to download")]
+    #[error("failed to perform an IO operation")]
     Io(#[source] std::io::Error),
-    #[error("failed to download")]
+    #[error("failed to stream file")]
     Reqwest(#[source] reqwest::Error),
     #[error("bad file destination")]
     BadDestination(#[source] std::io::Error),
@@ -49,6 +50,23 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
+    #[error("failed to fetch data from S3")]
+    S3(#[from] s3::S3Error),
+    /// Typically means the initial HEAD request received a non-200, non-400 response.
+    #[allow(unused)]
+    #[error("failed to download: {0}")]
+    Rejected(StatusCode),
+}
+
+impl DownloadError {
+    pub fn for_cache(&self) -> String {
+        match self {
+            DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
+            DownloadError::Sentry(inner) => format!("{}: {}", self, inner),
+            DownloadError::S3(inner) => format!("{}: {}", self, inner),
+            _ => format!("{}", self),
+        }
+    }
 }
 
 /// Completion status of a successful download request.
@@ -131,16 +149,15 @@ impl DownloadService {
         });
 
         match result.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from {:?}: {:?}",
-                    source,
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
             Ok(status) => {
-                log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                match status {
+                    DownloadStatus::Completed => {
+                        log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                    }
+                    DownloadStatus::NotFound => {
+                        log::debug!("Did not fetch debug file from {:?}: {:?}", source, status);
+                    }
+                };
                 Ok(status)
             }
             Err(err) => {
@@ -238,6 +255,11 @@ impl DownloadService {
 /// Download the source from a stream.
 ///
 /// This is common functionality used by many downloaders.
+///
+/// # Errors
+/// - [`DownloadError::BadDestination`]
+/// - [`DownloadError::Write`]
+/// - [`DownloadError::Canceled`]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,

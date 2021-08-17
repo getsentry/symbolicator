@@ -244,6 +244,12 @@ impl SentryDownloader {
         Ok(file_ids)
     }
 
+    /// Downloads a source hosted on Sentry.
+    ///
+    /// # Directly thrown errors
+    /// - [`DownloadError::Reqwest`]
+    /// - [`DownloadError::Rejected`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: SentryRemoteDif,
@@ -277,18 +283,28 @@ impl SentryDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
-                } else {
-                    log::trace!(
-                        "Unexpected status code from {}: {}",
+                // If it's a client error, chances are either it's a 404 or it's permission-related.
+                } else if response.status().is_client_error() {
+                    log::debug!(
+                        "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
+                } else {
+                    log::debug!(
+                        "Unexpected status code from {}: {}",
+                        download_url,
+                        response.status()
+                    );
+                    // TODO: use this once we start writing DownloadErrors to cache
+                    // Err(DownloadError::Rejected(response.status()))
+                    Ok(DownloadStatus::NotFound)
                 }
             }
             Ok(Err(e)) => {
-                log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(DownloadStatus::NotFound) // must be wrong type
+                log::debug!("Skipping response from {}: {}", download_url, e);
+                Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             // Timed out
             Err(_) => Err(DownloadError::Canceled),
