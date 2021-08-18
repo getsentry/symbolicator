@@ -157,6 +157,7 @@ struct FetchSymCacheInternal {
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
 /// code.
+#[tracing::instrument(skip(path, object_meta, objects_actor, bcsymbolmap_handle, threadpool))]
 async fn fetch_difs_and_compute_symcache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,

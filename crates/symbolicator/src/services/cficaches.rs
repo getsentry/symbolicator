@@ -119,6 +119,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ///
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
+    #[tracing::instrument(skip(self, path))]
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let object = self

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{Config, LogFormat};
 
-fn get_rust_log(level: LevelFilter) -> &'static str {
+pub fn get_rust_log(level: LevelFilter) -> &'static str {
     match level {
         LevelFilter::Off => "",
         LevelFilter::Error => "ERROR",

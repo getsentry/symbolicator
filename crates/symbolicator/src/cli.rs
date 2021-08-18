@@ -90,12 +90,23 @@ pub fn execute() -> Result<()> {
         ..Default::default()
     });
 
+    if std::env::var("RUST_LOG").is_err() {
+        let rust_log = logging::get_rust_log(config.logging.level);
+        std::env::set_var("RUST_LOG", rust_log);
+    }
+    let fmt_layer = tracing_subscriber::fmt::layer().with_target(false);
+    let filter_layer = tracing_subscriber::EnvFilter::try_from_default_env()
+        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
+        .unwrap();
+
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(fmt_layer)
+        .with(filter_layer)
         .with(sentry::integrations::tracing::layer())
         .init();
 
     logging::init_logging(&config);
+
     if let Some(ref statsd) = config.metrics.statsd {
         let hostname = config.metrics.hostname_tag.clone().and_then(|tag| {
             hostname::get()
