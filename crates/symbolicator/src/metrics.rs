@@ -1,13 +1,11 @@
 //! Provides access to the metrics sytem.
+use std::collections::BTreeMap;
 use std::net::ToSocketAddrs;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use cadence::{Metric, MetricBuilder, StatsdClient, UdpMetricSink};
 use parking_lot::RwLock;
-
-type Hostname = String;
-type HostnameTag = String;
 
 lazy_static::lazy_static! {
     static ref METRICS_CLIENT: RwLock<Option<Arc<MetricsClient>>> = RwLock::new(None);
@@ -33,8 +31,9 @@ pub mod prelude {
 pub struct MetricsClient {
     /// The raw statsd client.
     pub statsd_client: StatsdClient,
-    /// The hostname and the tag to report it to.
-    pub hostname: Option<(HostnameTag, Hostname)>,
+
+    /// A collection of tags and values that will be sent with every metric.
+    tags: BTreeMap<String, String>,
 }
 
 impl MetricsClient {
@@ -43,8 +42,8 @@ impl MetricsClient {
     where
         T: Metric + From<String>,
     {
-        if let Some((tag, name)) = self.hostname.as_ref() {
-            metric = metric.with_tag(tag, name);
+        for (tag, value) in self.tags.iter() {
+            metric = metric.with_tag(tag, value);
         }
         metric.send()
     }
@@ -70,11 +69,7 @@ pub fn set_client(client: MetricsClient) {
 }
 
 /// Tell the metrics system to report to statsd.
-pub fn configure_statsd<A: ToSocketAddrs>(
-    prefix: &str,
-    host: A,
-    hostname: Option<(HostnameTag, Hostname)>,
-) {
+pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<String, String>) {
     let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
     if !addrs.is_empty() {
         log::info!("Reporting metrics to statsd at {}", addrs[0]);
@@ -85,7 +80,7 @@ pub fn configure_statsd<A: ToSocketAddrs>(
     let statsd_client = StatsdClient::from_sink(prefix, sink);
     set_client(MetricsClient {
         statsd_client,
-        hostname,
+        tags,
     });
 }
 
