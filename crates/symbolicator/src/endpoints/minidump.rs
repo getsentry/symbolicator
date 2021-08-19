@@ -55,10 +55,13 @@ async fn handle_minidump_request(
     let minidump_file = minidump.ok_or_else(|| error::ErrorBadRequest("missing minidump"))?;
 
     let symbolication = state.symbolication();
-    // TODO: error message
     let request_id = symbolication
         .process_minidump(params.scope, minidump_file, sources, options)
-        .ok_or_else(|| error::ErrorTooManyRequests("TODO"))?;
+        .ok_or_else(|| {
+            error::ErrorServiceUnavailable(
+                "Symbolicator is currently processing the maximum number of requests.",
+            )
+        })?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
