@@ -414,6 +414,11 @@ impl SymbolicationActor {
 
         // Assume that there are no UUID4 collisions in practice.
         let requests = self.requests.clone();
+
+        if let Ok(num_requests) = requests.lock().len().try_into() {
+            metric!(gauge("requests.in_flight") = num_requests);
+        }
+
         let request_id = RequestId::new(uuid::Uuid::new_v4());
         requests.lock().insert(request_id, receiver.shared());
         let drop_hub = hub.clone();
