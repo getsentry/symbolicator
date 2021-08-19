@@ -422,9 +422,14 @@ impl SymbolicationActor {
         // Assume that there are no UUID4 collisions in practice.
         let requests = self.requests.clone();
 
+        let num_requests = requests.lock().len();
+        if let Ok(num_requests) = num_requests.try_into() {
+            metric!(gauge("requests.in_flight") = num_requests);
+        }
+
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.max_concurrent_requests {
-            if requests.lock().len() >= max_concurrent_requests {
+            if num_requests >= max_concurrent_requests {
                 return None;
             }
         }
