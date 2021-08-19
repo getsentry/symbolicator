@@ -20,6 +20,7 @@
 - Introduced a new cache status to represent failures specific to the cache: Download failures that aren't related to the file being missing in download caches and conversion errors in derived caches. It is currently unused. ([#509](https://github.com/getsentry/symbolicator/pull/509))
 - Malformed and Cache-specific Error cache entries now contain some diagnostic info. ([#510](https://github.com/getsentry/symbolicator/pull/510))
 - New configuration option `environment_tag` ([#517](https://github.com/getsentry/symbolicator/pull/517))
+- Introduced the `max_concurrent_requests` config setting, which limits the number of requests that will be processed concurrently. It defaults to `None`, i.e., no limit. ([#521](https://github.com/getsentry/symbolicator/pull/521))
 
 ### Fixes
 
