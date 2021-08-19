@@ -1,28 +1,91 @@
-use actix_web::http::StatusCode;
-use actix_web::{App, HttpResponse, ResponseError};
+use std::convert::Infallible;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Instant;
 
-use crate::services::symbolication::MaxRequestsError;
-use crate::services::Service;
+use axum::body::Body;
+use axum::handler::{get, post};
+use axum::http::{Response, StatusCode};
+use axum::response::IntoResponse;
+use axum::Router;
+use sentry::integrations::tower::NewSentryLayer;
+use tower_layer::Layer;
+use tower_service::Service as TowerService;
 
 mod applecrashreport;
-mod healthcheck;
 mod minidump;
 mod proxy;
 mod requests;
 mod symbolicate;
 
-/// Adds all endpoint routes to the app.
-pub fn configure(app: App<Service>) -> App<Service> {
-    app.configure(applecrashreport::configure)
-        .configure(healthcheck::configure)
-        .configure(minidump::configure)
-        .configure(proxy::configure)
-        .configure(requests::configure)
-        .configure(symbolicate::configure)
+pub use applecrashreport::handle_apple_crash_report_request as applecrashreport;
+pub use minidump::handle_minidump_request as minidump;
+pub use proxy::proxy_symstore_request as proxy;
+pub use requests::poll_request as requests;
+pub use symbolicate::symbolicate_frames as symbolicate;
+
+use crate::metrics::MetricsLayer;
+use crate::services::symbolication::MaxRequestsError;
+use crate::services::Service;
+
+pub async fn healthcheck() -> &'static str {
+    metric!(counter("healthcheck") += 1);
+    "ok"
 }
 
-impl ResponseError for MaxRequestsError {
-    fn error_response(&self) -> actix_web::HttpResponse {
-        HttpResponse::new(StatusCode::SERVICE_UNAVAILABLE)
+pub type App = Router<axum::routing::BoxRoute>;
+
+pub fn create_app(service: Service) -> App {
+    Router::new()
+        .route("/proxy/:path", get(proxy).head(proxy))
+        .route("/requests/:request_id", get(requests))
+        .route("/symbolicate", post(symbolicate))
+        .route("/minidump", post(minidump))
+        .route("/applecrashreport", post(applecrashreport))
+        .layer(axum::AddExtensionLayer::new(service))
+        .layer(NewSentryLayer::new_from_top())
+        .layer(MetricsLayer)
+        // the healthcheck is last, as it will bypass all the middlewares
+        .route("/healthcheck", get(healthcheck))
+        .boxed()
+}
+
+#[derive(Debug)]
+pub enum ResponseError {
+    Anyhow(anyhow::Error),
+    WithStatus(StatusCode, String),
+}
+
+impl IntoResponse for ResponseError {
+    type Body = Body;
+    type BodyError = <Self::Body as axum::body::HttpBody>::Error;
+
+    fn into_response(self) -> Response<Self::Body> {
+        match self {
+            ResponseError::Anyhow(e) => Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(e.to_string())),
+            ResponseError::WithStatus(status, e) => {
+                Response::builder().status(status).body(Body::from(e))
+            }
+        }
+        .unwrap()
     }
+}
+
+impl<E> From<E> for ResponseError
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    fn from(e: E) -> Self {
+        Self::Anyhow(anyhow::Error::from(e))
+    }
+}
+
+fn map_max_requests_error(_: MaxRequestsError) -> ResponseError {
+    ResponseError::WithStatus(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Maximum number of concurrent requests reached".to_owned(),
+    )
 }

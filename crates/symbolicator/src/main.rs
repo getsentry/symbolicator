@@ -11,19 +11,18 @@
     unused_crate_dependencies,
     clippy::all
 )]
-
-#[macro_use]
-mod macros;
+#![allow(unused)]
 
 #[macro_use]
 mod metrics;
+#[macro_use]
+mod macros;
 
 mod cache;
 mod cli;
 mod config;
 mod endpoints;
 mod logging;
-mod middlewares;
 mod server;
 mod services;
 mod sources;

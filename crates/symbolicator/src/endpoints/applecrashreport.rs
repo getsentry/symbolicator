@@ -1,72 +1,69 @@
-use actix_web::{error, multipart, App, Error, HttpMessage, HttpRequest, Json, Query, State};
-use futures::{compat::Stream01CompatExt, StreamExt};
+use std::io::{Seek, SeekFrom, Write};
 
+use axum::extract;
+use axum::http::{Response, StatusCode};
+use axum::response::Json;
+
+use crate::endpoints::map_max_requests_error;
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
-use crate::utils::multipart::{
-    read_multipart_file, read_multipart_request_options, read_multipart_sources,
-};
 use crate::utils::sentry::ConfigureScope;
 
-async fn handle_apple_crash_report_request(
-    state: State<Service>,
-    params: Query<SymbolicationRequestQueryParams>,
-    request: HttpRequest<Service>,
-) -> Result<Json<SymbolicationResponse>, Error> {
+use super::ResponseError;
+
+pub async fn handle_apple_crash_report_request(
+    extract::Extension(state): extract::Extension<Service>,
+    extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
+    mut multipart: extract::Multipart,
+) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
-    let params = params.into_inner();
     params.configure_scope();
 
     let mut report = None;
     let mut sources = state.config().default_sources();
     let mut options = RequestOptions::default();
 
-    let mut stream = request.multipart().compat();
-    while let Some(item) = stream.next().await {
-        let field = match item? {
-            multipart::MultipartItem::Field(field) => field,
-            _ => return Err(error::ErrorBadRequest("unsupported nested formdata")),
-        };
-
-        let content_disposition = field.content_disposition();
-        match content_disposition.as_ref().and_then(|d| d.get_name()) {
+    while let Some(mut field) = multipart.next_field().await? {
+        match field.name() {
             Some("apple_crash_report") => {
+                // TODO: stream this to file instead of reading to memory
+                let bytes = field.bytes().await?;
                 let mut report_file = tempfile::tempfile()?;
-                read_multipart_file(field, &mut report_file).await?;
+                report_file.write_all(bytes.as_ref())?;
+                report_file.seek(SeekFrom::Start(0))?;
                 report = Some(report_file)
             }
-            Some("sources") => sources = read_multipart_sources(field).await?.into(),
-            Some("options") => options = read_multipart_request_options(field).await?,
+            // TODO: limit these multipart fields to 1M
+            Some("sources") => sources = serde_json::from_slice(&field.bytes().await?)?,
+            Some("options") => options = serde_json::from_slice(&field.bytes().await?)?,
             _ => (), // Always ignore unknown fields.
         }
     }
 
-    let report = report.ok_or_else(|| error::ErrorBadRequest("missing apple crash report"))?;
+    let report = report.ok_or_else(|| {
+        ResponseError::WithStatus(
+            StatusCode::BAD_REQUEST,
+            "missing apple crash report".to_owned(),
+        )
+    })?;
 
     let symbolication = state.symbolication();
-    let request_id =
-        symbolication.process_apple_crash_report(params.scope, report, sources, options)?;
+    let request_id = symbolication
+        .process_apple_crash_report(params.scope, report, sources, options)
+        .map_err(map_max_requests_error)?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
-        None => Err(error::ErrorInternalServerError(
+        None => Err(ResponseError::Anyhow(anyhow::anyhow!(
             "symbolication request did not start",
-        )),
+        ))),
     }
-}
-
-pub fn configure(app: App<Service>) -> App<Service> {
-    app.resource("/applecrashreport", |r| {
-        let handler = compat_handler!(handle_apple_crash_report_request, s, p, r);
-        r.post().with_async(handler);
-    })
 }
 
 #[cfg(test)]
 mod tests {
-    use actix_web::test::TestServer;
     use reqwest::{multipart, Client, StatusCode};
 
     use crate::test;
@@ -77,7 +74,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service();
-        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+        let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
@@ -87,7 +84,7 @@ mod tests {
             .text("sources", "[]");
 
         let response = Client::new()
-            .post(&server.url("/applecrashreport"))
+            .post(server.url("/applecrashreport"))
             .multipart(form)
             .send()
             .await
@@ -95,7 +92,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = response.text().await.unwrap();
+        let body = dbg!(response.text().await.unwrap());
         let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
         insta::assert_yaml_snapshot!(response);
     }
@@ -105,7 +102,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service();
-        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+        let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
@@ -116,7 +113,7 @@ mod tests {
             .text("unknown", "value");
 
         let response = Client::new()
-            .post(&server.url("/applecrashreport"))
+            .post(server.url("/applecrashreport"))
             .multipart(form)
             .send()
             .await

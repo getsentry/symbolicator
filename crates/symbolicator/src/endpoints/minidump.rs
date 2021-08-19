@@ -1,37 +1,32 @@
-use actix_web::{error, multipart, App, Error, HttpMessage, HttpRequest, Json, Query, State};
-use futures::{compat::Stream01CompatExt, StreamExt};
+use std::io::{Seek, SeekFrom, Write};
 
+use axum::extract;
+use axum::http::{Response, StatusCode};
+use axum::response::Json;
+
+use crate::endpoints::map_max_requests_error;
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
-use crate::utils::multipart::{
-    read_multipart_file, read_multipart_request_options, read_multipart_sources,
-};
 use crate::utils::sentry::ConfigureScope;
 
-async fn handle_minidump_request(
-    state: State<Service>,
-    params: Query<SymbolicationRequestQueryParams>,
-    request: HttpRequest<Service>,
-) -> Result<Json<SymbolicationResponse>, Error> {
+use super::ResponseError;
+
+pub async fn handle_minidump_request(
+    extract::Extension(state): extract::Extension<Service>,
+    extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
+    mut multipart: extract::Multipart,
+) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
-    let params = params.into_inner();
     params.configure_scope();
 
     let mut minidump = None;
     let mut sources = state.config().default_sources();
     let mut options = RequestOptions::default();
 
-    let mut stream = request.multipart().compat();
-    while let Some(item) = stream.next().await {
-        let field = match item? {
-            multipart::MultipartItem::Field(field) => field,
-            _ => return Err(error::ErrorBadRequest("unsupported nested formdata")),
-        };
-
-        let content_disposition = field.content_disposition();
-        match content_disposition.as_ref().and_then(|d| d.get_name()) {
+    while let Some(mut field) = multipart.next_field().await? {
+        match field.name() {
             Some("upload_file_minidump") => {
                 let mut minidump_file = tempfile::Builder::new();
                 minidump_file.prefix("minidump").suffix(".dmp");
@@ -42,40 +37,41 @@ async fn handle_minidump_request(
                 }?;
                 let (mut file, temp_path) = minidump_file.into_parts();
 
-                read_multipart_file(field, &mut file).await?;
+                // TODO: stream this to file instead of reading to memory
+                //let mut file = tokio::fs::File::from_std(file);
+                //tokio::io::copy(&mut field.into_async_read(), &mut file).await?;
+                let bytes = field.bytes().await?;
+                file.write_all(bytes.as_ref())?;
+                file.seek(SeekFrom::Start(0))?;
 
                 minidump = Some(temp_path)
             }
-            Some("sources") => sources = read_multipart_sources(field).await?.into(),
-            Some("options") => options = read_multipart_request_options(field).await?,
+            // TODO: limit these multipart fields to 1M
+            Some("sources") => sources = serde_json::from_slice(&field.bytes().await?)?,
+            Some("options") => options = serde_json::from_slice(&field.bytes().await?)?,
             _ => (), // Always ignore unknown fields.
         }
     }
 
-    let minidump_file = minidump.ok_or_else(|| error::ErrorBadRequest("missing minidump"))?;
+    let minidump_file = minidump.ok_or_else(|| {
+        ResponseError::WithStatus(StatusCode::BAD_REQUEST, "missing minidump".to_owned())
+    })?;
 
     let symbolication = state.symbolication();
-    let request_id =
-        symbolication.process_minidump(params.scope, minidump_file, sources, options)?;
+    let request_id = symbolication
+        .process_minidump(params.scope, minidump_file, sources, options)
+        .map_err(map_max_requests_error)?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
-        None => Err(error::ErrorInternalServerError(
-            "symbolication request did not start",
-        )),
+        None => Err(ResponseError::Anyhow(anyhow::anyhow!(
+            "symbolication request did not start"
+        ))),
     }
-}
-
-pub fn configure(app: App<Service>) -> App<Service> {
-    app.resource("/minidump", |r| {
-        let handler = compat_handler!(handle_minidump_request, s, p, r);
-        r.post().with_async(handler);
-    })
 }
 
 #[cfg(test)]
 mod tests {
-    use actix_web::test::TestServer;
     use reqwest::{multipart, Client, StatusCode};
 
     use crate::test;
@@ -86,7 +82,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service();
-        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+        let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("windows.dmp");
         let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
@@ -96,7 +92,7 @@ mod tests {
             .text("sources", "[]");
 
         let response = Client::new()
-            .post(&server.url("/minidump"))
+            .post(server.url("/minidump"))
             .multipart(form)
             .send()
             .await
@@ -117,7 +113,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service();
-        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+        let server = test::Server::with_service(service);
         let source = test::microsoft_symsrv();
 
         let file_contents = test::read_fixture("windows.dmp");
@@ -129,7 +125,7 @@ mod tests {
             .text("options", r#"{"dif_candidates":true}"#);
 
         let response = Client::new()
-            .post(&server.url("/minidump"))
+            .post(server.url("/minidump"))
             .multipart(form)
             .send()
             .await
@@ -147,7 +143,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service();
-        let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
+        let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("windows.dmp");
         let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
@@ -158,7 +154,7 @@ mod tests {
             .text("unknown", "value");
 
         let response = Client::new()
-            .post(&server.url("/minidump"))
+            .post(server.url("/minidump"))
             .multipart(form)
             .send()
             .await

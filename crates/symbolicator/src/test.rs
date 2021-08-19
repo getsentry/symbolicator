@@ -28,13 +28,13 @@ use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
 use crate::config::Config;
+use crate::endpoints;
 use crate::services::Service;
 use crate::sources::{
     CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
     SourceFilters, SourceId,
 };
 
-pub use actix_web::test::TestServer;
 pub use tempfile::TempDir;
 
 /// Setup the test environment.
@@ -156,6 +156,20 @@ impl Server {
     {
         let (socket, future) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
         let handle = tokio::spawn(future);
+
+        Self { handle, socket }
+    }
+
+    pub fn with_service(service: Service) -> Self {
+        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server =
+            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
+
+        let socket = server.local_addr();
+        let handle = tokio::spawn(async {
+            let _ = server.await;
+        });
 
         Self { handle, socket }
     }
