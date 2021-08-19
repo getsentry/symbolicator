@@ -99,9 +99,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// expires before the metadata cache, so if the metadata needs to be re-computed then
     /// the data cache has probably also expired.
     ///
-    /// This returns an error if the download failed.  If the data cache has a
-    /// [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] status the same status is
-    /// returned.
+    /// This returns [`CacheStatus::CacheSpecificError`] if the download failed.  If the
+    /// data cache is [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] then the same
+    /// status is returned.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
@@ -131,6 +131,13 @@ impl CacheItemRequest for FetchFileMetaRequest {
                         }
                     }
 
+                    // Unlike compute for other caches, this does not convert `CacheSpecificError`s
+                    // into `Negative` entries. This is because `create_candidate_info` populates
+                    // info about the original cache entry using the meta cache's data. If this
+                    // were to be converted to `Negative` when the original cache is a
+                    // `CacheSpecificError` then the user would never see what caused a download
+                    // failure, as what's visible to them is sourced from the output of
+                    //  `create_candidate_info`.
                     Ok(object_handle.status.clone())
                 })
         };

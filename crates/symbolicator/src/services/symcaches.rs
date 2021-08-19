@@ -99,13 +99,14 @@ pub struct SymCacheFile {
 
 impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        match self.status {
+        match &self.status {
             CacheStatus::Positive => Ok(Some(
                 SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(SymCacheError::Malformed),
-            // TODO: revisit once we want to start writing CacheSpecificError to cache
+            // If the cache entry is for a cache specific error, it must be
+            // from a previous symcache conversion attempt.
             CacheStatus::CacheSpecificError(_) => Err(SymCacheError::Malformed),
         }
     }
@@ -170,6 +171,11 @@ async fn fetch_difs_and_compute_symcache(
         .fetch(object_meta.clone())
         .await
         .map_err(SymCacheError::Fetching)?;
+
+    // The original has a download error so the sym cache entry should just be negative.
+    if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
+        return Ok(CacheStatus::Negative);
+    }
 
     if object_handle.status() != &CacheStatus::Positive {
         return Ok(object_handle.status().clone());

@@ -184,8 +184,13 @@ impl CfiCacheModules {
                             );
                             ObjectFileStatus::from(&err)
                         }
-                        // TODO: revisit this once CacheSpecificError starts being used
-                        CacheStatus::CacheSpecificError(_) => ObjectFileStatus::Malformed,
+                        // If the cache entry is for a cache specific error, it must be
+                        // from a previous cficache conversion attempt.
+                        CacheStatus::CacheSpecificError(details) => {
+                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            log::warn!("Cached error from parsing cficache: {}", details);
+                            ObjectFileStatus::from(&err)
+                        }
                     };
                     let cfi_path = match cfi_cache.status() {
                         CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
