@@ -278,10 +278,9 @@ impl GcsDownloader {
             }
             Ok(Err(e)) => {
                 log::debug!(
-                    "Skipping response from GCS {} (from {}): {} ({:?})",
+                    "Skipping response from GCS {} (from {}): {}",
                     &key,
                     &bucket,
-                    &e,
                     &e
                 );
                 // TODO: switch to this once we start writing DownloadErrors
