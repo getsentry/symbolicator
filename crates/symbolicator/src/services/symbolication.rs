@@ -382,6 +382,7 @@ pub struct SymbolicationActor {
     threadpool: ThreadPool,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
+    max_concurrent_requests: Option<usize>,
 }
 
 impl SymbolicationActor {
@@ -392,6 +393,7 @@ impl SymbolicationActor {
         diagnostics_cache: crate::cache::Cache,
         threadpool: ThreadPool,
         spawnpool: procspawn::Pool,
+        max_concurrent_requests: Option<usize>,
     ) -> Self {
         SymbolicationActor {
             objects,
@@ -401,10 +403,15 @@ impl SymbolicationActor {
             threadpool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             spawnpool: Arc::new(spawnpool),
+            max_concurrent_requests,
         }
     }
 
-    fn create_symbolication_request<F>(&self, f: F) -> RequestId
+    /// Creates a new request to compute the given future.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
+    fn create_symbolication_request<F>(&self, f: F) -> Option<RequestId>
     where
         F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
     {
@@ -414,6 +421,14 @@ impl SymbolicationActor {
 
         // Assume that there are no UUID4 collisions in practice.
         let requests = self.requests.clone();
+
+        // Reject the request if `requests` already contains `max_concurrent_requests` elements.
+        if let Some(max_concurrent_requests) = self.max_concurrent_requests {
+            if requests.lock().len() >= max_concurrent_requests {
+                return None;
+            }
+        }
+
         let request_id = RequestId::new(uuid::Uuid::new_v4());
         requests.lock().insert(request_id, receiver.shared());
         let drop_hub = hub.clone();
@@ -460,7 +475,7 @@ impl SymbolicationActor {
         // keep web requests flowing while symbolication tasks may backlog.
         spawn_compat(request_future);
 
-        request_id
+        Some(request_id)
     }
 }
 
@@ -1177,14 +1192,13 @@ fn record_symbolication_metrics(
 
     let platform = modules
         .iter()
-        .filter_map(|m| {
+        .find_map(|m| {
             if m.raw.ty == ObjectType::Unknown {
                 None
             } else {
                 Some(m.raw.ty)
             }
         })
-        .next()
         .unwrap_or(ObjectType::Unknown)
         .to_string();
 
@@ -1558,7 +1572,11 @@ impl SymbolicationActor {
             .context("Source lookup future cancelled")
     }
 
-    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
+    /// Creates a new request to symbolicate stacktraces.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
+    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> Option<RequestId> {
         self.create_symbolication_request(self.clone().do_symbolicate(request))
     }
 
@@ -2032,13 +2050,17 @@ impl SymbolicationActor {
         Ok(response)
     }
 
+    /// Creates a new request to process a minidump.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
     pub fn process_minidump(
         &self,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> RequestId {
+    ) -> Option<RequestId> {
         self.create_symbolication_request(self.clone().do_process_minidump(
             scope,
             minidump_file,
@@ -2226,13 +2248,17 @@ impl SymbolicationActor {
         Ok(response)
     }
 
+    /// Creates a new request to process an Apple crash report.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
         apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> RequestId {
+    ) -> Option<RequestId> {
         self.create_symbolication_request(self.clone().do_process_apple_crash_report(
             scope,
             apple_crash_report,
@@ -2396,7 +2422,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2405,7 +2431,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2425,7 +2451,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2434,7 +2460,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2475,7 +2501,10 @@ mod tests {
         test::spawn_compat(move || async move {
             // Be aware, this spawns the work into a new current thread runtime, which gets
             // dropped when test::spawn_compat() returns.
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            let request_id = service
+                .symbolication()
+                .symbolicate_stacktraces(request)
+                .unwrap();
 
             for _ in 0..2 {
                 let response = service
@@ -2509,7 +2538,7 @@ mod tests {
                     dif_candidates: true,
                 },
             );
-            symbolication.get_response(request_id, None).await
+            symbolication.get_response(request_id.unwrap(), None).await
         });
 
         assert_snapshot!(response.await.unwrap());
@@ -2547,14 +2576,17 @@ mod tests {
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
         let response = test::spawn_compat(move || async move {
-            let request_id = service.symbolication().process_apple_crash_report(
-                Scope::Global,
-                report_file,
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            );
+            let request_id = service
+                .symbolication()
+                .process_apple_crash_report(
+                    Scope::Global,
+                    report_file,
+                    Arc::new([source]),
+                    RequestOptions {
+                        dif_candidates: true,
+                    },
+                )
+                .unwrap();
 
             service.symbolication().get_response(request_id, None).await
         });
@@ -2603,7 +2635,10 @@ mod tests {
         };
 
         let response = test::spawn_compat(move || async move {
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            let request_id = service
+                .symbolication()
+                .symbolicate_stacktraces(request)
+                .unwrap();
             service.symbolication().get_response(request_id, None).await
         });
 

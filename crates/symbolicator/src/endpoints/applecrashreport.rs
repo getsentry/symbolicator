@@ -46,8 +46,10 @@ async fn handle_apple_crash_report_request(
     let report = report.ok_or_else(|| error::ErrorBadRequest("missing apple crash report"))?;
 
     let symbolication = state.symbolication();
-    let request_id =
-        symbolication.process_apple_crash_report(params.scope, report, sources, options);
+    // TODO: error message
+    let request_id = symbolication
+        .process_apple_crash_report(params.scope, report, sources, options)
+        .ok_or_else(|| error::ErrorTooManyRequests("TODO"))?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

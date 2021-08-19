@@ -61,15 +61,18 @@ async fn symbolicate_frames(
     };
 
     let symbolication = state.symbolication();
-    let request_id = symbolication.symbolicate_stacktraces(SymbolicateStacktraces {
-        scope: params.scope,
-        signal: body.signal,
-        sources,
-        origin: StacktraceOrigin::Symbolicate,
-        stacktraces: body.stacktraces,
-        modules: body.modules.into_iter().map(From::from).collect(),
-        options: body.options,
-    });
+    // TODO: error message
+    let request_id = symbolication
+        .symbolicate_stacktraces(SymbolicateStacktraces {
+            scope: params.scope,
+            signal: body.signal,
+            sources,
+            origin: StacktraceOrigin::Symbolicate,
+            stacktraces: body.stacktraces,
+            modules: body.modules.into_iter().map(From::from).collect(),
+            options: body.options,
+        })
+        .ok_or_else(|| error::ErrorTooManyRequests("TODO"))?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
