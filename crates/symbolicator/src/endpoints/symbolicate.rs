@@ -72,9 +72,7 @@ async fn symbolicate_frames(
             options: body.options,
         })
         .ok_or_else(|| {
-            error::ErrorServiceUnavailable(
-                "Symbolicator is currently processing the maximum number of requests.",
-            )
+            error::ErrorServiceUnavailable("maximum number of concurrent requests reached")
         })?;
 
     match symbolication.get_response(request_id, params.timeout).await {
