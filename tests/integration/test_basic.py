@@ -139,6 +139,63 @@ def _make_unsuccessful_result(status, source="microsoft"):
     return response
 
 
+def _make_error_result(details, source="microsoft"):
+    response = {
+        "stacktraces": [
+            {
+                "registers": {"eip": "0x1509530"},
+                "frames": [
+                    {
+                        "status": "missing",
+                        "original_index": 0,
+                        "package": "C:\\Windows\\System32\\kernel32.dll",
+                        "instruction_addr": "0x749e8630",
+                    }
+                ],
+            }
+        ],
+        "modules": [
+            {
+                "type": "pe",
+                "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+                "code_file": "C:\\Windows\\System32\\kernel32.dll",
+                "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+                "debug_status": "missing",
+                "features": {
+                    "has_debug_info": False,
+                    "has_sources": False,
+                    "has_symbols": False,
+                    "has_unwind_info": False,
+                },
+                "arch": "unknown",
+                "image_addr": "0x749d0000",
+                "image_size": 851_968,
+            }
+        ],
+        "status": "completed",
+    }
+    if source in ["microsoft", "unknown", "broken"]:
+        response["modules"][0]["candidates"] = [
+            {
+                "download": {
+                    "status": "error",
+                    "details": details,
+                },
+                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "source": source,
+            },
+            {
+                "download": {
+                    "status": "error",
+                    "details": details,
+                },
+                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "source": source,
+            },
+        ]
+    return response
+
+
 MISSING_FILE = _make_unsuccessful_result("missing")
 MALFORMED_FILE = _make_unsuccessful_result("malformed")
 MALFORMED_NO_SOURCES = _make_unsuccessful_result("malformed", source=None)
@@ -470,7 +527,13 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
         ]
         assert_symbolication(response, expected)
     else:
-        expected = _make_unsuccessful_result(status="missing", source="broken")
+        if statuscode == 500:
+            expected = _make_error_result(
+                details="failed to download: 500 Internal Server Error", source="broken"
+            )
+        else:
+            expected = _make_unsuccessful_result(status="missing", source="broken")
+
         for module in expected.get("modules", []):
             for candidate in module.get("candidates", []):
                 if "location" in candidate:
@@ -619,7 +682,10 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
         assert_symbolication(response.json(), SUCCESS_WINDOWS)
     else:
         assert not hitcounter.hits
-        assert_symbolication(response.json(), MISSING_FILE)
+        restricted_download_failure = _make_error_result(
+            details="failed to stream file"
+        )
+        assert_symbolication(response.json(), restricted_download_failure)
 
 
 def test_no_dif_candidates(symbolicator, hitcounter):

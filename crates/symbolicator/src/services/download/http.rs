@@ -126,16 +126,12 @@ impl HttpDownloader {
                         download_url,
                         response.status()
                     );
-                    // TODO: switch to this once we start writing DownloadErrors
-                    // Err(DownloadError::Rejected(response.status()))
-                    Ok(DownloadStatus::NotFound)
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {
                 log::debug!("Skipping response from {}: {}", download_url, e);
-                // TODO: switch to this once we start writing DownloadErrors
-                // Err(DownloadError::Reqwest(e)) // must be wrong type
-                Ok(DownloadStatus::NotFound)
+                Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             Err(_) => {
                 // Timeout
