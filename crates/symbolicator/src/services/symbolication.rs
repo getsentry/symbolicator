@@ -2802,4 +2802,34 @@ mod tests {
         let valid = builder.build();
         assert_eq!(valid, vec![valid_object]);
     }
+    #[tokio::test]
+    async fn test_max_requests() {
+        test::setup();
+
+        let cache_dir = test::tempdir();
+
+        let config = Config {
+            cache_dir: Some(cache_dir.path().to_owned()),
+            connect_to_reserved_ips: true,
+            max_concurrent_requests: Some(2),
+            ..Default::default()
+        };
+        let service = Service::create(config).unwrap();
+        let symbolication = service.symbolication();
+        let symbol_server = test::FailingSymbolServer::new();
+
+        test::spawn_compat(move || async move {
+            // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+            // two concurrent requests, the first two should succeed and the third one should fail.
+            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+            symbolication.symbolicate_stacktraces(request).unwrap();
+
+            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+            symbolication.symbolicate_stacktraces(request).unwrap();
+
+            let request = get_symbolication_request(vec![symbol_server.pending_source]);
+            symbolication.symbolicate_stacktraces(request).unwrap_err();
+        })
+        .await;
+    }
 }
