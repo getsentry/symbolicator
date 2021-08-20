@@ -112,7 +112,10 @@ impl HttpDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
-                } else if response.status() == StatusCode::FORBIDDEN {
+                } else if matches!(
+                    response.status(),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+                ) {
                     log::debug!("Insufficient permissions to download from {}", download_url);
                     Err(DownloadError::Permissions)
                 // If it's a client error, chances are either it's a 404 or it's permission-related.

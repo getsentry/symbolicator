@@ -283,7 +283,10 @@ impl SentryDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
-                } else if response.status() == StatusCode::FORBIDDEN {
+                } else if matches!(
+                    response.status(),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+                ) {
                     log::debug!("Insufficient permissions to download from {}", download_url);
                     Err(DownloadError::Permissions)
                 } else if response.status().is_client_error() {
