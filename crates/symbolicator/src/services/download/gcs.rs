@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
 use jsonwebtoken::EncodingKey;
 use parking_lot::Mutex;
-use reqwest::{header, Client};
+use reqwest::{header, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
@@ -255,6 +255,16 @@ impl GcsDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
+                } else if matches!(
+                    response.status(),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+                ) {
+                    log::debug!(
+                        "Insufficient permissions to download from GCS {} (from {})",
+                        &key,
+                        &bucket,
+                    );
+                    Err(DownloadError::Permissions)
                 // If it's a client error, chances are either it's a 404 or it's permission-related.
                 } else if response.status().is_client_error() {
                     log::debug!(

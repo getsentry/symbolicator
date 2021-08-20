@@ -21,7 +21,7 @@
 - Malformed and Cache-specific Error cache entries now contain some diagnostic info. ([#510](https://github.com/getsentry/symbolicator/pull/510))
 - New configuration option `environment_tag` ([#517](https://github.com/getsentry/symbolicator/pull/517))
 - Source candidates which symbolicator has failed to download due to non-400 errors are now being returned in symbolication payloads. These candidates include additional diagnostic info which briefly describes the download error. ([#512](https://github.com/getsentry/symbolicator/pull/512))
-- If a DIF object candidate could not be downloaded due to a lack permissions, their respective entry in a symbolication response will now mention something about permissions instead of marking the candidate as just Missing. ([#512](https://github.com/getsentry/symbolicator/pull/512))
+- If a DIF object candidate could not be downloaded due to a lack of permissions, their respective entry in a symbolication response will now mention something about permissions instead of marking the candidate as just Missing. ([#512](https://github.com/getsentry/symbolicator/pull/512), [#518](https://github.com/getsentry/symbolicator/pull/518))
 
 ### Fixes
 
