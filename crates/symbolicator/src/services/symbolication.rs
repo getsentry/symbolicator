@@ -428,9 +428,7 @@ impl SymbolicationActor {
         let requests = self.requests.clone();
 
         let num_requests = requests.lock().len();
-        if let Ok(num_requests) = num_requests.try_into() {
-            metric!(gauge("requests.in_flight") = num_requests);
-        }
+        metric!(gauge("requests.in_flight") = num_requests as u64);
 
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.max_concurrent_requests {
