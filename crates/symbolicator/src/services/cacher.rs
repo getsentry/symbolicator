@@ -20,6 +20,8 @@ type ComputationResult<T, E> = Result<Arc<T>, Arc<E>>;
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<ComputationResult<T, E>>>;
 
+type CacheResultFuture<T, E> = BoxedFuture<ComputationResult<T, E>>;
+
 type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
 
 /// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
@@ -74,6 +76,23 @@ impl fmt::Display for CacheKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} (scope {})", self.cache_key, self.scope)
     }
+}
+
+/// Cache Version Configuration used during cache lookup and generation.
+///
+/// The `current` version is tried first, and written during cache generation.
+/// The `fallback` versions are tried next, in first to last order. They are used only for cache
+/// lookups, but never for writing.
+///
+/// The version `0` is special in the sense that it is not used as part of the resulting cache
+/// file path, and generates the same paths as "legacy" unversioned cache files.
+#[derive(Clone, Debug)]
+pub struct CacheVersions {
+    /// The current cache version that is being looked up, and used for writing
+    pub current: u32,
+    /// A list of fallback cache versions that are being tried on lookup,
+    /// in descending order of priority.
+    pub fallbacks: &'static [u32],
 }
 
 /// Path to a temporary or cached file.
@@ -134,6 +153,14 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     // ioerrors into other errors
     type Error: 'static + From<io::Error> + Send + Sync;
 
+    /// The cache versioning scheme that is used for this type of request.
+    ///
+    /// Defaults to a scheme that does not use versioned cache files.
+    const VERSIONS: CacheVersions = CacheVersions {
+        current: 0,
+        fallbacks: &[],
+    };
+
     /// Returns the key by which this item is cached.
     fn get_cache_key(&self) -> CacheKey;
 
@@ -163,13 +190,17 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Constructs the path corresponding to the given [`CacheKey`].
     ///
     /// Returns [`None`] if caching is disabled.
-    fn get_cache_path(&self, key: &CacheKey) -> Option<PathBuf> {
-        Some(
-            self.config
-                .cache_dir()?
-                .join(safe_path_segment(key.scope.as_ref()))
-                .join(safe_path_segment(&key.cache_key)),
-        )
+    fn get_cache_path(&self, key: &CacheKey, version: u32) -> Option<PathBuf> {
+        let mut cache_dir = self.config.cache_dir()?.to_path_buf();
+
+        if version != 0 {
+            cache_dir.push(version.to_string());
+        }
+
+        cache_dir.push(safe_path_segment(key.scope.as_ref()));
+        cache_dir.push(safe_path_segment(&key.cache_key));
+
+        Some(cache_dir)
     }
 
     /// Look up an item in the file system cache and load it if available.
@@ -188,6 +219,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         path: &Path,
     ) -> Result<Option<T::Item>, T::Error> {
         let name = self.config.name();
+        log::trace!("Trying {} cache at path {:?}", name, path);
         sentry::with_scope(
             |scope| {
                 scope.set_extra(
@@ -237,7 +269,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // lookup without going through the deduplication/channel creation logic. This creates a
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
-        let cache_path = self.get_cache_path(&key);
+        let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
         if let Some(ref path) = cache_path {
             if let Some(item) = self.lookup_cache(&request, &key, path)? {
                 return Ok(item);
@@ -321,7 +353,10 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Spawns the computation as a separate task.
     ///
     /// This does deduplication, by keeping track of the running computations based on their [`CacheKey`].
-    async fn spawn_computation(&self, request: T) -> ComputationResult<T::Item, T::Error> {
+    ///
+    /// NOTE: This function itself is *not* `async`, because it should eagerly spawn the computation
+    /// on an executor, even if you don’t explicitly `await` its results.
+    fn spawn_computation(&self, request: T) -> CacheResultFuture<T::Item, T::Error> {
         let key = request.get_cache_key();
         let name = self.config.name();
 
@@ -342,14 +377,14 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         };
 
-        channel
-            .unwrap_or_else(move |_cancelled_error| {
-                let message = format!("{} computation channel dropped", name);
-                Err(Arc::new(
-                    io::Error::new(io::ErrorKind::Interrupted, message).into(),
-                ))
-            })
-            .await
+        let future = channel.unwrap_or_else(move |_cancelled_error| {
+            let message = format!("{} computation channel dropped", name);
+            Err(Arc::new(
+                io::Error::new(io::ErrorKind::Interrupted, message).into(),
+            ))
+        });
+
+        Box::pin(future)
     }
 
     /// Computes an item by loading from or populating the cache.
@@ -372,10 +407,31 @@ impl<T: CacheItemRequest> Cacher<T> {
         let key = request.get_cache_key();
 
         // cache_path is None when caching is disabled.
-        let cache_path = self.get_cache_path(&key);
+        let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
         if let Some(ref path) = cache_path {
             if let Some(item) = self.lookup_cache(&request, &key, path)? {
                 return Ok(Arc::new(item));
+            }
+
+            // try fallback cache paths next
+            for fallback_path in T::VERSIONS
+                .fallbacks
+                .iter()
+                .flat_map(|version| self.get_cache_path(&key, *version))
+            {
+                if let Ok(Some(item)) = self.lookup_cache(&request, &key, &fallback_path) {
+                    // we have found an outdated cache that we will use right away,
+                    // and we will kick off a recomputation for the `current` cache version
+                    // in a deduplicated background task, which we will not await
+                    log::trace!(
+                        "Spawning deduplicated {} computation for path {:?}",
+                        name,
+                        path
+                    );
+                    let _not_awaiting_future = self.spawn_computation(request);
+
+                    return Ok(Arc::new(item));
+                }
             }
         }
 
@@ -383,6 +439,116 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        Ok(self.spawn_computation(request.clone()).await?)
+        Ok(self.spawn_computation(request).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    use futures::compat::Future01CompatExt;
+    use futures::Future;
+
+    use crate::config::{CacheConfig, CacheConfigs};
+    use crate::test::{self, tempdir};
+
+    use super::*;
+
+    /// A tokio 0.1 compat layer to sleep the task for the given time.
+    ///
+    /// This is necessary because the [`Cacher`] still uses a tokio 0.1 spawn internally.
+    fn sleep(millis: u64) -> impl Future<Output = ()> {
+        let when = Instant::now() + Duration::from_millis(millis);
+        tokio01::timer::Delay::new(when)
+            .compat()
+            .unwrap_or_else(|_| ())
+    }
+
+    #[derive(Clone, Default)]
+    struct TestCacheItem {
+        computations: Arc<AtomicUsize>,
+    }
+
+    impl CacheItemRequest for TestCacheItem {
+        type Item = String;
+
+        type Error = std::io::Error;
+
+        const VERSIONS: CacheVersions = CacheVersions {
+            current: 1,
+            fallbacks: &[0],
+        };
+
+        fn get_cache_key(&self) -> CacheKey {
+            CacheKey {
+                cache_key: String::from("some_cache_key"),
+                scope: Scope::Global,
+            }
+        }
+
+        fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+            self.computations.fetch_add(1, Ordering::SeqCst);
+
+            let path = path.to_owned();
+            Box::pin(async move {
+                sleep(100).await;
+
+                std::fs::write(path, "some new cached contents")?;
+                Ok(CacheStatus::Positive)
+            })
+        }
+
+        fn load(
+            &self,
+            _scope: Scope,
+            _status: CacheStatus,
+            data: ByteView<'static>,
+            _path: CachePath,
+        ) -> Self::Item {
+            std::str::from_utf8(data.as_slice()).unwrap().to_owned()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cache_fallback() {
+        test::setup();
+
+        let cache_dir = tempdir().path().join("test");
+        std::fs::create_dir_all(cache_dir.join("global")).unwrap();
+        std::fs::write(
+            cache_dir.join("global/some_cache_key"),
+            "some old cached contents",
+        )
+        .unwrap();
+
+        let cache = Cache::from_config(
+            "test",
+            Some(cache_dir),
+            None,
+            CacheConfig::from(CacheConfigs::default().derived),
+        )
+        .unwrap();
+        let cacher = Cacher::new(cache);
+
+        let request = TestCacheItem::default();
+
+        test::spawn_compat(move || async move {
+            let first_result = cacher.compute_memoized(request.clone()).await;
+            assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
+
+            let second_result = cacher.compute_memoized(request.clone()).await;
+            assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
+
+            sleep(200).await;
+
+            let third_result = cacher.compute_memoized(request.clone()).await;
+            assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
+
+            // we only want to have the actual computation be done a single time
+            assert_eq!(request.computations.load(Ordering::SeqCst), 1);
+        })
+        .await;
     }
 }

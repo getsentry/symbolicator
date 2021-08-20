@@ -339,8 +339,8 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
     let mut file = File::open(path)?;
     let mut buf = vec![0; readable_amount];
 
-    log::trace!("First {} bytes: {:?}", buf.len(), buf);
     file.read_exact(&mut buf)?;
+    log::trace!("First {} bytes: {:?}", buf.len(), buf);
 
     let strategy = match CacheStatus::from_content(&buf) {
         CacheStatus::Positive => ExpirationStrategy::None,
