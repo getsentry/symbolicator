@@ -47,7 +47,7 @@ async fn handle_apple_crash_report_request(
 
     let symbolication = state.symbolication();
     let request_id =
-        symbolication.process_apple_crash_report(params.scope, report, sources, options);
+        symbolication.process_apple_crash_report(params.scope, report, sources, options)?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

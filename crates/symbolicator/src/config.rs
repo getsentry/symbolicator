@@ -273,6 +273,11 @@ pub struct Config {
     /// download 1GB.
     #[serde(with = "humantime_serde")]
     pub streaming_timeout: Duration,
+
+    /// The maximum number of requests that symbolicator will process concurrently.
+    ///
+    /// A value of `None` indicates no limit.
+    pub max_concurrent_requests: Option<usize>,
 }
 
 impl Config {
@@ -341,6 +346,7 @@ impl Default for Config {
             connect_timeout: Duration::from_secs(15),
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
+            max_concurrent_requests: None,
         }
     }
 }

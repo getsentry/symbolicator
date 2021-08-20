@@ -90,6 +90,12 @@ impl SymbolicationError {
     }
 }
 
+/// An error returned when symbolicator receives a request while already processing
+/// the maximum number of requests.
+#[derive(Debug, Clone, Error)]
+#[error("maximum number of concurrent requests reached")]
+pub struct MaxRequestsError;
+
 // We want a shared future here because otherwise polling for a response would hold the global lock.
 type ComputationChannel = future::Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
 
@@ -387,6 +393,7 @@ pub struct SymbolicationActor {
     threadpool: ThreadPool,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
+    max_concurrent_requests: Option<usize>,
 }
 
 impl SymbolicationActor {
@@ -397,6 +404,7 @@ impl SymbolicationActor {
         diagnostics_cache: crate::cache::Cache,
         threadpool: ThreadPool,
         spawnpool: procspawn::Pool,
+        max_concurrent_requests: Option<usize>,
     ) -> Self {
         SymbolicationActor {
             objects,
@@ -406,10 +414,15 @@ impl SymbolicationActor {
             threadpool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             spawnpool: Arc::new(spawnpool),
+            max_concurrent_requests,
         }
     }
 
-    fn create_symbolication_request<F>(&self, f: F) -> RequestId
+    /// Creates a new request to compute the given future.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
+    fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, MaxRequestsError>
     where
         F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
     {
@@ -420,8 +433,14 @@ impl SymbolicationActor {
         // Assume that there are no UUID4 collisions in practice.
         let requests = self.requests.clone();
 
-        if let Ok(num_requests) = requests.lock().len().try_into() {
-            metric!(gauge("requests.in_flight") = num_requests);
+        let num_requests = requests.lock().len();
+        metric!(gauge("requests.in_flight") = num_requests as u64);
+
+        // Reject the request if `requests` already contains `max_concurrent_requests` elements.
+        if let Some(max_concurrent_requests) = self.max_concurrent_requests {
+            if num_requests >= max_concurrent_requests {
+                return Err(MaxRequestsError);
+            }
         }
 
         let request_id = RequestId::new(uuid::Uuid::new_v4());
@@ -470,7 +489,7 @@ impl SymbolicationActor {
         // keep web requests flowing while symbolication tasks may backlog.
         spawn_compat(request_future);
 
-        request_id
+        Ok(request_id)
     }
 }
 
@@ -1187,14 +1206,13 @@ fn record_symbolication_metrics(
 
     let platform = modules
         .iter()
-        .filter_map(|m| {
+        .find_map(|m| {
             if m.raw.ty == ObjectType::Unknown {
                 None
             } else {
                 Some(m.raw.ty)
             }
         })
-        .next()
         .unwrap_or(ObjectType::Unknown)
         .to_string();
 
@@ -1568,7 +1586,14 @@ impl SymbolicationActor {
             .context("Source lookup future cancelled")
     }
 
-    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> RequestId {
+    /// Creates a new request to symbolicate stacktraces.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
+    pub fn symbolicate_stacktraces(
+        &self,
+        request: SymbolicateStacktraces,
+    ) -> Result<RequestId, MaxRequestsError> {
         self.create_symbolication_request(self.clone().do_symbolicate(request))
     }
 
@@ -2042,13 +2067,17 @@ impl SymbolicationActor {
         Ok(response)
     }
 
+    /// Creates a new request to process a minidump.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
     pub fn process_minidump(
         &self,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> RequestId {
+    ) -> Result<RequestId, MaxRequestsError> {
         self.create_symbolication_request(self.clone().do_process_minidump(
             scope,
             minidump_file,
@@ -2236,13 +2265,17 @@ impl SymbolicationActor {
         Ok(response)
     }
 
+    /// Creates a new request to process an Apple crash report.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
     pub fn process_apple_crash_report(
         &self,
         scope: Scope,
         apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> RequestId {
+    ) -> Result<RequestId, MaxRequestsError> {
         self.create_symbolication_request(self.clone().do_process_apple_crash_report(
             scope,
             apple_crash_report,
@@ -2406,7 +2439,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2415,7 +2448,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2435,7 +2468,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2444,7 +2477,7 @@ mod tests {
         let symbolication = service.symbolication();
         let response = test::spawn_compat(move || async move {
             let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
             symbolication.get_response(request_id, None).await
         });
 
@@ -2485,7 +2518,10 @@ mod tests {
         test::spawn_compat(move || async move {
             // Be aware, this spawns the work into a new current thread runtime, which gets
             // dropped when test::spawn_compat() returns.
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            let request_id = service
+                .symbolication()
+                .symbolicate_stacktraces(request)
+                .unwrap();
 
             for _ in 0..2 {
                 let response = service
@@ -2519,7 +2555,7 @@ mod tests {
                     dif_candidates: true,
                 },
             );
-            symbolication.get_response(request_id, None).await
+            symbolication.get_response(request_id.unwrap(), None).await
         });
 
         assert_snapshot!(response.await.unwrap());
@@ -2557,14 +2593,17 @@ mod tests {
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
         let response = test::spawn_compat(move || async move {
-            let request_id = service.symbolication().process_apple_crash_report(
-                Scope::Global,
-                report_file,
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            );
+            let request_id = service
+                .symbolication()
+                .process_apple_crash_report(
+                    Scope::Global,
+                    report_file,
+                    Arc::new([source]),
+                    RequestOptions {
+                        dif_candidates: true,
+                    },
+                )
+                .unwrap();
 
             service.symbolication().get_response(request_id, None).await
         });
@@ -2613,7 +2652,10 @@ mod tests {
         };
 
         let response = test::spawn_compat(move || async move {
-            let request_id = service.symbolication().symbolicate_stacktraces(request);
+            let request_id = service
+                .symbolication()
+                .symbolicate_stacktraces(request)
+                .unwrap();
             service.symbolication().get_response(request_id, None).await
         });
 
@@ -2759,5 +2801,35 @@ mod tests {
         builder.mark_referenced(0x2800); // in the gap between both modules
         let valid = builder.build();
         assert_eq!(valid, vec![valid_object]);
+    }
+    #[tokio::test]
+    async fn test_max_requests() {
+        test::setup();
+
+        let cache_dir = test::tempdir();
+
+        let config = Config {
+            cache_dir: Some(cache_dir.path().to_owned()),
+            connect_to_reserved_ips: true,
+            max_concurrent_requests: Some(2),
+            ..Default::default()
+        };
+        let service = Service::create(config).unwrap();
+        let symbolication = service.symbolication();
+        let symbol_server = test::FailingSymbolServer::new();
+
+        test::spawn_compat(move || async move {
+            // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+            // two concurrent requests, the first two should succeed and the third one should fail.
+            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+
+            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+
+            let request = get_symbolication_request(vec![symbol_server.pending_source]);
+            assert!(symbolication.symbolicate_stacktraces(request).is_err());
+        })
+        .await;
     }
 }

@@ -88,6 +88,7 @@ impl Service {
             caches.diagnostics,
             cpu_pool,
             spawnpool,
+            config.max_concurrent_requests,
         );
 
         Ok(Self {

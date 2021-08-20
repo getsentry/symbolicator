@@ -69,7 +69,7 @@ async fn symbolicate_frames(
         stacktraces: body.stacktraces,
         modules: body.modules.into_iter().map(From::from).collect(),
         options: body.options,
-    });
+    })?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
