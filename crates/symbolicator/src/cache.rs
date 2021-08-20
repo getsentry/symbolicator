@@ -14,7 +14,6 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::types::Scope;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -358,26 +357,6 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
         },
     };
     Ok(strategy)
-}
-
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct CacheKey {
-    pub cache_key: String,
-    pub scope: Scope,
-}
-
-pub fn get_scope_path(cache_dir: Option<&Path>, scope: &Scope, cache_key: &str) -> Option<PathBuf> {
-    Some(
-        cache_dir?
-            .join(safe_path_segment(scope.as_ref()))
-            .join(safe_path_segment(cache_key)),
-    )
-}
-
-fn safe_path_segment(s: &str) -> String {
-    s.replace(".", "_") // protect against ".."
-        .replace("/", "_") // protect against absolute paths
-        .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
 }
 
 fn catch_not_found<F, R>(f: F) -> io::Result<Option<R>>

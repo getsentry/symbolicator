@@ -13,9 +13,9 @@ use symbolic::debuginfo::Object;
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheStatus};
 use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
-use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,

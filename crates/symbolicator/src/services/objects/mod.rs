@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use ::sentry::Hub;
 use backtrace::Backtrace;
-use futures::future::{self, Future, TryFutureExt};
+use futures::future;
 use sentry::SentryFutureExt;
 use symbolic::debuginfo;
 
@@ -184,10 +184,10 @@ impl ObjectsActor {
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
-    pub fn fetch(
+    pub async fn fetch(
         &self,
         file_handle: Arc<ObjectMetaHandle>,
-    ) -> impl Future<Output = Result<Arc<ObjectHandle>, ObjectError>> {
+    ) -> Result<Arc<ObjectHandle>, ObjectError> {
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -198,6 +198,7 @@ impl ObjectsActor {
 
         self.data_cache
             .compute_memoized(request)
+            .await
             .map_err(ObjectError::Caching)
     }
 

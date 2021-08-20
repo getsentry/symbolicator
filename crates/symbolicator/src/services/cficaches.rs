@@ -13,8 +13,8 @@ use symbolic::{
 };
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
+use crate::cache::{Cache, CacheStatus};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -121,13 +121,16 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
-        let object = self
-            .objects_actor
-            .fetch(self.meta_handle.clone())
-            .map_err(CfiCacheError::Fetching);
-
         let threadpool = self.threadpool.clone();
-        let result = object.and_then(move |object| {
+        let objects_actor = self.objects_actor.clone();
+        let meta_handle = self.meta_handle.clone();
+
+        let result = async move {
+            let object = objects_actor
+                .fetch(meta_handle)
+                .await
+                .map_err(CfiCacheError::Fetching)?;
+
             let future = async move {
                 // The original has a download error so the cfi cache entry should just be negative.
                 if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
@@ -151,8 +154,9 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
             threadpool
                 .spawn_handle(future.bind_hub(Hub::current()))
-                .unwrap_or_else(|_| Err(CfiCacheError::Canceled))
-        });
+                .await
+                .unwrap_or(Err(CfiCacheError::Canceled))
+        };
 
         let num_sources = self.request.sources.len();
 
@@ -160,7 +164,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             future_metrics!(
                 "cficaches",
                 Some((Duration::from_secs(1200), CfiCacheError::Timeout)),
-                result.compat(),
+                result.boxed_local().compat(),
                 "num_sources" => &num_sources.to_string()
             )
             .compat(),

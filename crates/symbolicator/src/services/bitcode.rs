@@ -18,9 +18,9 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheStatus};
 use crate::logging::LogError;
-use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;

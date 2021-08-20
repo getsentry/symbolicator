@@ -10,7 +10,7 @@ use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::cache::CacheKey;
+use crate::services::cacher::CacheKey;
 use crate::sources::SourceId;
 use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
