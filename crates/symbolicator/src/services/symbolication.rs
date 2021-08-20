@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix_web::Error;
+use actix_web::http::StatusCode;
+use actix_web::{HttpResponse, ResponseError};
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, TimeZone, Utc};
@@ -88,6 +89,18 @@ impl SymbolicationError {
                 message: self.to_string(),
             },
         }
+    }
+}
+
+/// An error returned when symbolicator receives a request while already processing
+/// the maximum number of requests.
+#[derive(Debug, Clone, Error)]
+#[error("maximum number of concurrent requests reached")]
+pub struct MaxRequestsError;
+
+impl ResponseError for MaxRequestsError {
+    fn error_response(&self) -> actix_web::HttpResponse {
+        HttpResponse::new(StatusCode::SERVICE_UNAVAILABLE)
     }
 }
 
@@ -417,7 +430,7 @@ impl SymbolicationActor {
     ///
     /// Returns `None` if the `SymbolicationActor` is already processing the
     /// maximum number of requests, as given by `max_concurrent_requests`.
-    fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, Error>
+    fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, MaxRequestsError>
     where
         F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
     {
@@ -434,9 +447,7 @@ impl SymbolicationActor {
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.max_concurrent_requests {
             if num_requests >= max_concurrent_requests {
-                return Err(actix_web::error::ErrorServiceUnavailable(
-                    "maximum number of concurrent requests reached",
-                ));
+                return Err(MaxRequestsError);
             }
         }
 
@@ -1590,7 +1601,7 @@ impl SymbolicationActor {
     pub fn symbolicate_stacktraces(
         &self,
         request: SymbolicateStacktraces,
-    ) -> Result<RequestId, Error> {
+    ) -> Result<RequestId, MaxRequestsError> {
         self.create_symbolication_request(self.clone().do_symbolicate(request))
     }
 
@@ -2074,7 +2085,7 @@ impl SymbolicationActor {
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> Result<RequestId, Error> {
+    ) -> Result<RequestId, MaxRequestsError> {
         self.create_symbolication_request(self.clone().do_process_minidump(
             scope,
             minidump_file,
@@ -2272,7 +2283,7 @@ impl SymbolicationActor {
         apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> Result<RequestId, Error> {
+    ) -> Result<RequestId, MaxRequestsError> {
         self.create_symbolication_request(self.clone().do_process_apple_crash_report(
             scope,
             apple_crash_report,
