@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use actix_web::Error;
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, TimeZone, Utc};
@@ -416,7 +417,7 @@ impl SymbolicationActor {
     ///
     /// Returns `None` if the `SymbolicationActor` is already processing the
     /// maximum number of requests, as given by `max_concurrent_requests`.
-    fn create_symbolication_request<F>(&self, f: F) -> Option<RequestId>
+    fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, Error>
     where
         F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
     {
@@ -433,7 +434,9 @@ impl SymbolicationActor {
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.max_concurrent_requests {
             if num_requests >= max_concurrent_requests {
-                return None;
+                return Err(actix_web::error::ErrorServiceUnavailable(
+                    "maximum number of concurrent requests reached",
+                ));
             }
         }
 
@@ -483,7 +486,7 @@ impl SymbolicationActor {
         // keep web requests flowing while symbolication tasks may backlog.
         spawn_compat(request_future);
 
-        Some(request_id)
+        Ok(request_id)
     }
 }
 
@@ -1584,7 +1587,10 @@ impl SymbolicationActor {
     ///
     /// Returns `None` if the `SymbolicationActor` is already processing the
     /// maximum number of requests, as given by `max_concurrent_requests`.
-    pub fn symbolicate_stacktraces(&self, request: SymbolicateStacktraces) -> Option<RequestId> {
+    pub fn symbolicate_stacktraces(
+        &self,
+        request: SymbolicateStacktraces,
+    ) -> Result<RequestId, Error> {
         self.create_symbolication_request(self.clone().do_symbolicate(request))
     }
 
@@ -2068,7 +2074,7 @@ impl SymbolicationActor {
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> Option<RequestId> {
+    ) -> Result<RequestId, Error> {
         self.create_symbolication_request(self.clone().do_process_minidump(
             scope,
             minidump_file,
@@ -2266,7 +2272,7 @@ impl SymbolicationActor {
         apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
-    ) -> Option<RequestId> {
+    ) -> Result<RequestId, Error> {
         self.create_symbolication_request(self.clone().do_process_apple_crash_report(
             scope,
             apple_crash_report,
