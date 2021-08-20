@@ -2822,13 +2822,13 @@ mod tests {
             // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
             // two concurrent requests, the first two should succeed and the third one should fail.
             let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            symbolication.symbolicate_stacktraces(request).unwrap();
+            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
             let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            symbolication.symbolicate_stacktraces(request).unwrap();
+            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
             let request = get_symbolication_request(vec![symbol_server.pending_source]);
-            symbolication.symbolicate_stacktraces(request).unwrap_err();
+            assert!(symbolication.symbolicate_stacktraces(request).is_err());
         })
         .await;
     }
