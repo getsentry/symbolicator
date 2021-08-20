@@ -7,8 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use actix_web::http::StatusCode;
-use actix_web::{HttpResponse, ResponseError};
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, TimeZone, Utc};
@@ -97,12 +95,6 @@ impl SymbolicationError {
 #[derive(Debug, Clone, Error)]
 #[error("maximum number of concurrent requests reached")]
 pub struct MaxRequestsError;
-
-impl ResponseError for MaxRequestsError {
-    fn error_response(&self) -> actix_web::HttpResponse {
-        HttpResponse::new(StatusCode::SERVICE_UNAVAILABLE)
-    }
-}
 
 // We want a shared future here because otherwise polling for a response would hold the global lock.
 type ComputationChannel = future::Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
