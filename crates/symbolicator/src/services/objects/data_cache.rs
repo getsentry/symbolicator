@@ -75,7 +75,8 @@ impl ObjectHandle {
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
             CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(
-                DownloadError::CachedError(message.clone()),
+                DownloadError::from_cache(&self.status)
+                    .unwrap_or_else(|| DownloadError::CachedError(message.clone())),
             )),
         }
     }
@@ -291,7 +292,7 @@ mod tests {
 
     use crate::cache::{Cache, CacheStatus};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::services::download::DownloadService;
+    use crate::services::download::{DownloadError, DownloadService};
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::sources::FileType;
@@ -454,6 +455,51 @@ mod tests {
             assert_eq!(
                 result.meta.unwrap().status,
                 CacheStatus::CacheSpecificError(String::from("download was cancelled"))
+            );
+            assert_eq!(server.accesses(), 0);
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_download_error_cache_forbidden() {
+        test::setup();
+
+        let server = test::FailingSymbolServer::new();
+        let cachedir = tempdir();
+        let objects_actor = objects_actor(&cachedir);
+
+        test::spawn_compat(move || async move {
+            let find_object = FindObject {
+                // A request for a bcsymbolmap will expand to only one file that is being looked up.
+                // Other filetypes will lead to multiple requests, trying different file extensions, etc
+                filetypes: &[FileType::BcSymbolMap],
+                purpose: ObjectPurpose::Debug,
+                scope: Scope::Global,
+                identifier: DebugId::default().into(),
+                sources: Arc::new([]),
+            };
+
+            // for each of the different symbol sources, we assert that:
+            // * we get a cache-specific error no matter how often we try
+            // * we hit the symbol source exactly once for the initial request, followed by 3 retries
+            // * the second try should *not* hit the symbol source, but should rather be served by the cache
+
+            // server rejects the request (403)
+            let find_object = FindObject {
+                sources: Arc::new([server.forbidden_source.clone()]),
+                ..find_object
+            };
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(
+                result.meta.clone().unwrap().status,
+                CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
+            );
+            assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
+            let result = objects_actor.find(find_object.clone()).await.unwrap();
+            assert_eq!(
+                result.meta.unwrap().status,
+                CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
             );
             assert_eq!(server.accesses(), 0);
         })

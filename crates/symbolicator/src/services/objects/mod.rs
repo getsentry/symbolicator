@@ -447,9 +447,16 @@ fn create_candidate_info(
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
                 CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
-                CacheStatus::CacheSpecificError(message) => ObjectDownloadInfo::Error {
-                    details: message.clone(),
-                },
+                CacheStatus::CacheSpecificError(message) => {
+                    match DownloadError::from_cache(&meta_handle.status) {
+                        Some(DownloadError::Permissions) => ObjectDownloadInfo::NoPerm {
+                            details: String::default(),
+                        },
+                        Some(_) | None => ObjectDownloadInfo::Error {
+                            details: message.clone(),
+                        },
+                    }
+                }
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),
