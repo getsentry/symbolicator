@@ -15,9 +15,10 @@ use crate::cache::{Cache, CacheStatus};
 use crate::types::Scope;
 use crate::utils::futures::{spawn_compat, BoxedFuture, CallOnDrop};
 
+type ComputationResult<T, E> = Result<Arc<T>, Arc<E>>;
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
-type ComputationChannel<T, E> = Shared<oneshot::Receiver<Result<Arc<T>, Arc<E>>>>;
+type ComputationChannel<T, E> = Shared<oneshot::Receiver<ComputationResult<T, E>>>;
 
 type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
 
@@ -126,7 +127,7 @@ fn safe_path_segment(s: &str) -> String {
         .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
 }
 
-pub trait CacheItemRequest: 'static + Send {
+pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     type Item: 'static + Send + Sync;
 
     // XXX: Probably should have our own concrete error type for cacheactor instead of forcing our
@@ -187,64 +188,58 @@ impl<T: CacheItemRequest> Cacher<T> {
         path: &Path,
     ) -> Result<Option<T::Item>, T::Error> {
         let name = self.config.name();
-        sentry::configure_scope(|scope| {
-            scope.set_extra(
-                &format!("cache.{}.cache_path", name),
-                format!("{:?}", path).into(),
-            );
-        });
+        sentry::with_scope(
+            |scope| {
+                scope.set_extra(
+                    &format!("cache.{}.cache_path", name),
+                    format!("{:?}", path).into(),
+                );
+            },
+            || {
+                let byteview = match self.config.open_cachefile(path)? {
+                    Some(x) => x,
+                    None => return Ok(None),
+                };
 
-        let byteview = match self.config.open_cachefile(path)? {
-            Some(x) => x,
-            None => return Ok(None),
-        };
+                let status = CacheStatus::from_content(&byteview);
+                if status == CacheStatus::Positive && !request.should_load(&byteview) {
+                    log::trace!("Discarding {} at path {:?}", name, path);
+                    metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+                    return Ok(None);
+                }
 
-        let status = CacheStatus::from_content(&byteview);
-        if status == CacheStatus::Positive && !request.should_load(&byteview) {
-            log::trace!("Discarding {} at path {:?}", name, path);
-            metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
-            return Ok(None);
-        }
+                // This is also reported for "negative cache hits": When we cached the 404 response from a
+                // server as empty file.
+                metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                    "hit" => "true"
+                );
 
-        // This is also reported for "negative cache hits": When we cached the 404 response from a
-        // server as empty file.
-        metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-        metric!(
-            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-            "hit" => "true"
-        );
-
-        let path = path.to_path_buf();
-        log::trace!("Loading {} at path {:?}", name, path);
-        let item = request.load(key.scope.clone(), status, byteview, CachePath::Cached(path));
-        Ok(Some(item))
+                let path = path.to_path_buf();
+                log::trace!("Loading {} at path {:?}", name, path);
+                let item =
+                    request.load(key.scope.clone(), status, byteview, CachePath::Cached(path));
+                Ok(Some(item))
+            },
+        )
     }
 
     /// Compute an item.
     ///
-    /// If the item is in the file system cache, it is returned immediately. Otherwise, it
-    /// is computed using [`T::compute`](CacheItemRequest::compute), and then persisted to
-    /// the cache.
+    /// The item is computed using [`T::compute`](CacheItemRequest::compute), and then persisted to
+    /// the given `cache_path`.
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    async fn compute(&self, request: T, key: CacheKey) -> Result<T::Item, T::Error> {
-        // cache_path is None when caching is disabled.
-        let cache_path = self.get_cache_path(&key);
-        if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
-                return Ok(item);
-            }
-        }
-
-        let name = self.config.name();
-        let key = request.get_cache_key();
-
-        // A file was not found. If this spikes, it's possible that the filesystem cache
-        // just got pruned.
-        metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
-
-        let temp_file = self.tempfile()?;
+    async fn compute(
+        name: &'static str,
+        tempfile: std::io::Result<NamedTempFile>,
+        request: T,
+        key: CacheKey,
+        cache_path: Option<PathBuf>,
+    ) -> Result<T::Item, T::Error> {
+        let temp_file = tempfile?;
 
         let status = request.compute(temp_file.path()).await?;
 
@@ -282,19 +277,24 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 
     /// Creates a shareable channel that computes an item.
-    fn create_channel(&self, request: T, key: CacheKey) -> ComputationChannel<T::Item, T::Error> {
+    fn create_channel<F>(
+        &self,
+        key: CacheKey,
+        computation: F,
+    ) -> ComputationChannel<T::Item, T::Error>
+    where
+        F: std::future::Future<Output = Result<T::Item, T::Error>> + 'static,
+    {
         let (sender, receiver) = oneshot::channel();
 
-        let slf = self.clone();
         let current_computations = self.current_computations.clone();
-        let drop_key = key.clone();
         let remove_computation_token = CallOnDrop::new(move || {
-            current_computations.lock().remove(&drop_key);
+            current_computations.lock().remove(&key);
         });
 
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = async move {
-            let result = match slf.compute(request, key).await {
+            let result = match computation.await {
                 Ok(ok) => Ok(Arc::new(ok)),
                 Err(err) => Err(Arc::new(err)),
             };
@@ -310,6 +310,47 @@ impl<T: CacheItemRequest> Cacher<T> {
         spawn_compat(channel);
 
         receiver.shared()
+    }
+
+    /// Spawns the computation as a separate task.
+    ///
+    /// This does deduplication, by keeping track of the running computations based on their [`CacheKey`].
+    async fn spawn_computation(
+        &self,
+        request: T,
+        cache_path: Option<PathBuf>,
+    ) -> ComputationResult<T::Item, T::Error> {
+        let key = request.get_cache_key();
+        let name = self.config.name();
+
+        let channel = {
+            let mut current_computations = self.current_computations.lock();
+            if let Some(channel) = current_computations.get(&key) {
+                // A concurrent cache lookup was deduplicated.
+                metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
+                channel.clone()
+            } else {
+                // A concurrent cache lookup is considered new. This does not imply a cache miss.
+                metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+                let tempfile = self.tempfile();
+                let channel = self.create_channel(
+                    key.clone(),
+                    Self::compute(name, tempfile, request, key.clone(), cache_path),
+                );
+                let evicted = current_computations.insert(key, channel.clone());
+                debug_assert!(evicted.is_none());
+                channel
+            }
+        };
+
+        channel
+            .unwrap_or_else(move |_cancelled_error| {
+                let message = format!("{} computation channel dropped", name);
+                Err(Arc::new(
+                    io::Error::new(io::ErrorKind::Interrupted, message).into(),
+                ))
+            })
+            .await
     }
 
     /// Computes an item by loading from or populating the cache.
@@ -328,32 +369,21 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// into the cache and the next call to the same cache item will attempt to re-compute
     /// the cache.
     pub async fn compute_memoized(&self, request: T) -> Result<Arc<T::Item>, Arc<T::Error>> {
-        let key = request.get_cache_key();
         let name = self.config.name();
+        let key = request.get_cache_key();
 
-        let channel = {
-            let mut current_computations = self.current_computations.lock();
-            if let Some(channel) = current_computations.get(&key) {
-                // A concurrent cache lookup was deduplicated.
-                metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
-                channel.clone()
-            } else {
-                // A concurrent cache lookup is considered new. This does not imply a cache miss.
-                metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
-                let channel = self.create_channel(request, key.clone());
-                let evicted = current_computations.insert(key, channel.clone());
-                debug_assert!(evicted.is_none());
-                channel
+        // cache_path is None when caching is disabled.
+        let cache_path = self.get_cache_path(&key);
+        if let Some(ref path) = cache_path {
+            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+                return Ok(Arc::new(item));
             }
-        };
+        }
 
-        channel
-            .unwrap_or_else(move |_cancelled_error| {
-                let message = format!("{} computation channel dropped", name);
-                Err(Arc::new(
-                    io::Error::new(io::ErrorKind::Interrupted, message).into(),
-                ))
-            })
-            .await
+        // A file was not found. If this spikes, it's possible that the filesystem cache
+        // just got pruned.
+        metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+
+        Ok(self.spawn_computation(request.clone(), cache_path).await?)
     }
 }
