@@ -20,9 +20,9 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 
-use crate::cache::{CacheKey, CacheStatus};
+use crate::cache::CacheStatus;
 use crate::logging::LogError;
-use crate::services::cacher::{CacheItemRequest, CachePath};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
 use crate::services::download::{DownloadError, DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;

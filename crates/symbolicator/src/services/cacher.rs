@@ -5,18 +5,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::future::{self, FutureExt, Shared, TryFutureExt};
+use futures::future::{FutureExt, Shared, TryFutureExt};
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::cache::{get_scope_path, Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheStatus};
 use crate::types::Scope;
 use crate::utils::futures::{spawn_compat, BoxedFuture, CallOnDrop};
-
-/// Result from [`Cacher::compute_memoized`].
-type CacheResultFuture<T, E> = BoxedFuture<Result<Arc<T>, Arc<E>>>;
 
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
@@ -64,6 +61,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub fn tempfile(&self) -> io::Result<NamedTempFile> {
         self.config.tempfile()
     }
+}
+
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CacheKey {
+    pub cache_key: String,
+    pub scope: Scope,
 }
 
 impl fmt::Display for CacheKey {
@@ -117,6 +120,12 @@ impl AsRef<Path> for CachePath {
     }
 }
 
+fn safe_path_segment(s: &str) -> String {
+    s.replace(".", "_") // protect against ".."
+        .replace("/", "_") // protect against absolute paths
+        .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
+}
+
 pub trait CacheItemRequest: 'static + Send {
     type Item: 'static + Send + Sync;
 
@@ -150,6 +159,18 @@ pub trait CacheItemRequest: 'static + Send {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
+    /// Constructs the path corresponding to the given [`CacheKey`].
+    ///
+    /// Returns [`None`] if caching is disabled.
+    fn get_cache_path(&self, key: &CacheKey) -> Option<PathBuf> {
+        Some(
+            self.config
+                .cache_dir()?
+                .join(safe_path_segment(key.scope.as_ref()))
+                .join(safe_path_segment(&key.cache_key)),
+        )
+    }
+
     /// Look up an item in the file system cache and load it if available.
     ///
     /// Returns `Ok(None)` if the cache item needs to be re-computed, otherwise reads the
@@ -207,12 +228,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    fn compute(&self, request: T, key: CacheKey) -> BoxedFuture<Result<T::Item, T::Error>> {
+    async fn compute(&self, request: T, key: CacheKey) -> Result<T::Item, T::Error> {
         // cache_path is None when caching is disabled.
-        let cache_path = get_scope_path(self.config.cache_dir(), &key.scope, &key.cache_key);
+        let cache_path = self.get_cache_path(&key);
         if let Some(ref path) = cache_path {
-            if let Some(item) = tryf!(self.lookup_cache(&request, &key, path)) {
-                return Box::pin(future::ok(item));
+            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+                return Ok(item);
             }
         }
 
@@ -223,46 +244,41 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        let temp_file = tryf!(self.tempfile());
+        let temp_file = self.tempfile()?;
 
-        let future =
-            request
-                .compute(temp_file.path())
-                .and_then(move |status: CacheStatus| async move {
-                    if let Some(ref cache_path) = cache_path {
-                        sentry::configure_scope(|scope| {
-                            scope.set_extra(
-                                &format!("cache.{}.cache_path", name),
-                                cache_path.to_string_lossy().into(),
-                            );
-                        });
+        let status = request.compute(temp_file.path()).await?;
 
-                        log::trace!("Creating {} at path {:?}", name, cache_path);
-                    }
+        if let Some(ref cache_path) = cache_path {
+            sentry::configure_scope(|scope| {
+                scope.set_extra(
+                    &format!("cache.{}.cache_path", name),
+                    cache_path.to_string_lossy().into(),
+                );
+            });
 
-                    let byteview = ByteView::open(temp_file.path())?;
+            log::trace!("Creating {} at path {:?}", name, cache_path);
+        }
 
-                    metric!(
-                        counter(&format!("caches.{}.file.write", name)) += 1,
-                        "status" => status.as_ref(),
-                    );
-                    metric!(
-                        time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                        "hit" => "false"
-                    );
+        let byteview = ByteView::open(temp_file.path())?;
 
-                    let path = match cache_path {
-                        Some(ref cache_path) => {
-                            status.persist_item(cache_path, temp_file)?;
-                            CachePath::Cached(cache_path.to_path_buf())
-                        }
-                        None => CachePath::Temp(temp_file.into_temp_path()),
-                    };
+        metric!(
+            counter(&format!("caches.{}.file.write", name)) += 1,
+            "status" => status.as_ref(),
+        );
+        metric!(
+            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+            "hit" => "false"
+        );
 
-                    Ok(request.load(key.scope.clone(), status, byteview, path))
-                });
+        let path = match cache_path {
+            Some(ref cache_path) => {
+                status.persist_item(cache_path, temp_file)?;
+                CachePath::Cached(cache_path.to_path_buf())
+            }
+            None => CachePath::Temp(temp_file.into_temp_path()),
+        };
 
-        Box::pin(future)
+        Ok(request.load(key.scope.clone(), status, byteview, path))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -271,9 +287,10 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let slf = self.clone();
         let current_computations = self.current_computations.clone();
-        let remove_computation_token = CallOnDrop::new(clone!(key, || {
-            current_computations.lock().remove(&key);
-        }));
+        let drop_key = key.clone();
+        let remove_computation_token = CallOnDrop::new(move || {
+            current_computations.lock().remove(&drop_key);
+        });
 
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = async move {
@@ -310,7 +327,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// occurs the error result is returned, **however** in this case nothing is written
     /// into the cache and the next call to the same cache item will attempt to re-compute
     /// the cache.
-    pub fn compute_memoized(&self, request: T) -> CacheResultFuture<T::Item, T::Error> {
+    pub async fn compute_memoized(&self, request: T) -> Result<Arc<T::Item>, Arc<T::Error>> {
         let key = request.get_cache_key();
         let name = self.config.name();
 
@@ -324,19 +341,19 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
                 let channel = self.create_channel(request, key.clone());
-                let evicted = current_computations.insert(key.clone(), channel.clone());
+                let evicted = current_computations.insert(key, channel.clone());
                 debug_assert!(evicted.is_none());
                 channel
             }
         };
 
-        let future = channel.unwrap_or_else(move |_cancelled_error| {
-            let message = format!("{} computation channel dropped", name);
-            Err(Arc::new(
-                io::Error::new(io::ErrorKind::Interrupted, message).into(),
-            ))
-        });
-
-        Box::pin(future)
+        channel
+            .unwrap_or_else(move |_cancelled_error| {
+                let message = format!("{} computation channel dropped", name);
+                Err(Arc::new(
+                    io::Error::new(io::ErrorKind::Interrupted, message).into(),
+                ))
+            })
+            .await
     }
 }
