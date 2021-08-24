@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -5,6 +6,8 @@ use std::time::{Duration, Instant};
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use tokio01::prelude::FutureExt as TokioFutureExt;
+
+use crate::metrics::{self, prelude::*};
 
 /// A pinned, boxed future.
 ///
@@ -107,15 +110,17 @@ enum MeasureState {
 struct MeasureGuard<'a> {
     state: MeasureState,
     task_name: &'a str,
+    tag: Option<(&'a str, Cow<'a, str>)>,
     creation_time: Instant,
 }
 
 impl<'a> MeasureGuard<'a> {
     /// Creates a new measure guard.
-    pub fn new(task_name: &'a str) -> Self {
+    pub fn new(task_name: &'a str, tag: Option<(&'a str, Cow<'a, str>)>) -> Self {
         Self {
             state: MeasureState::Pending,
             task_name,
+            tag,
             creation_time: Instant::now(),
         }
     }
@@ -125,10 +130,16 @@ impl<'a> MeasureGuard<'a> {
     /// By default, the future is waiting to be polled. `start` emits the `futures.wait_time`
     /// metric.
     pub fn start(&mut self) {
-        metric!(
-            timer("futures.wait_time") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-        );
+        metrics::with_client(|client| {
+            let mut metric = client
+                .time_duration_with_tags("futures.wait_time", self.creation_time.elapsed())
+                .with_tag("task_name", self.task_name);
+            if let Some((k, v)) = &self.tag {
+                metric = metric.with_tag(k, v.as_ref());
+            }
+
+            client.send_metric(metric);
+        })
     }
 
     /// Marks the future as terminated and emits the `futures.done` metric.
@@ -143,12 +154,17 @@ impl Drop for MeasureGuard<'_> {
             MeasureState::Pending => "canceled",
             MeasureState::Done(status) => status,
         };
+        metrics::with_client(|client| {
+            let mut metric = client
+                .time_duration_with_tags("futures.done", self.creation_time.elapsed())
+                .with_tag("task_name", self.task_name)
+                .with_tag("status", status);
+            if let Some((k, v)) = &self.tag {
+                metric = metric.with_tag(k, v.as_ref());
+            }
 
-        metric!(
-            timer("futures.done") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-            "status" => status,
-        );
+            client.send_metric(metric);
+        })
     }
 }
 
@@ -164,13 +180,14 @@ impl Drop for MeasureGuard<'_> {
 pub fn measure<'a, S, F>(
     task_name: &'a str,
     get_status: S,
+    tag: Option<(&'a str, Cow<'a, str>)>,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a
 where
     F: 'a + Future,
     S: 'a + FnOnce(&F::Output) -> &'static str,
 {
-    let mut guard = MeasureGuard::new(task_name);
+    let mut guard = MeasureGuard::new(task_name, tag);
 
     async move {
         guard.start();

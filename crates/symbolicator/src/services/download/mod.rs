@@ -217,7 +217,7 @@ impl DownloadService {
         let _guard = self.worker.enter();
         let job = slf.dispatch_download(source, destination).bind_hub(hub);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
-        let job = measure("service.download", m::timed_result, job);
+        let job = measure("service.download", m::timed_result, None, job);
 
         // Map all SpawnError variants into DownloadError::Canceled.
         match self.worker.spawn(job).await {
@@ -262,7 +262,7 @@ impl DownloadService {
                 // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
                 let _guard = self.worker.enter();
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
-                let job = measure("service.download.list_files", m::timed_result, job);
+                let job = measure("service.download.list_files", m::timed_result, None, job);
 
                 // Map all SpawnError variants into DownloadError::Canceled.
                 match self.worker.spawn(job).await {

@@ -15,13 +15,6 @@ thread_local! {
     static CURRENT_CLIENT: Option<Arc<MetricsClient>> = METRICS_CLIENT.read().clone();
 }
 
-/// Internal prelude for the macro
-#[doc(hidden)]
-pub mod _pred {
-    pub use cadence::prelude::*;
-    pub use std::time::Instant;
-}
-
 /// The metrics prelude that is necessary to use the client.
 pub mod prelude {
     pub use cadence::prelude::*;
@@ -108,7 +101,7 @@ where
 macro_rules! metric {
     // counters
     (counter($id:expr) += $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
+        use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
                 client.count_with_tags($id, $value)
@@ -117,7 +110,7 @@ macro_rules! metric {
         })
     }};
     (counter($id:expr) -= $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
+        use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
                 client.count_with_tags($id, -$value)
@@ -128,7 +121,7 @@ macro_rules! metric {
 
     // gauges
     (gauge($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
+        use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
                 client.gauge_with_tags($id, $value)
@@ -139,7 +132,7 @@ macro_rules! metric {
 
     // timers
     (timer($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
+        use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
                 client.time_duration_with_tags($id, $value)
@@ -150,7 +143,7 @@ macro_rules! metric {
 
     // we use statsd timers to send things such as filesizes as well.
     (time_raw($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
+        use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
                 client.time_with_tags($id, $value)
@@ -161,63 +154,12 @@ macro_rules! metric {
 
     // histograms
     (histogram($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use $crate::metrics::_pred::*;
+        use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
                 client.histogram_with_tags($id, $value)
                     $(.with_tag($k, $v))*
             );
-        })
-    }};
-}
-
-macro_rules! future_metrics {
-    // Collect generic metrics about a future
-    ($task_name:expr, $timeout:expr, $future:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        use std::time::Instant;
-        use futures01::future::{self, Either, Future};
-        use tokio01::prelude::FutureExt;
-
-        let creation_time = Instant::now();
-
-        future::lazy(move || {
-            metric!(
-                timer("futures.wait_time") = creation_time.elapsed(),
-                "task_name" => $task_name,
-                $($k => $v,)*
-            );
-            let start_time = Instant::now();
-
-            let fut = $future;
-
-            let fut = if let Some((timeout, timeout_e)) = $timeout {
-                Either::A(fut.timeout(timeout).map_err(move |e| {
-                    e.into_inner().unwrap_or_else(|| {
-                        metric!(
-                            timer("futures.done") = start_time.elapsed(),
-                            "task_name" => $task_name,
-                            "status" => "timeout",
-                            $($k => $v,)*
-                        );
-                        timeout_e
-                    })
-                }))
-            } else {
-                Either::B(fut)
-            };
-
-            fut.then(move |result| {
-                metric!(
-                    timer("futures.done") = start_time.elapsed(),
-                    "task_name" => $task_name,
-                    "status" => match result {
-                        Ok(_) => "ok",
-                        Err(_) => "err",
-                    },
-                    $($k => $v,)*
-                );
-                result
-            })
         })
     }};
 }

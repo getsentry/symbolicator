@@ -235,7 +235,7 @@ impl SentryDownloader {
         };
 
         let search = self.cached_sentry_search(query, config);
-        let entries = measure("downloads.sentry.index", m::result, search).await?;
+        let entries = measure("downloads.sentry.index", m::result, None, search).await?;
         let file_ids = entries
             .into_iter()
             .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())

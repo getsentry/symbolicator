@@ -11,8 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Error};
-use futures::compat::Future01CompatExt;
-use futures::{future, FutureExt, TryFutureExt};
+use futures::future;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
@@ -25,7 +24,7 @@ use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
-use crate::utils::futures::BoxedFuture;
+use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
 
 /// Handle to a valid BCSymbolMap.
 ///
@@ -170,18 +169,22 @@ impl CacheItemRequest for FetchFileRequest {
         let fut = self
             .clone()
             .fetch_file(path.to_path_buf())
-            .bind_hub(Hub::current())
-            .boxed_local();
-        let source_name = self.file_source.source_type_name();
-        Box::pin(
-            future_metrics!(
-                "auxdifs",
-                Some((Duration::from_secs(600),Error::msg("Timeout fetching aux DIF"))),
-                fut.compat(),
-                "source_type" => source_name,
-            )
-            .compat(),
-        )
+            .bind_hub(Hub::current());
+
+        let source_name = self.file_source.source_type_name().into();
+
+        let future = timeout_compat(Duration::from_secs(1200), fut);
+        let future = measure(
+            "auxdifs",
+            m::timed_result,
+            Some(("source_type", source_name)),
+            future,
+        );
+        Box::pin(async move {
+            future
+                .await
+                .map_err(|_| Error::msg("Timeout fetching aux DIF"))?
+        })
     }
 
     fn load(

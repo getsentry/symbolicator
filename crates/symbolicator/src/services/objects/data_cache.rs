@@ -13,8 +13,6 @@ use std::io::{self, Seek, SeekFrom};
 use std::path::Path;
 use std::time::Duration;
 
-use futures::compat::Future01CompatExt;
-use futures::future::{FutureExt, TryFutureExt};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -27,6 +25,7 @@ use crate::services::download::{DownloadError, DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::BoxedFuture;
+use crate::utils::futures::{m, measure, timeout_compat};
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
@@ -244,25 +243,24 @@ impl CacheItemRequest for FetchFileDataRequest {
             Ok(CacheStatus::Positive)
         };
 
-        let result = future
-            .boxed_local()
-            .map_err(|e| {
+        let future = async move {
+            future.await.map_err(|e| {
                 sentry::capture_error(&e);
                 e
             })
-            .bind_hub(Hub::current());
+        }
+        .bind_hub(Hub::current());
 
-        let type_name = self.0.file_source.source_type_name();
+        let type_name = self.0.file_source.source_type_name().into();
 
-        Box::pin(
-            future_metrics!(
-                "objects",
-                Some((Duration::from_secs(600), ObjectError::Timeout)),
-                result.compat(),
-                "source_type" => type_name,
-            )
-            .compat(),
-        )
+        let future = timeout_compat(Duration::from_secs(600), future);
+        let future = measure(
+            "objects",
+            m::timed_result,
+            Some(("source_type", type_name)),
+            future,
+        );
+        Box::pin(async move { future.await.map_err(|_| ObjectError::Timeout)? })
     }
 
     fn load(
