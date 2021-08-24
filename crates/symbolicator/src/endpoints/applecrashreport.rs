@@ -69,8 +69,6 @@ mod tests {
     use actix_web::test::TestServer;
     use reqwest::{multipart, Client, StatusCode};
 
-    use crate::config::Config;
-    use crate::services::Service;
     use crate::test;
     use crate::types::SymbolicationResponse;
 
@@ -78,7 +76,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let service = Service::create(Config::default()).unwrap();
+        let service = test::default_service();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
@@ -106,7 +104,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let service = Service::create(Config::default()).unwrap();
+        let service = test::default_service();
         let server = TestServer::with_factory(move || crate::server::create_app(service.clone()));
 
         let file_contents = test::read_fixture("apple_crash_report.txt");

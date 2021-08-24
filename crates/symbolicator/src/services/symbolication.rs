@@ -43,9 +43,7 @@ use crate::types::{
     SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{
-    delay, m, measure, spawn_compat, timeout_compat, CallOnDrop, ThreadPool,
-};
+use crate::utils::futures::{delay, m, measure, spawn_compat, timeout_compat, CallOnDrop};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -390,7 +388,7 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
     diagnostics_cache: crate::cache::Cache,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
     max_concurrent_requests: Option<usize>,
@@ -402,7 +400,7 @@ impl SymbolicationActor {
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         diagnostics_cache: crate::cache::Cache,
-        threadpool: ThreadPool,
+        threadpool: tokio::runtime::Handle,
         spawnpool: procspawn::Pool,
         max_concurrent_requests: Option<usize>,
     ) -> Self {
@@ -1543,7 +1541,7 @@ impl SymbolicationActor {
 
         let mut response = self
             .threadpool
-            .spawn_handle(future.bind_hub(sentry::Hub::current()))
+            .spawn(future.bind_hub(sentry::Hub::current()))
             .await
             .context("Symbolication future cancelled")?;
 
@@ -1581,7 +1579,7 @@ impl SymbolicationActor {
         };
 
         self.threadpool
-            .spawn_handle(future.bind_hub(sentry::Hub::current()))
+            .spawn(future.bind_hub(sentry::Hub::current()))
             .await
             .context("Source lookup future cancelled")
     }
@@ -1940,7 +1938,7 @@ impl SymbolicationActor {
 
         Ok(self
             .threadpool
-            .spawn_handle(lazy.bind_hub(sentry::Hub::current()))
+            .spawn(lazy.bind_hub(sentry::Hub::current()))
             .await?
             .context("Minidump stackwalk future cancelled")?)
     }
@@ -2236,7 +2234,7 @@ impl SymbolicationActor {
 
         let future = async move {
             self.threadpool
-                .spawn_handle(parse_future.bind_hub(sentry::Hub::current()))
+                .spawn(parse_future.bind_hub(sentry::Hub::current()))
                 .await
                 .context("Parse applecrashreport future cancelled")
         };
@@ -2372,7 +2370,8 @@ mod tests {
             connect_to_reserved_ips: true,
             ..Default::default()
         };
-        let service = Service::create(config).unwrap();
+        let handle = tokio::runtime::Handle::current();
+        let service = Service::create(config, handle.clone(), handle).unwrap();
 
         (service, cache_dir)
     }
@@ -2802,6 +2801,7 @@ mod tests {
         let valid = builder.build();
         assert_eq!(valid, vec![valid_object]);
     }
+
     #[tokio::test]
     async fn test_max_requests() {
         test::setup();
@@ -2814,7 +2814,10 @@ mod tests {
             max_concurrent_requests: Some(2),
             ..Default::default()
         };
-        let service = Service::create(config).unwrap();
+
+        let handle = tokio::runtime::Handle::current();
+        let service = Service::create(config, handle.clone(), handle).unwrap();
+
         let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();
 

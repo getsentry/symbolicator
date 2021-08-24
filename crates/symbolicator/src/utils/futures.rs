@@ -1,13 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::channel::oneshot;
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use tokio01::prelude::FutureExt as TokioFutureExt;
-use tokio01::runtime::Runtime as TokioRuntime;
 
 /// A pinned, boxed future.
 ///
@@ -18,58 +15,6 @@ use tokio01::runtime::Runtime as TokioRuntime;
 /// futures.  Trait methods can not be async/await and using this type in their return value
 /// allows to integrate with async await code.
 pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
-
-/// Error returned from a [`SpawnHandle`] when the thread pool restarts.
-pub use oneshot::Canceled as RemoteCanceled;
-
-/// Handle returned from [`ThreadPool::spawn_handle`].
-///
-/// This handle is a future representing the completion of a different future spawned on to the
-/// thread pool. Created through the [`ThreadPool::spawn_handle`] function this handle will resolve
-/// when the future provided resolves on the thread pool.
-pub use oneshot::Receiver as SpawnHandle;
-
-/// Work-stealing based thread pool for executing futures.
-#[derive(Clone, Debug)]
-pub struct ThreadPool {
-    inner: Arc<TokioRuntime>,
-}
-
-impl ThreadPool {
-    /// Create a new `ThreadPool`.
-    ///
-    /// Since we create a CPU-heavy and an IO-heavy pool we reduce the
-    /// number of threads used per pool so that the pools are less
-    /// likely to starve each other.
-    pub fn new() -> Self {
-        let inner = Arc::new(tokio01::runtime::Builder::new().build().unwrap());
-        ThreadPool { inner }
-    }
-
-    /// Spawn a future on to the thread pool, return a future representing the produced value.
-    ///
-    /// The [`SpawnHandle`] returned is a future that is a proxy for future itself. When
-    /// future completes on this thread pool then the SpawnHandle will itself be resolved
-    /// and the outcome of the spawned future will be in the `Ok` variant.  If the spawned
-    /// future got cancelled the outcome of this proxy future will resolve into an `Err`
-    /// variant.
-    pub fn spawn_handle<F>(&self, future: F) -> SpawnHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let (sender, receiver) = oneshot::channel();
-
-        let spawned = async move {
-            sender.send(future.await).ok();
-            Ok(())
-        };
-
-        self.inner.executor().spawn(spawned.boxed().compat());
-
-        receiver
-    }
-}
 
 /// Execute a callback on dropping of the container type.
 ///
