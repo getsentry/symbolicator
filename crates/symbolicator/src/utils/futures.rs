@@ -2,7 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use futures::channel::oneshot;
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use tokio01::prelude::FutureExt as TokioFutureExt;
@@ -16,16 +15,6 @@ use tokio01::prelude::FutureExt as TokioFutureExt;
 /// futures.  Trait methods can not be async/await and using this type in their return value
 /// allows to integrate with async await code.
 pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
-
-/// Error returned from a [`SpawnHandle`] when the thread pool restarts.
-pub use oneshot::Canceled as RemoteCanceled;
-
-/// Handle returned from [`ThreadPool::spawn_handle`].
-///
-/// This handle is a future representing the completion of a different future spawned on to the
-/// thread pool. Created through the [`ThreadPool::spawn_handle`] function this handle will resolve
-/// when the future provided resolves on the thread pool.
-pub use oneshot::Receiver as SpawnHandle;
 
 /// Execute a callback on dropping of the container type.
 ///
