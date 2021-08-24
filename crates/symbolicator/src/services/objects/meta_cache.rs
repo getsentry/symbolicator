@@ -11,6 +11,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::future::BoxFuture;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 
@@ -19,7 +20,6 @@ use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::sources::SourceId;
 use crate::types::{ObjectFeatures, ObjectId, Scope};
-use crate::utils::futures::BoxedFuture;
 
 use super::{FetchFileDataRequest, ObjectError, ObjectHandle};
 
@@ -102,7 +102,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// This returns [`CacheStatus::CacheSpecificError`] if the download failed.  If the
     /// data cache is [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] then the same
     /// status is returned.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file meta for {}", cache_key);
 

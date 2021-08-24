@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
+use futures::future::BoxFuture;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::Object;
@@ -22,7 +23,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
+use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
@@ -228,7 +229,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),
@@ -239,7 +240,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = timeout_compat(Duration::from_secs(1200), future);
+        let future = tokio::time::timeout(Duration::from_secs(1200), future);
         let future = measure(
             "symcaches",
             m::timed_result,
@@ -509,48 +510,45 @@ mod tests {
 
         let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT);
 
-        test::spawn_compat(move || async move {
-            // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
-            // symcache will be obfuscated.
-            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-            let symcache = symcache_file.parse().unwrap().unwrap();
-            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
-            assert_eq!(line_info.filename(), "__hidden#42_");
-            assert_eq!(line_info.symbol(), "__hidden#0_");
+        // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
+        // symcache will be obfuscated.
+        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+        let symcache = symcache_file.parse().unwrap().unwrap();
+        let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+        assert_eq!(line_info.filename(), "__hidden#42_");
+        assert_eq!(line_info.symbol(), "__hidden#0_");
 
-            // Copy the plist and bcsymbolmap to the temporary symbol directory so that the SymCacheActor can find them.
-            fs::copy(
-                fixture("symbols/2d10c42f-591d-3265-b147-78ba0868073f.plist"),
-                macho_dir.join("uuidmap"),
-            )
-            .unwrap();
+        // Copy the plist and bcsymbolmap to the temporary symbol directory so that the SymCacheActor can find them.
+        fs::copy(
+            fixture("symbols/2d10c42f-591d-3265-b147-78ba0868073f.plist"),
+            macho_dir.join("uuidmap"),
+        )
+        .unwrap();
 
-            fs::copy(
-                fixture("symbols/c8374b6d-6e96-34d8-ae38-efaa5fec424f.bcsymbolmap"),
-                symbol_map_dir.join("bcsymbolmap"),
-            )
-            .unwrap();
+        fs::copy(
+            fixture("symbols/c8374b6d-6e96-34d8-ae38-efaa5fec424f.bcsymbolmap"),
+            symbol_map_dir.join("bcsymbolmap"),
+        )
+        .unwrap();
 
-            // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
-            // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
-            // be obfuscated like before.
-            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-            let symcache = symcache_file.parse().unwrap().unwrap();
-            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
-            assert_eq!(line_info.filename(), "__hidden#42_");
-            assert_eq!(line_info.symbol(), "__hidden#0_");
+        // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
+        // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
+        // be obfuscated like before.
+        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+        let symcache = symcache_file.parse().unwrap().unwrap();
+        let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+        assert_eq!(line_info.filename(), "__hidden#42_");
+        assert_eq!(line_info.symbol(), "__hidden#0_");
 
-            // Sleep long enough for the negative cache entry to become invalid.
-            std::thread::sleep(TIMEOUT);
+        // Sleep long enough for the negative cache entry to become invalid.
+        std::thread::sleep(TIMEOUT);
 
-            // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
-            // symcache are unobfuscated.
-            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-            let symcache = symcache_file.parse().unwrap().unwrap();
-            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
-            assert_eq!(line_info.filename(), "Sources/Sentry/SentryMessage.m");
-            assert_eq!(line_info.symbol(), "-[SentryMessage initWithFormatted:]");
-        })
-        .await;
+        // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
+        // symcache are unobfuscated.
+        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+        let symcache = symcache_file.parse().unwrap().unwrap();
+        let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+        assert_eq!(line_info.filename(), "Sources/Sentry/SentryMessage.m");
+        assert_eq!(line_info.symbol(), "-[SentryMessage initWithFormatted:]");
     }
 }
