@@ -233,13 +233,13 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(
-        name: &'static str,
-        tempfile: std::io::Result<NamedTempFile>,
+        self,
         request: T,
         key: CacheKey,
         cache_path: Option<PathBuf>,
     ) -> Result<T::Item, T::Error> {
-        let temp_file = tempfile?;
+        let name = self.config.name();
+        let temp_file = self.tempfile()?;
 
         let status = request.compute(temp_file.path()).await?;
 
@@ -332,10 +332,9 @@ impl<T: CacheItemRequest> Cacher<T> {
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
-                let tempfile = self.tempfile();
                 let channel = self.create_channel(
                     key.clone(),
-                    Self::compute(name, tempfile, request, key.clone(), cache_path),
+                    self.clone().compute(request, key.clone(), cache_path),
                 );
                 let evicted = current_computations.insert(key, channel.clone());
                 debug_assert!(evicted.is_none());
