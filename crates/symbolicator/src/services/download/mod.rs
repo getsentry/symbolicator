@@ -178,10 +178,10 @@ impl DownloadService {
             Ok(status) => {
                 match status {
                     DownloadStatus::Completed => {
-                        log::debug!("Fetched debug file from {}: {:?}", source, status);
+                        log::debug!("Fetched debug file from {}", source);
                     }
                     DownloadStatus::NotFound => {
-                        log::debug!("Did not fetch debug file from {}: {:?}", source, status);
+                        log::debug!("Debug file not found at {}", source);
                     }
                 };
                 Ok(status)
