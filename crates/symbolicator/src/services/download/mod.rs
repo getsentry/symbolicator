@@ -486,6 +486,9 @@ fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Dura
 
 #[cfg(test)]
 mod tests {
+    use symbolic::common::{CodeId, DebugId};
+    use uuid::Uuid;
+
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
     use super::http::HttpRemoteDif;
@@ -573,5 +576,36 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
+    }
+
+    #[test]
+    fn test_iter_elf() {
+        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
+        // created.
+        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
+        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
+        let debug_id = DebugId::from_uuid(uuid);
+
+        let mut all: Vec<_> = SourceLocationIter {
+            filetypes: [FileType::ElfCode, FileType::ElfDebug].iter(),
+            filters: &Default::default(),
+            object_id: &ObjectId {
+                debug_id: Some(debug_id),
+                code_id: Some(code_id),
+                ..Default::default()
+            },
+            layout: Default::default(),
+            next: Default::default(),
+        }
+        .collect();
+        all.sort();
+
+        assert_eq!(
+            all,
+            [
+                SourceLocation::new("ab/cdef1234567890abcd"),
+                SourceLocation::new("ab/cdef1234567890abcd.debug")
+            ]
+        );
     }
 }

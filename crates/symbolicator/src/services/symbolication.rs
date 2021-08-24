@@ -1786,7 +1786,7 @@ impl SymbolicationActor {
     ) -> Vec<CfiCacheResult> {
         let mut futures = Vec::with_capacity(requests.len());
 
-        for (code_id, object_info) in requests {
+        for (module_id, object_info) in requests {
             let sources = sources.clone();
             let scope = scope.clone();
 
@@ -1800,7 +1800,7 @@ impl SymbolicationActor {
                         scope,
                     })
                     .await;
-                ((*code_id).to_owned(), result)
+                ((*module_id).to_owned(), result)
             };
 
             // Clone hub because of join_all concurrency.
