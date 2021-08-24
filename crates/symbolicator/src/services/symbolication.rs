@@ -1475,7 +1475,7 @@ impl SymbolicationActor {
 
         let f = self.do_symbolicate_impl(request);
         let f = timeout_compat(Duration::from_secs(3600), f);
-        let f = measure("symbolicate", m::timed_result, f);
+        let f = measure("symbolicate", m::timed_result, None, f);
 
         let mut response = f
             .await
@@ -2040,7 +2040,7 @@ impl SymbolicationActor {
         };
 
         let future = timeout_compat(Duration::from_secs(3600), future);
-        let future = measure("minidump_stackwalk", m::timed_result, future);
+        let future = measure("minidump_stackwalk", m::timed_result, None, future);
         future
             .await
             .map(|ret| ret.map_err(SymbolicationError::from))
@@ -2240,7 +2240,7 @@ impl SymbolicationActor {
         };
 
         let future = timeout_compat(Duration::from_secs(1200), future);
-        let future = measure("parse_apple_crash_report", m::timed_result, future);
+        let future = measure("parse_apple_crash_report", m::timed_result, None, future);
         future
             .await
             .map(|res| res.map_err(SymbolicationError::from))

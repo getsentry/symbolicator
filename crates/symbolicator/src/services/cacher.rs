@@ -334,8 +334,8 @@ impl<T: CacheItemRequest> Cacher<T> {
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
-                let channel =
-                    self.create_channel(key.clone(), self.clone().compute(request, key.clone()));
+                let computation = self.clone().compute(request, key.clone());
+                let channel = self.create_channel(key.clone(), computation);
                 let evicted = current_computations.insert(key, channel.clone());
                 debug_assert!(evicted.is_none());
                 channel
