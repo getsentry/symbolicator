@@ -32,7 +32,6 @@ use anyhow::{Context, Result};
 
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::utils::futures::ThreadPool;
 
 pub mod bitcode;
 pub mod cacher;
@@ -63,14 +62,17 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn create(config: Config) -> Result<Self> {
+    pub fn create(
+        config: Config,
+        io_pool: tokio::runtime::Handle,
+        cpu_pool: tokio::runtime::Handle,
+    ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let cpu_pool = ThreadPool::new();
         let spawnpool = procspawn::Pool::new(config.processing_pool_size)
             .context("failed to create process pool")?;
 
-        let downloader = DownloadService::new(config.clone());
+        let downloader = DownloadService::new(config.clone(), io_pool);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)

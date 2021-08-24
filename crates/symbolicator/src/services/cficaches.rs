@@ -22,7 +22,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::BoxedFuture;
 use crate::utils::sentry::ConfigureScope;
 
 /// Errors happening while generating a cficache
@@ -51,11 +51,11 @@ pub enum CfiCacheError {
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: ObjectsActor,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
+    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: tokio::runtime::Handle) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -104,7 +104,7 @@ struct FetchCfiCacheInternal {
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     candidates: AllObjectCandidates,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -153,7 +153,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             };
 
             threadpool
-                .spawn_handle(future.bind_hub(Hub::current()))
+                .spawn(future.bind_hub(Hub::current()))
                 .await
                 .unwrap_or(Err(CfiCacheError::Canceled))
         };
