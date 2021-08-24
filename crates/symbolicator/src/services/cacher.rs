@@ -227,17 +227,23 @@ impl<T: CacheItemRequest> Cacher<T> {
 
     /// Compute an item.
     ///
-    /// The item is computed using [`T::compute`](CacheItemRequest::compute), and then persisted to
-    /// the given `cache_path`.
+    /// The item is computed using [`T::compute`](CacheItemRequest::compute), and saved in the cache
+    /// if one is configured.
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    async fn compute(
-        self,
-        request: T,
-        key: CacheKey,
-        cache_path: Option<PathBuf>,
-    ) -> Result<T::Item, T::Error> {
+    async fn compute(self, request: T, key: CacheKey) -> Result<T::Item, T::Error> {
+        // We do another cache lookup here. `compute_memoized` has a fast-path that does a cache
+        // lookup without going through the deduplication/channel creation logic. This creates a
+        // small opportunity of invoking compute another time after a fresh cache has just been
+        // computed. To avoid duplicated work in that case, we will check the cache here again.
+        let cache_path = self.get_cache_path(&key);
+        if let Some(ref path) = cache_path {
+            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+                return Ok(item);
+            }
+        }
+
         let name = self.config.name();
         let temp_file = self.tempfile()?;
 
@@ -315,11 +321,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Spawns the computation as a separate task.
     ///
     /// This does deduplication, by keeping track of the running computations based on their [`CacheKey`].
-    async fn spawn_computation(
-        &self,
-        request: T,
-        cache_path: Option<PathBuf>,
-    ) -> ComputationResult<T::Item, T::Error> {
+    async fn spawn_computation(&self, request: T) -> ComputationResult<T::Item, T::Error> {
         let key = request.get_cache_key();
         let name = self.config.name();
 
@@ -332,10 +334,8 @@ impl<T: CacheItemRequest> Cacher<T> {
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
-                let channel = self.create_channel(
-                    key.clone(),
-                    self.clone().compute(request, key.clone(), cache_path),
-                );
+                let channel =
+                    self.create_channel(key.clone(), self.clone().compute(request, key.clone()));
                 let evicted = current_computations.insert(key, channel.clone());
                 debug_assert!(evicted.is_none());
                 channel
@@ -383,6 +383,6 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        Ok(self.spawn_computation(request.clone(), cache_path).await?)
+        Ok(self.spawn_computation(request.clone()).await?)
     }
 }
