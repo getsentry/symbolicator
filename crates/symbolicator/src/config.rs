@@ -1,14 +1,13 @@
 use std::env;
-use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use log::LevelFilter;
 use sentry::types::Dsn;
-use serde::{de, Deserialize, Deserializer};
-use tracing::level_filters::LevelFilter;
+use serde::Deserialize;
 
 use crate::sources::SourceConfig;
 
@@ -31,7 +30,6 @@ pub enum LogFormat {
 #[serde(default)]
 pub struct Logging {
     /// The log level for the relay.
-    #[serde(deserialize_with = "deserialize_level_filter")]
     pub level: LevelFilter,
     /// Controls the log format.
     pub format: LogFormat,
@@ -42,7 +40,7 @@ pub struct Logging {
 impl Default for Logging {
     fn default() -> Self {
         Logging {
-            level: LevelFilter::INFO,
+            level: LevelFilter::Info,
             format: LogFormat::Auto,
             enable_backtraces: true,
         }
@@ -366,44 +364,6 @@ impl Config {
     fn from_reader(reader: impl std::io::Read) -> Result<Self> {
         serde_yaml::from_reader(reader).context("failed to parse YAML")
     }
-}
-
-#[derive(Debug)]
-struct LevelFilterVisitor;
-
-impl<'de> de::Visitor<'de> for LevelFilterVisitor {
-    type Value = LevelFilter;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> std::fmt::Result {
-        write!(
-            formatter,
-            r#"one of the strings "off", "error", "warn", "info", "debug", or "trace""#
-        )
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        match v {
-            "off" => Ok(LevelFilter::OFF),
-            "error" => Ok(LevelFilter::ERROR),
-            "warn" => Ok(LevelFilter::WARN),
-            "info" => Ok(LevelFilter::INFO),
-            "debug" => Ok(LevelFilter::DEBUG),
-            "trace" => Ok(LevelFilter::TRACE),
-            _ => Err(de::Error::unknown_variant(
-                v,
-                &["off", "error", "warn", "info", "debug", "trace"],
-            )),
-        }
-    }
-}
-
-fn deserialize_level_filter<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<LevelFilter, D::Error> {
-    deserializer.deserialize_str(LevelFilterVisitor)
 }
 
 #[cfg(test)]

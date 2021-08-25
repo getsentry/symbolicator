@@ -23,9 +23,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use futures::{FutureExt, TryFutureExt};
+use log::LevelFilter;
 use reqwest::Url;
-use tracing_subscriber::filter::EnvFilter;
-use tracing_subscriber::fmt::fmt;
 use warp::filters::fs::File;
 use warp::reject::{Reject, Rejection};
 use warp::Filter;
@@ -45,11 +44,9 @@ pub use tempfile::TempDir;
 ///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
 ///    other logs (such as actix or symbolic).
 pub(crate) fn setup() {
-    fmt()
-        .with_env_filter(EnvFilter::new("symbolicator=trace"))
-        .with_target(false)
-        .pretty()
-        .with_test_writer()
+    env_logger::builder()
+        .filter(Some("symbolicator"), LevelFilter::Trace)
+        .is_test(true)
         .try_init()
         .ok();
 }
