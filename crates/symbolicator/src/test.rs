@@ -45,6 +45,8 @@ pub use tempfile::TempDir;
 pub(crate) fn setup() {
     fmt()
         .with_env_filter(EnvFilter::new("symbolicator=trace"))
+        .with_target(false)
+        .pretty()
         .with_test_writer()
         .try_init()
         .ok();

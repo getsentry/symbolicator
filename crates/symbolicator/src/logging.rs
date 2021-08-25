@@ -52,7 +52,7 @@ pub fn init_logging(config: &Config) {
     let filter = EnvFilter::from_default_env();
     let sentry = sentry::integrations::tracing::layer();
     let subscriber = FmtSubscriber::new().with(filter).with(sentry);
-    let format = Layer::new();
+    let format = Layer::new().with_target(false);
     match (config.logging.format, console::user_attended()) {
         (LogFormat::Auto, true) | (LogFormat::Pretty, _) => {
             tracing::subscriber::set_global_default(subscriber.with(format.pretty()))
