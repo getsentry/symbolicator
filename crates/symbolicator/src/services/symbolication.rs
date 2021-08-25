@@ -167,6 +167,7 @@ impl CfiCacheModules {
 
     /// Extend the CacheModules with the fetched caches represented by
     /// [`CfiCacheResult`].
+    #[tracing::instrument]
     fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
         self.cache_files.extend(
             cfi_caches
@@ -183,10 +184,10 @@ impl CfiCacheModules {
                         CacheStatus::Negative => ObjectFileStatus::Missing,
                         CacheStatus::Malformed(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            log::warn!(
-                                "Error while parsing cficache: {} ({})",
-                                LogError(&err),
-                                details
+                            tracing::warn!(
+                                error = %LogError(&err),
+                                %details,
+                                "Error while parsing cficache",
                             );
                             ObjectFileStatus::from(&err)
                         }
@@ -194,7 +195,7 @@ impl CfiCacheModules {
                         // from a previous cficache conversion attempt.
                         CacheStatus::CacheSpecificError(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            log::warn!("Cached error from parsing cficache: {}", details);
+                            tracing::warn!(%details, "Cached error from parsing cficache");
                             ObjectFileStatus::from(&err)
                         }
                     };
@@ -211,7 +212,7 @@ impl CfiCacheModules {
                     }
                 }
                 Err(err) => {
-                    log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    tracing::debug!(error = %LogError(err.as_ref()), "Error while fetching cficache" );
                     CfiModule {
                         cfi_status: ObjectFileStatus::from(err.as_ref()),
                         ..Default::default()
@@ -468,7 +469,8 @@ impl SymbolicationActor {
                     sentry::end_session_with_status(status);
 
                     let response = error.to_symbolication_response();
-                    log::error!("Symbolication error: {:?}", anyhow::Error::new(error));
+                    let error = anyhow::Error::new(error);
+                    tracing::error!(%error, "Symbolication error");
                     response
                 }
             };
@@ -933,6 +935,7 @@ impl SymCacheLookup {
     }
 }
 
+#[tracing::instrument(skip(caches))]
 fn symbolicate_frame(
     caches: &SymCacheLookup,
     registers: &Registers,
@@ -953,7 +956,7 @@ fn symbolicate_frame(
         }
     }
 
-    log::trace!("Loading symcache");
+    tracing::trace!("Loading symcache");
     let symcache = match lookup_result
         .symcache
         .as_ref()
@@ -991,7 +994,7 @@ fn symbolicate_frame(
                 .object_info
                 .abs_to_rel_addr(absolute_caller_addr)
                 .ok_or_else(|| {
-                    log::warn!(
+                    tracing::warn!(
                             "Underflow when trying to subtract image start addr from caller address after heuristics"
                         );
                     metric!(counter("relative_addr.underflow") += 1);
@@ -1001,12 +1004,12 @@ fn symbolicate_frame(
             addr
         }
     } else {
-        log::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
+        tracing::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
         metric!(counter("relative_addr.underflow") += 1);
         return Err(FrameStatus::MissingSymbol);
     };
 
-    log::trace!("Symbolicating {:#x}", relative_addr);
+    tracing::trace!(relative_addr, "Symbolicating {:#x}", relative_addr);
     let line_infos = match symcache.lookup(relative_addr) {
         Ok(x) => x,
         Err(_) => return Err(FrameStatus::Malformed),
@@ -1716,7 +1719,7 @@ fn load_cfi_for_processor(
         .filter_map(|(code_id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
-                    log::error!("Error while reading cficache: {}", LogError(&err));
+                    tracing::error!(error = %LogError(&err), "Error while reading cficache");
                     err
                 })
                 .ok()?;
@@ -1725,7 +1728,7 @@ fn load_cfi_for_processor(
                     // This mostly never happens since we already checked the files
                     // after downloading and they would have been tagged with
                     // CacheStatus::Malformed.
-                    log::error!("Error while loading cficache: {}", LogError(&err));
+                    tracing::error!(error = %LogError(&err), "Error while loading cficache");
                     err
                 })
                 .ok()?;
@@ -1945,6 +1948,7 @@ impl SymbolicationActor {
             .context("Minidump stackwalk future cancelled")?)
     }
 
+    #[tracing::instrument]
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
@@ -1954,7 +1958,7 @@ impl SymbolicationActor {
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
             let len = minidump_file.metadata()?.len();
-            log::debug!("Processing minidump ({} bytes)", len);
+            tracing::debug!(len, "Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
             let mut cfi_caches = CfiCacheModules::new();
@@ -1984,11 +1988,15 @@ impl SymbolicationActor {
                                             );
                                         });
                                     }
-                                    Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                                    Err(e) => {
+                                        tracing::error!(error = ?e, "Failed to save minidump")
+                                    }
                                 };
                             }
                         } else {
-                            log::debug!("No diagnostics retention configured, not saving minidump");
+                            tracing::debug!(
+                                "No diagnostics retention configured, not saving minidump"
+                            );
                         }
 
                         // we explicitly match and return here, otherwise the borrow checker will

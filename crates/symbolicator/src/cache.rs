@@ -171,8 +171,9 @@ impl Cache {
         self.cache_dir.as_deref()
     }
 
+    #[tracing::instrument(fields(cache = self.name))]
     pub fn cleanup(&self) -> Result<()> {
-        log::info!("Cleaning up cache: {}", self.name);
+        tracing::info!("Cleaning up cache: {}", self.name);
         let cache_dir = self.cache_dir.clone().ok_or_else(|| {
             anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
@@ -181,10 +182,12 @@ impl Cache {
         while !directories.is_empty() {
             let directory = directories.pop().unwrap();
 
+            let span = tracing::info_span!("directory cleanup", directory = %directory.display());
+            let _guard = span.enter();
             let entries = match catch_not_found(|| read_dir(directory))? {
                 Some(x) => x,
                 None => {
-                    log::warn!("Directory not found");
+                    tracing::warn!("Directory not found");
                     return Ok(());
                 }
             };
@@ -197,20 +200,20 @@ impl Cache {
                 } else if let Err(e) = self.try_cleanup_path(&path) {
                     sentry::with_scope(
                         |scope| scope.set_extra("path", path.display().to_string().into()),
-                        || log::error!("Failed to clean cache file: {:?}", e),
+                        || tracing::error!(error = ?e, "Failed to clean cache file: {:?}", e),
                     );
                 }
             }
         }
-
         Ok(())
     }
 
+    #[tracing::instrument(fields(cache = self.name))]
     fn try_cleanup_path(&self, path: &Path) -> Result<()> {
-        log::trace!("Checking {}", path.display());
+        tracing::trace!("Checking {}", path.display());
         anyhow::ensure!(path.is_file(), "not a file");
         if catch_not_found(|| self.check_expiry(path))?.is_none() {
-            log::debug!("Removing {}", path.display());
+            tracing::debug!("Removing {}", path.display());
             catch_not_found(|| remove_file(path))?;
         }
 
@@ -220,6 +223,7 @@ impl Cache {
     /// Validate cache expiration of path. If cache should not be used,
     /// `Err(io::ErrorKind::NotFound)` is returned. If cache is usable, `Ok(x)` is returned, where
     /// `x` indicates whether the file should be touched before using.
+    #[tracing::instrument(fields(cache.name = self.name), skip(self))]
     fn check_expiry(&self, path: &Path) -> io::Result<bool> {
         // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
@@ -237,7 +241,11 @@ impl Cache {
         //   of last use.
         let metadata = path.metadata()?;
 
-        log::trace!("File length: {}", metadata.len());
+        tracing::trace!(
+            metadata.len = metadata.len(),
+            "File length: {}",
+            metadata.len()
+        );
 
         let expiration_strategy = expiration_strategy(&self.cache_config, path)?;
 
@@ -256,7 +264,11 @@ impl Cache {
             };
 
             if created_at < self.start_time || retry_malformed {
-                log::trace!("Created at is older than start time");
+                tracing::trace!(
+                    ?created_at,
+                    start_time = ?self.start_time,
+                    "Created at is older than start time"
+                );
                 return Err(io::ErrorKind::NotFound.into());
             }
         }
@@ -329,6 +341,7 @@ enum ExpirationStrategy {
 
 /// Reads a cache item at a given path and returns the cleanup strategy that should be used
 /// for the item.
+#[tracing::instrument(skip(cache_config, path))]
 fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
     let metadata = path.metadata()?;
 
@@ -339,7 +352,13 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
     let mut file = File::open(path)?;
     let mut buf = vec![0; readable_amount];
 
-    log::trace!("First {} bytes: {:?}", buf.len(), buf);
+    tracing::trace!(
+        buf.len = buf.len(),
+        ?buf,
+        "First {} bytes: {:?}",
+        buf.len(),
+        buf
+    );
     file.read_exact(&mut buf)?;
 
     let strategy = match CacheStatus::from_content(&buf) {
@@ -464,6 +483,7 @@ impl Caches {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn cleanup(&self) -> Result<()> {
         // Destructure so we do not accidentally forget to cleanup one of our members.
         let Self {
@@ -490,7 +510,7 @@ impl Caches {
         for result in results {
             if let Err(err) = result {
                 let stderr: &dyn std::error::Error = &*err;
-                log::error!("Failed to cleanup cache: {}", LogError(stderr));
+                tracing::error!(error = %LogError(stderr), "Failed to cleanup cache: {}", LogError(stderr));
                 if first_error.is_none() {
                     first_error = Some(err);
                 }

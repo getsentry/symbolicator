@@ -13,6 +13,7 @@ lazy_static::lazy_static! {
     ].into_iter().map(|x| x.parse().unwrap()).collect();
 }
 
+#[tracing::instrument]
 fn is_external_ip(ip: std::net::IpAddr) -> bool {
     let addr = match ip {
         IpAddr::V4(x) => x,
@@ -26,7 +27,8 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
     for network in &*RESERVED_IP_BLOCKS {
         if network.contains(addr) {
             metric!(counter("http.blocked_ip") += 1);
-            log::debug!(
+            tracing::debug!(
+                %addr,
                 "Blocked attempt to connect to reserved IP address: {}",
                 addr
             );

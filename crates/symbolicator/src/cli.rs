@@ -80,7 +80,7 @@ pub fn execute() -> Result<()> {
             if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
                 tags.insert(hostname_tag, hostname);
             } else {
-                log::error!("could not read host name");
+                tracing::error!("could not read host name");
             }
         };
         if let Some(environment_tag) = config.metrics.environment_tag.clone() {
@@ -88,7 +88,7 @@ pub fn execute() -> Result<()> {
             {
                 tags.insert(environment_tag, environment);
             } else {
-                log::error!("environment name not available");
+                tracing::error!("environment name not available");
             }
         };
 
@@ -97,7 +97,7 @@ pub fn execute() -> Result<()> {
 
     procspawn::ProcConfig::new()
         .config_callback(|| {
-            log::trace!("[procspawn] initializing in sub process");
+            tracing::trace!("[procspawn] initializing in sub process");
             metric!(counter("procspawn.init") += 1);
         })
         .init();

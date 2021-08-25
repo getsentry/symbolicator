@@ -3,86 +3,37 @@ use std::fmt;
 use std::io::{self, Write};
 
 use chrono::{DateTime, Utc};
-use log::{Level, LevelFilter};
-use sentry::integrations::log::{breadcrumb_from_record, event_from_record};
+use sentry::integrations::tracing::{breadcrumb_from_event, event_from_event};
 use serde::{Deserialize, Serialize};
+use tracing::level_filters::LevelFilter;
+use tracing::{span, Level, Subscriber};
+use tracing_subscriber::fmt::{fmt, SubscriberBuilder};
+use tracing_subscriber::EnvFilter;
 
 use crate::config::{Config, LogFormat};
 
 fn get_rust_log(level: LevelFilter) -> &'static str {
     match level {
-        LevelFilter::Off => "",
-        LevelFilter::Error => "ERROR",
-        LevelFilter::Warn => "WARN",
-        LevelFilter::Info => {
+        LevelFilter::OFF => "",
+        LevelFilter::ERROR => "ERROR",
+        LevelFilter::WARN => "WARN",
+        LevelFilter::INFO => {
             "INFO,\
              trust_dns_proto=WARN"
         }
-        LevelFilter::Debug => {
+        LevelFilter::DEBUG => {
             "INFO,\
              trust_dns_proto=WARN,\
              actix_web::pipeline=DEBUG,\
              symbolicator=DEBUG"
         }
-        LevelFilter::Trace => {
+        LevelFilter::TRACE => {
             "INFO,\
              trust_dns_proto=WARN,\
              actix_web::pipeline=DEBUG,\
              symbolicator=TRACE"
         }
     }
-}
-
-fn pretty_logger() -> env_logger::Builder {
-    pretty_env_logger::formatted_builder()
-}
-
-fn simplified_logger() -> env_logger::Builder {
-    let mut builder = env_logger::Builder::new();
-    builder.format(|buf, record| {
-        writeln!(
-            buf,
-            "{} [{}] {}: {}",
-            buf.timestamp(),
-            record.module_path().unwrap_or("<unknown>"),
-            record.level(),
-            record.args()
-        )
-    });
-    builder
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct LogRecord<'a> {
-    timestamp: DateTime<Utc>,
-    level: Level,
-    logger: &'a str,
-    message: String,
-    module_path: Option<&'a str>,
-    filename: Option<&'a str>,
-    lineno: Option<u32>,
-}
-
-fn json_logger() -> env_logger::Builder {
-    let mut builder = env_logger::Builder::new();
-    builder.format(|mut buf, record| -> io::Result<()> {
-        let record = LogRecord {
-            timestamp: Utc::now(),
-            level: record.level(),
-            logger: record.target(),
-            message: record.args().to_string(),
-            module_path: record.module_path(),
-            filename: record.file(),
-            lineno: record.line(),
-        };
-
-        serde_json::to_writer(&mut buf, &record)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
-
-        buf.write_all(b"\n")?;
-        Ok(())
-    });
-    builder
 }
 
 /// A delegating logger that also logs breadcrumbs.
@@ -97,28 +48,49 @@ impl<L> BreadcrumbLogger<L> {
     }
 }
 
-impl<L> log::Log for BreadcrumbLogger<L>
+impl<L> Subscriber for BreadcrumbLogger<L>
 where
-    L: log::Log,
+    L: Subscriber,
 {
-    fn enabled(&self, md: &log::Metadata<'_>) -> bool {
+    fn enabled(&self, md: &tracing::Metadata<'_>) -> bool {
         self.inner.enabled(md)
     }
 
-    fn log(&self, record: &log::Record<'_>) {
-        if self.inner.enabled(record.metadata()) {
-            if record.level() == log::Level::Error {
-                sentry::capture_event(event_from_record(record));
+    fn new_span(&self, span: &span::Attributes<'_>) -> span::Id {
+        self.inner.new_span(span)
+    }
+
+    fn record(&self, span: &span::Id, values: &span::Record<'_>) {
+        self.inner.record(span, values);
+    }
+
+    fn record_follows_from(&self, span: &span::Id, follows: &span::Id) {
+        self.inner.record_follows_from(span, follows);
+    }
+
+    fn enter(&self, span: &span::Id) {
+        self.inner.enter(span);
+    }
+
+    fn exit(&self, span: &span::Id) {
+        self.inner.exit(span);
+    }
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        if self.enabled(event.metadata()) {
+            if *event.metadata().level() == Level::ERROR {
+                sentry::capture_event(event_from_event(event));
             }
 
-            sentry::add_breadcrumb(|| breadcrumb_from_record(record));
-            self.inner.log(record);
+            sentry::add_breadcrumb(|| breadcrumb_from_event(event));
+            self.inner.event(event);
         }
     }
+}
 
-    fn flush(&self) {
-        self.inner.flush();
-    }
+fn set_global_logger<L: Subscriber + Sync + Send>(logger: L) {
+    tracing::subscriber::set_global_default(BreadcrumbLogger::new(logger))
+        .expect("setting global default subscriber")
 }
 
 /// Initializes logging for the symbolicator.
@@ -138,22 +110,16 @@ pub fn init_logging(config: &Config) {
         env::set_var("RUST_LOG", rust_log);
     }
 
-    let mut builder = match (config.logging.format, console::user_attended()) {
-        (LogFormat::Auto, true) | (LogFormat::Pretty, _) => pretty_logger(),
-        (LogFormat::Auto, false) | (LogFormat::Simplified, _) => simplified_logger(),
-        (LogFormat::Json, _) => json_logger(),
+    let builder = fmt().with_env_filter(EnvFilter::from_default_env());
+    match (config.logging.format, console::user_attended()) {
+        (LogFormat::Auto, true) | (LogFormat::Pretty, _) => {
+            set_global_logger(builder.pretty().finish())
+        }
+        (LogFormat::Auto, false) | (LogFormat::Simplified, _) => {
+            set_global_logger(builder.compact().finish())
+        }
+        (LogFormat::Json, _) => set_global_logger(builder.json().finish()),
     };
-
-    match env::var("RUST_LOG") {
-        Ok(rust_log) => builder.parse_filters(&rust_log),
-        Err(_) => builder.filter_level(config.logging.level),
-    };
-
-    let logger = builder.build();
-    log::set_max_level(logger.filter());
-
-    let breadcrumb_logger = Box::new(BreadcrumbLogger::new(logger));
-    log::set_boxed_logger(breadcrumb_logger).unwrap();
 }
 
 /// A wrapper around an [`Error`](std::error::Error) that prints its causes.
@@ -174,8 +140,10 @@ impl<'a> fmt::Display for LogError<'a> {
 
 /// Logs an error to the configured logger or `stderr` if not yet configured.
 pub fn ensure_log_error(error: &anyhow::Error) {
-    if log::log_enabled!(log::Level::Error) {
-        log::error!("{:?}", error);
+    if tracing::Level::ERROR <= tracing::level_filters::STATIC_MAX_LEVEL
+        && tracing::Level::ERROR <= LevelFilter::current()
+    {
+        tracing::error!("{:?}", error);
     } else {
         eprintln!("{:?}", error);
     }

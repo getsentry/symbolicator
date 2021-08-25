@@ -89,6 +89,7 @@ impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
+    #[tracing::instrument]
     async fn fetch_file(self, path: PathBuf) -> Result<CacheStatus, Error> {
         let download_file = self.cache.tempfile()?;
         let cache_key = self.get_cache_key();
@@ -100,11 +101,11 @@ impl FetchFileRequest {
 
         match result {
             Ok(DownloadStatus::NotFound) => {
-                log::debug!("No auxiliary DIF file found for {}", cache_key);
+                tracing::debug!(%cache_key, "No auxiliary DIF file found");
                 return Ok(CacheStatus::Negative);
             }
             Err(e) => {
-                log::debug!("Error while downloading file: {}", LogError(&e));
+                tracing::debug!(error = %LogError(&e), "Error while downloading file");
                 return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
             }
             Ok(DownloadStatus::Completed) => {
@@ -132,7 +133,7 @@ impl FetchFileRequest {
                 if let Err(err) = BcSymbolMap::parse(&view) {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    log::debug!("Failed to parse bcsymbolmap: {}", err);
+                    tracing::debug!(error = %err, "Failed to parse bcsymbolmap");
                     return Ok(CacheStatus::Malformed(err.to_string()));
                 }
             }
@@ -140,7 +141,7 @@ impl FetchFileRequest {
                 if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    log::debug!("Failed to parse plist: {}", err);
+                    tracing::debug!(error = %err, "Failed to parse plist");
                     return Ok(CacheStatus::Malformed(err.to_string()));
                 }
             }

@@ -160,6 +160,7 @@ struct FetchSymCacheInternal {
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
 /// code.
+#[tracing::instrument]
 async fn fetch_difs_and_compute_symcache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
@@ -185,7 +186,7 @@ async fn fetch_difs_and_compute_symcache(
         let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {
             Ok(_) => CacheStatus::Positive,
             Err(err) => {
-                log::warn!("Failed to write symcache: {}", err);
+                tracing::warn!(error = %err, "Failed to write symcache");
                 sentry::capture_error(&err);
                 CacheStatus::Malformed(err.to_string())
             }
@@ -342,6 +343,7 @@ impl SymCacheActor {
 ///
 /// It is assumed both the `object_handle` contains a positive cache.  The
 /// `bcsymbolmap_handle` can only exist for a positive cache so does not have this issue.
+#[tracing::instrument(fields(object_handle = %object_handle))]
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,
@@ -361,7 +363,8 @@ fn write_symcache(
             let bcsymbolmap = handle
                 .bc_symbol_map()
                 .map_err(SymCacheError::BcSymbolMapError)?;
-            log::debug!(
+            tracing::debug!(
+                uuid = %handle.uuid,
                 "Adding BCSymbolMap {} to dSYM {}",
                 handle.uuid,
                 object_handle
@@ -373,7 +376,7 @@ fn write_symcache(
     let file = File::create(&path)?;
     let mut writer = BufWriter::new(file);
 
-    log::debug!("Converting symcache for {}", object_handle.cache_key());
+    tracing::debug!(cache_key = %object_handle.cache_key(), "Converting symcache for {}", object_handle.cache_key());
 
     SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
 

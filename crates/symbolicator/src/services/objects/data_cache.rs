@@ -148,9 +148,10 @@ impl CacheItemRequest for FetchFileDataRequest {
     ///
     /// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
     /// be returned.
+    #[tracing::instrument(skip(self))]
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
-        log::trace!("Fetching file data for {}", cache_key);
+        tracing::trace!(%cache_key, "Fetching file data");
 
         let path = path.to_owned();
         let object_id = self.0.object_id.clone();
@@ -173,12 +174,12 @@ impl CacheItemRequest for FetchFileDataRequest {
 
             match status {
                 Ok(DownloadStatus::NotFound) => {
-                    log::debug!("No debug file found for {}", cache_key);
+                    tracing::debug!(%cache_key, "No debug file found");
                     return Ok(CacheStatus::Negative);
                 }
 
                 Err(e) => {
-                    log::debug!("Error while downloading file: {}", LogError(&e));
+                    tracing::debug!(error = %LogError(&e), "Error while downloading file");
                     return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
                 }
 
@@ -187,7 +188,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                 }
             }
 
-            log::trace!("Finished download of {}", cache_key);
+            tracing::trace!(%cache_key, "Finished download");
             let decompress_result =
                 decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
