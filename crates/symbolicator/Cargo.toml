@@ -46,6 +46,7 @@ thiserror = "1.0.26"
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tracing = "0.1.26"
+tracing-log = "0.1.2"
 tracing-subscriber = "0.2.20"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
