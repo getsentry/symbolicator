@@ -1,6 +1,5 @@
 //! Provides access to the metrics sytem.
 use std::collections::BTreeMap;
-use std::fmt;
 use std::net::ToSocketAddrs;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -70,19 +69,10 @@ pub fn set_client(client: MetricsClient) {
 }
 
 /// Tell the metrics system to report to statsd.
-#[tracing::instrument]
-pub fn configure_statsd<A: ToSocketAddrs + fmt::Debug>(
-    prefix: &str,
-    host: A,
-    tags: BTreeMap<String, String>,
-) {
+pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<String, String>) {
     let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
     if !addrs.is_empty() {
-        tracing::info!(
-            statsd = %addrs[0],
-            "Reporting metrics to statsd at {}",
-            addrs[0]
-        );
+        tracing::info!("Reporting metrics to statsd at {}", addrs[0]);
     }
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     socket.set_nonblocking(true).unwrap();
