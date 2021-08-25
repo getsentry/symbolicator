@@ -13,7 +13,7 @@ use symbolic::{
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -23,6 +23,27 @@ use crate::types::{
 };
 use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
 use crate::utils::sentry::ConfigureScope;
+
+/// The supported cficache versions.
+///
+/// # How to version
+///
+/// The initial "unversioned" version is `0`.
+/// Whenever we want to increase the version in order to re-generate stale/broken
+/// cficaches, we need to:
+///
+/// * increase the `current` version.
+/// * prepend the `current` version to the `fallbacks`.
+/// * it is also possible to skip a version, in case a broken deploy needed to
+///   be reverted which left behind broken cficaches.
+///
+/// In case a symbolic update increased its own internal format version, bump the
+/// cficache file version as described above, and update the static assertion.
+const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 0,
+    fallbacks: &[],
+};
+static_assert!(symbolic::minidump::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
@@ -110,6 +131,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     type Item = CfiCacheFile;
     type Error = CfiCacheError;
 
+    const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
+
     fn get_cache_key(&self) -> CacheKey {
         self.meta_handle.cache_key()
     }
@@ -170,9 +193,9 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
-        CfiCache::from_bytes(ByteView::from_slice(data))
-            .map(|cficache| cficache.is_latest())
-            .unwrap_or(false)
+        // NOTE: we do *not* check for the `is_latest` version here.
+        // If the cficache is parsable, we want to use even outdated versions.
+        CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
     }
 
     fn load(

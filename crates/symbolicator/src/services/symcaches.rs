@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
@@ -27,6 +27,27 @@ use crate::utils::sentry::ConfigureScope;
 
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
+
+/// The supported symcache versions.
+///
+/// # How to version
+///
+/// The initial "unversioned" version is `0`.
+/// Whenever we want to increase the version in order to re-generate stale/broken
+/// symcaches, we need to:
+///
+/// * increase the `current` version.
+/// * prepend the `current` version to the `fallbacks`.
+/// * it is also possible to skip a version, in case a broken deploy needed to
+///   be reverted which left behind broken symcaches.
+///
+/// In case a symbolic update increased its own internal format version, bump the
+/// symcache file version as described above, and update the static assertion.
+const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 0,
+    fallbacks: &[],
+};
+static_assert!(symbolic::symcache::format::SYMCACHE_VERSION == 6);
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -201,6 +222,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Item = SymCacheFile;
     type Error = SymCacheError;
 
+    const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
+
     fn get_cache_key(&self) -> CacheKey {
         self.object_meta.cache_key()
     }
@@ -229,8 +252,10 @@ impl CacheItemRequest for FetchSymCacheInternal {
     fn should_load(&self, data: &[u8]) -> bool {
         let had_symbolmap = data.ends_with(SYMBOLMAP_MARKER);
         SymCache::parse(data)
-            .map(|symcache| {
-                symcache.is_latest() && had_symbolmap == self.bcsymbolmap_handle.is_some()
+            .map(|_symcache| {
+                // NOTE: we do *not* check for the `is_latest` version here.
+                // If the symcache is parsable, we want to use even outdated versions.
+                had_symbolmap == self.bcsymbolmap_handle.is_some()
             })
             .unwrap_or(false)
     }
