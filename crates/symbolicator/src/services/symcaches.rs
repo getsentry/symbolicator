@@ -5,8 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
-use futures::compat::Future01CompatExt;
-use futures::future::{FutureExt, TryFutureExt};
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::Object;
@@ -24,7 +22,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
 use crate::utils::sentry::ConfigureScope;
 
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
@@ -66,7 +64,7 @@ pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: ObjectsActor,
     bitcode_svc: BitcodeService,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 }
 
 impl SymCacheActor {
@@ -74,7 +72,7 @@ impl SymCacheActor {
         cache: Cache,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
-        threadpool: ThreadPool,
+        threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
@@ -142,7 +140,7 @@ struct FetchSymCacheInternal {
     object_meta: Arc<ObjectMetaHandle>,
 
     /// Thread pool on which to spawn the symcache computation.
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 
     /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
     ///
@@ -165,7 +163,7 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     bcsymbolmap_handle: Option<BcSymbolMapHandle>,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 ) -> Result<CacheStatus, SymCacheError> {
     let object_handle = objects_actor
         .fetch(object_meta.clone())
@@ -194,7 +192,7 @@ async fn fetch_difs_and_compute_symcache(
     };
 
     threadpool
-        .spawn_handle(compute_future.bind_hub(Hub::current()))
+        .spawn(compute_future.bind_hub(Hub::current()))
         .await
         .unwrap_or(Err(SymCacheError::Canceled))
 }
@@ -216,17 +214,16 @@ impl CacheItemRequest for FetchSymCacheInternal {
             self.threadpool.clone(),
         );
 
-        let num_sources = self.request.sources.len();
+        let num_sources = self.request.sources.len().to_string().into();
 
-        Box::pin(
-            future_metrics!(
-                "symcaches",
-                Some((Duration::from_secs(1200), SymCacheError::Timeout)),
-                future.boxed_local().compat(),
-                "num_sources" => &num_sources.to_string()
-            )
-            .compat(),
-        )
+        let future = timeout_compat(Duration::from_secs(1200), future);
+        let future = measure(
+            "symcaches",
+            m::timed_result,
+            Some(("num_sources", num_sources)),
+            future,
+        );
+        Box::pin(async move { future.await.map_err(|_| SymCacheError::Timeout)? })
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
@@ -406,7 +403,6 @@ mod tests {
         CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceConfig, SourceId,
     };
     use crate::test::{self, fixture};
-    use crate::utils::futures::ThreadPool;
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.
@@ -421,10 +417,10 @@ mod tests {
             ..Default::default()
         });
 
-        let cpu_pool = ThreadPool::new();
+        let cpu_pool = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(config);
+        let downloader = DownloadService::new(config, tokio::runtime::Handle::current());
         let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
         let bitcode = BitcodeService::new(caches.auxdifs, downloader);
 
@@ -450,7 +446,7 @@ mod tests {
     async fn test_symcache_refresh() {
         test::setup();
 
-        const TIMEOUT: Duration = Duration::from_millis(500);
+        const TIMEOUT: Duration = Duration::from_secs(5);
 
         let cache_dir = test::tempdir();
         let symbol_dir = test::tempdir();

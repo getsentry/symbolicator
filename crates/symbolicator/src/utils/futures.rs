@@ -1,13 +1,13 @@
+use std::borrow::Cow;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::channel::oneshot;
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
 use tokio01::prelude::FutureExt as TokioFutureExt;
-use tokio01::runtime::Runtime as TokioRuntime;
+
+use crate::metrics::{self, prelude::*};
 
 /// A pinned, boxed future.
 ///
@@ -18,58 +18,6 @@ use tokio01::runtime::Runtime as TokioRuntime;
 /// futures.  Trait methods can not be async/await and using this type in their return value
 /// allows to integrate with async await code.
 pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
-
-/// Error returned from a [`SpawnHandle`] when the thread pool restarts.
-pub use oneshot::Canceled as RemoteCanceled;
-
-/// Handle returned from [`ThreadPool::spawn_handle`].
-///
-/// This handle is a future representing the completion of a different future spawned on to the
-/// thread pool. Created through the [`ThreadPool::spawn_handle`] function this handle will resolve
-/// when the future provided resolves on the thread pool.
-pub use oneshot::Receiver as SpawnHandle;
-
-/// Work-stealing based thread pool for executing futures.
-#[derive(Clone, Debug)]
-pub struct ThreadPool {
-    inner: Arc<TokioRuntime>,
-}
-
-impl ThreadPool {
-    /// Create a new `ThreadPool`.
-    ///
-    /// Since we create a CPU-heavy and an IO-heavy pool we reduce the
-    /// number of threads used per pool so that the pools are less
-    /// likely to starve each other.
-    pub fn new() -> Self {
-        let inner = Arc::new(tokio01::runtime::Builder::new().build().unwrap());
-        ThreadPool { inner }
-    }
-
-    /// Spawn a future on to the thread pool, return a future representing the produced value.
-    ///
-    /// The [`SpawnHandle`] returned is a future that is a proxy for future itself. When
-    /// future completes on this thread pool then the SpawnHandle will itself be resolved
-    /// and the outcome of the spawned future will be in the `Ok` variant.  If the spawned
-    /// future got cancelled the outcome of this proxy future will resolve into an `Err`
-    /// variant.
-    pub fn spawn_handle<F>(&self, future: F) -> SpawnHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let (sender, receiver) = oneshot::channel();
-
-        let spawned = async move {
-            sender.send(future.await).ok();
-            Ok(())
-        };
-
-        self.inner.executor().spawn(spawned.boxed().compat());
-
-        receiver
-    }
-}
 
 /// Execute a callback on dropping of the container type.
 ///
@@ -162,15 +110,17 @@ enum MeasureState {
 struct MeasureGuard<'a> {
     state: MeasureState,
     task_name: &'a str,
+    tag: Option<(&'a str, Cow<'a, str>)>,
     creation_time: Instant,
 }
 
 impl<'a> MeasureGuard<'a> {
     /// Creates a new measure guard.
-    pub fn new(task_name: &'a str) -> Self {
+    pub fn new(task_name: &'a str, tag: Option<(&'a str, Cow<'a, str>)>) -> Self {
         Self {
             state: MeasureState::Pending,
             task_name,
+            tag,
             creation_time: Instant::now(),
         }
     }
@@ -180,10 +130,16 @@ impl<'a> MeasureGuard<'a> {
     /// By default, the future is waiting to be polled. `start` emits the `futures.wait_time`
     /// metric.
     pub fn start(&mut self) {
-        metric!(
-            timer("futures.wait_time") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-        );
+        metrics::with_client(|client| {
+            let mut metric = client
+                .time_duration_with_tags("futures.wait_time", self.creation_time.elapsed())
+                .with_tag("task_name", self.task_name);
+            if let Some((k, v)) = &self.tag {
+                metric = metric.with_tag(k, v.as_ref());
+            }
+
+            client.send_metric(metric);
+        })
     }
 
     /// Marks the future as terminated and emits the `futures.done` metric.
@@ -198,12 +154,17 @@ impl Drop for MeasureGuard<'_> {
             MeasureState::Pending => "canceled",
             MeasureState::Done(status) => status,
         };
+        metrics::with_client(|client| {
+            let mut metric = client
+                .time_duration_with_tags("futures.done", self.creation_time.elapsed())
+                .with_tag("task_name", self.task_name)
+                .with_tag("status", status);
+            if let Some((k, v)) = &self.tag {
+                metric = metric.with_tag(k, v.as_ref());
+            }
 
-        metric!(
-            timer("futures.done") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-            "status" => status,
-        );
+            client.send_metric(metric);
+        })
     }
 }
 
@@ -219,13 +180,14 @@ impl Drop for MeasureGuard<'_> {
 pub fn measure<'a, S, F>(
     task_name: &'a str,
     get_status: S,
+    tag: Option<(&'a str, Cow<'a, str>)>,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a
 where
     F: 'a + Future,
     S: 'a + FnOnce(&F::Output) -> &'static str,
 {
-    let mut guard = MeasureGuard::new(task_name);
+    let mut guard = MeasureGuard::new(task_name, tag);
 
     async move {
         guard.start();

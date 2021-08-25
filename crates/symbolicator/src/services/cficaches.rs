@@ -4,7 +4,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::compat::Future01CompatExt;
 use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
@@ -22,7 +21,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
 use crate::utils::sentry::ConfigureScope;
 
 /// Errors happening while generating a cficache
@@ -51,11 +50,11 @@ pub enum CfiCacheError {
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: ObjectsActor,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: ThreadPool) -> Self {
+    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: tokio::runtime::Handle) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache)),
             objects,
@@ -104,7 +103,7 @@ struct FetchCfiCacheInternal {
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     candidates: AllObjectCandidates,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -153,22 +152,21 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             };
 
             threadpool
-                .spawn_handle(future.bind_hub(Hub::current()))
+                .spawn(future.bind_hub(Hub::current()))
                 .await
                 .unwrap_or(Err(CfiCacheError::Canceled))
         };
 
-        let num_sources = self.request.sources.len();
+        let num_sources = self.request.sources.len().to_string().into();
 
-        Box::pin(
-            future_metrics!(
-                "cficaches",
-                Some((Duration::from_secs(1200), CfiCacheError::Timeout)),
-                result.boxed_local().compat(),
-                "num_sources" => &num_sources.to_string()
-            )
-            .compat(),
-        )
+        let future = timeout_compat(Duration::from_secs(1200), result);
+        let future = measure(
+            "cficaches",
+            m::timed_result,
+            Some(("num_sources", num_sources)),
+            future,
+        );
+        Box::pin(async move { future.await.map_err(|_| CfiCacheError::Timeout)? })
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

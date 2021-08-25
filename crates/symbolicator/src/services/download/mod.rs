@@ -121,7 +121,7 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: Arc<Config>) -> Arc<Self> {
+    pub fn new(config: Arc<Config>, worker: tokio::runtime::Handle) -> Arc<Self> {
         let trusted_client = crate::utils::http::create_client(&config, true);
         let restricted_client = crate::utils::http::create_client(&config, false);
 
@@ -132,7 +132,7 @@ impl DownloadService {
         } = *config;
         Arc::new(Self {
             config,
-            worker: tokio::runtime::Handle::current(),
+            worker,
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 connect_timeout,
@@ -217,7 +217,7 @@ impl DownloadService {
         let _guard = self.worker.enter();
         let job = slf.dispatch_download(source, destination).bind_hub(hub);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
-        let job = measure("service.download", m::timed_result, job);
+        let job = measure("service.download", m::timed_result, None, job);
 
         // Map all SpawnError variants into DownloadError::Canceled.
         match self.worker.spawn(job).await {
@@ -262,7 +262,7 @@ impl DownloadService {
                 // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
                 let _guard = self.worker.enter();
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
-                let job = measure("service.download.list_files", m::timed_result, job);
+                let job = measure("service.download.list_files", m::timed_result, None, job);
 
                 // Map all SpawnError variants into DownloadError::Canceled.
                 match self.worker.spawn(job).await {
@@ -486,6 +486,9 @@ fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Dura
 
 #[cfg(test)]
 mod tests {
+    use symbolic::common::{CodeId, DebugId};
+    use uuid::Uuid;
+
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
     use super::http::HttpRemoteDif;
@@ -515,7 +518,7 @@ mod tests {
             ..Config::default()
         });
 
-        let service = DownloadService::new(config);
+        let service = DownloadService::new(config, tokio::runtime::Handle::current());
         let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
@@ -539,7 +542,7 @@ mod tests {
         };
 
         let config = Arc::new(Config::default());
-        let svc = DownloadService::new(config);
+        let svc = DownloadService::new(config, tokio::runtime::Handle::current());
         let file_list = svc
             .list_files(
                 source.clone(),
@@ -573,5 +576,36 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
+    }
+
+    #[test]
+    fn test_iter_elf() {
+        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
+        // created.
+        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
+        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
+        let debug_id = DebugId::from_uuid(uuid);
+
+        let mut all: Vec<_> = SourceLocationIter {
+            filetypes: [FileType::ElfCode, FileType::ElfDebug].iter(),
+            filters: &Default::default(),
+            object_id: &ObjectId {
+                debug_id: Some(debug_id),
+                code_id: Some(code_id),
+                ..Default::default()
+            },
+            layout: Default::default(),
+            next: Default::default(),
+        }
+        .collect();
+        all.sort();
+
+        assert_eq!(
+            all,
+            [
+                SourceLocation::new("ab/cdef1234567890abcd"),
+                SourceLocation::new("ab/cdef1234567890abcd.debug")
+            ]
+        );
     }
 }

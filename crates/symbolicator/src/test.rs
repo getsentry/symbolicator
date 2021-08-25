@@ -30,6 +30,8 @@ use warp::filters::fs::File;
 use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
+use crate::config::Config;
+use crate::services::Service;
 use crate::sources::{
     CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
     SourceFilters, SourceId,
@@ -50,6 +52,12 @@ pub(crate) fn setup() {
         .with_test_writer()
         .try_init()
         .ok();
+}
+
+/// Create a default [`Service`] running with the current Runtime.
+pub(crate) fn default_service() -> Service {
+    let handle = tokio::runtime::Handle::current();
+    Service::create(Config::default(), handle.clone(), handle).unwrap()
 }
 
 /// Creates a temporary directory.

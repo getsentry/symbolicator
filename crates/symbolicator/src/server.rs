@@ -23,18 +23,26 @@ pub fn run(config: Config) -> Result<()> {
     // service creation fails. The HTTP server is bound before the actix system runs.
     metric!(counter("server.starting") += 1);
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
+    let io_pool = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
-        .thread_name("symbolicator")
+        .thread_name("symbolicator-io")
+        .enable_all()
+        .build()
+        .unwrap();
+    let cpu_pool = tokio::runtime::Builder::new_multi_thread()
+        .thread_name("symbolicator-cpu")
         .enable_all()
         .build()
         .unwrap();
 
     let bind = config.bind.clone();
 
-    // Enter the tokio runtime before creating the services.
-    let _guard = runtime.enter();
-    let service = Service::create(config).context("failed to create service state")?;
+    let service = Service::create(
+        config,
+        io_pool.handle().to_owned(),
+        cpu_pool.handle().to_owned(),
+    )
+    .context("failed to create service state")?;
 
     tracing::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))
