@@ -150,7 +150,6 @@ impl DownloadService {
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
-    #[tracing::instrument(skip(self), fields(source = %source))]
     async fn dispatch_download(
         self: Arc<Self>,
         source: RemoteDif,
@@ -179,16 +178,16 @@ impl DownloadService {
             Ok(status) => {
                 match status {
                     DownloadStatus::Completed => {
-                        tracing::debug!(%source, "Fetched debug file");
+                        tracing::debug!("Fetched debug file from {}", source);
                     }
                     DownloadStatus::NotFound => {
-                        tracing::debug!(%source, "Debug file not found");
+                        tracing::debug!("Debug file not found at {}", source);
                     }
                 };
                 Ok(status)
             }
             Err(err) => {
-                tracing::debug!(error = %err, %source, "Failed to fetch debug file");
+                tracing::debug!("Failed to fetch debug file from {}: {}", source, err);
                 Err(err)
             }
         }
@@ -287,7 +286,6 @@ impl DownloadService {
 /// - [`DownloadError::BadDestination`]
 /// - [`DownloadError::Write`]
 /// - [`DownloadError::Canceled`]
-#[tracing::instrument(fields(source), skip(stream))]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
@@ -296,10 +294,8 @@ async fn download_stream(
 ) -> Result<DownloadStatus, DownloadError> {
     let source = source.into();
 
-    tracing::Span::current().record("source", &source.to_string().as_str());
-
     // All file I/O in this function is blocking!
-    tracing::trace!(%source, "Downloading");
+    tracing::trace!("Downloading from {}", source);
     let future = async {
         let mut file = File::create(&destination)
             .await

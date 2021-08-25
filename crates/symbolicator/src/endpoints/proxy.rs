@@ -22,7 +22,7 @@ async fn load_object(state: &Service, path: &str) -> Result<Option<Arc<ObjectHan
         None => return Ok(None),
     };
 
-    log::debug!("Searching for {:?} ({:?})", object_id, filetypes);
+    tracing::debug!("Searching for {:?} ({:?})", object_id, filetypes);
 
     let found_object = state
         .objects()

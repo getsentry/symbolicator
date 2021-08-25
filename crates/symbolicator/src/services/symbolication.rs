@@ -167,7 +167,6 @@ impl CfiCacheModules {
 
     /// Extend the CacheModules with the fetched caches represented by
     /// [`CfiCacheResult`].
-    #[tracing::instrument]
     fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
         self.cache_files.extend(
             cfi_caches
@@ -185,9 +184,9 @@ impl CfiCacheModules {
                         CacheStatus::Malformed(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
                             tracing::warn!(
-                                error = %LogError(&err),
-                                %details,
-                                "Error while parsing cficache",
+                                "Error while parsing cficache: {} ({})",
+                                LogError(&err),
+                                details
                             );
                             ObjectFileStatus::from(&err)
                         }
@@ -195,7 +194,7 @@ impl CfiCacheModules {
                         // from a previous cficache conversion attempt.
                         CacheStatus::CacheSpecificError(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            tracing::warn!(%details, "Cached error from parsing cficache");
+                            tracing::warn!("Cached error from parsing cficache: {}", details);
                             ObjectFileStatus::from(&err)
                         }
                     };
@@ -212,7 +211,7 @@ impl CfiCacheModules {
                     }
                 }
                 Err(err) => {
-                    tracing::debug!(error = %LogError(err.as_ref()), "Error while fetching cficache" );
+                    tracing::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
                     CfiModule {
                         cfi_status: ObjectFileStatus::from(err.as_ref()),
                         ..Default::default()
@@ -470,7 +469,7 @@ impl SymbolicationActor {
 
                     let response = error.to_symbolication_response();
                     let error = anyhow::Error::new(error);
-                    tracing::error!(%error, "Symbolication error");
+                    tracing::error!("Symbolication error: {:?}", error);
                     response
                 }
             };
@@ -935,7 +934,6 @@ impl SymCacheLookup {
     }
 }
 
-#[tracing::instrument(skip(caches))]
 fn symbolicate_frame(
     caches: &SymCacheLookup,
     registers: &Registers,
@@ -1009,7 +1007,7 @@ fn symbolicate_frame(
         return Err(FrameStatus::MissingSymbol);
     };
 
-    tracing::trace!(relative_addr, "Symbolicating {:#x}", relative_addr);
+    tracing::trace!("Symbolicating {:#x}", relative_addr);
     let line_infos = match symcache.lookup(relative_addr) {
         Ok(x) => x,
         Err(_) => return Err(FrameStatus::Malformed),
@@ -1719,7 +1717,7 @@ fn load_cfi_for_processor(
         .filter_map(|(code_id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
-                    tracing::error!(error = %LogError(&err), "Error while reading cficache");
+                    tracing::error!("Error while reading cficache: {}", LogError(&err));
                     err
                 })
                 .ok()?;
@@ -1728,7 +1726,7 @@ fn load_cfi_for_processor(
                     // This mostly never happens since we already checked the files
                     // after downloading and they would have been tagged with
                     // CacheStatus::Malformed.
-                    tracing::error!(error = %LogError(&err), "Error while loading cficache");
+                    tracing::error!("Error while loading cficache: {}", LogError(&err));
                     err
                 })
                 .ok()?;
@@ -1948,7 +1946,6 @@ impl SymbolicationActor {
             .context("Minidump stackwalk future cancelled")?)
     }
 
-    #[tracing::instrument]
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
@@ -1958,7 +1955,7 @@ impl SymbolicationActor {
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
             let len = minidump_file.metadata()?.len();
-            tracing::debug!(len, "Processing minidump ({} bytes)", len);
+            tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
             let mut cfi_caches = CfiCacheModules::new();
@@ -1988,9 +1985,7 @@ impl SymbolicationActor {
                                             );
                                         });
                                     }
-                                    Err(e) => {
-                                        tracing::error!(error = ?e, "Failed to save minidump")
-                                    }
+                                    Err(e) => tracing::error!("Failed to save minidump {:?}", &e),
                                 };
                             }
                         } else {

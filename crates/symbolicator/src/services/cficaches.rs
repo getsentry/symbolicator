@@ -119,7 +119,6 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ///
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
-    #[tracing::instrument]
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let threadpool = self.threadpool.clone();
@@ -142,7 +141,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 }
 
                 let status = if let Err(e) = write_cficache(&path, &*object) {
-                    tracing::warn!(error = %e, "Could not write cficache: {}", e);
+                    tracing::warn!("Could not write cficache: {}", e);
                     sentry::capture_error(&e);
 
                     CacheStatus::Malformed(e.to_string())
@@ -267,7 +266,6 @@ impl CfiCacheActor {
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [symbolic::minidump::cfi::CfiCache].
-#[tracing::instrument]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
@@ -282,7 +280,7 @@ fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCa
     let file = File::create(&path)?;
     let writer = BufWriter::new(file);
 
-    tracing::debug!(cache_key = %object_handle.cache_key(), "Converting cficache for {}", object_handle.cache_key());
+    tracing::debug!("Converting cficache for {}", object_handle.cache_key());
 
     CfiCache::from_object(&object)?.write_to(writer)?;
 

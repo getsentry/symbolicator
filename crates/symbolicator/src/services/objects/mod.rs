@@ -260,10 +260,9 @@ impl ObjectsActor {
                         // user (instead we default to an empty search result) and only report
                         // them internally.
                         tracing::error!(
-                            source_type = type_name,
-                            error = %LogError(&err),
-                            "Failed to fetch file list from {}",
+                            "Failed to fetch file list from {}: {}",
                             type_name,
+                            LogError(&err)
                         );
                         Vec::new()
                     })

@@ -120,7 +120,6 @@ impl SentryDownloader {
     }
 
     /// Make a request to sentry, parse the result as a JSON SearchResult list.
-    #[tracing::instrument]
     async fn fetch_sentry_json(
         &self,
         query: &SearchQuery,
@@ -138,7 +137,7 @@ impl SentryDownloader {
             tracing::trace!("Success fetching index from Sentry");
             Ok(response.json().await?)
         } else {
-            tracing::warn!(response.status = %response.status(), "Sentry returned status code {}", response.status());
+            tracing::warn!("Sentry returned status code {}", response.status());
             Err(SentryError::BadStatusCode(response.status()))
         }
     }
@@ -146,7 +145,6 @@ impl SentryDownloader {
     /// Return the search results.
     ///
     /// If there are cached search results this skips the actual search.
-    #[tracing::instrument]
     async fn cached_sentry_search(
         &self,
         query: SearchQuery,
@@ -170,7 +168,6 @@ impl SentryDownloader {
         }
 
         tracing::debug!(
-            %query.index_url,
             "Fetching list of Sentry debug files from {}",
             &query.index_url
         );
@@ -253,7 +250,6 @@ impl SentryDownloader {
     /// - [`DownloadError::Reqwest`]
     /// - [`DownloadError::Rejected`]
     /// - [`DownloadError::Canceled`]
-    #[tracing::instrument(skip(self))]
     pub async fn download_source(
         &self,
         file_source: SentryRemoteDif,
@@ -274,7 +270,7 @@ impl SentryDownloader {
         match request.await {
             Ok(Ok(response)) => {
                 if response.status().is_success() {
-                    tracing::trace!(%download_url, "Success hitting {}", download_url);
+                    tracing::trace!("Success hitting {}", download_url);
 
                     let content_length = response
                         .headers()
@@ -291,16 +287,10 @@ impl SentryDownloader {
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
                 ) {
-                    tracing::debug!(
-                        %download_url,
-                        "Insufficient permissions to download from {}",
-                        download_url
-                    );
+                    tracing::debug!("Insufficient permissions to download from {}", download_url);
                     Err(DownloadError::Permissions)
                 } else if response.status().is_client_error() {
                     tracing::debug!(
-                        %download_url,
-                        response.status = %response.status(),
                         "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
@@ -308,8 +298,6 @@ impl SentryDownloader {
                     Ok(DownloadStatus::NotFound)
                 } else {
                     tracing::debug!(
-                        %download_url,
-                        response.status = %response.status(),
                         "Unexpected status code from {}: {}",
                         download_url,
                         response.status()
@@ -318,7 +306,7 @@ impl SentryDownloader {
                 }
             }
             Ok(Err(e)) => {
-                tracing::debug!(%download_url, error = %e, "Skipping response from {}: {}", download_url, e);
+                tracing::debug!("Skipping response from {}: {}", download_url, e);
                 Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             // Timed out

@@ -72,7 +72,6 @@ impl HttpDownloader {
     /// - [`DownloadError::Reqwest`]
     /// - [`DownloadError::Rejected`]
     /// - [`DownloadError::Canceled`]
-    #[tracing::instrument(fields(download_url), skip(self, file_source))]
     pub async fn download_source(
         &self,
         file_source: HttpRemoteDif,
@@ -82,8 +81,6 @@ impl HttpDownloader {
             Ok(x) => x,
             Err(_) => return Ok(DownloadStatus::NotFound),
         };
-
-        tracing::Span::current().record("download_url", &download_url.as_str());
 
         tracing::debug!("Fetching debug file from {}", download_url);
         let mut builder = self.client.get(download_url.clone());
@@ -124,7 +121,6 @@ impl HttpDownloader {
                 // If it's a client error, chances are either it's a 404 or it's permission-related.
                 } else if response.status().is_client_error() {
                     tracing::debug!(
-                        response.status = %response.status(),
                         "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
@@ -132,7 +128,6 @@ impl HttpDownloader {
                     Ok(DownloadStatus::NotFound)
                 } else {
                     tracing::debug!(
-                        response.status = %response.status(),
                         "Unexpected status code from {}: {}",
                         download_url,
                         response.status()
@@ -141,7 +136,7 @@ impl HttpDownloader {
                 }
             }
             Ok(Err(e)) => {
-                tracing::debug!(error = %e, "Skipping response from {}: {}", download_url, e);
+                tracing::debug!("Skipping response from {}: {}", download_url, e);
                 Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             Err(_) => {

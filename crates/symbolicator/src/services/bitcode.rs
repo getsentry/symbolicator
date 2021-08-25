@@ -89,7 +89,6 @@ impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
-    #[tracing::instrument]
     async fn fetch_file(self, path: PathBuf) -> Result<CacheStatus, Error> {
         let download_file = self.cache.tempfile()?;
         let cache_key = self.get_cache_key();
@@ -101,11 +100,11 @@ impl FetchFileRequest {
 
         match result {
             Ok(DownloadStatus::NotFound) => {
-                tracing::debug!(%cache_key, "No auxiliary DIF file found");
+                tracing::debug!("No auxiliary DIF file found for {}", cache_key);
                 return Ok(CacheStatus::Negative);
             }
             Err(e) => {
-                tracing::debug!(error = %LogError(&e), "Error while downloading file");
+                tracing::debug!("Error while downloading file: {}", LogError(&e));
                 return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
             }
             Ok(DownloadStatus::Completed) => {
@@ -133,7 +132,7 @@ impl FetchFileRequest {
                 if let Err(err) = BcSymbolMap::parse(&view) {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    tracing::debug!(error = %err, "Failed to parse bcsymbolmap");
+                    tracing::debug!("Failed to parse bcsymbolmap: {}", err);
                     return Ok(CacheStatus::Malformed(err.to_string()));
                 }
             }
@@ -141,7 +140,7 @@ impl FetchFileRequest {
                 if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    tracing::debug!(error = %err, "Failed to parse plist");
+                    tracing::debug!("Failed to parse plist: {}", err);
                     return Ok(CacheStatus::Malformed(err.to_string()));
                 }
             }

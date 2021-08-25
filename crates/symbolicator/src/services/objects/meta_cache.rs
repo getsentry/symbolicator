@@ -102,10 +102,9 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// This returns [`CacheStatus::CacheSpecificError`] if the download failed.  If the
     /// data cache is [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] then the same
     /// status is returned.
-    #[tracing::instrument(skip(self))]
     fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
-        tracing::trace!(%cache_key, "Fetching file meta");
+        tracing::trace!("Fetching file meta for {}", cache_key);
 
         let path = path.to_owned();
         let data_cache = self.data_cache.clone();
@@ -127,7 +126,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
                                 has_sources: object.has_sources(),
                             };
 
-                            tracing::trace!(%cache_key, ?meta, "Persisting object meta");
+                            tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
                             serde_json::to_writer(&mut new_cache, &meta)?;
                         }
                     }
@@ -154,7 +153,6 @@ impl CacheItemRequest for FetchFileMetaRequest {
     ///
     /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
     /// returned will contain the default [`ObjectMetaHandle::features`].
-    #[tracing::instrument(skip(data))]
     fn load(
         &self,
         scope: Scope,
@@ -166,8 +164,10 @@ impl CacheItemRequest for FetchFileMetaRequest {
         // get the malformed marker.
         let features = match status {
             CacheStatus::Positive => serde_json::from_slice(&data).unwrap_or_else(|err| {
-                tracing::error!(cache_key = ?self.get_cache_key(), error = ?err,
-                    "Failed to load positive ObjectFileMeta cache",
+                tracing::error!(
+                    "Failed to load positive ObjectFileMeta cache for {:?}: {:?}",
+                    self.get_cache_key(),
+                    err
                 );
                 Default::default()
             }),

@@ -157,7 +157,6 @@ impl GcsDownloader {
     }
 
     /// Requests a new GCS OAuth token.
-    #[tracing::instrument(skip(source_key))]
     async fn request_new_token(&self, source_key: &GcsSourceKey) -> Result<GcsToken, GcsError> {
         let expires_at = Utc::now() + Duration::minutes(58);
         let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
@@ -171,7 +170,7 @@ impl GcsDownloader {
             });
 
         let response = request.send().await.map_err(|err| {
-            tracing::debug!(error = %err, "Failed to authenticate against gcs: {}", err);
+            tracing::debug!("Failed to authenticate against gcs: {}", err);
             GcsError::Auth(err)
         })?;
 
@@ -213,7 +212,6 @@ impl GcsDownloader {
     /// - [`DownloadError::Reqwest`]
     /// - [`DownloadError::Rejected`]
     /// - [`DownloadError::Canceled`]
-    #[tracing::instrument(fields(key, bucket))]
     pub async fn download_source(
         &self,
         file_source: GcsRemoteDif,
@@ -221,10 +219,6 @@ impl GcsDownloader {
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
-
-        tracing::Span::current().record("key", &key.as_str());
-        tracing::Span::current().record("bucket", &bucket.as_str());
-
         tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
         let token = self.get_token(&file_source.source.source_key).await?;
         tracing::debug!("Got valid GCS token");
@@ -274,7 +268,6 @@ impl GcsDownloader {
                 // If it's a client error, chances are either it's a 404 or it's permission-related.
                 } else if response.status().is_client_error() {
                     tracing::debug!(
-                        response.status = %response.status(),
                         "Unexpected client error status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
@@ -283,7 +276,6 @@ impl GcsDownloader {
                     Ok(DownloadStatus::NotFound)
                 } else {
                     tracing::debug!(
-                        response.status = %response.status(),
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
@@ -294,7 +286,6 @@ impl GcsDownloader {
             }
             Ok(Err(e)) => {
                 tracing::debug!(
-                    error = %e,
                     "Skipping response from GCS {} (from {}): {}",
                     &key,
                     &bucket,

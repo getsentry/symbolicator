@@ -101,7 +101,6 @@ impl S3Downloader {
         }
     }
 
-    #[tracing::instrument(skip(key))]
     fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
         let mut container = self.client_cache.lock();
         if let Some(client) = container.get(&*key) {
@@ -112,7 +111,8 @@ impl S3Downloader {
 
             let region = key.region.clone();
             tracing::debug!(
-                aws_credentials_provider = ?key.aws_credentials_provider,
+                "Using AWS credentials provider: {:?}",
+                key.aws_credentials_provider
             );
             let s3 = Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
@@ -146,7 +146,6 @@ impl S3Downloader {
     /// # Directly thrown errors
     /// - [`DownloadError::Io`]
     /// - [`DownloadError::Canceled`]
-    #[tracing::instrument]
     pub async fn download_source(
         &self,
         file_source: S3RemoteDif,
@@ -154,7 +153,7 @@ impl S3Downloader {
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.bucket();
-        tracing::debug!(%key, %bucket, "Fetching from s3: {} (from {})", &key, &bucket);
+        tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
         let client = self.get_s3_client(source_key);
@@ -171,7 +170,7 @@ impl S3Downloader {
         let response = match request.await {
             Ok(Ok(response)) => response,
             Ok(Err(err)) => {
-                tracing::debug!(%key, %bucket, error = %err, "Skipping response from s3://{}/{}: {}", bucket, &key, err);
+                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
 
                 // Do note that it's possible for Amazon to return different status codes when a
                 // file is missing. 403 is returned if the `ListBucket` permission isn't available,
@@ -197,7 +196,7 @@ impl S3Downloader {
         let stream = match response.body {
             Some(body) => body.map_err(DownloadError::Io),
             None => {
-                tracing::debug!(%key, %bucket, "Empty response from s3:{}{}", bucket, &key);
+                tracing::debug!("Empty response from s3:{}{}", bucket, &key);
                 return Ok(DownloadStatus::NotFound);
             }
         };

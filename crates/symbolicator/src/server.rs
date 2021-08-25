@@ -18,7 +18,6 @@ pub fn create_app(state: Service) -> App<Service> {
 }
 
 /// Starts all actors and HTTP server based on loaded config.
-#[tracing::instrument(skip(config))]
 pub fn run(config: Config) -> Result<()> {
     // Log this metric before actually starting the server. This allows to see restarts even if
     // service creation fails. The HTTP server is bound before the actix system runs.
@@ -37,7 +36,7 @@ pub fn run(config: Config) -> Result<()> {
     let _guard = runtime.enter();
     let service = Service::create(config).context("failed to create service state")?;
 
-    tracing::info!(server = %bind, "Starting http server: {}", bind);
+    tracing::info!("Starting http server: {}", bind);
     HttpServer::new(move || create_app(service.clone()))
         .bind(&bind)
         .context("failed to bind to the port")?

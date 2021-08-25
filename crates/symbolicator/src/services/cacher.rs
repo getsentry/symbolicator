@@ -127,11 +127,11 @@ fn safe_path_segment(s: &str) -> String {
 }
 
 pub trait CacheItemRequest: 'static + Send {
-    type Item: 'static + Send + Sync + fmt::Debug;
+    type Item: 'static + Send + Sync;
 
     // XXX: Probably should have our own concrete error type for cacheactor instead of forcing our
     // ioerrors into other errors
-    type Error: 'static + From<io::Error> + Send + Sync + fmt::Debug;
+    type Error: 'static + From<io::Error> + Send + Sync;
 
     /// Returns the key by which this item is cached.
     fn get_cache_key(&self) -> CacheKey;
@@ -158,7 +158,7 @@ pub trait CacheItemRequest: 'static + Send {
     ) -> Self::Item;
 }
 
-impl<T: CacheItemRequest + fmt::Debug> Cacher<T> {
+impl<T: CacheItemRequest> Cacher<T> {
     /// Constructs the path corresponding to the given [`CacheKey`].
     ///
     /// Returns [`None`] if caching is disabled.
@@ -180,7 +180,6 @@ impl<T: CacheItemRequest + fmt::Debug> Cacher<T> {
     /// # Errors
     ///
     /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
-    #[tracing::instrument(fields(cacher.name, key = %key), skip(self, request))]
     fn lookup_cache(
         &self,
         request: &T,
@@ -188,9 +187,6 @@ impl<T: CacheItemRequest + fmt::Debug> Cacher<T> {
         path: &Path,
     ) -> Result<Option<T::Item>, T::Error> {
         let name = self.config.name();
-
-        tracing::Span::current().record("cacher.name", &name);
-
         sentry::configure_scope(|scope| {
             scope.set_extra(
                 &format!("cache.{}.cache_path", name),
@@ -232,7 +228,6 @@ impl<T: CacheItemRequest + fmt::Debug> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    #[tracing::instrument(fields(cacher.name, key = %key), skip(self, request))]
     async fn compute(&self, request: T, key: CacheKey) -> Result<T::Item, T::Error> {
         // cache_path is None when caching is disabled.
         let cache_path = self.get_cache_path(&key);
@@ -244,7 +239,6 @@ impl<T: CacheItemRequest + fmt::Debug> Cacher<T> {
 
         let name = self.config.name();
         let key = request.get_cache_key();
-        tracing::Span::current().record("cacher.name", &name);
 
         // A file was not found. If this spikes, it's possible that the filesystem cache
         // just got pruned.
