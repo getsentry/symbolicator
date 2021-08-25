@@ -1,14 +1,10 @@
 use std::env;
 use std::fmt;
-use std::io::{self, Write};
 
-use chrono::{DateTime, Utc};
-use sentry::integrations::tracing::{breadcrumb_from_event, event_from_event};
-use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
-use tracing::{span, Level, Subscriber};
-use tracing_subscriber::fmt::{fmt, SubscriberBuilder};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::Layer;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use crate::config::{Config, LogFormat};
 
@@ -36,63 +32,6 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
     }
 }
 
-/// A delegating logger that also logs breadcrumbs.
-pub struct BreadcrumbLogger<L> {
-    inner: L,
-}
-
-impl<L> BreadcrumbLogger<L> {
-    /// Initializes a new breadcrumb logger.
-    pub fn new(inner: L) -> Self {
-        Self { inner }
-    }
-}
-
-impl<L> Subscriber for BreadcrumbLogger<L>
-where
-    L: Subscriber,
-{
-    fn enabled(&self, md: &tracing::Metadata<'_>) -> bool {
-        self.inner.enabled(md)
-    }
-
-    fn new_span(&self, span: &span::Attributes<'_>) -> span::Id {
-        self.inner.new_span(span)
-    }
-
-    fn record(&self, span: &span::Id, values: &span::Record<'_>) {
-        self.inner.record(span, values);
-    }
-
-    fn record_follows_from(&self, span: &span::Id, follows: &span::Id) {
-        self.inner.record_follows_from(span, follows);
-    }
-
-    fn enter(&self, span: &span::Id) {
-        self.inner.enter(span);
-    }
-
-    fn exit(&self, span: &span::Id) {
-        self.inner.exit(span);
-    }
-
-    fn event(&self, event: &tracing::Event<'_>) {
-        if self.enabled(event.metadata()) {
-            if *event.metadata().level() == Level::ERROR {
-                sentry::capture_event(event_from_event(event));
-            }
-
-            sentry::add_breadcrumb(|| breadcrumb_from_event(event));
-            self.inner.event(event);
-        }
-    }
-}
-
-fn set_global_logger<L: Subscriber + Sync + Send>(logger: L) {
-    tracing::subscriber::set_global_default(BreadcrumbLogger::new(logger))
-        .expect("setting global default subscriber")
-}
-
 /// Initializes logging for the symbolicator.
 ///
 /// This considers the `RUST_LOG` environment variable and defaults it to the level specified in the
@@ -110,16 +49,22 @@ pub fn init_logging(config: &Config) {
         env::set_var("RUST_LOG", rust_log);
     }
 
-    let builder = fmt().with_env_filter(EnvFilter::from_default_env());
+    let filter = EnvFilter::from_default_env();
+    let sentry = sentry::integrations::tracing::layer();
+    let subscriber = FmtSubscriber::new().with(filter).with(sentry);
+    let format = Layer::new();
     match (config.logging.format, console::user_attended()) {
         (LogFormat::Auto, true) | (LogFormat::Pretty, _) => {
-            set_global_logger(builder.pretty().finish())
+            tracing::subscriber::set_global_default(subscriber.with(format.pretty()))
         }
         (LogFormat::Auto, false) | (LogFormat::Simplified, _) => {
-            set_global_logger(builder.compact().finish())
+            tracing::subscriber::set_global_default(subscriber.with(format.compact()))
         }
-        (LogFormat::Json, _) => set_global_logger(builder.json().finish()),
-    };
+        (LogFormat::Json, _) => {
+            tracing::subscriber::set_global_default(subscriber.with(format.json()))
+        }
+    }
+    .expect("setting global default subscriber");
 }
 
 /// A wrapper around an [`Error`](std::error::Error) that prints its causes.
