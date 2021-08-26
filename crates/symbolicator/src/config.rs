@@ -92,6 +92,9 @@ pub struct DownloadedCacheConfig {
     /// Maximum duration since creation of malformed cache item (item age).
     #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
+
+    /// Maximum number of lazy re-downloads
+    pub max_lazy_redownloads: isize,
 }
 
 impl Default for DownloadedCacheConfig {
@@ -100,6 +103,7 @@ impl Default for DownloadedCacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+            max_lazy_redownloads: 50,
         }
     }
 }
@@ -121,6 +125,9 @@ pub struct DerivedCacheConfig {
     /// Maximum duration since creation of malformed cache item (item age).
     #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
+
+    /// Maximum number of lazy re-computations
+    pub max_lazy_recomputations: isize,
 }
 
 impl Default for DerivedCacheConfig {
@@ -129,6 +136,7 @@ impl Default for DerivedCacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+            max_lazy_recomputations: 10,
         }
     }
 }
