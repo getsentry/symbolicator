@@ -23,6 +23,7 @@
 - Source candidates which symbolicator has failed to download due to non-400 errors are now being returned in symbolication payloads. These candidates include additional diagnostic info which briefly describes the download error. ([#512](https://github.com/getsentry/symbolicator/pull/512))
 - If a DIF object candidate could not be downloaded due to a lack of permissions, their respective entry in a symbolication response will now mention something about permissions instead of marking the candidate as just Missing. ([#512](https://github.com/getsentry/symbolicator/pull/512), [#518](https://github.com/getsentry/symbolicator/pull/518))
 - Introduced the `max_concurrent_requests` config setting, which limits the number of requests that will be processed concurrently. It defaults to `None`, i.e., no limit. ([#521](https://github.com/getsentry/symbolicator/pull/521))
+- Symbolication tasks are being spawned on a tokio 1 Runtime now. ([#531](https://github.com/getsentry/symbolicator/pull/531))
 
 ### Fixes
 

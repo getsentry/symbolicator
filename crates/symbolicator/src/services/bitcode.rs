@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Error};
-use futures::future;
+use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
@@ -24,7 +24,7 @@ use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
-use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
+use crate::utils::futures::{m, measure};
 
 /// Handle to a valid BCSymbolMap.
 ///
@@ -165,7 +165,7 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let fut = self
             .clone()
             .fetch_file(path.to_path_buf())
@@ -173,7 +173,7 @@ impl CacheItemRequest for FetchFileRequest {
 
         let source_name = self.file_source.source_type_name().into();
 
-        let future = timeout_compat(Duration::from_secs(1200), fut);
+        let future = tokio::time::timeout(Duration::from_secs(1200), fut);
         let future = measure(
             "auxdifs",
             m::timed_result,

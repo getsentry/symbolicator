@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::future::{FutureExt, Shared, TryFutureExt};
+use futures::future::{BoxFuture, FutureExt, Shared, TryFutureExt};
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -13,14 +13,14 @@ use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheStatus};
 use crate::types::Scope;
-use crate::utils::futures::{spawn_compat, BoxedFuture, CallOnDrop};
+use crate::utils::futures::CallOnDrop;
 
 type ComputationResult<T, E> = Result<Arc<T>, Arc<E>>;
 // Inner result necessary because `futures::Shared` won't give us `Arc`s but its own custom
 // newtype around it.
 type ComputationChannel<T, E> = Shared<oneshot::Receiver<ComputationResult<T, E>>>;
 
-type CacheResultFuture<T, E> = BoxedFuture<ComputationResult<T, E>>;
+type CacheResultFuture<T, E> = BoxFuture<'static, ComputationResult<T, E>>;
 
 type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E>>>>;
 
@@ -166,7 +166,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>>;
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>>;
 
     /// Determines whether this item should be loaded.
     ///
@@ -321,7 +321,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         computation: F,
     ) -> ComputationChannel<T::Item, T::Error>
     where
-        F: std::future::Future<Output = Result<T::Item, T::Error>> + 'static,
+        F: std::future::Future<Output = Result<T::Item, T::Error>> + Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
@@ -345,7 +345,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // TODO: This spawns into the current_thread runtime of the caller. Consider more explicit
         // resource allocation here to separate CPU intensive work from I/O work.
-        spawn_compat(channel);
+        tokio::spawn(channel);
 
         receiver.shared()
     }
@@ -446,25 +446,12 @@ impl<T: CacheItemRequest> Cacher<T> {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::{Duration, Instant};
-
-    use futures::compat::Future01CompatExt;
-    use futures::Future;
+    use std::time::Duration;
 
     use crate::config::{CacheConfig, CacheConfigs};
-    use crate::test::{self, tempdir};
+    use crate::test;
 
     use super::*;
-
-    /// A tokio 0.1 compat layer to sleep the task for the given time.
-    ///
-    /// This is necessary because the [`Cacher`] still uses a tokio 0.1 spawn internally.
-    fn sleep(millis: u64) -> impl Future<Output = ()> {
-        let when = Instant::now() + Duration::from_millis(millis);
-        tokio01::timer::Delay::new(when)
-            .compat()
-            .unwrap_or_else(|_| ())
-    }
 
     #[derive(Clone, Default)]
     struct TestCacheItem {
@@ -488,12 +475,12 @@ mod tests {
             }
         }
 
-        fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+        fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
             self.computations.fetch_add(1, Ordering::SeqCst);
 
             let path = path.to_owned();
             Box::pin(async move {
-                sleep(100).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
 
                 std::fs::write(path, "some new cached contents")?;
                 Ok(CacheStatus::Positive)
@@ -515,7 +502,7 @@ mod tests {
     async fn test_cache_fallback() {
         test::setup();
 
-        let cache_dir = tempdir().path().join("test");
+        let cache_dir = test::tempdir().path().join("test");
         std::fs::create_dir_all(cache_dir.join("global")).unwrap();
         std::fs::write(
             cache_dir.join("global/some_cache_key"),
@@ -534,21 +521,18 @@ mod tests {
 
         let request = TestCacheItem::default();
 
-        test::spawn_compat(move || async move {
-            let first_result = cacher.compute_memoized(request.clone()).await;
-            assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
+        let first_result = cacher.compute_memoized(request.clone()).await;
+        assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
 
-            let second_result = cacher.compute_memoized(request.clone()).await;
-            assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
+        let second_result = cacher.compute_memoized(request.clone()).await;
+        assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
 
-            sleep(200).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
-            let third_result = cacher.compute_memoized(request.clone()).await;
-            assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
+        let third_result = cacher.compute_memoized(request.clone()).await;
+        assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
 
-            // we only want to have the actual computation be done a single time
-            assert_eq!(request.computations.load(Ordering::SeqCst), 1);
-        })
-        .await;
+        // we only want to have the actual computation be done a single time
+        assert_eq!(request.computations.load(Ordering::SeqCst), 1);
     }
 }

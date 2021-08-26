@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
@@ -21,7 +22,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
+use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 /// The supported cficache versions.
@@ -141,7 +142,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ///
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let threadpool = self.threadpool.clone();
         let objects_actor = self.objects_actor.clone();
@@ -182,7 +183,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = timeout_compat(Duration::from_secs(1200), result);
+        let future = tokio::time::timeout(Duration::from_secs(1200), result);
         let future = measure(
             "cficaches",
             m::timed_result,

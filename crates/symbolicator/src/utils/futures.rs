@@ -1,23 +1,8 @@
 use std::borrow::Cow;
 use std::future::Future;
-use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use futures::compat::Future01CompatExt;
-use futures::{FutureExt, TryFutureExt};
-use tokio01::prelude::FutureExt as TokioFutureExt;
-
 use crate::metrics::{self, prelude::*};
-
-/// A pinned, boxed future.
-///
-/// This is the type of future that [`futures::FutureExt::boxed`] would return.  This is
-/// pretty boring but clippy quickly complains about type complexity without this.
-///
-/// You would mainly use this if you are dealing with a trait methods which deals with
-/// futures.  Trait methods can not be async/await and using this type in their return value
-/// allows to integrate with async await code.
-pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 /// Execute a callback on dropping of the container type.
 ///
@@ -42,59 +27,6 @@ impl Drop for CallOnDrop {
             f();
         }
     }
-}
-
-/// Executes a future on the current thread.
-///
-/// The provided future must complete or be canceled before `run` will return. This function will
-/// always spawn on a `CurrentThread` executor and is able to spawn futures that are not `Send`.
-///
-/// # Panics
-///
-/// This function can only be invoked from the context of a `run` call; any other use will result in
-/// a panic.
-///
-/// # Compatibility
-///
-/// This is a compatibility shim for the `tokio` 1.0 `spawn` function signature to run on a `tokio`
-/// 0.1 executor.
-pub fn spawn_compat<F>(future: F)
-where
-    F: Future + 'static,
-{
-    tokio01::runtime::current_thread::spawn(future.map(|_| Ok(())).boxed_local().compat());
-}
-
-/// Error returned by [`timeout_compat`].
-#[derive(Debug, PartialEq, thiserror::Error)]
-#[error("deadline has elapsed")]
-pub struct Elapsed(());
-
-/// Require a `Future` to complete before the specified duration has elapsed.
-///
-/// If the future completes before the duration has elapsed, then the completed value is returned.
-/// Otherwise, an error is returned and the future is canceled.
-///
-/// # Compatibility
-///
-/// This is a compatibility shim for the `tokio` 1.0 `timeout` function signature to run on a
-/// `tokio` 0.1 executor.
-pub async fn timeout_compat<F: Future>(duration: Duration, f: F) -> Result<F::Output, Elapsed> {
-    f.unit_error()
-        .boxed_local()
-        .compat()
-        .timeout(duration)
-        .compat()
-        .await
-        .map_err(|_| Elapsed(()))
-}
-
-/// Delay aka sleep for a given duration
-pub async fn delay(duration: Duration) {
-    tokio01::timer::Delay::new(Instant::now() + duration)
-        .compat()
-        .await
-        .ok();
 }
 
 /// State of the [`MeasureGuard`].
@@ -257,6 +189,6 @@ where
         }
 
         retries += 1;
-        delay(Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }

@@ -43,7 +43,7 @@ use crate::types::{
     SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{delay, m, measure, spawn_compat, timeout_compat, CallOnDrop};
+use crate::utils::futures::{m, measure, CallOnDrop};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -388,19 +388,22 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
     diagnostics_cache: crate::cache::Cache,
-    threadpool: tokio::runtime::Handle,
+    io_pool: tokio::runtime::Handle,
+    cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
     max_concurrent_requests: Option<usize>,
 }
 
 impl SymbolicationActor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         diagnostics_cache: crate::cache::Cache,
-        threadpool: tokio::runtime::Handle,
+        io_pool: tokio::runtime::Handle,
+        cpu_pool: tokio::runtime::Handle,
         spawnpool: procspawn::Pool,
         max_concurrent_requests: Option<usize>,
     ) -> Self {
@@ -409,7 +412,8 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             diagnostics_cache,
-            threadpool,
+            io_pool,
+            cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             spawnpool: Arc::new(spawnpool),
             max_concurrent_requests,
@@ -422,7 +426,9 @@ impl SymbolicationActor {
     /// maximum number of requests, as given by `max_concurrent_requests`.
     fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, MaxRequestsError>
     where
-        F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
+        F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
+            + Send
+            + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
@@ -475,17 +481,13 @@ impl SymbolicationActor {
 
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
-            delay(MAX_POLL_DELAY).await;
+            tokio::time::sleep(MAX_POLL_DELAY).await;
 
             drop(token);
         }
         .bind_hub(hub);
 
-        // TODO: This spawns into the current_thread runtime of the caller, which usually is the web
-        // handler. This doesn't block the web request, but it congests the threads that should only
-        // do web I/O. Instead, this should spawn into a dedicated resource (e.g. a threadpool) to
-        // keep web requests flowing while symbolication tasks may backlog.
-        spawn_compat(request_future);
+        self.io_pool.spawn(request_future);
 
         Ok(request_id)
     }
@@ -497,7 +499,7 @@ async fn wrap_response_channel(
     channel: ComputationChannel,
 ) -> SymbolicationResponse {
     let channel_result = if let Some(timeout) = timeout {
-        match timeout_compat(Duration::from_secs(timeout), channel).await {
+        match tokio::time::timeout(Duration::from_secs(timeout), channel).await {
             Ok(outcome) => outcome,
             Err(_elapsed) => {
                 return SymbolicationResponse::Pending {
@@ -1474,7 +1476,7 @@ impl SymbolicationActor {
         let serialize_dif_candidates = request.options.dif_candidates;
 
         let f = self.do_symbolicate_impl(request);
-        let f = timeout_compat(Duration::from_secs(3600), f);
+        let f = tokio::time::timeout(Duration::from_secs(3600), f);
         let f = measure("symbolicate", m::timed_result, None, f);
 
         let mut response = f
@@ -1540,7 +1542,7 @@ impl SymbolicationActor {
         };
 
         let mut response = self
-            .threadpool
+            .cpu_pool
             .spawn(future.bind_hub(sentry::Hub::current()))
             .await
             .context("Symbolication future cancelled")?;
@@ -1578,7 +1580,7 @@ impl SymbolicationActor {
             response
         };
 
-        self.threadpool
+        self.cpu_pool
             .spawn(future.bind_hub(sentry::Hub::current()))
             .await
             .context("Source lookup future cancelled")
@@ -1607,7 +1609,14 @@ impl SymbolicationActor {
     ) -> Option<SymbolicationResponse> {
         let channel_opt = self.requests.lock().get(&request_id).cloned();
         match channel_opt {
-            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
+            Some(channel) => {
+                // `wrap_response_channel` internally creates a `tokio::time::timeout`, which
+                // requires an active runtime to be present, otherwise it panics.
+                // This function however is called directly from the actix/tokio01 runtime.
+                let _guard = self.io_pool.enter();
+
+                Some(wrap_response_channel(request_id, timeout, channel).await)
+            }
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
@@ -1937,7 +1946,7 @@ impl SymbolicationActor {
         };
 
         Ok(self
-            .threadpool
+            .cpu_pool
             .spawn(lazy.bind_hub(sentry::Hub::current()))
             .await?
             .context("Minidump stackwalk future cancelled")?)
@@ -2039,7 +2048,7 @@ impl SymbolicationActor {
             Ok::<_, anyhow::Error>((request, minidump_state))
         };
 
-        let future = timeout_compat(Duration::from_secs(3600), future);
+        let future = tokio::time::timeout(Duration::from_secs(3600), future);
         let future = measure("minidump_stackwalk", m::timed_result, None, future);
         future
             .await
@@ -2233,13 +2242,13 @@ impl SymbolicationActor {
         };
 
         let future = async move {
-            self.threadpool
+            self.cpu_pool
                 .spawn(parse_future.bind_hub(sentry::Hub::current()))
                 .await
                 .context("Parse applecrashreport future cancelled")
         };
 
-        let future = timeout_compat(Duration::from_secs(1200), future);
+        let future = tokio::time::timeout(Duration::from_secs(1200), future);
         let future = measure("parse_apple_crash_report", m::timed_result, None, future);
         future
             .await
@@ -2436,22 +2445,19 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
 
-        assert_snapshot!(response.await.unwrap());
+        let request = get_symbolication_request(vec![source]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
+
+        assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
+        let request = get_symbolication_request(vec![]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         Ok(())
     }
@@ -2465,22 +2471,18 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
+        let request = get_symbolication_request(vec![]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
+        let request = get_symbolication_request(vec![source]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         Ok(())
     }
@@ -2514,27 +2516,22 @@ mod tests {
             options: Default::default(),
         };
 
-        test::spawn_compat(move || async move {
-            // Be aware, this spawns the work into a new current thread runtime, which gets
-            // dropped when test::spawn_compat() returns.
-            let request_id = service
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request)
+            .unwrap();
+
+        for _ in 0..2 {
+            let response = service
                 .symbolication()
-                .symbolicate_stacktraces(request)
+                .get_response(request_id, None)
+                .await
                 .unwrap();
 
-            for _ in 0..2 {
-                let response = service
-                    .symbolication()
-                    .get_response(request_id, None)
-                    .await
-                    .unwrap();
-
-                if !matches!(&response, SymbolicationResponse::Completed(_)) {
-                    panic!("Not a complete response: {:#?}", response);
-                }
+            if !matches!(&response, SymbolicationResponse::Completed(_)) {
+                panic!("Not a complete response: {:#?}", response);
             }
-        })
-        .await;
+        }
     }
 
     async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
@@ -2545,19 +2542,17 @@ mod tests {
         let mut minidump_file = NamedTempFile::new()?;
         minidump_file.write_all(&minidump)?;
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request_id = symbolication.process_minidump(
-                Scope::Global,
-                minidump_file.into_temp_path(),
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            );
-            symbolication.get_response(request_id.unwrap(), None).await
-        });
+        let request_id = symbolication.process_minidump(
+            Scope::Global,
+            minidump_file.into_temp_path(),
+            Arc::new([source]),
+            RequestOptions {
+                dif_candidates: true,
+            },
+        );
+        let response = symbolication.get_response(request_id.unwrap(), None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
@@ -2591,23 +2586,21 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let response = test::spawn_compat(move || async move {
-            let request_id = service
-                .symbolication()
-                .process_apple_crash_report(
-                    Scope::Global,
-                    report_file,
-                    Arc::new([source]),
-                    RequestOptions {
-                        dif_candidates: true,
-                    },
-                )
-                .unwrap();
+        let request_id = service
+            .symbolication()
+            .process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                Arc::new([source]),
+                RequestOptions {
+                    dif_candidates: true,
+                },
+            )
+            .unwrap();
 
-            service.symbolication().get_response(request_id, None).await
-        });
+        let response = service.symbolication().get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
         Ok(())
     }
 
@@ -2650,15 +2643,13 @@ mod tests {
             options: Default::default(),
         };
 
-        let response = test::spawn_compat(move || async move {
-            let request_id = service
-                .symbolication()
-                .symbolicate_stacktraces(request)
-                .unwrap();
-            service.symbolication().get_response(request_id, None).await
-        });
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request)
+            .unwrap();
+        let response = service.symbolication().get_response(request_id, None).await;
 
-        insta::assert_yaml_snapshot!(response.await.unwrap());
+        insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())
     }
 
@@ -2821,18 +2812,15 @@ mod tests {
         let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();
 
-        test::spawn_compat(move || async move {
-            // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
-            // two concurrent requests, the first two should succeed and the third one should fail.
-            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+        // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+        // two concurrent requests, the first two should succeed and the third one should fail.
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-            let request = get_symbolication_request(vec![symbol_server.pending_source]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_err());
-        })
-        .await;
+        let request = get_symbolication_request(vec![symbol_server.pending_source]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_err());
     }
 }
