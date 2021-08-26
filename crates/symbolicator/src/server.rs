@@ -18,6 +18,7 @@ pub fn create_app(state: Service) -> App<Service> {
 }
 
 /// Starts all actors and HTTP server based on loaded config.
+#[tracing::instrument(skip(config))]
 pub fn run(config: Config) -> Result<()> {
     // Log this metric before actually starting the server. This allows to see restarts even if
     // service creation fails. The HTTP server is bound before the actix system runs.
