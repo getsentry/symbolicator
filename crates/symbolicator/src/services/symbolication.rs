@@ -4,6 +4,7 @@ use std::fs::File;
 use std::future::Future;
 use std::iter::FromIterator;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -392,6 +393,7 @@ pub struct SymbolicationActor {
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
     max_concurrent_requests: Option<usize>,
+    current_requests: Arc<AtomicUsize>,
 }
 
 impl SymbolicationActor {
@@ -413,6 +415,7 @@ impl SymbolicationActor {
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             spawnpool: Arc::new(spawnpool),
             max_concurrent_requests,
+            current_requests: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -429,9 +432,10 @@ impl SymbolicationActor {
         let hub = Arc::new(sentry::Hub::new_from_top(sentry::Hub::current()));
 
         // Assume that there are no UUID4 collisions in practice.
-        let requests = self.requests.clone();
+        let requests = Arc::clone(&self.requests);
+        let current_requests = Arc::clone(&self.current_requests);
 
-        let num_requests = requests.lock().len();
+        let num_requests = current_requests.load(Ordering::Relaxed);
         metric!(gauge("requests.in_flight") = num_requests as u64);
 
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
@@ -443,6 +447,7 @@ impl SymbolicationActor {
 
         let request_id = RequestId::new(uuid::Uuid::new_v4());
         requests.lock().insert(request_id, receiver.shared());
+        current_requests.fetch_add(1, Ordering::Relaxed);
         let drop_hub = hub.clone();
         let token = CallOnDrop::new(move || {
             requests.lock().remove(&request_id);
@@ -472,6 +477,10 @@ impl SymbolicationActor {
             };
 
             sender.send((Instant::now(), response)).ok();
+
+            // We stop counting the request as an in-flight request at this point, even though
+            // it will stay in the `requests` map for another 90s.
+            current_requests.fetch_sub(1, Ordering::Relaxed);
 
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
