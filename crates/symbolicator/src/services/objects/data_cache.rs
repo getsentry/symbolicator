@@ -309,6 +309,7 @@ mod tests {
             Some(tempdir.path().join("meta")),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
+            Default::default(),
         )
         .unwrap();
 
@@ -317,6 +318,7 @@ mod tests {
             Some(tempdir.path().join("data")),
             None,
             CacheConfig::from(CacheConfigs::default().downloaded),
+            Default::default(),
         )
         .unwrap();
 
