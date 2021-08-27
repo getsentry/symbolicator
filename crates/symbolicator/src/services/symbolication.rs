@@ -447,6 +447,7 @@ impl SymbolicationActor {
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.max_concurrent_requests {
             if num_requests >= max_concurrent_requests {
+                metric!(counter("requests.rejected") += 1);
                 return Err(MaxRequestsError);
             }
         }
