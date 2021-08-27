@@ -136,7 +136,7 @@ impl Default for DerivedCacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
-            max_lazy_recomputations: 10,
+            max_lazy_recomputations: 20,
         }
     }
 }

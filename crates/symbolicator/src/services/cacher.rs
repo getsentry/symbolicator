@@ -327,8 +327,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Creates a shareable channel that computes an item.
     ///
     /// In case the `is_refresh` flag is set, the computation request will count towards the configured
-    /// `max_lazy_refreshes`, and will return immediately with an error indicating that the threshold
-    /// was reached.
+    /// `max_lazy_refreshes`, and will return immediately with an error if the threshold was reached.
     fn create_channel<F>(
         &self,
         key: CacheKey,
@@ -358,6 +357,9 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let current_computations = self.current_computations.clone();
         let remove_computation_token = CallOnDrop::new(move || {
+            if is_refresh {
+                max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+            }
             current_computations.lock().remove(&key);
         });
 
@@ -367,9 +369,6 @@ impl<T: CacheItemRequest> Cacher<T> {
                 Ok(ok) => Ok(Arc::new(ok)),
                 Err(err) => Err(Arc::new(err)),
             };
-            if is_refresh {
-                max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-            }
             // Drop the token first to evict from the map.  This ensures that callers either
             // get a channel that will receive data, or they create a new channel.
             drop(remove_computation_token);
@@ -627,8 +626,8 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        // we only want to have the actual computation be done only one time, as that is the
-        // maximum of number of lazy computations.
+        // we want the actual computation to be done only one time, as that is the
+        // maximum number of lazy computations.
         assert_eq!(request.computations.load(Ordering::SeqCst), 1);
 
         // double check that we actually get outdated contents for two of the requests.
