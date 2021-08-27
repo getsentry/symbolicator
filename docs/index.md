@@ -77,8 +77,8 @@ metrics:
   processing pool. Defaults to the total number of logical CPUs on the machine.
 - `max_concurrent_requests`: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
   Set it to `null` to turn off the limit. Defaults to 120.
-- `max_lazy_redownloads`: When symbolicator accesses a download cache and there is only an entry from a previous version, it will use that entry
-  and start computing the current version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.
+- `max_lazy_redownloads`: Symbolicator will fall back to a compatible but out-of-date cache version if available,
+ and start computing the up-to-date version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.
 - `max_lazy_recomputations`: As `max_lazy_redownloads`, but for derived caches. Defaults to 20.
 
 > All time units for the following configuration settings can be either a time
