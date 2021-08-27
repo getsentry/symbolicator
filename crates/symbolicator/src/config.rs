@@ -346,7 +346,7 @@ impl Default for Config {
             connect_timeout: Duration::from_secs(15),
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
-            max_concurrent_requests: None,
+            max_concurrent_requests: Some(120),
         }
     }
 }
