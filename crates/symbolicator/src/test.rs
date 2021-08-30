@@ -16,11 +16,13 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
+use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use futures::{FutureExt, TryFutureExt};
 use log::LevelFilter;
 use reqwest::Url;
 use warp::filters::fs::File;
@@ -96,6 +98,41 @@ pub(crate) fn fixture(path: impl AsRef<Path>) -> PathBuf {
 /// Panics if the fixture does not exist or cannot be read.
 pub(crate) fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
     std::fs::read(fixture(path)).unwrap()
+}
+
+/// Runs the provided function, blocking the current thread until the result **legacy**
+/// [`Future`](futures01::Future) completes.
+///
+/// This function can be used to synchronously block the current thread until the provided `Future`
+/// has resolved either successfully or with an error. The result of the future is then returned
+/// from this function call.
+///
+/// This is provided rather than a `block_on`-like interface to avoid accidentally calling a
+/// function which spawns before creating a future, which would attempt to spawn before actix is
+/// initialised.
+///
+/// Note that this function is intended to be used only for testing purpose. This function panics on
+/// nested call.
+pub async fn spawn_compat<F, T>(f: F) -> T::Output
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Future + 'static,
+    T::Output: Send,
+{
+    let (sender, receiver) = futures::channel::oneshot::channel();
+
+    std::thread::spawn(|| {
+        let result = tokio01::runtime::current_thread::Runtime::new()
+            .unwrap()
+            .block_on(f().never_error().boxed_local().compat());
+
+        sender.send(result)
+    });
+
+    match receiver.await.unwrap() {
+        Ok(output) => output,
+        Err(never) => match never {},
+    }
 }
 
 /// Get bucket configuration for the local fixtures.

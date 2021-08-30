@@ -2473,16 +2473,22 @@ mod tests {
 
         let symbolication = service.symbolication();
 
-        let request = get_symbolication_request(vec![source]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = test::spawn_compat(move || async move {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+            symbolication.get_response(request_id, None).await
+        })
+        .await;
 
         assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let request = get_symbolication_request(vec![]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = test::spawn_compat(move || async move {
+            let request = get_symbolication_request(vec![]);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+            symbolication.get_response(request_id, None).await
+        })
+        .await;
 
         assert_snapshot!(response.unwrap());
 
@@ -2498,16 +2504,22 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
-        let request = get_symbolication_request(vec![]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = test::spawn_compat(move || async move {
+            let request = get_symbolication_request(vec![]);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+            symbolication.get_response(request_id, None).await
+        })
+        .await;
 
         assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let request = get_symbolication_request(vec![source]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = test::spawn_compat(move || async move {
+            let request = get_symbolication_request(vec![source]);
+            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+            symbolication.get_response(request_id, None).await
+        })
+        .await;
 
         assert_snapshot!(response.unwrap());
 
@@ -2543,22 +2555,25 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request)
-            .unwrap();
-
-        for _ in 0..2 {
-            let response = service
+        test::spawn_compat(move || async move {
+            let request_id = service
                 .symbolication()
-                .get_response(request_id, None)
-                .await
+                .symbolicate_stacktraces(request)
                 .unwrap();
 
-            if !matches!(&response, SymbolicationResponse::Completed(_)) {
-                panic!("Not a complete response: {:#?}", response);
+            for _ in 0..2 {
+                let response = service
+                    .symbolication()
+                    .get_response(request_id, None)
+                    .await
+                    .unwrap();
+
+                if !matches!(&response, SymbolicationResponse::Completed(_)) {
+                    panic!("Not a complete response: {:#?}", response);
+                }
             }
-        }
+        })
+        .await;
     }
 
     async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
@@ -2569,15 +2584,18 @@ mod tests {
         let mut minidump_file = NamedTempFile::new()?;
         minidump_file.write_all(&minidump)?;
         let symbolication = service.symbolication();
-        let request_id = symbolication.process_minidump(
-            Scope::Global,
-            minidump_file.into_temp_path(),
-            Arc::new([source]),
-            RequestOptions {
-                dif_candidates: true,
-            },
-        );
-        let response = symbolication.get_response(request_id.unwrap(), None).await;
+        let response = test::spawn_compat(move || async move {
+            let request_id = symbolication.process_minidump(
+                Scope::Global,
+                minidump_file.into_temp_path(),
+                Arc::new([source]),
+                RequestOptions {
+                    dif_candidates: true,
+                },
+            );
+            symbolication.get_response(request_id.unwrap(), None).await
+        })
+        .await;
 
         assert_snapshot!(response.unwrap());
 
@@ -2613,19 +2631,22 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let request_id = service
-            .symbolication()
-            .process_apple_crash_report(
-                Scope::Global,
-                report_file,
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            )
-            .unwrap();
+        let response = test::spawn_compat(move || async move {
+            let request_id = service
+                .symbolication()
+                .process_apple_crash_report(
+                    Scope::Global,
+                    report_file,
+                    Arc::new([source]),
+                    RequestOptions {
+                        dif_candidates: true,
+                    },
+                )
+                .unwrap();
 
-        let response = service.symbolication().get_response(request_id, None).await;
+            service.symbolication().get_response(request_id, None).await
+        })
+        .await;
 
         assert_snapshot!(response.unwrap());
         Ok(())
@@ -2670,11 +2691,14 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request)
-            .unwrap();
-        let response = service.symbolication().get_response(request_id, None).await;
+        let response = test::spawn_compat(move || async move {
+            let request_id = service
+                .symbolication()
+                .symbolicate_stacktraces(request)
+                .unwrap();
+            service.symbolication().get_response(request_id, None).await
+        })
+        .await;
 
         insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())
@@ -2836,18 +2860,21 @@ mod tests {
         let handle = tokio::runtime::Handle::current();
         let service = Service::create(config, handle.clone(), handle).unwrap();
 
-        let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();
+        test::spawn_compat(move || async move {
+            let symbolication = service.symbolication();
 
-        // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
-        // two concurrent requests, the first two should succeed and the third one should fail.
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+            // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+            // two concurrent requests, the first two should succeed and the third one should fail.
+            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-        let request = get_symbolication_request(vec![symbol_server.pending_source]);
-        assert!(symbolication.symbolicate_stacktraces(request).is_err());
+            let request = get_symbolication_request(vec![symbol_server.pending_source]);
+            assert!(symbolication.symbolicate_stacktraces(request).is_err());
+        })
+        .await;
     }
 }
