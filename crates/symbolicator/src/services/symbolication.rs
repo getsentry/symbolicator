@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, TimeZone, Utc};
-use futures::{channel::oneshot, future, FutureExt as _};
+use futures::{channel::oneshot, future, FutureExt, TryFutureExt};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
@@ -463,13 +463,23 @@ impl SymbolicationActor {
             drop_hub.end_session_with_status(SessionStatus::Crashed);
         });
 
+        // This future/sleep here is still based on actix/tokio01 because running it on tokio1
+        // would lead to memory leaks of allocations that can be traced back to actix-web request
+        // internals. I cant explain how or why that happens, but moving this future and its
+        // delay at the end to the actix runtime solves those memory leak issues.
+        let slf = self.clone();
         let request_future = async move {
-            let response = match f.await {
-                Ok(response) => {
+            let response = match slf
+                .io_pool
+                .spawn(f)
+                .await
+                .map_err(|_| SymbolicationError::Timeout)
+            {
+                Ok(Ok(response)) => {
                     sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))
                 }
-                Err(error) => {
+                Err(error) | Ok(Err(error)) => {
                     // a timeout is an abnormal session exit, all other errors are considered "crashed"
                     let status = match &error {
                         SymbolicationError::Timeout => SessionStatus::Abnormal,
@@ -491,13 +501,20 @@ impl SymbolicationActor {
 
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
-            tokio::time::sleep(MAX_POLL_DELAY).await;
+            use futures::compat::Future01CompatExt;
+            tokio01::timer::Delay::new(Instant::now() + MAX_POLL_DELAY)
+                .compat()
+                .await
+                .ok();
 
             drop(token);
         }
         .bind_hub(hub);
 
-        self.io_pool.spawn(request_future);
+        // spawned on actix/tokio01 runtime to avoid memory leaks, see comment above `request_future`.
+        tokio01::runtime::current_thread::spawn(
+            request_future.map(|_| Ok(())).boxed_local().compat(),
+        );
 
         Ok(request_id)
     }
