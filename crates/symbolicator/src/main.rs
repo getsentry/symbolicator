@@ -11,12 +11,12 @@
     unused_crate_dependencies,
     clippy::all
 )]
-#![allow(unused)]
+
+#[macro_use]
+mod macros;
 
 #[macro_use]
 mod metrics;
-#[macro_use]
-mod macros;
 
 mod cache;
 mod cli;

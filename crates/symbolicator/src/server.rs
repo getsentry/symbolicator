@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 
 use anyhow::{Context, Result};
-use axum::AddExtensionLayer;
 
 use crate::config::Config;
 use crate::endpoints;

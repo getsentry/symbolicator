@@ -8,10 +8,9 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use axum::http::Response;
+use axum::http::{Response, StatusCode};
 use cadence::{Metric, MetricBuilder, StatsdClient, UdpMetricSink};
 use parking_lot::RwLock;
-use reqwest::StatusCode;
 use tower_layer::Layer;
 use tower_service::Service as TowerService;
 

@@ -73,7 +73,7 @@ pub async fn proxy_symstore_request(
         }
     };
 
-    let mut response = Response::builder()
+    let response = Response::builder()
         .header("content-length", object_handle.len())
         .header("content-type", "application/octet-stream");
 

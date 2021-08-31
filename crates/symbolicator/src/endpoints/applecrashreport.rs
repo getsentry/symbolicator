@@ -1,7 +1,7 @@
 use std::io::{Seek, SeekFrom, Write};
 
 use axum::extract;
-use axum::http::{Response, StatusCode};
+use axum::http::StatusCode;
 use axum::response::Json;
 
 use crate::endpoints::map_max_requests_error;
@@ -25,7 +25,7 @@ pub async fn handle_apple_crash_report_request(
     let mut sources = state.config().default_sources();
     let mut options = RequestOptions::default();
 
-    while let Some(mut field) = multipart.next_field().await? {
+    while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("apple_crash_report") => {
                 // TODO: stream this to file instead of reading to memory
@@ -92,7 +92,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = dbg!(response.text().await.unwrap());
+        let body = response.text().await.unwrap();
         let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
         insta::assert_yaml_snapshot!(response);
     }

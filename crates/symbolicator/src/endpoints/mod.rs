@@ -1,17 +1,9 @@
-use std::convert::Infallible;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::time::Instant;
-
 use axum::body::Body;
 use axum::handler::{get, post};
 use axum::http::{Response, StatusCode};
 use axum::response::IntoResponse;
 use axum::Router;
 use sentry::integrations::tower::NewSentryLayer;
-use tower_layer::Layer;
-use tower_service::Service as TowerService;
 
 mod applecrashreport;
 mod minidump;

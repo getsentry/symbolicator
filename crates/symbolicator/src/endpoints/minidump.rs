@@ -1,7 +1,7 @@
 use std::io::{Seek, SeekFrom, Write};
 
 use axum::extract;
-use axum::http::{Response, StatusCode};
+use axum::http::StatusCode;
 use axum::response::Json;
 
 use crate::endpoints::map_max_requests_error;
@@ -25,7 +25,7 @@ pub async fn handle_minidump_request(
     let mut sources = state.config().default_sources();
     let mut options = RequestOptions::default();
 
-    while let Some(mut field) = multipart.next_field().await? {
+    while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("upload_file_minidump") => {
                 let mut minidump_file = tempfile::Builder::new();
