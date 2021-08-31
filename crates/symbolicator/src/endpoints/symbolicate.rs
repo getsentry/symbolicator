@@ -2,7 +2,6 @@ use axum::extract;
 use axum::response::Json;
 use serde::Deserialize;
 
-use crate::endpoints::map_max_requests_error;
 use crate::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 use crate::services::Service;
 use crate::sources::SourceConfig;
@@ -64,22 +63,18 @@ pub async fn symbolicate_frames(
     };
 
     let symbolication = state.symbolication();
-    let request_id = symbolication
-        .symbolicate_stacktraces(SymbolicateStacktraces {
-            scope: params.scope,
-            signal: body.signal,
-            sources,
-            origin: StacktraceOrigin::Symbolicate,
-            stacktraces: body.stacktraces,
-            modules: body.modules.into_iter().map(From::from).collect(),
-            options: body.options,
-        })
-        .map_err(map_max_requests_error)?;
+    let request_id = symbolication.symbolicate_stacktraces(SymbolicateStacktraces {
+        scope: params.scope,
+        signal: body.signal,
+        sources,
+        origin: StacktraceOrigin::Symbolicate,
+        stacktraces: body.stacktraces,
+        modules: body.modules.into_iter().map(From::from).collect(),
+        options: body.options,
+    })?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
-        None => Err(ResponseError::Anyhow(anyhow::anyhow!(
-            "symbolication request did not start"
-        ))),
+        None => Err("symbolication request did not start".into()),
     }
 }

@@ -4,7 +4,6 @@ use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
 
-use crate::endpoints::map_max_requests_error;
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
@@ -53,20 +52,15 @@ pub async fn handle_minidump_request(
         }
     }
 
-    let minidump_file = minidump.ok_or_else(|| {
-        ResponseError::WithStatus(StatusCode::BAD_REQUEST, "missing minidump".to_owned())
-    })?;
+    let minidump_file = minidump.ok_or((StatusCode::BAD_REQUEST, "missing minidump"))?;
 
     let symbolication = state.symbolication();
-    let request_id = symbolication
-        .process_minidump(params.scope, minidump_file, sources, options)
-        .map_err(map_max_requests_error)?;
+    let request_id =
+        symbolication.process_minidump(params.scope, minidump_file, sources, options)?;
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
-        None => Err(ResponseError::Anyhow(anyhow::anyhow!(
-            "symbolication request did not start"
-        ))),
+        None => Err("symbolication request did not start".into()),
     }
 }
 

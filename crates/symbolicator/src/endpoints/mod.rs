@@ -1,25 +1,24 @@
-use axum::body::Body;
 use axum::handler::{get, post};
-use axum::http::{Response, StatusCode};
-use axum::response::IntoResponse;
 use axum::Router;
 use sentry::integrations::tower::NewSentryLayer;
 
+use crate::metrics::MetricsLayer;
+use crate::services::Service;
+
 mod applecrashreport;
+mod error;
 mod minidump;
 mod proxy;
 mod requests;
 mod symbolicate;
 
-pub use applecrashreport::handle_apple_crash_report_request as applecrashreport;
-pub use minidump::handle_minidump_request as minidump;
-pub use proxy::proxy_symstore_request as proxy;
-pub use requests::poll_request as requests;
-pub use symbolicate::symbolicate_frames as symbolicate;
+pub use error::ResponseError;
 
-use crate::metrics::MetricsLayer;
-use crate::services::symbolication::MaxRequestsError;
-use crate::services::Service;
+use applecrashreport::handle_apple_crash_report_request as applecrashreport;
+use minidump::handle_minidump_request as minidump;
+use proxy::proxy_symstore_request as proxy;
+use requests::poll_request as requests;
+use symbolicate::symbolicate_frames as symbolicate;
 
 pub async fn healthcheck() -> &'static str {
     metric!(counter("healthcheck") += 1);
@@ -41,43 +40,4 @@ pub fn create_app(service: Service) -> App {
         // the healthcheck is last, as it will bypass all the middlewares
         .route("/healthcheck", get(healthcheck))
         .boxed()
-}
-
-#[derive(Debug)]
-pub enum ResponseError {
-    Anyhow(anyhow::Error),
-    WithStatus(StatusCode, String),
-}
-
-impl IntoResponse for ResponseError {
-    type Body = Body;
-    type BodyError = <Self::Body as axum::body::HttpBody>::Error;
-
-    fn into_response(self) -> Response<Self::Body> {
-        match self {
-            ResponseError::Anyhow(e) => Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(e.to_string())),
-            ResponseError::WithStatus(status, e) => {
-                Response::builder().status(status).body(Body::from(e))
-            }
-        }
-        .unwrap()
-    }
-}
-
-impl<E> From<E> for ResponseError
-where
-    E: std::error::Error + Send + Sync + 'static,
-{
-    fn from(e: E) -> Self {
-        Self::Anyhow(anyhow::Error::from(e))
-    }
-}
-
-fn map_max_requests_error(_: MaxRequestsError) -> ResponseError {
-    ResponseError::WithStatus(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "Maximum number of concurrent requests reached".to_owned(),
-    )
 }
