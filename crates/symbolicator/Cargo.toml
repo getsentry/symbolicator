@@ -11,7 +11,7 @@ anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
 backtrace = "0.3.55"
 base64 = "0.13.0"
-cadence = "0.25.0"
+cadence = "0.26.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.14.0"
 env_logger = "0.7.1"
@@ -35,9 +35,9 @@ pretty_env_logger = "0.4.0"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
-rusoto_core = "0.46.0"
-rusoto_credential = "0.46.0"
-rusoto_s3 = "0.46.0"
+rusoto_core = "0.47.0"
+rusoto_credential = "0.47.0"
+rusoto_s3 = "0.47.0"
 sentry = { version = "0.23.0", features = ["debug-images", "log"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
