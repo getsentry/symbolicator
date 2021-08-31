@@ -146,25 +146,12 @@ jobs:
           repository: getsentry/sentry
           path: sentry
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.6
-
       - name: Setup steps
         id: setup
         run: |
-          pip install --upgrade pip wheel
-          echo "::set-output name=pip-cache-dir::$(pip cache dir)"
           # We cannot execute actions that are not placed under .github of the main repo
-          mkdir -p .github/actions/setup-sentry/
-          cp sentry/.github/actions/setup-sentry/action.yml .github/actions/setup-sentry/action.yml
-
-      - name: Sentry's pip cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.setup.outputs.pip-cache-dir }}
-          key: sentry-deps-${{ hashFiles('sentry/requirements**.txt') }}
-          restore-keys: sentry-deps-
+          mkdir -p .github/actions/
+          cp -r sentry/.github/actions/* .github/actions/
 
       - name: Setup Sentry
         uses: ./.github/actions/setup-sentry
@@ -172,6 +159,8 @@ jobs:
           workdir: sentry
           kafka: true
           snuba: true
+          cache-files-hash: ${{ hashFiles('sentry/requirements**.txt') }}
+          python-version: 3.6
 
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
