@@ -135,7 +135,7 @@ macro_rules! metric {
         use $crate::metrics::prelude::*;
         $crate::metrics::with_client(|client| {
             client.send_metric(
-                client.time_duration_with_tags($id, $value)
+                client.time_with_tags($id, $value)
                     $(.with_tag($k, $v))*
             );
         })
