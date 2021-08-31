@@ -2440,6 +2440,7 @@ source = "git+https://github.com/getsentry/sentry-rust#420444d59206e86f5d010f7d1
 dependencies = [
  "httpdate",
  "reqwest 0.11.4",
+ "sentry-anyhow",
  "sentry-backtrace",
  "sentry-contexts",
  "sentry-core",
@@ -2448,6 +2449,16 @@ dependencies = [
  "sentry-panic",
  "sentry-tower",
  "tokio",
+]
+
+[[package]]
+name = "sentry-anyhow"
+version = "0.23.0"
+source = "git+https://github.com/getsentry/sentry-rust#420444d59206e86f5d010f7d1f6b4e1088e44aae"
+dependencies = [
+ "anyhow",
+ "sentry-backtrace",
+ "sentry-core",
 ]
 
 [[package]]

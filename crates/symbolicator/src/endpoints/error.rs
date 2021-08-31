@@ -2,6 +2,7 @@ use axum::extract::multipart::MultipartError;
 use axum::http::{Error as HttpError, Response, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
+use sentry::integrations::anyhow::capture_anyhow;
 use serde::{Deserialize, Serialize};
 
 use crate::services::symbolication::MaxRequestsError;
@@ -89,6 +90,9 @@ impl IntoResponse for ResponseError {
     type BodyError = <Self::Body as axum::body::HttpBody>::Error;
 
     fn into_response(self) -> Response<Self::Body> {
+        if self.status.is_server_error() {
+            capture_anyhow(&self.err);
+        }
         let mut response = Json(ApiErrorResponse::from(self.err)).into_response();
         *response.status_mut() = self.status;
         response
