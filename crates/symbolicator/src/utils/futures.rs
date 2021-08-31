@@ -64,7 +64,7 @@ impl<'a> MeasureGuard<'a> {
     pub fn start(&mut self) {
         metrics::with_client(|client| {
             let mut metric = client
-                .time_duration_with_tags("futures.wait_time", self.creation_time.elapsed())
+                .time_with_tags("futures.wait_time", self.creation_time.elapsed())
                 .with_tag("task_name", self.task_name);
             if let Some((k, v)) = &self.tag {
                 metric = metric.with_tag(k, v.as_ref());
@@ -88,7 +88,7 @@ impl Drop for MeasureGuard<'_> {
         };
         metrics::with_client(|client| {
             let mut metric = client
-                .time_duration_with_tags("futures.done", self.creation_time.elapsed())
+                .time_with_tags("futures.done", self.creation_time.elapsed())
                 .with_tag("task_name", self.task_name)
                 .with_tag("status", status);
             if let Some((k, v)) = &self.tag {

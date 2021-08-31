@@ -1290,7 +1290,7 @@ fn record_symbolication_metrics(
 
     metric!(
         time_raw("symbolication.num_frames") =
-            stacktraces.iter().map(|s| s.frames.len() as u64).sum(),
+            stacktraces.iter().map(|s| s.frames.len() as u64).sum::<u64>(),
         "platform" => &platform, "origin" => &origin,
     );
     metric!(
