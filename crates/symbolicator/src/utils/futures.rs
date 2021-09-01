@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::time::{Duration, Instant};
 
+use tokio::task::JoinHandle;
+
 use crate::metrics::{self, prelude::*};
 
 /// Execute a callback on dropping of the container type.
@@ -26,6 +28,44 @@ impl Drop for CallOnDrop {
         if let Some(f) = self.f.take() {
             f();
         }
+    }
+}
+
+/// Cancels the [`JoinHandle`] on drop.
+///
+/// Spawning a task on a runtime means it will run independently from the code that calls `spawn`,
+/// even if the code stops polling the [`JoinHandle`]. We have various timeouts configured throughout
+/// the codebase, and some of those are attached to [`JoinHandle`]s.
+/// Which means we stop polling the handle, but the task that was spawned will continue on.
+///
+/// This type makes sure that the spawned task is being canceled/aborted in case we lose interest
+/// in it.
+pub struct CancelOnDrop<T> {
+    handle: JoinHandle<T>,
+}
+
+impl<T> CancelOnDrop<T> {
+    pub fn new(handle: JoinHandle<T>) -> Self {
+        Self { handle }
+    }
+}
+
+impl<T> Drop for CancelOnDrop<T> {
+    fn drop(&mut self) {
+        self.handle.abort()
+    }
+}
+
+impl<T> Future for CancelOnDrop<T> {
+    type Output = <JoinHandle<T> as Future>::Output;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        // https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field
+        let handle = unsafe { self.map_unchecked_mut(|s| &mut s.handle) };
+        handle.poll(cx)
     }
 }
 

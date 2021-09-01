@@ -4,10 +4,9 @@ use std::fmt;
 use std::io;
 use std::sync::Arc;
 
-use ::sentry::Hub;
 use backtrace::Backtrace;
 use futures::future;
-use sentry::SentryFutureExt;
+use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 
 use crate::cache::{Cache, CacheStatus};
@@ -246,13 +245,10 @@ impl ObjectsActor {
         let mut queries = Vec::with_capacity(sources.len());
 
         for source in sources.iter() {
-            let hub = Arc::new(Hub::new_from_top(Hub::current()));
-
             let query = async move {
                 let type_name = source.type_name();
                 self.download_svc
-                    .clone()
-                    .list_files(source.clone(), filetypes.to_vec(), identifier.clone(), hub)
+                    .list_files(source.clone(), filetypes, identifier.clone())
                     .await
                     .unwrap_or_else(|err| {
                         // This basically only happens for the Sentry source type, when doing
@@ -266,7 +262,8 @@ impl ObjectsActor {
                         );
                         Vec::new()
                     })
-            };
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()));
 
             queries.push(query);
         }

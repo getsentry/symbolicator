@@ -22,7 +22,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure};
+use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
 /// The supported cficache versions.
@@ -175,8 +175,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 Ok(status)
             };
 
-            threadpool
-                .spawn(future.bind_hub(Hub::current()))
+            CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
                 .await
                 .unwrap_or(Err(CfiCacheError::Canceled))
         };
