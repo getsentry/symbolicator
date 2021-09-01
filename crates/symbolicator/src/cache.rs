@@ -400,11 +400,14 @@ pub struct Caches {
 
 impl Caches {
     pub fn from_config(config: &Config) -> io::Result<Self> {
+        // The minimum value here is clamped to 1, as it would otherwise completely disable lazy
+        // re-generation. We might as well decide to hard `panic!` on startup if users have
+        // misconfigured this instead of silently correcting it to a value that actually makes sense.
         let max_lazy_redownloads = Arc::new(AtomicIsize::new(
-            config.caches.downloaded.max_lazy_redownloads,
+            config.caches.downloaded.max_lazy_redownloads.max(1),
         ));
         let max_lazy_recomputations = Arc::new(AtomicIsize::new(
-            config.caches.derived.max_lazy_recomputations,
+            config.caches.derived.max_lazy_recomputations.max(1),
         ));
 
         let tmp_dir = config.cache_dir("tmp");
