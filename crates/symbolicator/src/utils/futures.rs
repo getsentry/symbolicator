@@ -40,6 +40,7 @@ impl Drop for CallOnDrop {
 ///
 /// This type makes sure that the spawned task is being canceled/aborted in case we lose interest
 /// in it.
+#[must_use = "this will cancel the underlying task when dropped"]
 pub struct CancelOnDrop<T> {
     handle: JoinHandle<T>,
 }

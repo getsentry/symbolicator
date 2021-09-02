@@ -149,12 +149,12 @@ impl DownloadService {
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
         &self,
-        source: RemoteDif,
+        source: &RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let result = future_utils::retry(|| async {
             let destination = destination.clone();
-            match &source {
+            match source {
                 RemoteDif::Sentry(inner) => {
                     self.sentry
                         .download_source(inner.clone(), destination)
@@ -202,7 +202,7 @@ impl DownloadService {
         source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let job = self.dispatch_download(source, destination);
+        let job = self.dispatch_download(&source, destination);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
 
@@ -231,16 +231,13 @@ impl DownloadService {
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
-                let config = self.config.clone();
-
-                let job = self.sentry.list_files(cfg, object_id, filetypes, config);
+                let job = self
+                    .sentry
+                    .list_files(cfg, object_id, filetypes, &self.config);
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
                 let job = measure("service.download.list_files", m::timed_result, None, job);
 
-                match job.await {
-                    Ok(result) => result,
-                    Err(_) => Err(DownloadError::Canceled),
-                }
+                job.await.map_err(|_| DownloadError::Canceled)?
             }
             SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
             SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
@@ -294,10 +291,9 @@ async fn download_stream(
     };
 
     match timeout {
-        Some(timeout) => match tokio::time::timeout(timeout, future).await {
-            Ok(res) => res,
-            Err(_) => Err(DownloadError::Canceled),
-        },
+        Some(timeout) => tokio::time::timeout(timeout, future)
+            .await
+            .map_err(|_| DownloadError::Canceled)?,
         None => future.await,
     }
 }
