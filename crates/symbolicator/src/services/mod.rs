@@ -40,6 +40,7 @@ pub mod bitcode;
 pub mod cacher;
 pub mod cficaches;
 pub mod download;
+mod minidump;
 pub mod objects;
 pub mod symbolication;
 pub mod symcaches;

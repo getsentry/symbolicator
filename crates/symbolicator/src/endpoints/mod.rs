@@ -17,7 +17,7 @@ mod symbolicate;
 pub use error::ResponseError;
 
 use applecrashreport::handle_apple_crash_report_request as applecrashreport;
-use minidump::handle_minidump_request as minidump;
+use minidump::handle_minidump_request as handle_minidump;
 use proxy::proxy_symstore_request as proxy;
 use requests::poll_request as requests;
 use symbolicate::symbolicate_frames as symbolicate;
@@ -34,7 +34,7 @@ pub fn create_app(service: Service) -> App {
         .route("/proxy/:path", get(proxy).head(proxy))
         .route("/requests/:request_id", get(requests))
         .route("/symbolicate", post(symbolicate))
-        .route("/minidump", post(minidump))
+        .route("/minidump", post(handle_minidump))
         .route("/applecrashreport", post(applecrashreport))
         .layer(axum::AddExtensionLayer::new(service))
         .layer(SentryRequestLayer)
