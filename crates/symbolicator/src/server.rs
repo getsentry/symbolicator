@@ -23,14 +23,17 @@ pub fn run(config: Config) -> Result<()> {
     // service creation fails. The HTTP server is bound before the actix system runs.
     metric!(counter("server.starting") += 1);
 
+    let megs = 1024 * 1024;
     let io_pool = tokio::runtime::Builder::new_multi_thread()
         .thread_name("symbolicator-io")
         .enable_all()
+        .thread_stack_size(8 * megs)
         .build()
         .unwrap();
     let cpu_pool = tokio::runtime::Builder::new_multi_thread()
         .thread_name("symbolicator-cpu")
         .enable_all()
+        .thread_stack_size(8 * megs)
         .build()
         .unwrap();
 
