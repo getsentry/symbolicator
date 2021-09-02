@@ -23,7 +23,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure};
+use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
@@ -213,8 +213,7 @@ async fn fetch_difs_and_compute_symcache(
         Ok(status)
     };
 
-    threadpool
-        .spawn(compute_future.bind_hub(Hub::current()))
+    CancelOnDrop::new(threadpool.spawn(compute_future.bind_hub(Hub::current())))
         .await
         .unwrap_or(Err(SymCacheError::Canceled))
 }
@@ -446,7 +445,7 @@ mod tests {
         let cpu_pool = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(config, tokio::runtime::Handle::current());
+        let downloader = DownloadService::new(config);
         let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
         let bitcode = BitcodeService::new(caches.auxdifs, downloader);
 

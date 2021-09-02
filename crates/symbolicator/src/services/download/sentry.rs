@@ -148,7 +148,7 @@ impl SentryDownloader {
     async fn cached_sentry_search(
         &self,
         query: SearchQuery,
-        config: Arc<Config>,
+        config: &Config,
     ) -> Result<Vec<SearchResult>, DownloadError> {
         // The Sentry cache index should expire as soon as we attempt to retry negative caches.
         let cache_duration = if config.cache_dir.is_some() {
@@ -187,7 +187,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: ObjectId,
         file_types: &[FileType],
-        config: Arc<Config>,
+        config: &Config,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
         // paginate at 20 results so we get away with this for now.

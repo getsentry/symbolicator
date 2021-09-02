@@ -328,7 +328,7 @@ mod tests {
             ..Config::default()
         });
 
-        let download_svc = DownloadService::new(config, tokio::runtime::Handle::current());
+        let download_svc = DownloadService::new(config);
         ObjectsActor::new(meta_cache, data_cache, download_svc)
     }
 

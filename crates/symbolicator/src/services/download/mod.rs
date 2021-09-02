@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
 use reqwest::StatusCode;
 use thiserror::Error;
@@ -111,7 +110,6 @@ pub enum DownloadStatus {
 #[derive(Debug)]
 pub struct DownloadService {
     config: Arc<Config>,
-    worker: tokio::runtime::Handle,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
@@ -121,7 +119,7 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: Arc<Config>, worker: tokio::runtime::Handle) -> Arc<Self> {
+    pub fn new(config: Arc<Config>) -> Arc<Self> {
         let trusted_client = crate::utils::http::create_client(&config, true);
         let restricted_client = crate::utils::http::create_client(&config, false);
 
@@ -132,7 +130,6 @@ impl DownloadService {
         } = *config;
         Arc::new(Self {
             config,
-            worker,
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 connect_timeout,
@@ -151,13 +148,13 @@ impl DownloadService {
 
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
-        self: Arc<Self>,
-        source: RemoteDif,
+        &self,
+        source: &RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let result = future_utils::retry(|| async {
             let destination = destination.clone();
-            match &source {
+            match source {
                 RemoteDif::Sentry(inner) => {
                     self.sentry
                         .download_source(inner.clone(), destination)
@@ -200,29 +197,18 @@ impl DownloadService {
     /// The downloaded file is saved into `destination`. The file will be created if it does not
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
-    //
-    // NB: This takes `Arc<Self>` since it needs to spawn into the worker pool internally. Spawning
-    // requires futures to be `'static`, which means there cannot be any references to an externally
-    // owned downloader.
     pub async fn download(
-        self: Arc<Self>,
+        &self,
         source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let hub = Hub::current();
-        let slf = self.clone();
-
-        // NB: Enter the tokio 1 runtime, which is required to create the timeout.
-        // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
-        let _guard = self.worker.enter();
-        let job = slf.dispatch_download(source, destination).bind_hub(hub);
+        let job = self.dispatch_download(&source, destination);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
 
-        // Map all SpawnError variants into DownloadError::Canceled.
-        match self.worker.spawn(job).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
+        match job.await {
+            Ok(result) => result,
+            Err(_) => Err(DownloadError::Canceled),
         }
     }
 
@@ -238,42 +224,25 @@ impl DownloadService {
     /// will respect this and they may return all DIFs matching the `object_id`.  After
     /// downloading you may still need to filter the files.
     pub async fn list_files(
-        self: Arc<Self>,
+        &self,
         source: SourceConfig,
-        filetypes: Vec<FileType>,
+        filetypes: &[FileType],
         object_id: ObjectId,
-        hub: Arc<Hub>,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
-                let config = self.config.clone();
-                let slf = self.clone();
-
-                // This `async move` ensures that the `list_files` future completes before `slf`
-                // goes out of scope, which ensures 'static lifetime for `spawn` below.
-                let job = async move {
-                    slf.sentry
-                        .list_files(cfg, object_id, &filetypes, config)
-                        .bind_hub(hub)
-                        .await
-                };
-
-                // NB: Enter the tokio 1 runtime, which is required to create the timeout.
-                // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
-                let _guard = self.worker.enter();
+                let job = self
+                    .sentry
+                    .list_files(cfg, object_id, filetypes, &self.config);
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
                 let job = measure("service.download.list_files", m::timed_result, None, job);
 
-                // Map all SpawnError variants into DownloadError::Canceled.
-                match self.worker.spawn(job).await {
-                    Ok(Ok(result)) => result,
-                    Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
-                }
+                job.await.map_err(|_| DownloadError::Canceled)?
             }
-            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, &filetypes, object_id)),
-            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, &filetypes, object_id)),
-            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, &filetypes, object_id)),
-            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, &filetypes, object_id)),
+            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
+            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, filetypes, object_id)),
         }
     }
 }
@@ -322,10 +291,9 @@ async fn download_stream(
     };
 
     match timeout {
-        Some(timeout) => match tokio::time::timeout(timeout, future).await {
-            Ok(res) => res,
-            Err(_) => Err(DownloadError::Canceled),
-        },
+        Some(timeout) => tokio::time::timeout(timeout, future)
+            .await
+            .map_err(|_| DownloadError::Canceled)?,
         None => future.await,
     }
 }
@@ -518,7 +486,7 @@ mod tests {
             ..Config::default()
         });
 
-        let service = DownloadService::new(config, tokio::runtime::Handle::current());
+        let service = DownloadService::new(config);
         let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
@@ -542,14 +510,9 @@ mod tests {
         };
 
         let config = Arc::new(Config::default());
-        let svc = DownloadService::new(config, tokio::runtime::Handle::current());
+        let svc = DownloadService::new(config);
         let file_list = svc
-            .list_files(
-                source.clone(),
-                FileType::all().to_vec(),
-                objid,
-                Hub::current(),
-            )
+            .list_files(source.clone(), FileType::all(), objid)
             .await
             .unwrap();
 

@@ -75,7 +75,7 @@ impl Service {
         let spawnpool = procspawn::Pool::new(config.processing_pool_size)
             .context("failed to create process pool")?;
 
-        let downloader = DownloadService::new(config.clone(), io_pool.clone());
+        let downloader = DownloadService::new(config.clone());
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)
