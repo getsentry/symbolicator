@@ -1,7 +1,7 @@
 use std::task::{Context, Poll};
 
 use axum::body::Body;
-use axum::http::Request;
+use axum::http::{HeaderValue, Request};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -46,34 +46,23 @@ where
 
     fn call(&mut self, request: Request<Body>) -> Self::Future {
         sentry::configure_scope(|scope| {
-            let (transaction, req) = extract_request(&request);
+            let headers = request.headers();
+            fn get_str(val: &HeaderValue) -> Option<&str> {
+                val.to_str().ok()
+            }
+            if let Some(worker_id) = headers.get("X-Sentry-Worker-Id").and_then(get_str) {
+                scope.set_tag("sentry.worker_id", worker_id);
+            }
+            if let Some(project_id) = headers.get("X-Sentry-Project-Id").and_then(get_str) {
+                scope.set_tag("sentry.project_id", project_id);
+            }
+            if let Some(event_id) = headers.get("X-Sentry-Event-Id").and_then(get_str) {
+                scope.set_tag("sentry.event_id", event_id);
+            }
 
-            scope.add_event_processor(Box::new(move |mut event| {
-                if event.transaction.is_none() {
-                    event.transaction = transaction.clone();
-                }
-                if event.request.is_none() {
-                    event.request = Some(req.clone());
-                }
-                Some(event)
-            }))
+            // TODO: there is also `Sentry-Trace`, which we would need for distributed tracing once
+            // we make that happen.
         });
         self.service.call(request)
     }
-}
-
-fn extract_request(req: &Request<Body>) -> (Option<String>, sentry::protocol::Request) {
-    let transaction = Some(req.uri().path().to_string());
-    let sentry_req = sentry::protocol::Request {
-        url: req.uri().to_string().parse().ok(),
-        method: Some(req.method().to_string()),
-        headers: req
-            .headers()
-            .iter()
-            .map(|(k, v)| (k.as_str().into(), v.to_str().unwrap_or("").into()))
-            .collect(),
-        ..Default::default()
-    };
-
-    (transaction, sentry_req)
 }
