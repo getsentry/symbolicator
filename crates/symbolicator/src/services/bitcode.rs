@@ -303,13 +303,13 @@ impl BitcodeService {
         hub.configure_scope(|scope| scope.set_extra("auxdif.source", source.type_name().into()));
 
         let file_type = match dif_kind {
-            AuxDifKind::BcSymbolMap => vec![FileType::BcSymbolMap],
-            AuxDifKind::UuidMap => vec![FileType::UuidMap],
+            AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
+            AuxDifKind::UuidMap => &[FileType::UuidMap],
         };
         let file_sources = self
             .download_svc
-            .clone()
-            .list_files(source, file_type, uuid.into(), hub.clone())
+            .list_files(source, file_type, uuid.into())
+            .bind_hub(hub.clone())
             .await?;
 
         let mut fetch_jobs = Vec::with_capacity(file_sources.len());

@@ -44,7 +44,7 @@ use crate::types::{
     SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{m, measure, CallOnDrop};
+use crate::utils::futures::{m, measure, CallOnDrop, CancelOnDrop};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -1551,11 +1551,10 @@ impl SymbolicationActor {
             }
         };
 
-        let mut response = self
-            .cpu_pool
-            .spawn(future.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Symbolication future cancelled")?;
+        let mut response =
+            CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
+                .await
+                .context("Symbolication future cancelled")?;
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
@@ -1590,8 +1589,7 @@ impl SymbolicationActor {
             response
         };
 
-        self.cpu_pool
-            .spawn(future.bind_hub(sentry::Hub::current()))
+        CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
             .await
             .context("Source lookup future cancelled")
     }
@@ -2252,10 +2250,12 @@ impl SymbolicationActor {
         };
 
         let future = async move {
-            self.cpu_pool
-                .spawn(parse_future.bind_hub(sentry::Hub::current()))
-                .await
-                .context("Parse applecrashreport future cancelled")
+            CancelOnDrop::new(
+                self.cpu_pool
+                    .spawn(parse_future.bind_hub(sentry::Hub::current())),
+            )
+            .await
+            .context("Parse applecrashreport future cancelled")
         };
 
         let future = tokio::time::timeout(Duration::from_secs(1200), future);
