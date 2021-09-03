@@ -4,6 +4,7 @@ use sentry::integrations::tower::NewSentryLayer;
 
 use crate::metrics::MetricsLayer;
 use crate::services::Service;
+use crate::utils::sentry::SentryRequestLayer;
 
 mod applecrashreport;
 mod error;
@@ -35,6 +36,7 @@ pub fn create_app(service: Service) -> App {
         .route("/minidump", post(minidump))
         .route("/applecrashreport", post(applecrashreport))
         .layer(axum::AddExtensionLayer::new(service))
+        .layer(SentryRequestLayer)
         .layer(NewSentryLayer::new_from_top())
         .layer(MetricsLayer)
         // the healthcheck is last, as it will bypass all the middlewares

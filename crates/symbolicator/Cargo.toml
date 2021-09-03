@@ -45,6 +45,7 @@ tempfile = "3.2.0"
 thiserror = "1.0.26"
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-util = "0.6"
+tower = { version = "0.4", features = ["filter"] }
 tower-layer = "0.3"
 tower-service = "0.3"
 url = { version = "2.2.0", features = ["serde"] }
