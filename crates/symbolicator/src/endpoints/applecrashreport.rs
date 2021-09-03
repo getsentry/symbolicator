@@ -32,7 +32,7 @@ impl<'a> Stream for MultipartField<'a> {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        let this = &mut self;
+        let this = &mut *self;
         let inner = std::pin::Pin::new(&mut this.inner);
         inner
             .poll_next(cx)
