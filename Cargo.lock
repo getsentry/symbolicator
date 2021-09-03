@@ -2890,7 +2890,6 @@ dependencies = [
  "axum",
  "backtrace",
  "base64 0.13.0",
- "bytes",
  "cadence",
  "chrono",
  "console",
