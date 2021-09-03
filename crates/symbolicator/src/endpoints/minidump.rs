@@ -1,14 +1,14 @@
-use std::io::{Seek, SeekFrom, Write};
-
 use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
+use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
+use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_minidump_request(
@@ -34,20 +34,19 @@ pub async fn handle_minidump_request(
                 } else {
                     minidump_file.tempfile()
                 }?;
-                let (mut file, temp_path) = minidump_file.into_parts();
-
-                // TODO: stream this to file instead of reading to memory
-                //let mut file = tokio::fs::File::from_std(file);
-                //tokio::io::copy(&mut field.into_async_read(), &mut file).await?;
-                let bytes = field.bytes().await?;
-                file.write_all(bytes.as_ref())?;
-                file.seek(SeekFrom::Start(0))?;
-
+                let (file, temp_path) = minidump_file.into_parts();
+                let mut file = File::from_std(file);
+                stream_multipart_file(field, &mut file).await?;
                 minidump = Some(temp_path)
             }
-            // TODO: limit these multipart fields to 1M
-            Some("sources") => sources = serde_json::from_slice(&field.bytes().await?)?,
-            Some("options") => options = serde_json::from_slice(&field.bytes().await?)?,
+            Some("sources") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                sources = serde_json::from_slice(&data)?;
+            }
+            Some("options") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                options = serde_json::from_slice(&data)?;
+            }
             _ => (), // Always ignore unknown fields.
         }
     }

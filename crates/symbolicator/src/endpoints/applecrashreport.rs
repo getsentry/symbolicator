@@ -1,14 +1,14 @@
-use std::io::{Seek, SeekFrom, Write};
-
 use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
+use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
+use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_apple_crash_report_request(
@@ -27,16 +27,18 @@ pub async fn handle_apple_crash_report_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("apple_crash_report") => {
-                // TODO: stream this to file instead of reading to memory
-                let bytes = field.bytes().await?;
-                let mut report_file = tempfile::tempfile()?;
-                report_file.write_all(bytes.as_ref())?;
-                report_file.seek(SeekFrom::Start(0))?;
-                report = Some(report_file)
+                let mut report_file = File::from_std(tempfile::tempfile()?);
+                stream_multipart_file(field, &mut report_file).await?;
+                report = Some(report_file.into_std().await)
             }
-            // TODO: limit these multipart fields to 1M
-            Some("sources") => sources = serde_json::from_slice(&field.bytes().await?)?,
-            Some("options") => options = serde_json::from_slice(&field.bytes().await?)?,
+            Some("sources") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                sources = serde_json::from_slice(&data)?;
+            }
+            Some("options") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                options = serde_json::from_slice(&data)?
+            }
             _ => (), // Always ignore unknown fields.
         }
     }
