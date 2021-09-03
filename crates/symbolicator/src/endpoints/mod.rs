@@ -8,6 +8,7 @@ use crate::services::Service;
 mod applecrashreport;
 mod error;
 mod minidump;
+mod multipart;
 mod proxy;
 mod requests;
 mod symbolicate;

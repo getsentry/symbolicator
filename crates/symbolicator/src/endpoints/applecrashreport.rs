@@ -1,44 +1,15 @@
-use std::io::SeekFrom;
-
 use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
-use futures::prelude::*;
 use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
-use tokio_util::io::StreamReader;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
+use super::multipart::stream_multipart_file;
 use super::ResponseError;
-
-struct MultipartField<'a> {
-    inner: axum::extract::multipart::Field<'a>,
-}
-
-impl<'a> MultipartField<'a> {
-    fn new(inner: axum::extract::multipart::Field<'a>) -> Self {
-        Self { inner }
-    }
-}
-
-impl<'a> Stream for MultipartField<'a> {
-    type Item = Result<bytes::Bytes, std::io::Error>;
-
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        let this = &mut *self;
-        let inner = std::pin::Pin::new(&mut this.inner);
-        inner
-            .poll_next(cx)
-            .map_err(|_err| std::io::Error::new(std::io::ErrorKind::Other, "oops"))
-    }
-}
 
 pub async fn handle_apple_crash_report_request(
     extract::Extension(state): extract::Extension<Service>,
@@ -57,11 +28,7 @@ pub async fn handle_apple_crash_report_request(
         match field.name() {
             Some("apple_crash_report") => {
                 let mut report_file = File::from_std(tempfile::tempfile()?);
-                let mut field_reader = StreamReader::new(MultipartField::new(field));
-
-                tokio::io::copy(&mut field_reader, &mut report_file).await?;
-
-                report_file.seek(SeekFrom::Start(0)).await?;
+                stream_multipart_file(field, &mut report_file).await?;
                 report = Some(report_file.into_std().await)
             }
             // TODO: limit these multipart fields to 1M
