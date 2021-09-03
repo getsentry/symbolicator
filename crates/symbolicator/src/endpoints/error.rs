@@ -58,6 +58,12 @@ impl From<(StatusCode, &'static str)> for ResponseError {
     }
 }
 
+impl From<(StatusCode, anyhow::Error)> for ResponseError {
+    fn from((status, err): (StatusCode, anyhow::Error)) -> Self {
+        Self { status, err }
+    }
+}
+
 impl From<anyhow::Error> for ResponseError {
     fn from(err: anyhow::Error) -> Self {
         Self {

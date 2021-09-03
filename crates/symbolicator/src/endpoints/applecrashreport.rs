@@ -8,7 +8,7 @@ use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
-use super::multipart::stream_multipart_file;
+use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_apple_crash_report_request(
@@ -31,9 +31,14 @@ pub async fn handle_apple_crash_report_request(
                 stream_multipart_file(field, &mut report_file).await?;
                 report = Some(report_file.into_std().await)
             }
-            // TODO: limit these multipart fields to 1M
-            Some("sources") => sources = serde_json::from_slice(&field.bytes().await?)?,
-            Some("options") => options = serde_json::from_slice(&field.bytes().await?)?,
+            Some("sources") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                sources = serde_json::from_slice(&data)?;
+            }
+            Some("options") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                options = serde_json::from_slice(&data)?
+            }
             _ => (), // Always ignore unknown fields.
         }
     }
