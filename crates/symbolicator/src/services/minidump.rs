@@ -93,11 +93,6 @@
 //!          +-----------+
 //! ```
 
-// TODO: Remove this once writing the minidump extension is complete. It is fine if this file is
-// left unused for now; It is expected that this will be used in a PR that'll follow these changes
-// shortly.
-#![allow(dead_code)]
-
 use std::convert::TryFrom;
 use std::fmt;
 
