@@ -1977,6 +1977,76 @@ impl SymbolicationActor {
             .context("Minidump stackwalk future cancelled")?)
     }
 
+    /// Iteratively stackwalks/processes the given `minidump_file` using breakpad.
+    async fn stackwalk_minidump_iteratively_with_breakpad(
+        &self,
+        scope: Scope,
+        minidump_file: TempPath,
+        sources: Arc<[SourceConfig]>,
+        cfi_caches: &mut CfiCacheModules,
+    ) -> anyhow::Result<StackWalkMinidumpResult> {
+        let mut iterations = 0;
+
+        let result = loop {
+            iterations += 1;
+
+            let result = match self
+                .stackwalk_minidump_with_cfi(&minidump_file, cfi_caches)
+                .await
+            {
+                Ok(res) => res,
+                Err(err) => {
+                    if let Some(dir) = self.diagnostics_cache.cache_dir() {
+                        if let Some(file_name) = minidump_file.file_name() {
+                            let path = dir.join(file_name);
+                            match minidump_file.persist(&path) {
+                                Ok(_) => {
+                                    sentry::configure_scope(|scope| {
+                                        scope.set_extra(
+                                            "crashed_minidump",
+                                            sentry::protocol::Value::String(
+                                                path.to_string_lossy().to_string(),
+                                            ),
+                                        );
+                                    });
+                                }
+                                Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                            };
+                        }
+                    } else {
+                        log::debug!("No diagnostics retention configured, not saving minidump");
+                    }
+
+                    // we explicitly match and return here, otherwise the borrow checker will
+                    // complain that `minidump_file` is being moved into `save_minidump`
+                    return Err(err);
+                }
+            };
+
+            let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
+                .referenced_modules
+                .iter()
+                .filter(|(id, _)| !cfi_caches.has_module(id))
+                .map(|t| (t.0, &t.1))
+                .collect();
+
+            // We put a hard limit of 5 iterations here.
+            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+            if missing_modules.is_empty() || iterations >= 5 {
+                break result;
+            }
+
+            let loaded_caches = self
+                .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
+                .await;
+            cfi_caches.extend(loaded_caches);
+        };
+
+        metric!(time_raw("minidump.stackwalk.iterations") = iterations);
+
+        Ok(result)
+    }
+
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
@@ -1991,62 +2061,14 @@ impl SymbolicationActor {
 
             let mut cfi_caches = CfiCacheModules::new();
 
-            let mut iterations = 0;
-
-            let result = loop {
-                iterations += 1;
-
-                let result = match self
-                    .stackwalk_minidump_with_cfi(&minidump_file, &cfi_caches)
-                    .await
-                {
-                    Ok(res) => res,
-                    Err(err) => {
-                        if let Some(dir) = self.diagnostics_cache.cache_dir() {
-                            if let Some(file_name) = minidump_file.file_name() {
-                                let path = dir.join(file_name);
-                                match minidump_file.persist(&path) {
-                                    Ok(_) => {
-                                        sentry::configure_scope(|scope| {
-                                            scope.set_extra(
-                                                "crashed_minidump",
-                                                sentry::protocol::Value::String(
-                                                    path.to_string_lossy().to_string(),
-                                                ),
-                                            );
-                                        });
-                                    }
-                                    Err(e) => log::error!("Failed to save minidump {:?}", &e),
-                                };
-                            }
-                        } else {
-                            log::debug!("No diagnostics retention configured, not saving minidump");
-                        }
-
-                        // we explicitly match and return here, otherwise the borrow checker will
-                        // complain that `minidump_file` is being moved into `save_minidump`
-                        return Err(err);
-                    }
-                };
-
-                let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
-                    .referenced_modules
-                    .iter()
-                    .filter(|(id, _)| !cfi_caches.has_module(id))
-                    .map(|t| (t.0, &t.1))
-                    .collect();
-
-                // We put a hard limit of 5 iterations here.
-                // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-                if missing_modules.is_empty() || iterations >= 5 {
-                    break result;
-                }
-
-                let loaded_caches = self
-                    .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
-                    .await;
-                cfi_caches.extend(loaded_caches);
-            };
+            let result = self
+                .stackwalk_minidump_iteratively_with_breakpad(
+                    scope.clone(),
+                    minidump_file,
+                    sources.clone(),
+                    &mut cfi_caches,
+                )
+                .await?;
 
             let StackWalkMinidumpResult {
                 all_modules,
@@ -2054,8 +2076,6 @@ impl SymbolicationActor {
                 minidump_state,
                 ..
             } = result;
-
-            metric!(time_raw("minidump.stackwalk.iterations") = iterations);
 
             // Start building the module list for the symbolication response.
             let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
