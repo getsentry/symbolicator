@@ -1977,6 +1977,28 @@ impl SymbolicationActor {
             .context("Minidump stackwalk future cancelled")?)
     }
 
+    /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
+    fn maybe_persist_minidump(&self, minidump_file: TempPath) {
+        if let Some(dir) = self.diagnostics_cache.cache_dir() {
+            if let Some(file_name) = minidump_file.file_name() {
+                let path = dir.join(file_name);
+                match minidump_file.persist(&path) {
+                    Ok(_) => {
+                        sentry::configure_scope(|scope| {
+                            scope.set_extra(
+                                "crashed_minidump",
+                                sentry::protocol::Value::String(path.to_string_lossy().to_string()),
+                            );
+                        });
+                    }
+                    Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                };
+            }
+        } else {
+            log::debug!("No diagnostics retention configured, not saving minidump");
+        }
+    }
+
     /// Iteratively stackwalks/processes the given `minidump_file` using breakpad.
     async fn stackwalk_minidump_iteratively_with_breakpad(
         &self,
@@ -1996,26 +2018,7 @@ impl SymbolicationActor {
             {
                 Ok(res) => res,
                 Err(err) => {
-                    if let Some(dir) = self.diagnostics_cache.cache_dir() {
-                        if let Some(file_name) = minidump_file.file_name() {
-                            let path = dir.join(file_name);
-                            match minidump_file.persist(&path) {
-                                Ok(_) => {
-                                    sentry::configure_scope(|scope| {
-                                        scope.set_extra(
-                                            "crashed_minidump",
-                                            sentry::protocol::Value::String(
-                                                path.to_string_lossy().to_string(),
-                                            ),
-                                        );
-                                    });
-                                }
-                                Err(e) => log::error!("Failed to save minidump {:?}", &e),
-                            };
-                        }
-                    } else {
-                        log::debug!("No diagnostics retention configured, not saving minidump");
-                    }
+                    self.maybe_persist_minidump(minidump_file);
 
                     // we explicitly match and return here, otherwise the borrow checker will
                     // complain that `minidump_file` is being moved into `save_minidump`
