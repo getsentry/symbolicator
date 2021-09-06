@@ -60,8 +60,11 @@ where
                 scope.set_tag("sentry.event_id", event_id);
             }
 
-            // TODO: there is also `Sentry-Trace`, which we would need for distributed tracing once
-            // we make that happen.
+            // TODO: We can use this in the future for distributed tracing once we make
+            // properly support that in the SDK.
+            if let Some(trace_id) = headers.get("Sentry-Trace").and_then(get_str) {
+                scope.set_tag("sentry.trace", trace_id);
+            }
         });
         self.service.call(request)
     }
