@@ -1,15 +1,42 @@
+use symbolic::minidump::processor::FrameTrust;
+
+use crate::types;
+use crate::utils::hex;
+
 const MINIDUMP_EXTENSION_TYPE: u32 = u32::from_be_bytes([b'S', b'y', 0, 1]);
 const MINIDUMP_FORMAT_VERSION: u32 = 1;
 
-pub fn parse_stacktraces_from_minidump<'buf>(
-    buf: &'buf [u8],
-) -> Result<format::Format<'buf>, WrappedError> {
+pub fn parse_stacktraces_from_minidump(
+    buf: &[u8],
+) -> Result<Vec<types::RawStacktrace>, WrappedError> {
     let dump = minidump::Minidump::read(buf)?;
     let extension_buf = dump.get_raw_stream(MINIDUMP_EXTENSION_TYPE)?;
 
-    // TODO: rust complains about lifetime issues here?
-    //parse_stacktraces_from_raw_extension(extension_buf)
-    todo!()
+    let parsed = parse_stacktraces_from_raw_extension(extension_buf)?;
+
+    parsed
+        .threads()
+        .map(|thread| {
+            let frames = thread
+                .frames()?
+                .map(|frame| {
+                    let symbol = frame.symbol()?;
+                    Ok(types::RawFrame {
+                        instruction_addr: hex::HexValue(frame.instruction_addr()),
+                        symbol: Some(symbol.to_owned()),
+                        trust: FrameTrust::Prewalked,
+                        ..Default::default()
+                    })
+                })
+                .collect::<Result<Vec<_>, WrappedError>>()?;
+
+            Ok(types::RawStacktrace {
+                thread_id: Some(thread.thread_id()),
+                frames,
+                ..Default::default()
+            })
+        })
+        .collect()
 }
 
 fn parse_stacktraces_from_raw_extension(buf: &[u8]) -> Result<format::Format, WrappedError> {
@@ -28,6 +55,7 @@ impl From<minidump::Error> for WrappedError {
         Self::MinidumpError(err)
     }
 }
+
 impl From<format::Error> for WrappedError {
     fn from(err: format::Error) -> Self {
         Self::FormatError(err)
