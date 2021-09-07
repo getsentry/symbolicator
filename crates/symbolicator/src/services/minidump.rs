@@ -254,10 +254,10 @@ mod tests {
             .D32(2) // 2 threads
             .D32(5) // with 5 frames in total
             .D32(11) // and some symbol bytes
-            .D64(1234) // first thread id
+            .D32(1234) // first thread id
             .D32(0)
             .D32(2) // first two frames belong to thread 0
-            .D64(2345) // second thread id
+            .D32(2345) // second thread id
             .D32(2)
             .D32(3) // last three frames belong to thread 1
             .D64(0xfffff7001) // first instr_addr
