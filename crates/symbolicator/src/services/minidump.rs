@@ -311,4 +311,37 @@ mod tests {
 
         assert!(threads.next().is_none());
     }
+
+    #[test]
+    fn test_simpler_minidump() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(1) // with 1 frame
+            .D32(11) // and some symbol bytes
+            .D32(1234) // first thread id
+            .D32(0)
+            .D32(1)
+            .D32(0) // padding for alignment
+            .D64(0xfffff7001) // first frame, first instr_addr
+            .D32(0)
+            .D32(5) // the first symbol goes from 0-5
+            .append_bytes(b"uiaeosnrtdy");
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+
+        // first thread with 5 frames
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+        let mut frames = thread.frames().unwrap();
+        let frame = frames.next().unwrap();
+        assert_eq!(frame.instruction_addr(), 0xfffff7001);
+        assert_eq!(frame.symbol().unwrap(), "uiaeo");
+
+        assert!(frames.next().is_none());
+        assert!(threads.next().is_none());
+    }
 }
