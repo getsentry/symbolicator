@@ -31,7 +31,7 @@ pub fn parse_stacktraces_from_minidump(
                 .collect::<Result<Vec<_>, WrappedError>>()?;
 
             Ok(types::RawStacktrace {
-                thread_id: Some(thread.thread_id()),
+                thread_id: Some(thread.thread_id() as u64),
                 frames,
                 ..Default::default()
             })
@@ -91,15 +91,19 @@ mod format {
         ///
         /// The binary format looks a bit like this:
         /// - Header
+        /// - some padding for alignment
         /// - num_threads Thread
+        /// - some padding for alignment
         /// - num_frames Frame
         ///   - thread0 frame0 <- RawThread.start_frame = 0
         ///   - thread0 frame1 <- RawThread.num_frames = 1
         ///   - thread1 frame0
         ///   - thread1 frame1
+        /// - some padding for alignment
         /// - symbol_bytes
         pub fn parse(buf: &'data [u8]) -> Result<Self, Error> {
-            let header_size = mem::size_of::<Header>();
+            let mut header_size = mem::size_of::<Header>();
+            header_size += align_to_eight(header_size);
 
             if buf.len() < header_size {
                 return Err(Error);
@@ -111,8 +115,11 @@ mod format {
                 return Err(Error);
             }
 
-            let threads_size = mem::size_of::<RawThread>() * header.num_threads as usize;
-            let frames_size = mem::size_of::<RawFrame>() * header.num_frames as usize;
+            let mut threads_size = mem::size_of::<RawThread>() * header.num_threads as usize;
+            threads_size += align_to_eight(threads_size);
+
+            let mut frames_size = mem::size_of::<RawFrame>() * header.num_frames as usize;
+            frames_size += align_to_eight(frames_size);
 
             let expected_buf_size =
                 header_size + threads_size + frames_size + header.symbol_bytes as usize;
@@ -164,7 +171,7 @@ mod format {
     }
 
     impl Thread<'_> {
-        pub fn thread_id(&self) -> u64 {
+        pub fn thread_id(&self) -> u32 {
             self.thread.thread_id
         }
         pub fn frames(&self) -> Result<impl Iterator<Item = Frame>, Error> {
@@ -210,7 +217,7 @@ mod format {
     #[derive(Debug)]
     #[repr(C)]
     pub struct RawThread {
-        thread_id: u64,
+        thread_id: u32,
         start_frame: u32,
         num_frames: u32,
     }
@@ -221,6 +228,16 @@ mod format {
         instruction_addr: u64,
         symbol_offset: u32,
         symbol_len: u32,
+    }
+}
+
+/// Returns the remainder if the input isn't a multiple of 8.
+fn align_to_eight(to_align: usize) -> usize {
+    let remainder = to_align % 8;
+    if remainder == 0 {
+        remainder
+    } else {
+        8 - remainder
     }
 }
 
