@@ -1,5 +1,5 @@
-//! Code for extracting our custom minidump extension for client-side stacktraces.
-
+//! Code for extracting our custom minidump extension for client-side stack traces.
+//!
 //! The extension is a minidump stream with the ID `0x53790001`.
 //!
 //! The format comprises:
@@ -8,75 +8,90 @@
 //! - a list of frames
 //! - a symbol data section
 //!
-//! The data is written in native endianness and can currently only be parsed as little endian.
+//! The data is currently written and read in host-native endianness. A mismatch will result in a
+//! [`WrongVersion`](format::Error::WrongVersion) error.
 //!
 //! # Structure
+//!
 //! The header is 16 bytes long and structured as follows:
-//!```ignore
-//!bytes     0                     3 4                     7
-//!         +-----------------------+-----------------------+
-//!         | version number      1 | number of threads     |
-//!         +-----------------------+-----------------------+
-//!         | number of frames      | length of symbol data |
-//!         +-----------------------+-----------------------+
-//!```
+//!
+//! ```text
+//! bytes     0                     3 4                     7
+//!          +-----------------------+-----------------------+
+//!          | version number      1 | number of threads     |
+//!          +-----------------------+-----------------------+
+//!          | number of frames      | length of symbol data |
+//!          +-----------------------+-----------------------+
+//! ```
+//!
 //! The thread list as a whole is aligned to 8 bytes.
 //! Each thread in the thread list is 12 bytes long, aligned to 4 bytes, and
 //! structured as follows:
-//!```ignore
-//!bytes   0                       3 4                     7
-//!         +-----------------------+-----------------------+
-//!         | thread id             | index of first frame  |
-//!         +-----------------------+-----------------------+
-//!         | number of frames      |
-//!         +-----------------------+
-//!```
+//!
+//! The indices are 0-based and reference the n-th frame inside the global `frames` list.
+//!
+//! ```text
+//! bytes     0                     3 4                     7
+//!          +-----------------------+-----------------------+
+//!          | thread id             | index of first frame  |
+//!          +-----------------------+-----------------------+
+//!          | number of frames      |
+//!          +-----------------------+
+//! ```
 //!
 //! Each frame in the frame list is 16 bytes long, aligned to 8 bytes, and
 //! structured as follows:
-//!```ignore
-//!bytes   0                       3 4                     7
-//!         +-----------------------+-----------------------+
-//!         | instruction address                           |
-//!         +-----------------------+-----------------------+
-//!         | symbol start          | symbol length         |
-//!         +-----------------------+-----------------------+
-//!```
+//!
+//! The symbol start is 0-based and references a sub-slice of the global `symbols` data.
+//!
+//! ```text
+//! bytes     0                     3 4                     7
+//!          +-----------------------+-----------------------+
+//!          | instruction address                           |
+//!          +-----------------------+-----------------------+
+//!          | symbol start          | symbol length         |
+//!          +-----------------------+-----------------------+
+//! ```
 //!
 //! The symbol data section contains the concatenated raw symbol names of all frames.
 //!
+//! Symbols are not `\0`-terminated, and although the raw format does not mandate any specific
+//! encoding, the symbols are being parsed as UTF-8 data.
+//!
 //! # Example
+//!
 //! The following diagram shows an example stack trace with 3 threads and 2 frames:
-//!```ignore
-//!bytes     0                     3 4                     7
-//!         +-----------------------+-----------------------+
-//!header   | version             1 | threads             3 |
-//!         +-----------------------+-----------------------+
-//!         | frames              2 | symbol bytes       10 |
-//!         +-----------------------+-----------------------+
-//!thread 0 | thread id         123 | first frame         0 |
-//!         +-----------------------+-----------------------+
-//!thread 1 | frames              2 | thread id         321 |
-//!         +-----------------------+-----------------------+
-//!         | first frame         2 | frames              0 |
-//!         +-----------------------+-----------------------+
-//!thread 2 | thread id          17 | first frame         2 |
-//!         +-----------------------+-----------------------+
-//!         | frames              0 | padding             0 |
-//!         +-----------------------+-----------------------+
-//!frame 0  | instruction address                      1337 |
-//!         +-----------------------+-----------------------+
-//!         | symbol start        0 | symbol length       6 |
-//!         +-----------------------+-----------------------+
-//!frame 1  | instruction address                0xdeadbeef |
-//!         +-----------------------+-----------------------+
-//!         | symbol start        6 | symbol length       4 |
-//!         +-----------------------+-----------------------+
-//!symbols  |  _  |  s  |  t  |  a  |  r  |  t  |  m  |  a  |
-//!         +-----------------------+-----------------------+
-//!         |  i  |  n  |
-//!         +-----------+
-//!```
+//!
+//! ```text
+//! bytes     0                     3 4                     7
+//!          +-----------------------+-----------------------+
+//! header   | version             1 | threads             3 |
+//!          +-----------------------+-----------------------+
+//!          | frames              2 | symbol bytes       10 |
+//!          +-----------------------+-----------------------+
+//! thread 0 | thread id         123 | first frame         0 |
+//!          +-----------------------+-----------------------+
+//! thread 1 | frames              2 | thread id         321 |
+//!          +-----------------------+-----------------------+
+//!          | first frame         2 | frames              0 |
+//!          +-----------------------+-----------------------+
+//! thread 2 | thread id          17 | first frame         2 |
+//!          +-----------------------+-----------------------+
+//!          | frames              0 | padding             0 |
+//!          +-----------------------+-----------------------+
+//! frame 0  | instruction address                      1337 |
+//!          +-----------------------+-----------------------+
+//!          | symbol start        0 | symbol length       6 |
+//!          +-----------------------+-----------------------+
+//! frame 1  | instruction address                0xdeadbeef |
+//!          +-----------------------+-----------------------+
+//!          | symbol start        6 | symbol length       4 |
+//!          +-----------------------+-----------------------+
+//! symbols  |  _  |  s  |  t  |  a  |  r  |  t  |  m  |  a  |
+//!          +-----------------------+-----------------------+
+//!          |  i  |  n  |
+//!          +-----------+
+//! ```
 
 // TODO: Remove this once writing the minidump extension is complete. It is fine if this file is
 // left unused for now; It is expected that this will be used in a PR that'll follow these changes
@@ -173,7 +188,6 @@ impl fmt::Display for ExtractStacktraceError {
     }
 }
 
-// TODO: well, doc comments ;-)
 mod format {
     use super::*;
     use std::{mem, ptr};
@@ -209,23 +223,9 @@ mod format {
     }
 
     impl<'data> Format<'data> {
-        /// Parse our custom minidump extension binary format
+        /// Parse our custom minidump extension binary format.
         ///
-        /// TODO: add a better explanation of the format ;-)
-        /// ^ how everything is laid out one-after-the-other in memory, how indexing works, etc
-        ///
-        /// The binary format looks a bit like this:
-        /// - Header
-        /// - some padding for alignment
-        /// - num_threads Thread
-        /// - some padding for alignment
-        /// - num_frames Frame
-        ///   - thread0 frame0 <- RawThread.start_frame = 0
-        ///   - thread0 frame1 <- RawThread.num_frames = 1
-        ///   - thread1 frame0
-        ///   - thread1 frame1
-        /// - some padding for alignment
-        /// - symbol_bytes
+        /// See the [parent module documentation](super) for an explanation of the binary format.
         pub fn parse(buf: &'data [u8]) -> Result<Self, Error> {
             let mut header_size = mem::size_of::<RawHeader>();
             header_size += align_to_eight(header_size);
@@ -282,6 +282,7 @@ mod format {
             })
         }
 
+        /// An [`Iterator`] of [`Thread`] objects that are part of the extension.
         pub fn threads(&self) -> impl Iterator<Item = Thread> {
             self.threads.iter().map(move |raw_thread| Thread {
                 format: self,
@@ -290,15 +291,21 @@ mod format {
         }
     }
 
+    /// A convenience wrapper around a raw [`Thread`] contained in the minidump extension.
     pub struct Thread<'data> {
         format: &'data Format<'data>,
         thread: &'data RawThread,
     }
 
     impl Thread<'_> {
+        /// The Thread ID
         pub fn thread_id(&self) -> u32 {
             self.thread.thread_id
         }
+
+        /// An [`Iterator`] of [`Frame`] objects associated with this [`Thread`].
+        ///
+        /// Returns [`Error::FrameIndexOutOfBounds`] when the frame indices are out of bounds.
         pub fn frames(&self) -> Result<impl Iterator<Item = Frame>, Error> {
             let start_frame = self.thread.start_frame as usize;
             let end_frame = self.thread.start_frame as usize + self.thread.num_frames as usize;
@@ -316,16 +323,23 @@ mod format {
         }
     }
 
+    /// A convenience wrapper around a raw [`Frame`] contained in the minidump extension.
     pub struct Frame<'data> {
         format: &'data Format<'data>,
         frame: &'data RawFrame,
     }
 
     impl Frame<'_> {
+        /// The Instruction Address of the Frame.
         pub fn instruction_addr(&self) -> u64 {
             self.frame.instruction_addr
         }
 
+        /// The raw symbol bytes of this [`Frame`].
+        ///
+        /// These bytes should be parsable as UTF-8.
+        ///
+        /// Returns [`Error::SymbolIndexOutOfBounds`] when the symbol indices are out of bounds.
         pub fn symbol(&self) -> Result<&[u8], Error> {
             let start_symbol = self.frame.symbol_offset as usize;
             let end_symbol = start_symbol + self.frame.symbol_len as usize;
@@ -362,6 +376,18 @@ mod format {
         instruction_addr: u64,
         symbol_offset: u32,
         symbol_len: u32,
+    }
+
+    #[test]
+    fn test_raw_structs() {
+        assert_eq!(mem::size_of::<RawHeader>(), 16);
+        assert_eq!(mem::align_of::<RawHeader>(), 4);
+
+        assert_eq!(mem::size_of::<RawThread>(), 12);
+        assert_eq!(mem::align_of::<RawThread>(), 4);
+
+        assert_eq!(mem::size_of::<RawFrame>(), 16);
+        assert_eq!(mem::align_of::<RawFrame>(), 8);
     }
 }
 
@@ -737,7 +763,6 @@ mod tests {
 
     #[test]
     fn test_bad_symbol_bytes() {
-        // let input = b"ho\xF0\x90\x80nk";
         let section = Section::new()
             .D32(MINIDUMP_FORMAT_VERSION)
             .D32(1) // 1 thread
