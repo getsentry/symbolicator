@@ -90,7 +90,7 @@ mod format {
 
     #[derive(Debug)]
     pub struct Format<'data> {
-        header: &'data Header,
+        header: &'data RawHeader,
         threads: &'data [RawThread],
         frames: &'data [RawFrame],
         symbol_bytes: &'data [u8],
@@ -115,7 +115,7 @@ mod format {
         /// - some padding for alignment
         /// - symbol_bytes
         pub fn parse(buf: &'data [u8]) -> Result<Self, Error> {
-            let mut header_size = mem::size_of::<Header>();
+            let mut header_size = mem::size_of::<RawHeader>();
             header_size += align_to_eight(header_size);
 
             if buf.len() < header_size {
@@ -123,7 +123,7 @@ mod format {
             }
 
             // SAFETY: we will check validity of the header down below
-            let header = unsafe { &*(buf.as_ptr() as *const Header) };
+            let header = unsafe { &*(buf.as_ptr() as *const RawHeader) };
             if header.version != MINIDUMP_FORMAT_VERSION {
                 return Err(Error::WrongVersion);
             }
@@ -229,7 +229,7 @@ mod format {
 
     #[derive(Debug)]
     #[repr(C)]
-    struct Header {
+    struct RawHeader {
         version: u32,
         num_threads: u32,
         num_frames: u32,
