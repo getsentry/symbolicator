@@ -1,17 +1,3 @@
-macro_rules! compat_handler {
-    ($func:ident , $($param:ident),*) => {{
-        use ::futures::{FutureExt, TryFutureExt};
-        use ::sentry::SentryFutureExt;
-
-        |__hub: crate::utils::sentry::ActixHub, $($param),*| {
-            $func ( $($param),* )
-                .bind_hub(__hub)
-                .boxed_local()
-                .compat()
-        }
-    }};
-}
-
 /// Ensures at compile time that the condition is true.
 ///
 /// See <https://github.com/rust-lang/rfcs/issues/2790>

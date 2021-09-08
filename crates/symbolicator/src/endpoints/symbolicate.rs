@@ -1,4 +1,5 @@
-use actix_web::{error, App, Error, Json, Query, State};
+use axum::extract;
+use axum::response::Json;
 use serde::Deserialize;
 
 use crate::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
@@ -8,6 +9,8 @@ use crate::types::{
     RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
 };
 use crate::utils::sentry::ConfigureScope;
+
+use super::ResponseError;
 
 /// Query parameters of the symbolication request.
 #[derive(Deserialize)]
@@ -31,7 +34,7 @@ impl ConfigureScope for SymbolicationRequestQueryParams {
 
 /// JSON body of the symbolication request.
 #[derive(Deserialize)]
-struct SymbolicationRequestBody {
+pub struct SymbolicationRequestBody {
     #[serde(default)]
     pub signal: Option<Signal>,
     #[serde(default)]
@@ -44,17 +47,16 @@ struct SymbolicationRequestBody {
     pub options: RequestOptions,
 }
 
-async fn symbolicate_frames(
-    state: State<Service>,
-    params: Query<SymbolicationRequestQueryParams>,
-    body: Json<SymbolicationRequestBody>,
-) -> Result<Json<SymbolicationResponse>, Error> {
+pub async fn symbolicate_frames(
+    extract::Extension(state): extract::Extension<Service>,
+    extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
+    // TODO: limit body to 5M
+    extract::Json(body): extract::Json<SymbolicationRequestBody>,
+) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
-    let params = params.into_inner();
     params.configure_scope();
 
-    let body = body.into_inner();
     let sources = match body.sources {
         Some(sources) => sources.into(),
         None => state.config().default_sources(),
@@ -73,19 +75,6 @@ async fn symbolicate_frames(
 
     match symbolication.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
-        None => Err(error::ErrorInternalServerError(
-            "symbolication request did not start",
-        )),
+        None => Err("symbolication request did not start".into()),
     }
-}
-
-pub fn configure(app: App<Service>) -> App<Service> {
-    app.resource("/symbolicate", |r| {
-        r.post().with_async_config(
-            compat_handler!(symbolicate_frames, s, p, b),
-            |(_hub, _state, _params, body)| {
-                body.limit(5_000_000);
-            },
-        );
-    })
 }

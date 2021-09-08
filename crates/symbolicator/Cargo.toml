@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
+axum = { version = "0.2.1", features = ["multipart"] }
 anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
 backtrace = "0.3.55"
@@ -15,12 +15,9 @@ cadence = "0.26.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.14.0"
 env_logger = "0.7.1"
-failure = "0.1.8"
 filetime = "0.2.14"
 flate2 = "1.0.0"
-fragile = "1.0.0" # used for vendoring sentry-actix
-futures = { version = "0.3.12", features = ["compat"] }
-futures01 = { version = "0.1.29", package = "futures" }
+futures = "0.3.12"
 glob = "0.3.0"
 hostname = "0.3.1"
 humantime-serde = "1.0.1"
@@ -38,7 +35,7 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.47.0"
 rusoto_credential = "0.47.0"
 rusoto_s3 = "0.47.0"
-sentry = { version = "0.23.0", features = ["debug-images", "log"] }
+sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tower"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
@@ -47,7 +44,9 @@ symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demang
 tempfile = "3.2.0"
 thiserror = "1.0.26"
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
-tokio01 = { version = "0.1.22", package = "tokio" }
+tokio-util = "0.6"
+tower-layer = "0.3"
+tower-service = "0.3"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.9.0"

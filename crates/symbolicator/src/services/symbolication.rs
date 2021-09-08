@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, TimeZone, Utc};
-use futures::{channel::oneshot, future, FutureExt, TryFutureExt};
+use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
@@ -463,23 +463,13 @@ impl SymbolicationActor {
             drop_hub.end_session_with_status(SessionStatus::Crashed);
         });
 
-        // This future/sleep here is still based on actix/tokio01 because running it on tokio1
-        // would lead to memory leaks of allocations that can be traced back to actix-web request
-        // internals. I cant explain how or why that happens, but moving this future and its
-        // delay at the end to the actix runtime solves those memory leak issues.
-        let slf = self.clone();
         let request_future = async move {
-            let response = match slf
-                .io_pool
-                .spawn(f)
-                .await
-                .map_err(|_| SymbolicationError::Timeout)
-            {
-                Ok(Ok(response)) => {
+            let response = match f.await {
+                Ok(response) => {
                     sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))
                 }
-                Err(error) | Ok(Err(error)) => {
+                Err(error) => {
                     // a timeout is an abnormal session exit, all other errors are considered "crashed"
                     let status = match &error {
                         SymbolicationError::Timeout => SessionStatus::Abnormal,
@@ -501,20 +491,13 @@ impl SymbolicationActor {
 
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
-            use futures::compat::Future01CompatExt;
-            tokio01::timer::Delay::new(Instant::now() + MAX_POLL_DELAY)
-                .compat()
-                .await
-                .ok();
+            tokio::time::sleep(MAX_POLL_DELAY).await;
 
             drop(token);
         }
         .bind_hub(hub);
 
-        // spawned on actix/tokio01 runtime to avoid memory leaks, see comment above `request_future`.
-        tokio01::runtime::current_thread::spawn(
-            request_future.map(|_| Ok(())).boxed_local().compat(),
-        );
+        self.io_pool.spawn(request_future);
 
         Ok(request_id)
     }
@@ -2496,22 +2479,16 @@ mod tests {
 
         let symbolication = service.symbolication();
 
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        })
-        .await;
+        let request = get_symbolication_request(vec![source]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        })
-        .await;
+        let request = get_symbolication_request(vec![]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
 
@@ -2527,22 +2504,16 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        })
-        .await;
+        let request = get_symbolication_request(vec![]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        })
-        .await;
+        let request = get_symbolication_request(vec![source]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
 
@@ -2578,25 +2549,22 @@ mod tests {
             options: Default::default(),
         };
 
-        test::spawn_compat(move || async move {
-            let request_id = service
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request)
+            .unwrap();
+
+        for _ in 0..2 {
+            let response = service
                 .symbolication()
-                .symbolicate_stacktraces(request)
+                .get_response(request_id, None)
+                .await
                 .unwrap();
 
-            for _ in 0..2 {
-                let response = service
-                    .symbolication()
-                    .get_response(request_id, None)
-                    .await
-                    .unwrap();
-
-                if !matches!(&response, SymbolicationResponse::Completed(_)) {
-                    panic!("Not a complete response: {:#?}", response);
-                }
+            if !matches!(&response, SymbolicationResponse::Completed(_)) {
+                panic!("Not a complete response: {:#?}", response);
             }
-        })
-        .await;
+        }
     }
 
     async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
@@ -2607,18 +2575,15 @@ mod tests {
         let mut minidump_file = NamedTempFile::new()?;
         minidump_file.write_all(&minidump)?;
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request_id = symbolication.process_minidump(
-                Scope::Global,
-                minidump_file.into_temp_path(),
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            );
-            symbolication.get_response(request_id.unwrap(), None).await
-        })
-        .await;
+        let request_id = symbolication.process_minidump(
+            Scope::Global,
+            minidump_file.into_temp_path(),
+            Arc::new([source]),
+            RequestOptions {
+                dif_candidates: true,
+            },
+        );
+        let response = symbolication.get_response(request_id.unwrap(), None).await;
 
         assert_snapshot!(response.unwrap());
 
@@ -2654,22 +2619,19 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let response = test::spawn_compat(move || async move {
-            let request_id = service
-                .symbolication()
-                .process_apple_crash_report(
-                    Scope::Global,
-                    report_file,
-                    Arc::new([source]),
-                    RequestOptions {
-                        dif_candidates: true,
-                    },
-                )
-                .unwrap();
+        let request_id = service
+            .symbolication()
+            .process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                Arc::new([source]),
+                RequestOptions {
+                    dif_candidates: true,
+                },
+            )
+            .unwrap();
 
-            service.symbolication().get_response(request_id, None).await
-        })
-        .await;
+        let response = service.symbolication().get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
         Ok(())
@@ -2714,14 +2676,11 @@ mod tests {
             options: Default::default(),
         };
 
-        let response = test::spawn_compat(move || async move {
-            let request_id = service
-                .symbolication()
-                .symbolicate_stacktraces(request)
-                .unwrap();
-            service.symbolication().get_response(request_id, None).await
-        })
-        .await;
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request)
+            .unwrap();
+        let response = service.symbolication().get_response(request_id, None).await;
 
         insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())
@@ -2883,21 +2842,18 @@ mod tests {
         let handle = tokio::runtime::Handle::current();
         let service = Service::create(config, handle.clone(), handle).unwrap();
 
+        let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();
-        test::spawn_compat(move || async move {
-            let symbolication = service.symbolication();
 
-            // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
-            // two concurrent requests, the first two should succeed and the third one should fail.
-            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+        // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+        // two concurrent requests, the first two should succeed and the third one should fail.
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-            let request = get_symbolication_request(vec![symbol_server.pending_source]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_err());
-        })
-        .await;
+        let request = get_symbolication_request(vec![symbol_server.pending_source]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_err());
     }
 }
