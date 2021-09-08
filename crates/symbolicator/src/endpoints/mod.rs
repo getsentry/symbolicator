@@ -16,8 +16,8 @@ mod symbolicate;
 
 pub use error::ResponseError;
 
+use self::minidump::handle_minidump_request as minidump;
 use applecrashreport::handle_apple_crash_report_request as applecrashreport;
-use minidump::handle_minidump_request as minidump;
 use proxy::proxy_symstore_request as proxy;
 use requests::poll_request as requests;
 use symbolicate::symbolicate_frames as symbolicate;
