@@ -23,7 +23,7 @@ pub fn parse_stacktraces_from_minidump(
                     let symbol = frame.symbol()?;
                     Ok(types::RawFrame {
                         instruction_addr: hex::HexValue(frame.instruction_addr()),
-                        symbol: Some(symbol.to_owned()),
+                        symbol: Some(symbol),
                         trust: FrameTrust::Prewalked,
                         ..Default::default()
                     })
@@ -40,8 +40,7 @@ pub fn parse_stacktraces_from_minidump(
 }
 
 fn parse_stacktraces_from_raw_extension(buf: &[u8]) -> Result<format::Format, WrappedError> {
-    let parsed = format::Format::parse(buf)?;
-    Ok(parsed)
+    format::Format::parse(buf).map_err(WrappedError::from)
 }
 
 #[derive(Debug)]
@@ -67,13 +66,22 @@ mod format {
     use super::*;
     use std::{mem, ptr};
 
-    // TODO: create more variants for:
-    // - buffer/header is invalid (buffer not big enough)
-    // - indexes are broken (index out of bounds from threads/frames iterator)
-    // - wrapped utf-8 error, or maybe figure out how we parse symbols right now
-    //   ^ or maybe we use `from_utf8_lossy` in other places?
     #[derive(Debug)]
-    pub struct Error;
+    pub enum Error {
+        /// The extension version in the header is wrong/outdated.
+        WrongVersion,
+        /// The header's size doesn't match our expected size.
+        HeaderTooSmall,
+        /// The self-advertised size of the extension is not correct.
+        BadFormatLength,
+        /// A derived index for a frame or a set of frames is out of bounds.
+        /// Includes the ID of the thread the frames are associated with.
+        FrameIndexOutOfBounds(u32),
+        /// A derived index for a symbol or a set of symbols is out of bounds.
+        /// Includes the instruction address of the frame the symbol is associated
+        /// with.
+        SymbolIndexOutOfBounds(u64),
+    }
 
     #[derive(Debug)]
     pub struct Format<'data> {
@@ -106,13 +114,13 @@ mod format {
             header_size += align_to_eight(header_size);
 
             if buf.len() < header_size {
-                return Err(Error);
+                return Err(Error::HeaderTooSmall);
             }
 
             // SAFETY: we will check validity of the header down below
             let header = unsafe { &*(buf.as_ptr() as *const Header) };
             if header.version != MINIDUMP_FORMAT_VERSION {
-                return Err(Error);
+                return Err(Error::WrongVersion);
             }
 
             let mut threads_size = mem::size_of::<RawThread>() * header.num_threads as usize;
@@ -125,7 +133,7 @@ mod format {
                 header_size + threads_size + frames_size + header.symbol_bytes as usize;
 
             if buf.len() != expected_buf_size {
-                return Err(Error);
+                return Err(Error::BadFormatLength);
             }
 
             // SAFETY: we just made sure that all the pointers we are constructing via pointer
@@ -177,7 +185,11 @@ mod format {
         pub fn frames(&self) -> Result<impl Iterator<Item = Frame>, Error> {
             let range = self.thread.start_frame as usize
                 ..self.thread.start_frame as usize + self.thread.num_frames as usize;
-            let frames = self.format.frames.get(range).ok_or(Error)?;
+            let frames = self
+                .format
+                .frames
+                .get(range)
+                .ok_or(Error::FrameIndexOutOfBounds(self.thread_id()))?;
 
             Ok(frames.iter().map(move |raw_frame| Frame {
                 format: self.format,
@@ -196,12 +208,17 @@ mod format {
             self.frame.instruction_addr
         }
 
-        pub fn symbol(&self) -> Result<&str, Error> {
+        pub fn symbol(&self) -> Result<String, Error> {
             let range = self.frame.symbol_offset as usize
                 ..self.frame.symbol_offset as usize + self.frame.symbol_len as usize;
-            let bytes = self.format.symbol_bytes.get(range).ok_or(Error)?;
+            let bytes = self
+                .format
+                .symbol_bytes
+                .get(range)
+                .ok_or(Error::SymbolIndexOutOfBounds(self.instruction_addr()))?;
 
-            std::str::from_utf8(bytes).map_err(|_| Error)
+            // Allocate here for now since the only usage of this already does so anyways
+            Ok(String::from_utf8_lossy(bytes).to_string())
         }
     }
 
