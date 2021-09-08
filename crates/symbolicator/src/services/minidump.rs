@@ -1,3 +1,8 @@
+// TODO: Remove this once writing the minidump extension is complete. It is fine if this file is
+// left unused for now; It is expected that this will be used in a PR that'll follow these changes
+// shortly.
+#![allow(dead_code)]
+
 use symbolic::minidump::processor::FrameTrust;
 
 use crate::types;
@@ -183,13 +188,13 @@ mod format {
             self.thread.thread_id
         }
         pub fn frames(&self) -> Result<impl Iterator<Item = Frame>, Error> {
-            let range = self.thread.start_frame as usize
-                ..self.thread.start_frame as usize + self.thread.num_frames as usize;
+            let start_frame = self.thread.start_frame as usize;
+            let end_frame = self.thread.start_frame as usize + self.thread.num_frames as usize;
             let frames = self
                 .format
                 .frames
-                .get(range)
-                .ok_or(Error::FrameIndexOutOfBounds(self.thread_id()))?;
+                .get(start_frame..end_frame)
+                .ok_or_else(|| Error::FrameIndexOutOfBounds(self.thread_id()))?;
 
             Ok(frames.iter().map(move |raw_frame| Frame {
                 format: self.format,
@@ -209,13 +214,13 @@ mod format {
         }
 
         pub fn symbol(&self) -> Result<String, Error> {
-            let range = self.frame.symbol_offset as usize
-                ..self.frame.symbol_offset as usize + self.frame.symbol_len as usize;
+            let start_symbol = self.frame.symbol_offset as usize;
+            let end_symbol = self.frame.symbol_offset as usize + self.frame.symbol_len as usize;
             let bytes = self
                 .format
                 .symbol_bytes
-                .get(range)
-                .ok_or(Error::SymbolIndexOutOfBounds(self.instruction_addr()))?;
+                .get(start_symbol..end_symbol)
+                .ok_or_else(|| Error::SymbolIndexOutOfBounds(self.instruction_addr()))?;
 
             // Allocate here for now since the only usage of this already does so anyways
             Ok(String::from_utf8_lossy(bytes).to_string())
@@ -248,7 +253,8 @@ mod format {
     }
 }
 
-/// Returns the remainder if the input isn't a multiple of 8.
+/// Returns the amount left to add to the remainder to get 8 if
+/// `to_align` isn't a multiple of 8.
 fn align_to_eight(to_align: usize) -> usize {
     let remainder = to_align % 8;
     if remainder == 0 {
