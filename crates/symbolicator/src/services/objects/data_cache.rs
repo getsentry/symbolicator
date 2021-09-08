@@ -157,6 +157,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         sentry::configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
             self.0.file_source.to_scope(scope);
+            self.0.object_id.to_scope(scope);
         });
 
         let file_id = self.0.file_source.clone();
@@ -181,7 +182,17 @@ impl CacheItemRequest for FetchFileDataRequest {
                 }
 
                 Err(e) => {
-                    log::debug!("Error while downloading file: {}", LogError(&e));
+                    // We want to error-log "interesting" download errors so we can look them up
+                    // in our internal sentry. We downgrade to debug-log for unactionable
+                    // permissions errors. Since this function does a fresh download, it will never
+                    // hit `CachedError`, but listing it for completeness is not a bad idea either.
+                    match e {
+                        DownloadError::Permissions | DownloadError::CachedError(_) => {
+                            log::debug!("Error while downloading file: {}", LogError(&e))
+                        }
+                        _ => log::error!("Error while downloading file: {}", LogError(&e)),
+                    }
+
                     return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
                 }
 
