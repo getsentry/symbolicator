@@ -3,7 +3,11 @@
 // shortly.
 #![allow(dead_code)]
 
+use std::convert::TryFrom;
+use std::fmt;
+
 use symbolic::minidump::processor::FrameTrust;
+use thiserror::Error;
 
 use crate::types;
 use crate::utils::hex;
@@ -11,6 +15,7 @@ use crate::utils::hex;
 const MINIDUMP_EXTENSION_TYPE: u32 = u32::from_be_bytes([b'S', b'y', 0, 1]);
 const MINIDUMP_FORMAT_VERSION: u32 = 1;
 
+/// Extract client-side stacktraces from a minidump file.
 pub fn parse_stacktraces_from_minidump(
     buf: &[u8],
 ) -> Result<Vec<types::RawStacktrace>, WrappedError> {
@@ -21,26 +26,7 @@ pub fn parse_stacktraces_from_minidump(
 
     parsed
         .threads()
-        .map(|thread| {
-            let frames = thread
-                .frames()?
-                .map(|frame| {
-                    let symbol = frame.symbol()?;
-                    Ok(types::RawFrame {
-                        instruction_addr: hex::HexValue(frame.instruction_addr()),
-                        symbol: Some(symbol),
-                        trust: FrameTrust::Prewalked,
-                        ..Default::default()
-                    })
-                })
-                .collect::<Result<Vec<_>, WrappedError>>()?;
-
-            Ok(types::RawStacktrace {
-                thread_id: Some(thread.thread_id() as u64),
-                frames,
-                ..Default::default()
-            })
-        })
+        .map(types::RawStacktrace::try_from)
         .collect()
 }
 
@@ -48,10 +34,41 @@ fn parse_stacktraces_from_raw_extension(buf: &[u8]) -> Result<format::Format, Wr
     format::Format::parse(buf).map_err(WrappedError::from)
 }
 
-#[derive(Debug)]
+impl TryFrom<format::Thread<'_>> for types::RawStacktrace {
+    type Error = WrappedError;
+
+    fn try_from(thread: format::Thread) -> Result<Self, Self::Error> {
+        let frames = thread
+            .frames()?
+            .map(types::RawFrame::try_from)
+            .collect::<Result<Vec<_>, WrappedError>>()?;
+
+        Ok(types::RawStacktrace {
+            thread_id: Some(thread.thread_id() as u64),
+            frames,
+            ..Default::default()
+        })
+    }
+}
+
+impl TryFrom<format::Frame<'_>> for types::RawFrame {
+    type Error = WrappedError;
+
+    fn try_from(frame: format::Frame) -> Result<Self, Self::Error> {
+        let symbol = frame.symbol()?;
+        Ok(types::RawFrame {
+            instruction_addr: hex::HexValue(frame.instruction_addr()),
+            symbol: Some(symbol),
+            trust: FrameTrust::Prewalked,
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum WrappedError {
     MinidumpError(minidump::Error),
-    FormatError(format::Error),
+    FormatError(#[from] format::Error),
 }
 
 impl From<minidump::Error> for WrappedError {
@@ -60,9 +77,12 @@ impl From<minidump::Error> for WrappedError {
     }
 }
 
-impl From<format::Error> for WrappedError {
-    fn from(err: format::Error) -> Self {
-        Self::FormatError(err)
+impl fmt::Display for WrappedError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::FormatError(e) => e.fmt(f),
+            Self::MinidumpError(e) => e.fmt(f),
+        }
     }
 }
 
@@ -71,20 +91,25 @@ mod format {
     use super::*;
     use std::{mem, ptr};
 
-    #[derive(Debug)]
+    #[derive(Debug, Error)]
     pub enum Error {
         /// The extension version in the header is wrong/outdated.
+        #[error("wrong or outdated version")]
         WrongVersion,
         /// The header's size doesn't match our expected size.
+        #[error("header is too small")]
         HeaderTooSmall,
         /// The self-advertised size of the extension is not correct.
+        #[error("incorrect extension length")]
         BadFormatLength,
         /// A derived index for a frame or a set of frames is out of bounds.
         /// Includes the ID of the thread the frames are associated with.
+        #[error("frame index out of bounds for thread {0}")]
         FrameIndexOutOfBounds(u32),
         /// A derived index for a symbol or a set of symbols is out of bounds.
         /// Includes the instruction address of the frame the symbol is associated
         /// with.
+        #[error("symbol index out of bounds for instruction address {0}")]
         SymbolIndexOutOfBounds(u64),
     }
 
