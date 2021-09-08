@@ -190,6 +190,7 @@ mod format {
         pub fn frames(&self) -> Result<impl Iterator<Item = Frame>, Error> {
             let start_frame = self.thread.start_frame as usize;
             let end_frame = self.thread.start_frame as usize + self.thread.num_frames as usize;
+
             let frames = self
                 .format
                 .frames
@@ -238,7 +239,7 @@ mod format {
 
     #[derive(Debug)]
     #[repr(C)]
-    pub struct RawThread {
+    struct RawThread {
         thread_id: u32,
         start_frame: u32,
         num_frames: u32,
@@ -246,7 +247,7 @@ mod format {
 
     #[derive(Debug)]
     #[repr(C)]
-    pub struct RawFrame {
+    struct RawFrame {
         instruction_addr: u64,
         symbol_offset: u32,
         symbol_len: u32,
@@ -269,6 +270,10 @@ mod tests {
     use super::*;
 
     use test_assembler::*;
+
+    // Exposing Raw[Header|Frame|Thread] and implementing helpers
+    // that construct sections out of them would make these tests
+    // significantly more readable.
 
     #[test]
     fn test_simple_minidump() {
