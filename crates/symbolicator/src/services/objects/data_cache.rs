@@ -157,6 +157,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         sentry::configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
             self.0.file_source.to_scope(scope);
+            self.0.object_id.to_scope(scope);
         });
 
         let file_id = self.0.file_source.clone();
