@@ -18,7 +18,7 @@ const MINIDUMP_FORMAT_VERSION: u32 = 1;
 /// Extract client-side stacktraces from a minidump file.
 pub fn parse_stacktraces_from_minidump(
     buf: &[u8],
-) -> Result<Vec<types::RawStacktrace>, WrappedError> {
+) -> Result<Vec<types::RawStacktrace>, ExtractStacktraceError> {
     let dump = minidump::Minidump::read(buf)?;
     let extension_buf = dump.get_raw_stream(MINIDUMP_EXTENSION_TYPE)?;
 
@@ -30,18 +30,20 @@ pub fn parse_stacktraces_from_minidump(
         .collect()
 }
 
-fn parse_stacktraces_from_raw_extension(buf: &[u8]) -> Result<format::Format, WrappedError> {
-    format::Format::parse(buf).map_err(WrappedError::from)
+fn parse_stacktraces_from_raw_extension(
+    buf: &[u8],
+) -> Result<format::Format, ExtractStacktraceError> {
+    format::Format::parse(buf).map_err(ExtractStacktraceError::from)
 }
 
 impl TryFrom<format::Thread<'_>> for types::RawStacktrace {
-    type Error = WrappedError;
+    type Error = ExtractStacktraceError;
 
     fn try_from(thread: format::Thread) -> Result<Self, Self::Error> {
         let frames = thread
             .frames()?
             .map(types::RawFrame::try_from)
-            .collect::<Result<Vec<_>, WrappedError>>()?;
+            .collect::<Result<Vec<_>, ExtractStacktraceError>>()?;
 
         Ok(types::RawStacktrace {
             thread_id: Some(thread.thread_id() as u64),
@@ -52,13 +54,13 @@ impl TryFrom<format::Thread<'_>> for types::RawStacktrace {
 }
 
 impl TryFrom<format::Frame<'_>> for types::RawFrame {
-    type Error = WrappedError;
+    type Error = ExtractStacktraceError;
 
     fn try_from(frame: format::Frame) -> Result<Self, Self::Error> {
         let symbol = frame.symbol()?;
         Ok(types::RawFrame {
             instruction_addr: hex::HexValue(frame.instruction_addr()),
-            symbol: Some(symbol),
+            symbol: Some(String::from_utf8_lossy(symbol).into_owned()),
             trust: FrameTrust::Prewalked,
             ..Default::default()
         })
@@ -66,18 +68,18 @@ impl TryFrom<format::Frame<'_>> for types::RawFrame {
 }
 
 #[derive(Debug, Error)]
-pub enum WrappedError {
+pub enum ExtractStacktraceError {
     MinidumpError(minidump::Error),
     FormatError(#[from] format::Error),
 }
 
-impl From<minidump::Error> for WrappedError {
+impl From<minidump::Error> for ExtractStacktraceError {
     fn from(err: minidump::Error) -> Self {
         Self::MinidumpError(err)
     }
 }
 
-impl fmt::Display for WrappedError {
+impl fmt::Display for ExtractStacktraceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::FormatError(e) => e.fmt(f),
@@ -239,7 +241,7 @@ mod format {
             self.frame.instruction_addr
         }
 
-        pub fn symbol(&self) -> Result<String, Error> {
+        pub fn symbol(&self) -> Result<&[u8], Error> {
             let start_symbol = self.frame.symbol_offset as usize;
             let end_symbol = self.frame.symbol_offset as usize + self.frame.symbol_len as usize;
             let bytes = self
@@ -248,8 +250,7 @@ mod format {
                 .get(start_symbol..end_symbol)
                 .ok_or_else(|| Error::SymbolIndexOutOfBounds(self.instruction_addr()))?;
 
-            // Allocate here for now since the only usage of this already does so anyways
-            Ok(String::from_utf8_lossy(bytes).to_string())
+            Ok(bytes)
         }
     }
 
@@ -342,10 +343,10 @@ mod tests {
         let mut frames = thread.frames().unwrap();
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7001);
-        assert_eq!(frame.symbol().unwrap(), "uiaeo");
+        assert_eq!(frame.symbol().unwrap(), b"uiaeo");
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7002);
-        assert_eq!(frame.symbol().unwrap(), "uiaeo");
+        assert_eq!(frame.symbol().unwrap(), b"uiaeo");
         assert!(frames.next().is_none());
 
         // second thread with 3 frames
@@ -354,13 +355,13 @@ mod tests {
         let mut frames = thread.frames().unwrap();
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7003);
-        assert_eq!(frame.symbol().unwrap(), "snrtdy");
+        assert_eq!(frame.symbol().unwrap(), b"snrtdy");
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7004);
-        assert_eq!(frame.symbol().unwrap(), "snrtdy");
+        assert_eq!(frame.symbol().unwrap(), b"snrtdy");
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7006);
-        assert_eq!(frame.symbol().unwrap(), "snrtdy");
+        assert_eq!(frame.symbol().unwrap(), b"snrtdy");
         assert!(frames.next().is_none());
 
         assert!(threads.next().is_none());
@@ -393,7 +394,7 @@ mod tests {
         let mut frames = thread.frames().unwrap();
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7001);
-        assert_eq!(frame.symbol().unwrap(), "honk");
+        assert_eq!(frame.symbol().unwrap(), b"honk");
 
         assert!(frames.next().is_none());
         assert!(threads.next().is_none());
@@ -500,7 +501,7 @@ mod tests {
         let mut frames = thread.frames().unwrap();
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7001);
-        assert_eq!(frame.symbol().unwrap(), "");
+        assert_eq!(frame.symbol().unwrap(), b"");
 
         assert!(frames.next().is_none());
         assert!(threads.next().is_none());
@@ -559,7 +560,9 @@ mod tests {
         let parsed = parse_stacktraces_from_raw_extension(&buf);
         assert!(matches!(
             parsed,
-            Err(WrappedError::FormatError(format::Error::HeaderTooSmall))
+            Err(ExtractStacktraceError::FormatError(
+                format::Error::HeaderTooSmall
+            ))
         ));
     }
 
@@ -575,7 +578,9 @@ mod tests {
         let parsed = parse_stacktraces_from_raw_extension(&buf);
         assert!(matches!(
             parsed,
-            Err(WrappedError::FormatError(format::Error::BadFormatLength))
+            Err(ExtractStacktraceError::FormatError(
+                format::Error::BadFormatLength
+            ))
         ));
     }
 
@@ -674,7 +679,7 @@ mod tests {
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7001);
         let symbol = frame.symbol().unwrap();
-        assert_eq!(symbol, "ho�nk");
+        assert_eq!(symbol, b"ho\xF0\x90\x80nk");
     }
 
     //// The lying header series. The header and the contents deliberately do not match up but
