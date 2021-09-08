@@ -269,6 +269,7 @@ fn align_to_eight(to_align: usize) -> usize {
 mod tests {
     use super::*;
 
+    use std::*;
     use test_assembler::*;
 
     // Exposing Raw[Header|Frame|Thread] and implementing helpers
@@ -276,7 +277,7 @@ mod tests {
     // significantly more readable.
 
     #[test]
-    fn test_simple_minidump() {
+    fn test_simple_extension() {
         let section = Section::new()
             .D32(MINIDUMP_FORMAT_VERSION)
             .D32(2) // 2 threads
@@ -290,19 +291,19 @@ mod tests {
             .D32(3) // last three frames belong to thread 1
             .D64(0xfffff7001) // first instr_addr
             .D32(0)
-            .D32(5) // the first symbol goes from 0-5
+            .D32(5) // the first symbol goes from 0-5 (0+5)
             .D64(0xfffff7002) // first instr_addr
             .D32(0)
-            .D32(5) // the first symbol goes from 0-5
+            .D32(5) // the first symbol goes from 0-5 (0+5)
             .D64(0xfffff7003) // first instr_addr
             .D32(5)
-            .D32(6) // the first symbol goes from 0-5
+            .D32(6) // the first symbol goes from 6-11 (5+6)
             .D64(0xfffff7004) // first instr_addr
             .D32(5)
-            .D32(6) // the first symbol goes from 0-5
+            .D32(6) // the first symbol goes from 6-11 (5+6)
             .D64(0xfffff7006) // first instr_addr
             .D32(5)
-            .D32(6) // the first symbol goes from 0-5
+            .D32(6) // the first symbol goes from 6-11 (5+6)
             .append_bytes(b"uiaeosnrtdy");
         let buf = section.get_contents().unwrap();
 
@@ -341,35 +342,402 @@ mod tests {
     }
 
     #[test]
-    fn test_simpler_minidump() {
+    fn test_padded_extension() {
         let section = Section::new()
             .D32(MINIDUMP_FORMAT_VERSION)
             .D32(1) // 1 thread
             .D32(1) // with 1 frame
-            .D32(11) // and some symbol bytes
+            .D32(4) // and some symbol bytes
             .D32(1234) // first thread id
             .D32(0)
             .D32(1)
             .D32(0) // padding for alignment
             .D64(0xfffff7001) // first frame, first instr_addr
             .D32(0)
-            .D32(5) // the first symbol goes from 0-5
-            .append_bytes(b"uiaeosnrtdy");
+            .D32(4) // the first symbol goes from 0-4
+            .append_bytes(b"honk");
         let buf = section.get_contents().unwrap();
 
         let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
 
         let mut threads = parsed.threads();
 
-        // first thread with 5 frames
+        // first thread with 1 frame
         let thread = threads.next().unwrap();
         assert_eq!(thread.thread_id(), 1234);
         let mut frames = thread.frames().unwrap();
         let frame = frames.next().unwrap();
         assert_eq!(frame.instruction_addr(), 0xfffff7001);
-        assert_eq!(frame.symbol().unwrap(), "uiaeo");
+        assert_eq!(frame.symbol().unwrap(), "honk");
 
         assert!(frames.next().is_none());
         assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_empty_extension() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(0)
+            .D32(0)
+            .D32(0);
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+        let mut threads = parsed.threads();
+        assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_only_thread() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(0) // 0 frames
+            .D32(0) // 0 symbol bytes
+            .D32(1234) // first thread id
+            .D32(0)
+            .D32(0) // 0 frames
+            .D32(0); // padding for alignment
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+
+        // first thread with 0 frames
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+        let mut frames = thread.frames().unwrap();
+        assert!(frames.next().is_none());
+        assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_only_frames() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(0) // 0 threads
+            .D32(1) // with 1 frame
+            .D32(0) // and 0 symbol bytes
+            .D64(0xfffff7001) // first frame, first instr_addr
+            .D32(0)
+            .D32(0);
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_only_symbols() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(0) // 0 threads
+            .D32(0) // 0 frames
+            .D32(4) // and 4 symbol bytes
+            .append_bytes(b"beep");
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_only_thread_and_frames() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(1) // with 1 frame
+            .D32(0) // and 0 symbol bytes
+            .D32(1234) // first thread id
+            .D32(0) // start at frame 0
+            .D32(1) // 1 frame
+            .D32(0) // padding for alignment
+            .D64(0xfffff7001) // first frame, first instr_addr
+            .D32(0)
+            .D32(0);
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+
+        let mut frames = thread.frames().unwrap();
+        let frame = frames.next().unwrap();
+        assert_eq!(frame.instruction_addr(), 0xfffff7001);
+        assert_eq!(frame.symbol().unwrap(), "");
+
+        assert!(frames.next().is_none());
+        assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_only_thread_and_symbols() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(0) // with 0 frames
+            .D32(4) // and 4 symbol bytes
+            .D32(1234) // first thread id
+            .D32(0) // start at frame 0
+            .D32(0) // 0 frames
+            .D32(0) // padding for alignment
+            .append_bytes(b"honk");
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+
+        let mut frames = thread.frames().unwrap();
+        assert!(frames.next().is_none());
+    }
+
+    #[test]
+    fn test_only_frames_and_symbols() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(0) // 0 threads
+            .D32(1) // with 1 frame
+            .D32(4) // and 4 symbol bytes
+            .D64(0xfffff7001) // first frame, first instr_addr
+            .D32(0)
+            .D32(4) // the first symbol goes from 0-4
+            .append_bytes(b"honk");
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        assert!(threads.next().is_none());
+    }
+
+    #[test]
+    fn test_undersized_header() {
+        let section = Section::new().D32(MINIDUMP_FORMAT_VERSION).D32(0).D32(0);
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf);
+        assert!(matches!(
+            parsed,
+            Err(WrappedError::FormatError(format::Error::HeaderTooSmall))
+        ));
+    }
+
+    #[test]
+    fn test_mismatched_header_values() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(2) // 2 frames
+            .D32(0); // 0 bytes
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf);
+        assert!(matches!(
+            parsed,
+            Err(WrappedError::FormatError(format::Error::BadFormatLength))
+        ));
+    }
+
+    #[test]
+    fn test_malformed_frame_boundaries() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(1) // 1 frame
+            .D32(0) // and 0 symbol bytes
+            .D32(1234) // first thread id
+            .D32(0) // start at frame 0
+            .D32(2) // 2 frames (!!!)
+            .D32(0) // padding for alignment
+            .D64(0xfffff7001) // frame instr_addr
+            .D32(0)
+            .D32(0);
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+
+        let frames = thread.frames();
+
+        assert!(matches!(
+            frames,
+            Err(format::Error::FrameIndexOutOfBounds(1234))
+        ));
+    }
+
+    #[test]
+    fn test_malformed_symbol_boundaries() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(1) // 1 frame
+            .D32(4) // and 0 symbol bytes
+            .D32(1234) // first thread id
+            .D32(0) // start at frame 0
+            .D32(1) // 1 frame
+            .D32(0) // padding for alignment
+            .D64(0xfffff7001) // frame instr_addr
+            .D32(0)
+            .D32(10) // symbol at index 0-10 (!!!)
+            .append_bytes(b"honk");
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+
+        let mut frames = thread.frames().unwrap();
+        let frame = frames.next().unwrap();
+        assert_eq!(frame.instruction_addr(), 0xfffff7001);
+        let symbol = frame.symbol();
+
+        assert!(matches!(
+            symbol,
+            Err(format::Error::SymbolIndexOutOfBounds(0xfffff7001))
+        ));
+    }
+
+    #[test]
+    fn test_bad_symbol_bytes() {
+        // let input = b"ho\xF0\x90\x80nk";
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(1) // 1 thread
+            .D32(1) // 1 frame
+            .D32(7) // and 7 symbol bytes
+            .D32(1234) // first thread id
+            .D32(0) // start at frame 0
+            .D32(1) // 1 frame
+            .D32(0) // padding for alignment
+            .D64(0xfffff7001) // frame instr_addr
+            .D32(0)
+            .D32(7)
+            .append_bytes(b"ho\xF0\x90\x80nk");
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf).unwrap();
+
+        let mut threads = parsed.threads();
+        let thread = threads.next().unwrap();
+        assert_eq!(thread.thread_id(), 1234);
+
+        let mut frames = thread.frames().unwrap();
+        let frame = frames.next().unwrap();
+        assert_eq!(frame.instruction_addr(), 0xfffff7001);
+        let symbol = frame.symbol().unwrap();
+        assert_eq!(symbol, "ho�nk");
+    }
+
+    //// The lying header series. The header and the contents deliberately do not match up but
+    //// the contents are still parseable, causing bad threads and frames to be parsed out.
+
+    #[test]
+    fn test_lying_header() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(4) // 4 threads
+            .D32(0) // 0 frames
+            .D32(0) // and 0 symbol bytes
+            .D64(0xfffff7001) // first instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7002) // second instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7003) // third instr_addr
+            .D32(0)
+            .D32(0);
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf);
+        println!("{:#?}", parsed);
+        // frames are parsed as threads
+        assert!(parsed.is_ok());
+    }
+
+    #[test]
+    fn test_another_lying_header() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(0) // 0 threads
+            .D32(3) // "3" frames
+            .D32(0) // and 0 symbol bytes
+            .D32(1111) // first thread id
+            .D32(0)
+            .D32(0)
+            .D32(0)
+            .D32(2222) // second thread id
+            .D32(0)
+            .D32(0)
+            .D32(0)
+            .D32(3333) // third thread id
+            .D32(0)
+            .D32(0)
+            .D32(0);
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf);
+        println!("{:#?}", parsed);
+        // threads are parsed as frames
+        assert!(parsed.is_ok());
+    }
+
+    #[test]
+    fn test_yet_another_lying_header() {
+        let section = Section::new()
+            .D32(MINIDUMP_FORMAT_VERSION)
+            .D32(4) // 4 threads
+            .D32(3) // "3" frames
+            .D32(0) // and 0 symbol bytes
+            .D64(0xfffff7001) // first instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7002) // second instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7003) // third instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7004) // fourth instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7005) // fifth instr_addr
+            .D32(0)
+            .D32(0)
+            .D64(0xfffff7006) // sixth instr_addr
+            .D32(0)
+            .D32(0);
+
+        let buf = section.get_contents().unwrap();
+
+        let parsed = parse_stacktraces_from_raw_extension(&buf);
+        println!("{:#?}", parsed);
+        assert!(parsed.is_ok());
     }
 }
