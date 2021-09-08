@@ -1,3 +1,83 @@
+//! Code for extracting our custom minidump extension for client-side stacktraces.
+
+//! The extension is a minidump stream with the ID `0x53790001`.
+//!
+//! The format comprises:
+//! - a header
+//! - a list of threads
+//! - a list of frames
+//! - a symbol data section
+//!
+//! The data is written in native endianness and can currently only be parsed as little endian.
+//!
+//! # Structure
+//! The header is 16 bytes long and structured as follows:
+//!```ignore
+//!bytes     0                     3 4                     7
+//!         +-----------------------+-----------------------+
+//!         | version number      1 | number of threads     |
+//!         +-----------------------+-----------------------+
+//!         | number of frames      | length of symbol data |
+//!         +-----------------------+-----------------------+
+//!```
+//! The thread list as a whole is aligned to 8 bytes.
+//! Each thread in the thread list is 12 bytes long, aligned to 4 bytes, and
+//! structured as follows:
+//!```ignore
+//!bytes   0                       3 4                     7
+//!         +-----------------------+-----------------------+
+//!         | thread id             | index of first frame  |
+//!         +-----------------------+-----------------------+
+//!         | number of frames      |
+//!         +-----------------------+
+//!```
+//!
+//! Each frame in the frame list is 16 bytes long, aligned to 8 bytes, and
+//! structured as follows:
+//!```ignore
+//!bytes   0                       3 4                     7
+//!         +-----------------------+-----------------------+
+//!         | instruction address                           |
+//!         +-----------------------+-----------------------+
+//!         | symbol start          | symbol length         |
+//!         +-----------------------+-----------------------+
+//!```
+//!
+//! The symbol data section contains the concatenated raw symbol names of all frames.
+//!
+//! # Example
+//! The following diagram shows an example stack trace with 3 threads and 2 frames:
+//!```ignore
+//!bytes     0                     3 4                     7
+//!         +-----------------------+-----------------------+
+//!header   | version             1 | threads             3 |
+//!         +-----------------------+-----------------------+
+//!         | frames              2 | symbol bytes       10 |
+//!         +-----------------------+-----------------------+
+//!thread 0 | thread id         123 | first frame         0 |
+//!         +-----------------------+-----------------------+
+//!thread 1 | frames              2 | thread id         321 |
+//!         +-----------------------+-----------------------+
+//!         | first frame         2 | frames              0 |
+//!         +-----------------------+-----------------------+
+//!thread 2 | thread id          17 | first frame         2 |
+//!         +-----------------------+-----------------------+
+//!         | frames              0 | padding             0 |
+//!         +-----------------------+-----------------------+
+//!frame 0  | instruction address                      1337 |
+//!         +-----------------------+-----------------------+
+//!         | symbol start        0 | symbol length       6 |
+//!         +-----------------------+-----------------------+
+//!frame 1  | instruction address                0xdeadbeef |
+//!         +-----------------------+-----------------------+
+//!         | symbol start        6 | symbol length       4 |
+//!         +-----------------------+-----------------------+
+//!symbols  |  _  |  s  |  t  |  a  |  r  |  t  |  m  |  a  |
+//!         +-----------------------+-----------------------+
+//!         |  i  |  n  |
+//!         +-----------+
+//!```
+
 // TODO: Remove this once writing the minidump extension is complete. It is fine if this file is
 // left unused for now; It is expected that this will be used in a PR that'll follow these changes
 // shortly.
@@ -18,16 +98,21 @@ const MINIDUMP_FORMAT_VERSION: u32 = 1;
 /// Extract client-side stacktraces from a minidump file.
 pub fn parse_stacktraces_from_minidump(
     buf: &[u8],
-) -> Result<Vec<types::RawStacktrace>, ExtractStacktraceError> {
+) -> Result<Option<Vec<types::RawStacktrace>>, ExtractStacktraceError> {
     let dump = minidump::Minidump::read(buf)?;
-    let extension_buf = dump.get_raw_stream(MINIDUMP_EXTENSION_TYPE)?;
+    let extension_buf = match dump.get_raw_stream(MINIDUMP_EXTENSION_TYPE) {
+        Ok(stream) => stream,
+        Err(minidump::Error::StreamNotFound) => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
 
     let parsed = parse_stacktraces_from_raw_extension(extension_buf)?;
-
-    parsed
+    let stacktraces = parsed
         .threads()
         .map(types::RawStacktrace::try_from)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Some(stacktraces))
 }
 
 fn parse_stacktraces_from_raw_extension(
@@ -43,7 +128,7 @@ impl TryFrom<format::Thread<'_>> for types::RawStacktrace {
         let frames = thread
             .frames()?
             .map(types::RawFrame::try_from)
-            .collect::<Result<Vec<_>, ExtractStacktraceError>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(types::RawStacktrace {
             thread_id: Some(thread.thread_id() as u64),
@@ -243,7 +328,7 @@ mod format {
 
         pub fn symbol(&self) -> Result<&[u8], Error> {
             let start_symbol = self.frame.symbol_offset as usize;
-            let end_symbol = self.frame.symbol_offset as usize + self.frame.symbol_len as usize;
+            let end_symbol = start_symbol + self.frame.symbol_len as usize;
             let bytes = self
                 .format
                 .symbol_bytes
