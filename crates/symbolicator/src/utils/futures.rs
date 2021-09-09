@@ -1,75 +1,10 @@
+use std::borrow::Cow;
 use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::channel::oneshot;
-use futures::compat::Future01CompatExt;
-use futures::{FutureExt, TryFutureExt};
-use tokio01::prelude::FutureExt as TokioFutureExt;
-use tokio01::runtime::Runtime as TokioRuntime;
+use tokio::task::JoinHandle;
 
-/// A pinned, boxed future.
-///
-/// This is the type of future that [`futures::FutureExt::boxed`] would return.  This is
-/// pretty boring but clippy quickly complains about type complexity without this.
-///
-/// You would mainly use this if you are dealing with a trait methods which deals with
-/// futures.  Trait methods can not be async/await and using this type in their return value
-/// allows to integrate with async await code.
-pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T>>>;
-
-/// Error returned from a [`SpawnHandle`] when the thread pool restarts.
-pub use oneshot::Canceled as RemoteCanceled;
-
-/// Handle returned from [`ThreadPool::spawn_handle`].
-///
-/// This handle is a future representing the completion of a different future spawned on to the
-/// thread pool. Created through the [`ThreadPool::spawn_handle`] function this handle will resolve
-/// when the future provided resolves on the thread pool.
-pub use oneshot::Receiver as SpawnHandle;
-
-/// Work-stealing based thread pool for executing futures.
-#[derive(Clone, Debug)]
-pub struct ThreadPool {
-    inner: Arc<TokioRuntime>,
-}
-
-impl ThreadPool {
-    /// Create a new `ThreadPool`.
-    ///
-    /// Since we create a CPU-heavy and an IO-heavy pool we reduce the
-    /// number of threads used per pool so that the pools are less
-    /// likely to starve each other.
-    pub fn new() -> Self {
-        let inner = Arc::new(tokio01::runtime::Builder::new().build().unwrap());
-        ThreadPool { inner }
-    }
-
-    /// Spawn a future on to the thread pool, return a future representing the produced value.
-    ///
-    /// The [`SpawnHandle`] returned is a future that is a proxy for future itself. When
-    /// future completes on this thread pool then the SpawnHandle will itself be resolved
-    /// and the outcome of the spawned future will be in the `Ok` variant.  If the spawned
-    /// future got cancelled the outcome of this proxy future will resolve into an `Err`
-    /// variant.
-    pub fn spawn_handle<F>(&self, future: F) -> SpawnHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let (sender, receiver) = oneshot::channel();
-
-        let spawned = async move {
-            sender.send(future.await).ok();
-            Ok(())
-        };
-
-        self.inner.executor().spawn(spawned.boxed().compat());
-
-        receiver
-    }
-}
+use crate::metrics::{self, prelude::*};
 
 /// Execute a callback on dropping of the container type.
 ///
@@ -96,57 +31,43 @@ impl Drop for CallOnDrop {
     }
 }
 
-/// Executes a future on the current thread.
+/// Cancels the [`JoinHandle`] on drop.
 ///
-/// The provided future must complete or be canceled before `run` will return. This function will
-/// always spawn on a `CurrentThread` executor and is able to spawn futures that are not `Send`.
+/// Spawning a task on a runtime means it will run independently from the code that calls `spawn`,
+/// even if the code stops polling the [`JoinHandle`]. We have various timeouts configured throughout
+/// the codebase, and some of those are attached to [`JoinHandle`]s.
+/// Which means we stop polling the handle, but the task that was spawned will continue on.
 ///
-/// # Panics
-///
-/// This function can only be invoked from the context of a `run` call; any other use will result in
-/// a panic.
-///
-/// # Compatibility
-///
-/// This is a compatibility shim for the `tokio` 1.0 `spawn` function signature to run on a `tokio`
-/// 0.1 executor.
-pub fn spawn_compat<F>(future: F)
-where
-    F: Future + 'static,
-{
-    tokio01::runtime::current_thread::spawn(future.map(|_| Ok(())).boxed_local().compat());
+/// This type makes sure that the spawned task is being canceled/aborted in case we lose interest
+/// in it.
+#[must_use = "this will cancel the underlying task when dropped"]
+pub struct CancelOnDrop<T> {
+    handle: JoinHandle<T>,
 }
 
-/// Error returned by [`timeout_compat`].
-#[derive(Debug, PartialEq, thiserror::Error)]
-#[error("deadline has elapsed")]
-pub struct Elapsed(());
-
-/// Require a `Future` to complete before the specified duration has elapsed.
-///
-/// If the future completes before the duration has elapsed, then the completed value is returned.
-/// Otherwise, an error is returned and the future is canceled.
-///
-/// # Compatibility
-///
-/// This is a compatibility shim for the `tokio` 1.0 `timeout` function signature to run on a
-/// `tokio` 0.1 executor.
-pub async fn timeout_compat<F: Future>(duration: Duration, f: F) -> Result<F::Output, Elapsed> {
-    f.unit_error()
-        .boxed_local()
-        .compat()
-        .timeout(duration)
-        .compat()
-        .await
-        .map_err(|_| Elapsed(()))
+impl<T> CancelOnDrop<T> {
+    pub fn new(handle: JoinHandle<T>) -> Self {
+        Self { handle }
+    }
 }
 
-/// Delay aka sleep for a given duration
-pub async fn delay(duration: Duration) {
-    tokio01::timer::Delay::new(Instant::now() + duration)
-        .compat()
-        .await
-        .ok();
+impl<T> Drop for CancelOnDrop<T> {
+    fn drop(&mut self) {
+        self.handle.abort()
+    }
+}
+
+impl<T> Future for CancelOnDrop<T> {
+    type Output = <JoinHandle<T> as Future>::Output;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        // https://doc.rust-lang.org/std/pin/index.html#pinning-is-structural-for-field
+        let handle = unsafe { self.map_unchecked_mut(|s| &mut s.handle) };
+        handle.poll(cx)
+    }
 }
 
 /// State of the [`MeasureGuard`].
@@ -162,15 +83,17 @@ enum MeasureState {
 struct MeasureGuard<'a> {
     state: MeasureState,
     task_name: &'a str,
+    tag: Option<(&'a str, Cow<'a, str>)>,
     creation_time: Instant,
 }
 
 impl<'a> MeasureGuard<'a> {
     /// Creates a new measure guard.
-    pub fn new(task_name: &'a str) -> Self {
+    pub fn new(task_name: &'a str, tag: Option<(&'a str, Cow<'a, str>)>) -> Self {
         Self {
             state: MeasureState::Pending,
             task_name,
+            tag,
             creation_time: Instant::now(),
         }
     }
@@ -180,10 +103,16 @@ impl<'a> MeasureGuard<'a> {
     /// By default, the future is waiting to be polled. `start` emits the `futures.wait_time`
     /// metric.
     pub fn start(&mut self) {
-        metric!(
-            timer("futures.wait_time") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-        );
+        metrics::with_client(|client| {
+            let mut metric = client
+                .time_with_tags("futures.wait_time", self.creation_time.elapsed())
+                .with_tag("task_name", self.task_name);
+            if let Some((k, v)) = &self.tag {
+                metric = metric.with_tag(k, v.as_ref());
+            }
+
+            client.send_metric(metric);
+        })
     }
 
     /// Marks the future as terminated and emits the `futures.done` metric.
@@ -198,12 +127,17 @@ impl Drop for MeasureGuard<'_> {
             MeasureState::Pending => "canceled",
             MeasureState::Done(status) => status,
         };
+        metrics::with_client(|client| {
+            let mut metric = client
+                .time_with_tags("futures.done", self.creation_time.elapsed())
+                .with_tag("task_name", self.task_name)
+                .with_tag("status", status);
+            if let Some((k, v)) = &self.tag {
+                metric = metric.with_tag(k, v.as_ref());
+            }
 
-        metric!(
-            timer("futures.done") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-            "status" => status,
-        );
+            client.send_metric(metric);
+        })
     }
 }
 
@@ -219,13 +153,14 @@ impl Drop for MeasureGuard<'_> {
 pub fn measure<'a, S, F>(
     task_name: &'a str,
     get_status: S,
+    tag: Option<(&'a str, Cow<'a, str>)>,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a
 where
     F: 'a + Future,
     S: 'a + FnOnce(&F::Output) -> &'static str,
 {
-    let mut guard = MeasureGuard::new(task_name);
+    let mut guard = MeasureGuard::new(task_name, tag);
 
     async move {
         guard.start();
@@ -295,6 +230,6 @@ where
         }
 
         retries += 1;
-        delay(Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }

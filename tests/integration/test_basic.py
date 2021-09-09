@@ -139,6 +139,73 @@ def _make_unsuccessful_result(status, source="microsoft"):
     return response
 
 
+def _make_error_result(download_error, source="microsoft", bucket_type="http"):
+    """
+    Builds a standard error result. `download_error` should be an ObjectDownloadInfo.
+    """
+
+    response = {
+        "stacktraces": [
+            {
+                "registers": {"eip": "0x1509530"},
+                "frames": [
+                    {
+                        "status": "missing",
+                        "original_index": 0,
+                        "package": "C:\\Windows\\System32\\kernel32.dll",
+                        "instruction_addr": "0x749e8630",
+                    }
+                ],
+            }
+        ],
+        "modules": [
+            {
+                "type": "pe",
+                "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+                "code_file": "C:\\Windows\\System32\\kernel32.dll",
+                "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+                "debug_status": "missing",
+                "features": {
+                    "has_debug_info": False,
+                    "has_sources": False,
+                    "has_symbols": False,
+                    "has_unwind_info": False,
+                },
+                "arch": "unknown",
+                "image_addr": "0x749d0000",
+                "image_size": 851_968,
+            }
+        ],
+        "status": "completed",
+    }
+    prefix = "http://127.0.0.1:1234/msdl/"
+    if bucket_type == "s3":
+        prefix = "s3://symbolicator-test/"
+
+    if source in ["microsoft", "unknown", "broken"]:
+        response["modules"][0]["candidates"] = [
+            {
+                "download": download_error,
+                "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                "source": source,
+            },
+            {
+                "download": download_error,
+                "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                "source": source,
+            },
+        ]
+        if bucket_type != "http":
+            response["modules"][0]["candidates"].append(
+                {
+                    "download": download_error,
+                    "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.sym",
+                    "source": source,
+                }
+            )
+    return response
+
+
 MISSING_FILE = _make_unsuccessful_result("missing")
 MALFORMED_FILE = _make_unsuccessful_result("malformed")
 MALFORMED_NO_SOURCES = _make_unsuccessful_result("malformed", source=None)
@@ -470,7 +537,17 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
         ]
         assert_symbolication(response, expected)
     else:
-        expected = _make_unsuccessful_result(status="missing", source="broken")
+        if statuscode == 500:
+            expected = _make_error_result(
+                download_error={
+                    "status": "error",
+                    "details": "failed to download: 500 Internal Server Error",
+                },
+                source="broken",
+            )
+        else:
+            expected = _make_unsuccessful_result(status="missing", source="broken")
+
         for module in expected.get("modules", []):
             for candidate in module.get("candidates", []):
                 if "location" in candidate:
@@ -480,6 +557,62 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                     )
 
         assert_symbolication(response, expected)
+
+
+# can't test gcs because you get JWT errors, meaningless to test sentry sources
+@pytest.mark.parametrize("bucket_type", ["http", "s3"])
+def test_no_permission(symbolicator, hitcounter, bucket_type):
+    if bucket_type == "http":
+        source_specific = {"layout": {"type": "symstore"}}
+    elif bucket_type == "s3":
+        source_specific = {"bucket": "symbolicator-test", "region": "us-east-1"}
+    elif bucket_type == "gcs":
+        source_specific = {
+            "bucket": "honk",
+            "private_key": "",
+            "client_email": "honk@sentry.io",
+        }
+    else:
+        source_specific = {}
+
+    source = {
+        "type": bucket_type,
+        "id": "broken",
+        "url": f"{hitcounter.url}/respond_statuscode/403/",
+    }
+    source.update(source_specific)
+
+    input = dict(
+        sources=[source],
+        options={
+            "dif_candidates": True,
+        },
+        **WINDOWS_DATA,
+    )
+
+    service = symbolicator()
+    service.wait_healthcheck()
+
+    response = service.post("/symbolicate", json=input)
+    response.raise_for_status()
+    response = response.json()
+
+    expected = _make_error_result(
+        download_error={"status": "noperm", "details": ""},
+        source="broken",
+        bucket_type=bucket_type,
+    )
+
+    if bucket_type == "http":
+        for module in expected.get("modules", []):
+            for candidate in module.get("candidates", []):
+                if "location" in candidate:
+                    candidate["location"] = candidate["location"].replace(
+                        "/msdl/",
+                        "/respond_statuscode/403/",
+                    )
+
+    assert_symbolication(response, expected)
 
 
 def test_malformed_objects(symbolicator, hitcounter):
@@ -619,7 +752,10 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
         assert_symbolication(response.json(), SUCCESS_WINDOWS)
     else:
         assert not hitcounter.hits
-        assert_symbolication(response.json(), MISSING_FILE)
+        restricted_download_failure = _make_error_result(
+            download_error={"status": "error", "details": "failed to stream file"}
+        )
+        assert_symbolication(response.json(), restricted_download_failure)
 
 
 def test_no_dif_candidates(symbolicator, hitcounter):

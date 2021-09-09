@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ::sentry::{Hub, SentryFutureExt};
 use futures::prelude::*;
+use reqwest::StatusCode;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+use crate::cache::CacheStatus;
 use crate::utils::futures::{self as future_utils, m, measure};
 use crate::utils::paths::get_directory_paths;
 
@@ -35,9 +36,9 @@ const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 /// Errors happening while downloading from sources.
 #[derive(Debug, Error)]
 pub enum DownloadError {
-    #[error("failed to download")]
+    #[error("failed to perform an IO operation")]
     Io(#[source] std::io::Error),
-    #[error("failed to download")]
+    #[error("failed to stream file")]
     Reqwest(#[source] reqwest::Error),
     #[error("bad file destination")]
     BadDestination(#[source] std::io::Error),
@@ -49,6 +50,48 @@ pub enum DownloadError {
     Gcs(#[from] gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
+    #[error("failed to fetch data from S3")]
+    S3(#[from] s3::S3Error),
+    #[error("missing permissions for file")]
+    Permissions,
+    /// Typically means the initial HEAD request received a non-200, non-400 response.
+    #[error("failed to download: {0}")]
+    Rejected(StatusCode),
+    #[error("failed to fetch object: {0}")]
+    CachedError(String),
+}
+
+impl DownloadError {
+    /// This produces a user-facing string representation of a download error if it is a variant
+    /// that needs to be stored as a [`CacheStatus::CacheSpecificError`] entry in the download cache.
+    pub fn for_cache(&self) -> String {
+        match self {
+            DownloadError::Gcs(inner) => format!("{}: {}", self, inner),
+            DownloadError::Sentry(inner) => format!("{}: {}", self, inner),
+            DownloadError::S3(inner) => format!("{}: {}", self, inner),
+            DownloadError::Permissions => self.to_string(),
+            DownloadError::CachedError(original_message) => original_message.clone(),
+            _ => format!("{}", self),
+        }
+    }
+
+    /// If a given cache entry is [`CacheStatus::CacheSpecificError`], this parses and extracts its
+    /// contents into a [`DownloadError`]. This will return none if a
+    /// non-[`CacheStatus::CacheSpecificError`] is provided.
+    pub fn from_cache(status: &CacheStatus) -> Option<Self> {
+        match status {
+            CacheStatus::Positive => None,
+            CacheStatus::Negative => None,
+            CacheStatus::Malformed(_) => None,
+            CacheStatus::CacheSpecificError(message) => {
+                if message.starts_with(&Self::Permissions.to_string()) {
+                    Some(Self::Permissions)
+                } else {
+                    Some(Self::CachedError(message.clone()))
+                }
+            }
+        }
+    }
 }
 
 /// Completion status of a successful download request.
@@ -67,7 +110,6 @@ pub enum DownloadStatus {
 #[derive(Debug)]
 pub struct DownloadService {
     config: Arc<Config>,
-    worker: tokio::runtime::Handle,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
@@ -88,7 +130,6 @@ impl DownloadService {
         } = *config;
         Arc::new(Self {
             config,
-            worker: tokio::runtime::Handle::current(),
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 connect_timeout,
@@ -107,13 +148,13 @@ impl DownloadService {
 
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
-        self: Arc<Self>,
-        source: RemoteDif,
+        &self,
+        source: &RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
         let result = future_utils::retry(|| async {
             let destination = destination.clone();
-            match &source {
+            match source {
                 RemoteDif::Sentry(inner) => {
                     self.sentry
                         .download_source(inner.clone(), destination)
@@ -131,20 +172,19 @@ impl DownloadService {
         });
 
         match result.await {
-            Ok(DownloadStatus::NotFound) => {
-                log::debug!(
-                    "Did not fetch debug file from {:?}: {:?}",
-                    source,
-                    DownloadStatus::NotFound
-                );
-                Ok(DownloadStatus::NotFound)
-            }
             Ok(status) => {
-                log::debug!("Fetched debug file from {:?}: {:?}", source, status);
+                match status {
+                    DownloadStatus::Completed => {
+                        log::debug!("Fetched debug file from {}", source);
+                    }
+                    DownloadStatus::NotFound => {
+                        log::debug!("Debug file not found at {}", source);
+                    }
+                };
                 Ok(status)
             }
             Err(err) => {
-                log::debug!("Failed to fetch debug file from {:?}: {}", source, err);
+                log::debug!("Failed to fetch debug file from {}: {}", source, err);
                 Err(err)
             }
         }
@@ -157,29 +197,18 @@ impl DownloadService {
     /// The downloaded file is saved into `destination`. The file will be created if it does not
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
-    //
-    // NB: This takes `Arc<Self>` since it needs to spawn into the worker pool internally. Spawning
-    // requires futures to be `'static`, which means there cannot be any references to an externally
-    // owned downloader.
     pub async fn download(
-        self: Arc<Self>,
+        &self,
         source: RemoteDif,
         destination: PathBuf,
     ) -> Result<DownloadStatus, DownloadError> {
-        let hub = Hub::current();
-        let slf = self.clone();
-
-        // NB: Enter the tokio 1 runtime, which is required to create the timeout.
-        // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
-        let _guard = self.worker.enter();
-        let job = slf.dispatch_download(source, destination).bind_hub(hub);
+        let job = self.dispatch_download(&source, destination);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
-        let job = measure("service.download", m::timed_result, job);
+        let job = measure("service.download", m::timed_result, None, job);
 
-        // Map all SpawnError variants into DownloadError::Canceled.
-        match self.worker.spawn(job).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
+        match job.await {
+            Ok(result) => result,
+            Err(_) => Err(DownloadError::Canceled),
         }
     }
 
@@ -195,42 +224,25 @@ impl DownloadService {
     /// will respect this and they may return all DIFs matching the `object_id`.  After
     /// downloading you may still need to filter the files.
     pub async fn list_files(
-        self: Arc<Self>,
+        &self,
         source: SourceConfig,
-        filetypes: Vec<FileType>,
+        filetypes: &[FileType],
         object_id: ObjectId,
-        hub: Arc<Hub>,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
-                let config = self.config.clone();
-                let slf = self.clone();
-
-                // This `async move` ensures that the `list_files` future completes before `slf`
-                // goes out of scope, which ensures 'static lifetime for `spawn` below.
-                let job = async move {
-                    slf.sentry
-                        .list_files(cfg, object_id, &filetypes, config)
-                        .bind_hub(hub)
-                        .await
-                };
-
-                // NB: Enter the tokio 1 runtime, which is required to create the timeout.
-                // See: https://docs.rs/tokio/1.0.1/tokio/runtime/struct.Runtime.html#method.enter
-                let _guard = self.worker.enter();
+                let job = self
+                    .sentry
+                    .list_files(cfg, object_id, filetypes, &self.config);
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
-                let job = measure("service.download.list_files", m::timed_result, job);
+                let job = measure("service.download.list_files", m::timed_result, None, job);
 
-                // Map all SpawnError variants into DownloadError::Canceled.
-                match self.worker.spawn(job).await {
-                    Ok(Ok(result)) => result,
-                    Ok(Err(_)) | Err(_) => Err(DownloadError::Canceled),
-                }
+                job.await.map_err(|_| DownloadError::Canceled)?
             }
-            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, &filetypes, object_id)),
-            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, &filetypes, object_id)),
-            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, &filetypes, object_id)),
-            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, &filetypes, object_id)),
+            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
+            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
+            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, filetypes, object_id)),
         }
     }
 }
@@ -238,6 +250,11 @@ impl DownloadService {
 /// Download the source from a stream.
 ///
 /// This is common functionality used by many downloaders.
+///
+/// # Errors
+/// - [`DownloadError::BadDestination`]
+/// - [`DownloadError::Write`]
+/// - [`DownloadError::Canceled`]
 async fn download_stream(
     source: impl Into<RemoteDif>,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
@@ -274,10 +291,9 @@ async fn download_stream(
     };
 
     match timeout {
-        Some(timeout) => match tokio::time::timeout(timeout, future).await {
-            Ok(res) => res,
-            Err(_) => Err(DownloadError::Canceled),
-        },
+        Some(timeout) => tokio::time::timeout(timeout, future)
+            .await
+            .map_err(|_| DownloadError::Canceled)?,
         None => future.await,
     }
 }
@@ -438,6 +454,9 @@ fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Dura
 
 #[cfg(test)]
 mod tests {
+    use symbolic::common::{CodeId, DebugId};
+    use uuid::Uuid;
+
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
     use super::http::HttpRemoteDif;
@@ -493,12 +512,7 @@ mod tests {
         let config = Arc::new(Config::default());
         let svc = DownloadService::new(config);
         let file_list = svc
-            .list_files(
-                source.clone(),
-                FileType::all().to_vec(),
-                objid,
-                Hub::current(),
-            )
+            .list_files(source.clone(), FileType::all(), objid)
             .await
             .unwrap();
 
@@ -525,5 +539,36 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
+    }
+
+    #[test]
+    fn test_iter_elf() {
+        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
+        // created.
+        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
+        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
+        let debug_id = DebugId::from_uuid(uuid);
+
+        let mut all: Vec<_> = SourceLocationIter {
+            filetypes: [FileType::ElfCode, FileType::ElfDebug].iter(),
+            filters: &Default::default(),
+            object_id: &ObjectId {
+                debug_id: Some(debug_id),
+                code_id: Some(code_id),
+                ..Default::default()
+            },
+            layout: Default::default(),
+            next: Default::default(),
+        }
+        .collect();
+        all.sort();
+
+        assert_eq!(
+            all,
+            [
+                SourceLocation::new("ab/cdef1234567890abcd"),
+                SourceLocation::new("ab/cdef1234567890abcd.debug")
+            ]
+        );
     }
 }

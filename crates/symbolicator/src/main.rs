@@ -23,7 +23,6 @@ mod cli;
 mod config;
 mod endpoints;
 mod logging;
-mod middlewares;
 mod server;
 mod services;
 mod sources;

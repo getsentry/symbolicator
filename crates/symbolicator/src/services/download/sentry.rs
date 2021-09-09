@@ -148,7 +148,7 @@ impl SentryDownloader {
     async fn cached_sentry_search(
         &self,
         query: SearchQuery,
-        config: Arc<Config>,
+        config: &Config,
     ) -> Result<Vec<SearchResult>, DownloadError> {
         // The Sentry cache index should expire as soon as we attempt to retry negative caches.
         let cache_duration = if config.cache_dir.is_some() {
@@ -187,7 +187,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: ObjectId,
         file_types: &[FileType],
-        config: Arc<Config>,
+        config: &Config,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
         // paginate at 20 results so we get away with this for now.
@@ -235,7 +235,7 @@ impl SentryDownloader {
         };
 
         let search = self.cached_sentry_search(query, config);
-        let entries = measure("downloads.sentry.index", m::result, search).await?;
+        let entries = measure("downloads.sentry.index", m::result, None, search).await?;
         let file_ids = entries
             .into_iter()
             .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
@@ -244,6 +244,12 @@ impl SentryDownloader {
         Ok(file_ids)
     }
 
+    /// Downloads a source hosted on Sentry.
+    ///
+    /// # Directly thrown errors
+    /// - [`DownloadError::Reqwest`]
+    /// - [`DownloadError::Rejected`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: SentryRemoteDif,
@@ -277,18 +283,31 @@ impl SentryDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
-                } else {
-                    log::trace!(
-                        "Unexpected status code from {}: {}",
+                } else if matches!(
+                    response.status(),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+                ) {
+                    log::debug!("Insufficient permissions to download from {}", download_url);
+                    Err(DownloadError::Permissions)
+                } else if response.status().is_client_error() {
+                    log::debug!(
+                        "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
+                } else {
+                    log::debug!(
+                        "Unexpected status code from {}: {}",
+                        download_url,
+                        response.status()
+                    );
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {
-                log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(DownloadStatus::NotFound) // must be wrong type
+                log::debug!("Skipping response from {}: {}", download_url, e);
+                Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             // Timed out
             Err(_) => Err(DownloadError::Canceled),

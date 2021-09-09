@@ -11,11 +11,26 @@
 - Update symbolic to correctly apply bcsymbolmaps to symbol and filenames coming from DWARF. ([#479](https://github.com/getsentry/symbolicator/pull/479))
 - Update symbolic to correctly restore registers when using compact unwinding. ([#487](https://github.com/getsentry/symbolicator/pull/487))
 - Make various timeouts related to downloading files configurable. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489), [#491](https://github.com/getsentry/symbolicator/pull/491))
-- Introduced the `max_download_timeout` config setting for source downloads. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489))
-- Introduced the `streaming_timeout` config setting for source downloads. ([#489](https://github.com/getsentry/symbolicator/pull/489))
-- Introduced the `connect_timeout` config setting for source downloads. ([#491](https://github.com/getsentry/symbolicator/pull/491))
+- Introduced the `max_download_timeout` config setting for source downloads, which defaults to 315s. ([#482](https://github.com/getsentry/symbolicator/pull/482), [#489](https://github.com/getsentry/symbolicator/pull/489), [#503](https://github.com/getsentry/symbolicator/pull/503)
+- Introduced the `streaming_timeout` config setting for source downloads, which defaults to 250s. ([#489](https://github.com/getsentry/symbolicator/pull/489), [#503](https://github.com/getsentry/symbolicator/pull/503)
+- Introduced the `connect_timeout` config setting for source downloads, which has a default of 15s. ([#491](https://github.com/getsentry/symbolicator/pull/491), [#496](https://github.com/getsentry/symbolicator/pull/496))
 - GCS, S3, HTTP, and local filesystem sources: Attempt to retry failed downloads at least once. ([#485](https://github.com/getsentry/symbolicator/pull/485))
 - Refresh symcaches when a new `BcSymbolMap` becomes available. ([#493](https://github.com/getsentry/symbolicator/pull/493))
+- Cache download failures and do not retry the download for a while ([#484](https://github.com/getsentry/symbolicator/pull/484), [#501](https://github.com/getsentry/symbolicator/pull/501))
+- New configuration option `hostname_tag` ([#513](https://github.com/getsentry/symbolicator/pull/513))
+- Introduced a new cache status to represent failures specific to the cache: Download failures that aren't related to the file being missing in download caches and conversion errors in derived caches. Download failure entries expire after 1 hour, and conversion errors expire after 1 day, or after symbolicator is restarted. ([#509](https://github.com/getsentry/symbolicator/pull/509))
+- Malformed and Cache-specific Error cache entries now contain some diagnostic info. ([#510](https://github.com/getsentry/symbolicator/pull/510))
+- New configuration option `environment_tag` ([#517](https://github.com/getsentry/symbolicator/pull/517))
+- Source candidates which symbolicator has failed to download due to non-400 errors are now being returned in symbolication payloads. These candidates include additional diagnostic info which briefly describes the download error. ([#512](https://github.com/getsentry/symbolicator/pull/512))
+- If a DIF object candidate could not be downloaded due to a lack of permissions, their respective entry in a symbolication response will now mention something about permissions instead of marking the candidate as just Missing. ([#512](https://github.com/getsentry/symbolicator/pull/512), [#518](https://github.com/getsentry/symbolicator/pull/518))
+- Introduced the `max_concurrent_requests` config setting, which limits the number of requests that will be processed concurrently. It defaults to `Some(120)`. ([#521](https://github.com/getsentry/symbolicator/pull/521), [#537](https://github.com/getsentry/symbolicator/pull/537))
+- Symbolication tasks are being spawned on a tokio 1 Runtime now. ([#531](https://github.com/getsentry/symbolicator/pull/531))
+- Symbolicator now allows explicitly versioning its caches. It will fall back to supported outdated cache versions immediately instead of eagerly waiting for updated cache files. Recomputations of newer cache versions are being done lazily in the background, bounded by new settings `max_lazy_redownloads` and `max_lazy_recomputations` for downloaded and derived caches respectively. ([#524](https://github.com/getsentry/symbolicator/pull/524), [#533](https://github.com/getsentry/symbolicator/pull/533), [#535](https://github.com/getsentry/symbolicator/pull/535))
+- Remove actix-web in favor of axum. This changes the web framework and also completely switches to the tokio 1 Runtime. ([#544](https://github.com/getsentry/symbolicator/pull/544))
+
+### Fixes
+
+- Skip trailing garbage frames after `_start`. ([#514](https://github.com/getsentry/symbolicator/pull/514))
 
 ### Tools
 
@@ -24,6 +39,7 @@
 ### Internal
 
 - Measure how long it takes to download sources from external servers. ([#483](https://github.com/getsentry/symbolicator/pull/483))
+- Avoid serialization overhead when processing large minidumps out-of-process. ([#508](https://github.com/getsentry/symbolicator/pull/508))
 
 ## 0.3.4
 

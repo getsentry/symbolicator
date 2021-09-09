@@ -11,20 +11,20 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Error};
-use futures::compat::Future01CompatExt;
-use futures::{future, FutureExt, TryFutureExt};
+use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
-use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
+use crate::cache::{Cache, CacheStatus};
+use crate::logging::LogError;
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
-use crate::utils::futures::BoxedFuture;
+use crate::utils::futures::{m, measure};
 
 /// Handle to a valid BCSymbolMap.
 ///
@@ -45,8 +45,8 @@ impl BcSymbolMapHandle {
 
 /// The handle to be returned by [`CacheItemRequest`].
 ///
-/// This trait requires us to return a handle regardless of positive, negative or malformed
-/// cache status.  This is this handle but we do not expose it outside of this module, see
+/// This trait requires us to return a handle regardless of its cache status.
+/// This is this handle but we do not expose it outside of this module, see
 /// [`BcSymbolMapHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
@@ -92,60 +92,65 @@ impl FetchFileRequest {
         let download_file = self.cache.tempfile()?;
         let cache_key = self.get_cache_key();
 
-        match self
+        let result = self
             .download_svc
             .download(self.file_source, download_file.path().to_path_buf())
-            .await?
-        {
-            DownloadStatus::NotFound => {
+            .await;
+
+        match result {
+            Ok(DownloadStatus::NotFound) => {
                 log::debug!("No auxiliary DIF file found for {}", cache_key);
-                Ok(CacheStatus::Negative)
+                return Ok(CacheStatus::Negative);
             }
-            DownloadStatus::Completed => {
-                let download_dir = download_file
-                    .path()
-                    .parent()
-                    .ok_or_else(|| Error::msg("Parent of download dir not found"))?;
-                let decompressed_path = tempfile_in(download_dir)?;
-                let mut decompressed =
-                    match decompress_object_file(&download_file, decompressed_path) {
-                        Ok(file) => file,
-                        Err(_) => {
-                            return Ok(CacheStatus::Malformed);
-                        }
-                    };
-
-                // Seek back to the start and parse this DIF.
-                decompressed.seek(SeekFrom::Start(0))?;
-                let view = ByteView::map_file(decompressed)?;
-
-                match self.kind {
-                    AuxDifKind::BcSymbolMap => {
-                        if let Err(err) = BcSymbolMap::parse(&view) {
-                            let kind = self.kind.to_string();
-                            metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                            log::debug!("Failed to parse bcsymbolmap: {}", err);
-                            return Ok(CacheStatus::Malformed);
-                        }
-                    }
-                    AuxDifKind::UuidMap => {
-                        if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
-                            let kind = self.kind.to_string();
-                            metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                            log::debug!("Failed to parse plist: {}", err);
-                            return Ok(CacheStatus::Malformed);
-                        }
-                    }
-                }
-
-                // The file is valid, lets save it.
-                let mut destination = File::create(path)?;
-                let mut cursor = Cursor::new(&view);
-                io::copy(&mut cursor, &mut destination)?;
-
-                Ok(CacheStatus::Positive)
+            Err(e) => {
+                log::debug!("Error while downloading file: {}", LogError(&e));
+                return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+            }
+            Ok(DownloadStatus::Completed) => {
+                // fall through
             }
         }
+        let download_dir = download_file
+            .path()
+            .parent()
+            .ok_or_else(|| Error::msg("Parent of download dir not found"))?;
+        let decompressed_path = tempfile_in(download_dir)?;
+        let mut decompressed = match decompress_object_file(&download_file, decompressed_path) {
+            Ok(file) => file,
+            Err(err) => {
+                return Ok(CacheStatus::Malformed(err.to_string()));
+            }
+        };
+
+        // Seek back to the start and parse this DIF.
+        decompressed.seek(SeekFrom::Start(0))?;
+        let view = ByteView::map_file(decompressed)?;
+
+        match self.kind {
+            AuxDifKind::BcSymbolMap => {
+                if let Err(err) = BcSymbolMap::parse(&view) {
+                    let kind = self.kind.to_string();
+                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
+                    log::debug!("Failed to parse bcsymbolmap: {}", err);
+                    return Ok(CacheStatus::Malformed(err.to_string()));
+                }
+            }
+            AuxDifKind::UuidMap => {
+                if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
+                    let kind = self.kind.to_string();
+                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
+                    log::debug!("Failed to parse plist: {}", err);
+                    return Ok(CacheStatus::Malformed(err.to_string()));
+                }
+            }
+        }
+
+        // The file is valid, lets save it.
+        let mut destination = File::create(path)?;
+        let mut cursor = Cursor::new(&view);
+        io::copy(&mut cursor, &mut destination)?;
+
+        Ok(CacheStatus::Positive)
     }
 }
 
@@ -160,22 +165,26 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let fut = self
             .clone()
             .fetch_file(path.to_path_buf())
-            .bind_hub(Hub::current())
-            .boxed_local();
-        let source_name = self.file_source.source_type_name();
-        Box::pin(
-            future_metrics!(
-                "auxdifs",
-                Some((Duration::from_secs(600),Error::msg("Timeout fetching aux DIF"))),
-                fut.compat(),
-                "source_type" => source_name,
-            )
-            .compat(),
-        )
+            .bind_hub(Hub::current());
+
+        let source_name = self.file_source.source_type_name().into();
+
+        let future = tokio::time::timeout(Duration::from_secs(1200), fut);
+        let future = measure(
+            "auxdifs",
+            m::timed_result,
+            Some(("source_type", source_name)),
+            future,
+        );
+        Box::pin(async move {
+            future
+                .await
+                .map_err(|_| Error::msg("Timeout fetching aux DIF"))?
+        })
     }
 
     fn load(
@@ -294,13 +303,13 @@ impl BitcodeService {
         hub.configure_scope(|scope| scope.set_extra("auxdif.source", source.type_name().into()));
 
         let file_type = match dif_kind {
-            AuxDifKind::BcSymbolMap => vec![FileType::BcSymbolMap],
-            AuxDifKind::UuidMap => vec![FileType::UuidMap],
+            AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
+            AuxDifKind::UuidMap => &[FileType::UuidMap],
         };
         let file_sources = self
             .download_svc
-            .clone()
-            .list_files(source, file_type, uuid.into(), hub.clone())
+            .list_files(source, file_type, uuid.into())
+            .bind_hub(hub.clone())
             .await?;
 
         let mut fetch_jobs = Vec::with_capacity(file_sources.len());

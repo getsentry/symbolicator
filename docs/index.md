@@ -59,6 +59,8 @@ metrics:
       environment variable or in case it is not defined, then it defaults to `null`,
       which disables metric submission.
     - `prefix`: A prefix for every metric, defaults to `symbolicator`.
+    - `hostname_tag`: If set, report the current hostname under the given tag name for all metrics.
+    - `environment_tag`: If set, report the current environment under the given tag name for all metrics.
 - `sentry_dsn`: DSN to a Sentry project for internal error reporting. Defaults
   to `null`, which disables reporting to Sentry.
 - `sources`: An optional list of preconfigured sources. If these are configured
@@ -73,6 +75,8 @@ metrics:
   sources. See [Security](#security). Defaults to `false`.
 - `processing_pool_size`: The number of subprocesses in Symbolicator's internal
   processing pool. Defaults to the total number of logical CPUs on the machine.
+- `max_concurrent_requests`: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
+  Set it to `null` to turn off the limit. Defaults to 120.
 
 > All time units for the following configuration settings can be either a time
 expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,
@@ -93,6 +97,8 @@ expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,
        download a file which was not found.
      - `retry_malformed_after`: Duration to wait before re-trying to
        download a file which was malformed.
+     - `max_lazy_redownloads`: Symbolicator will fall back to a compatible but out-of-date cache version if available,
+       and start computing the up-to-date version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.
   - `derived`: Fine-tune caches for files which are derived from
     downloaded files.  These files are usually versions of the
     downloaded files optimised for fast lookups.
@@ -102,6 +108,8 @@ expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,
       download a file which was not found.
     - `retry_malformed_after`: Duration to wait before re-trying to
       download a file which was malformed.
+    - `max_lazy_recomputations`: Symbolicator will fall back to a compatible but out-of-date cache version if available,
+      and start computing the up-to-date version in the background. This option sets the maximum number of such lazy computations that symbolicator will do concurrently. Defaults to 20.
   - `diagnostics`: This configures the duration diagnostics data
     will be stored in cache.  E.g. minidumps which failed to be
     processed correctly will be stored in this cache.

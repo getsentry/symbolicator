@@ -16,22 +16,25 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
-use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use futures::{FutureExt, TryFutureExt};
 use log::LevelFilter;
 use reqwest::Url;
+use warp::filters::fs::File;
+use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
+use crate::config::Config;
+use crate::endpoints;
+use crate::services::Service;
 use crate::sources::{
     CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
     SourceFilters, SourceId,
 };
 
-pub use actix_web::test::TestServer;
 pub use tempfile::TempDir;
 
 /// Setup the test environment.
@@ -44,6 +47,12 @@ pub(crate) fn setup() {
         .is_test(true)
         .try_init()
         .ok();
+}
+
+/// Create a default [`Service`] running with the current Runtime.
+pub(crate) fn default_service() -> Service {
+    let handle = tokio::runtime::Handle::current();
+    Service::create(Config::default(), handle.clone(), handle).unwrap()
 }
 
 /// Creates a temporary directory.
@@ -87,41 +96,6 @@ pub(crate) fn fixture(path: impl AsRef<Path>) -> PathBuf {
 /// Panics if the fixture does not exist or cannot be read.
 pub(crate) fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
     std::fs::read(fixture(path)).unwrap()
-}
-
-/// Runs the provided function, blocking the current thread until the result **legacy**
-/// [`Future`](futures01::Future) completes.
-///
-/// This function can be used to synchronously block the current thread until the provided `Future`
-/// has resolved either successfully or with an error. The result of the future is then returned
-/// from this function call.
-///
-/// This is provided rather than a `block_on`-like interface to avoid accidentally calling a
-/// function which spawns before creating a future, which would attempt to spawn before actix is
-/// initialised.
-///
-/// Note that this function is intended to be used only for testing purpose. This function panics on
-/// nested call.
-pub async fn spawn_compat<F, T>(f: F) -> T::Output
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Future + 'static,
-    T::Output: Send,
-{
-    let (sender, receiver) = futures::channel::oneshot::channel();
-
-    std::thread::spawn(|| {
-        let result = tokio01::runtime::current_thread::Runtime::new()
-            .unwrap()
-            .block_on(f().never_error().boxed_local().compat());
-
-        sender.send(result)
-    });
-
-    match receiver.await.unwrap() {
-        Ok(output) => output,
-        Err(never) => match never {},
-    }
 }
 
 /// Get bucket configuration for the local fixtures.
@@ -186,6 +160,20 @@ impl Server {
         Self { handle, socket }
     }
 
+    pub fn with_service(service: Service) -> Self {
+        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server =
+            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
+
+        let socket = server.local_addr();
+        let handle = tokio::spawn(async {
+            let _ = server.await;
+        });
+
+        Self { handle, socket }
+    }
+
     /// Returns the socket address that this server listens on.
     pub fn addr(&self) -> SocketAddr {
         self.socket
@@ -239,5 +227,111 @@ pub(crate) fn symbol_server() -> (Server, SourceConfig) {
     (server, source)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct GoAway;
+
+impl Reject for GoAway {}
+
+pub(crate) struct FailingSymbolServer {
+    #[allow(unused)]
+    server: Server,
+    times_accessed: Arc<AtomicUsize>,
+    pub(crate) reject_source: SourceConfig,
+    pub(crate) pending_source: SourceConfig,
+    pub(crate) not_found_source: SourceConfig,
+    pub(crate) forbidden_source: SourceConfig,
+}
+
+impl FailingSymbolServer {
+    pub(crate) fn new() -> Self {
+        let times_accessed = Arc::new(AtomicUsize::new(0));
+
+        let times = times_accessed.clone();
+        let reject = warp::path("reject").and_then(move || {
+            let times = Arc::clone(&times);
+            async move {
+                (*times).fetch_add(1, Ordering::SeqCst);
+
+                Err::<File, _>(warp::reject::custom(GoAway))
+            }
+        });
+
+        let times = times_accessed.clone();
+        let not_found = warp::path("not-found").and_then(move || {
+            let times = Arc::clone(&times);
+            async move {
+                (*times).fetch_add(1, Ordering::SeqCst);
+
+                Err::<File, _>(warp::reject::not_found())
+            }
+        });
+
+        let times = times_accessed.clone();
+        let pending = warp::path("pending").and_then(move || {
+            (*times).fetch_add(1, Ordering::SeqCst);
+
+            std::future::pending::<Result<File, Rejection>>()
+        });
+
+        let times = times_accessed.clone();
+        let forbidden = warp::path("forbidden").and_then(move || {
+            (*times).fetch_add(1, Ordering::SeqCst);
+
+            async move {
+                let result: Result<_, Rejection> = Ok(warp::reply::with_status(
+                    warp::reply(),
+                    warp::http::StatusCode::FORBIDDEN,
+                ));
+                result
+            }
+        });
+
+        let server = Server::new(reject.or(not_found).or(pending).or(forbidden));
+
+        let files_config =
+            CommonSourceConfig::with_layout(crate::sources::DirectoryLayoutType::Unified);
+
+        let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("reject"),
+            url: server.url("reject/"),
+            headers: Default::default(),
+            files: files_config.clone(),
+        }));
+
+        let pending_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("pending"),
+            url: server.url("pending/"),
+            headers: Default::default(),
+            files: files_config.clone(),
+        }));
+
+        let not_found_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("not-found"),
+            url: server.url("not-found/"),
+            headers: Default::default(),
+            files: files_config.clone(),
+        }));
+
+        let forbidden_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("forbidden"),
+            url: server.url("forbidden/"),
+            headers: Default::default(),
+            files: files_config,
+        }));
+
+        FailingSymbolServer {
+            server,
+            times_accessed,
+            reject_source,
+            pending_source,
+            not_found_source,
+            forbidden_source,
+        }
+    }
+
+    pub(crate) fn accesses(&self) -> usize {
+        self.times_accessed.swap(0, Ordering::SeqCst)
+    }
+}
 // make sure procspawn works.
 procspawn::enable_test_support!();

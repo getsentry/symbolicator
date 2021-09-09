@@ -4,10 +4,9 @@ use std::fmt;
 use std::io;
 use std::sync::Arc;
 
-use ::sentry::Hub;
 use backtrace::Backtrace;
-use futures::future::{self, Future, TryFutureExt};
-use sentry::SentryFutureExt;
+use futures::future;
+use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 
 use crate::cache::{Cache, CacheStatus};
@@ -184,10 +183,10 @@ impl ObjectsActor {
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
-    pub fn fetch(
+    pub async fn fetch(
         &self,
         file_handle: Arc<ObjectMetaHandle>,
-    ) -> impl Future<Output = Result<Arc<ObjectHandle>, ObjectError>> {
+    ) -> Result<Arc<ObjectHandle>, ObjectError> {
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -198,6 +197,7 @@ impl ObjectsActor {
 
         self.data_cache
             .compute_memoized(request)
+            .await
             .map_err(ObjectError::Caching)
     }
 
@@ -245,13 +245,10 @@ impl ObjectsActor {
         let mut queries = Vec::with_capacity(sources.len());
 
         for source in sources.iter() {
-            let hub = Arc::new(Hub::new_from_top(Hub::current()));
-
             let query = async move {
                 let type_name = source.type_name();
                 self.download_svc
-                    .clone()
-                    .list_files(source.clone(), filetypes.to_vec(), identifier.clone(), hub)
+                    .list_files(source.clone(), filetypes, identifier.clone())
                     .await
                     .unwrap_or_else(|err| {
                         // This basically only happens for the Sentry source type, when doing
@@ -265,7 +262,8 @@ impl ObjectsActor {
                         );
                         Vec::new()
                     })
-            };
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()));
 
             queries.push(query);
         }
@@ -441,12 +439,22 @@ fn create_candidate_info(
 ) -> ObjectCandidate {
     match meta_lookup {
         Ok(meta_handle) => {
-            let download = match meta_handle.status {
+            let download = match &meta_handle.status {
                 CacheStatus::Positive => ObjectDownloadInfo::Ok {
                     features: meta_handle.features(),
                 },
                 CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed => ObjectDownloadInfo::Malformed,
+                CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
+                CacheStatus::CacheSpecificError(message) => {
+                    match DownloadError::from_cache(&meta_handle.status) {
+                        Some(DownloadError::Permissions) => ObjectDownloadInfo::NoPerm {
+                            details: String::default(),
+                        },
+                        Some(_) | None => ObjectDownloadInfo::Error {
+                            details: message.clone(),
+                        },
+                    }
+                }
             };
             ObjectCandidate {
                 source: meta_handle.file_source.source_id().clone(),

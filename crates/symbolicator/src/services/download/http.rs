@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use futures::prelude::*;
-use reqwest::{header, Client};
+use reqwest::{header, Client, StatusCode};
 use url::Url;
 
 use super::{
@@ -66,6 +66,12 @@ impl HttpDownloader {
         }
     }
 
+    /// Downloads a source hosted on an HTTP server.
+    ///
+    /// # Directly thrown errors
+    /// - [`DownloadError::Reqwest`]
+    /// - [`DownloadError::Rejected`]
+    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: HttpRemoteDif,
@@ -106,18 +112,32 @@ impl HttpDownloader {
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
                     super::download_stream(source, stream, destination, timeout).await
-                } else {
-                    log::trace!(
-                        "Unexpected status code from {}: {}",
+                } else if matches!(
+                    response.status(),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+                ) {
+                    log::debug!("Insufficient permissions to download from {}", download_url);
+                    Err(DownloadError::Permissions)
+                // If it's a client error, chances are either it's a 404 or it's permission-related.
+                } else if response.status().is_client_error() {
+                    log::debug!(
+                        "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
+                } else {
+                    log::debug!(
+                        "Unexpected status code from {}: {}",
+                        download_url,
+                        response.status()
+                    );
+                    Err(DownloadError::Rejected(response.status()))
                 }
             }
             Ok(Err(e)) => {
-                log::trace!("Skipping response from {}: {}", download_url, e);
-                Ok(DownloadStatus::NotFound) // must be wrong type
+                log::debug!("Skipping response from {}: {}", download_url, e);
+                Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             Err(_) => {
                 // Timeout

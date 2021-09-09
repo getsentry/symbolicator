@@ -7,9 +7,11 @@
 //! In general, services are created once in the [`crate::services::Service`] and accessed via this
 //! state.
 //!
-//! The internal services require an asynchronous runtime. For regular scheduling and I/O-intensive
-//! work, services use the common runtime. For CPU intensive workloads, services delegate to a
-//! [`ThreadPool`]. It is common for threadpools to be shared by multiple services and the
+//! The internal services require two separate asynchronous runtimes.
+//! For regular scheduling and I/O-intensive work, services will use the `io_pool`.
+//! For CPU intensive workloads, services will use the `cpu_pool`.
+//!
+//! It is common for threadpools to be shared by multiple services and the
 //! application wants to generally separate services with CPU-intensive workloads from those with
 //! IO-heavy workloads.
 //!
@@ -25,6 +27,7 @@
 //!  - The HTTP server uses `tokio 0.1`.
 //!  - Services use the HTTP server's runtime.
 //!  - The downloader uses the `tokio 1` runtime internally.
+//!  - Some CPU-intensive tasks are spawned on a `tokio 1` runtime.
 
 use std::sync::Arc;
 
@@ -32,12 +35,12 @@ use anyhow::{Context, Result};
 
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::utils::futures::ThreadPool;
 
 pub mod bitcode;
 pub mod cacher;
 pub mod cficaches;
 pub mod download;
+mod minidump;
 pub mod objects;
 pub mod symbolication;
 pub mod symcaches;
@@ -63,10 +66,13 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn create(config: Config) -> Result<Self> {
+    pub fn create(
+        config: Config,
+        io_pool: tokio::runtime::Handle,
+        cpu_pool: tokio::runtime::Handle,
+    ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let cpu_pool = ThreadPool::new();
         let spawnpool = procspawn::Pool::new(config.processing_pool_size)
             .context("failed to create process pool")?;
 
@@ -86,8 +92,10 @@ impl Service {
             symcaches,
             cficaches,
             caches.diagnostics,
+            io_pool,
             cpu_pool,
             spawnpool,
+            config.max_concurrent_requests,
         );
 
         Ok(Self {

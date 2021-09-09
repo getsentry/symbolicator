@@ -13,19 +13,19 @@ use std::io::{self, Seek, SeekFrom};
 use std::path::Path;
 use std::time::Duration;
 
-use futures::compat::Future01CompatExt;
-use futures::future::{FutureExt, TryFutureExt};
+use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 
-use crate::cache::{CacheKey, CacheStatus};
-use crate::services::cacher::{CacheItemRequest, CachePath};
-use crate::services::download::{DownloadStatus, RemoteDif};
+use crate::cache::CacheStatus;
+use crate::logging::LogError;
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
+use crate::services::download::{DownloadError, DownloadStatus, RemoteDif};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
-use crate::utils::futures::BoxedFuture;
+use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
@@ -67,15 +67,21 @@ impl ObjectHandle {
     }
 
     pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        match self.status {
+        // Interestingly all usages of parse() check to make sure that self.status == Positive before
+        // actually invoking it.
+        match &self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(ObjectError::Malformed),
+            CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
+            CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(
+                DownloadError::from_cache(&self.status)
+                    .unwrap_or_else(|| DownloadError::CachedError(message.clone())),
+            )),
         }
     }
 
-    pub fn status(&self) -> CacheStatus {
-        self.status
+    pub fn status(&self) -> &CacheStatus {
+        &self.status
     }
 
     pub fn scope(&self) -> &Scope {
@@ -129,13 +135,19 @@ impl CacheItemRequest for FetchFileDataRequest {
     /// debug ID of our request is extracted first.  Finally the object is parsed with
     /// symbolic to ensure it is not malformed.
     ///
-    /// If there is an error with downloading or decompression then an `Err` of
-    /// [`ObjectError`] is returned.  However if only the final object file parsing failed
-    /// then an `Ok` with [`CacheStatus::Malformed`] is returned.
+    /// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
+    /// parsing the final object file failed, or there is an error downloading the file an `Ok` with
+    /// [`CacheStatus::Malformed`] is returned.
     ///
     /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
     /// returned.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    ///
+    /// If there was an error downloading the object file, an `Ok` with
+    /// [`CacheStatus::CacheSpecificError`] is returned.
+    ///
+    /// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
+    /// be returned.
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let cache_key = self.get_cache_key();
         log::trace!("Fetching file data for {}", cache_key);
 
@@ -145,26 +157,46 @@ impl CacheItemRequest for FetchFileDataRequest {
         sentry::configure_scope(|scope| {
             scope.set_transaction(Some("download_file"));
             self.0.file_source.to_scope(scope);
+            self.0.object_id.to_scope(scope);
         });
 
         let file_id = self.0.file_source.clone();
         let downloader = self.0.download_svc.clone();
-        let download_file = tryf!(self.0.data_cache.tempfile());
-        let download_dir =
-            tryf!(download_file.path().parent().ok_or(ObjectError::NoTempDir)).to_owned();
+        let tempfile = self.0.data_cache.tempfile();
 
         let future = async move {
+            let download_file = tempfile?;
+            let download_dir = download_file
+                .path()
+                .parent()
+                .ok_or(ObjectError::NoTempDir)?;
+
             let status = downloader
                 .download(file_id, download_file.path().to_owned())
-                .await
-                .map_err(Self::Error::from)?;
+                .await;
 
             match status {
-                DownloadStatus::NotFound => {
+                Ok(DownloadStatus::NotFound) => {
                     log::debug!("No debug file found for {}", cache_key);
                     return Ok(CacheStatus::Negative);
                 }
-                DownloadStatus::Completed => {
+
+                Err(e) => {
+                    // We want to error-log "interesting" download errors so we can look them up
+                    // in our internal sentry. We downgrade to debug-log for unactionable
+                    // permissions errors. Since this function does a fresh download, it will never
+                    // hit `CachedError`, but listing it for completeness is not a bad idea either.
+                    match e {
+                        DownloadError::Permissions | DownloadError::CachedError(_) => {
+                            log::debug!("Error while downloading file: {}", LogError(&e))
+                        }
+                        _ => log::error!("Error while downloading file: {}", LogError(&e)),
+                    }
+
+                    return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+                }
+
+                Ok(DownloadStatus::Completed) => {
                     // fall-through
                 }
             }
@@ -177,7 +209,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             // the error comes from a corrupt file than a local file system error.
             let mut decompressed = match decompress_result {
                 Ok(decompressed) => decompressed,
-                Err(_) => return Ok(CacheStatus::Malformed),
+                Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
             };
 
             // Seek back to the start and parse this object so we can deal with it.
@@ -188,7 +220,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             let view = ByteView::map_file(decompressed)?;
             let archive = match Archive::parse(&view) {
                 Ok(archive) => archive,
-                Err(_) => return Ok(CacheStatus::Malformed),
+                Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
             };
             let mut persist_file = fs::File::create(&path)?;
             if archive.is_multi() {
@@ -200,8 +232,8 @@ impl CacheItemRequest for FetchFileDataRequest {
                 let object = match object_opt {
                     Some(object) => object,
                     None => {
-                        if archive.objects().any(|r| r.is_err()) {
-                            return Ok(CacheStatus::Malformed);
+                        if let Some(Err(err)) = archive.objects().find(|r| r.is_err()) {
+                            return Ok(CacheStatus::Malformed(err.to_string()));
                         } else {
                             return Ok(CacheStatus::Negative);
                         }
@@ -212,8 +244,8 @@ impl CacheItemRequest for FetchFileDataRequest {
             } else {
                 // Attempt to parse the object to capture errors. The result can be
                 // discarded as the object's data is the entire ByteView.
-                if archive.object_by_index(0).is_err() {
-                    return Ok(CacheStatus::Malformed);
+                if let Err(err) = archive.object_by_index(0) {
+                    return Ok(CacheStatus::Malformed(err.to_string()));
                 }
 
                 io::copy(&mut view.as_ref(), &mut persist_file)?;
@@ -222,25 +254,24 @@ impl CacheItemRequest for FetchFileDataRequest {
             Ok(CacheStatus::Positive)
         };
 
-        let result = future
-            .boxed_local()
-            .map_err(|e| {
+        let future = async move {
+            future.await.map_err(|e| {
                 sentry::capture_error(&e);
                 e
             })
-            .bind_hub(Hub::current());
+        }
+        .bind_hub(Hub::current());
 
-        let type_name = self.0.file_source.source_type_name();
+        let type_name = self.0.file_source.source_type_name().into();
 
-        Box::pin(
-            future_metrics!(
-                "objects",
-                Some((Duration::from_secs(600), ObjectError::Timeout)),
-                result.compat(),
-                "source_type" => type_name,
-            )
-            .compat(),
-        )
+        let future = tokio::time::timeout(Duration::from_secs(600), future);
+        let future = measure(
+            "objects",
+            m::timed_result,
+            Some(("source_type", type_name)),
+            future,
+        );
+        Box::pin(async move { future.await.map_err(|_| ObjectError::Timeout)? })
     }
 
     fn load(
@@ -264,5 +295,217 @@ impl CacheItemRequest for FetchFileDataRequest {
         object_handle.configure_scope();
 
         object_handle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use crate::cache::{Cache, CacheStatus};
+    use crate::config::{CacheConfig, CacheConfigs, Config};
+    use crate::services::download::{DownloadError, DownloadService};
+    use crate::services::objects::data_cache::Scope;
+    use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
+    use crate::sources::FileType;
+    use crate::test::{self, tempdir};
+
+    use symbolic::common::DebugId;
+    use tempfile::TempDir;
+
+    fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
+        let meta_cache = Cache::from_config(
+            "meta",
+            Some(tempdir.path().join("meta")),
+            None,
+            CacheConfig::from(CacheConfigs::default().derived),
+            Default::default(),
+        )
+        .unwrap();
+
+        let data_cache = Cache::from_config(
+            "data",
+            Some(tempdir.path().join("data")),
+            None,
+            CacheConfig::from(CacheConfigs::default().downloaded),
+            Default::default(),
+        )
+        .unwrap();
+
+        let config = Arc::new(Config {
+            connect_to_reserved_ips: true,
+            max_download_timeout: Duration::from_millis(100),
+            ..Config::default()
+        });
+
+        let download_svc = DownloadService::new(config);
+        ObjectsActor::new(meta_cache, data_cache, download_svc)
+    }
+
+    #[tokio::test]
+    async fn test_download_error_cache_server_error() {
+        test::setup();
+
+        let server = test::FailingSymbolServer::new();
+        let cachedir = tempdir();
+        let objects_actor = objects_actor(&cachedir);
+
+        let find_object = FindObject {
+            // A request for a bcsymbolmap will expand to only one file that is being looked up.
+            // Other filetypes will lead to multiple requests, trying different file extensions, etc
+            filetypes: &[FileType::BcSymbolMap],
+            purpose: ObjectPurpose::Debug,
+            scope: Scope::Global,
+            identifier: DebugId::default().into(),
+            sources: Arc::new([]),
+        };
+
+        // for each of the different symbol sources, we assert that:
+        // * we get a cache-specific error no matter how often we try
+        // * we hit the symbol source exactly once for the initial request, followed by 3 retries
+        // * the second try should *not* hit the symbol source, but should rather be served by the cache
+
+        // server rejects the request (500)
+        let find_object = FindObject {
+            sources: Arc::new([server.reject_source.clone()]),
+            ..find_object
+        };
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(
+            result.meta.clone().unwrap().status,
+            CacheStatus::CacheSpecificError(String::from(
+                "failed to download: 500 Internal Server Error"
+            ))
+        );
+        assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(
+            result.meta.unwrap().status,
+            CacheStatus::CacheSpecificError(String::from(
+                "failed to download: 500 Internal Server Error"
+            ))
+        );
+        assert_eq!(server.accesses(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_negative_cache_not_found() {
+        test::setup();
+
+        let server = test::FailingSymbolServer::new();
+        let cachedir = tempdir();
+        let objects_actor = objects_actor(&cachedir);
+
+        let find_object = FindObject {
+            // A request for a bcsymbolmap will expand to only one file that is being looked up.
+            // Other filetypes will lead to multiple requests, trying different file extensions, etc
+            filetypes: &[FileType::BcSymbolMap],
+            purpose: ObjectPurpose::Debug,
+            scope: Scope::Global,
+            identifier: DebugId::default().into(),
+            sources: Arc::new([]),
+        };
+
+        // for each of the different symbol sources, we assert that:
+        // * we get a negative cache result no matter how often we try
+        // * we hit the symbol source exactly once for the initial request
+        // * the second try should *not* hit the symbol source, but should rather be served by the cache
+
+        // server responds with not found (404)
+        let find_object = FindObject {
+            sources: Arc::new([server.not_found_source.clone()]),
+            ..find_object
+        };
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+        assert_eq!(server.accesses(), 1);
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+        assert_eq!(server.accesses(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_download_error_cache_timeout() {
+        test::setup();
+
+        let server = test::FailingSymbolServer::new();
+        let cachedir = tempdir();
+        let objects_actor = objects_actor(&cachedir);
+
+        let find_object = FindObject {
+            // A request for a bcsymbolmap will expand to only one file that is being looked up.
+            // Other filetypes will lead to multiple requests, trying different file extensions, etc
+            filetypes: &[FileType::BcSymbolMap],
+            purpose: ObjectPurpose::Debug,
+            scope: Scope::Global,
+            identifier: DebugId::default().into(),
+            sources: Arc::new([]),
+        };
+
+        // for each of the different symbol sources, we assert that:
+        // * we get a cache-specific error no matter how often we try
+        // * we hit the symbol source exactly once for the initial request, followed by 3 retries
+        // * the second try should *not* hit the symbol source, but should rather be served by the cache
+
+        // server accepts the request, but never sends any reply (timeout)
+        let find_object = FindObject {
+            sources: Arc::new([server.pending_source.clone()]),
+            ..find_object
+        };
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(
+            result.meta.unwrap().status,
+            CacheStatus::CacheSpecificError(String::from("download was cancelled"))
+        );
+        assert_eq!(server.accesses(), 1);
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(
+            result.meta.unwrap().status,
+            CacheStatus::CacheSpecificError(String::from("download was cancelled"))
+        );
+        assert_eq!(server.accesses(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_download_error_cache_forbidden() {
+        test::setup();
+
+        let server = test::FailingSymbolServer::new();
+        let cachedir = tempdir();
+        let objects_actor = objects_actor(&cachedir);
+
+        let find_object = FindObject {
+            // A request for a bcsymbolmap will expand to only one file that is being looked up.
+            // Other filetypes will lead to multiple requests, trying different file extensions, etc
+            filetypes: &[FileType::BcSymbolMap],
+            purpose: ObjectPurpose::Debug,
+            scope: Scope::Global,
+            identifier: DebugId::default().into(),
+            sources: Arc::new([]),
+        };
+
+        // for each of the different symbol sources, we assert that:
+        // * we get a cache-specific error no matter how often we try
+        // * we hit the symbol source exactly once for the initial request, followed by 3 retries
+        // * the second try should *not* hit the symbol source, but should rather be served by the cache
+
+        // server rejects the request (403)
+        let find_object = FindObject {
+            sources: Arc::new([server.forbidden_source.clone()]),
+            ..find_object
+        };
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(
+            result.meta.clone().unwrap().status,
+            CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
+        );
+        assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
+        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        assert_eq!(
+            result.meta.unwrap().status,
+            CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
+        );
+        assert_eq!(server.accesses(), 0);
     }
 }

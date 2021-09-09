@@ -55,6 +55,10 @@ pub struct Metrics {
     pub statsd: Option<String>,
     /// The prefix that should be added to all metrics.
     pub prefix: String,
+    /// A tag name to report the hostname to, for each metric. Defaults to not sending such a tag.
+    pub hostname_tag: Option<String>,
+    /// A tag name to report the environment to, for each metric. Defaults to not sending such a tag.
+    pub environment_tag: Option<String>,
 }
 
 impl Default for Metrics {
@@ -65,6 +69,8 @@ impl Default for Metrics {
                 Err(_) => None,
             },
             prefix: "symbolicator".into(),
+            hostname_tag: None,
+            environment_tag: None,
         }
     }
 }
@@ -86,6 +92,9 @@ pub struct DownloadedCacheConfig {
     /// Maximum duration since creation of malformed cache item (item age).
     #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
+
+    /// Maximum number of lazy re-downloads
+    pub max_lazy_redownloads: isize,
 }
 
 impl Default for DownloadedCacheConfig {
@@ -94,6 +103,7 @@ impl Default for DownloadedCacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+            max_lazy_redownloads: 50,
         }
     }
 }
@@ -115,6 +125,9 @@ pub struct DerivedCacheConfig {
     /// Maximum duration since creation of malformed cache item (item age).
     #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
+
+    /// Maximum number of lazy re-computations
+    pub max_lazy_recomputations: isize,
 }
 
 impl Default for DerivedCacheConfig {
@@ -123,6 +136,7 @@ impl Default for DerivedCacheConfig {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+            max_lazy_recomputations: 20,
         }
     }
 }
@@ -246,7 +260,8 @@ pub struct Config {
     /// The maximum timeout for downloads.
     ///
     /// This is the upper limit the download service will take for downloading from a single
-    /// source, regardless of how many retries are involved.
+    /// source, regardless of how many retries are involved. The default is set to 315s,
+    /// just above the amount of time it would take for a 4MB/s connection to download 2GB.
     #[serde(with = "humantime_serde")]
     pub max_download_timeout: Duration,
 
@@ -261,9 +276,16 @@ pub struct Config {
     ///
     /// For downloads with a known size, this timeout applies per individual
     /// download attempt. If the download size is not known, it is ignored and
-    /// only `max_download_timeout` applies.
+    /// only `max_download_timeout` applies. The default is set to 250s,
+    /// just above the amount of time it would take for a 4MB/s connection to
+    /// download 1GB.
     #[serde(with = "humantime_serde")]
     pub streaming_timeout: Duration,
+
+    /// The maximum number of requests that symbolicator will process concurrently.
+    ///
+    /// A value of `None` indicates no limit.
+    pub max_concurrent_requests: Option<usize>,
 }
 
 impl Config {
@@ -327,9 +349,12 @@ impl Default for Config {
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
-            max_download_timeout: Duration::from_secs(300),
-            connect_timeout: Duration::from_secs(300),
-            streaming_timeout: Duration::from_secs(150),
+            // Allow a 4MB/s connection to download 2GB without timing out
+            max_download_timeout: Duration::from_secs(315),
+            connect_timeout: Duration::from_secs(15),
+            // Allow a 4MB/s connection to download 1GB without timing out
+            streaming_timeout: Duration::from_secs(250),
+            max_concurrent_requests: Some(120),
         }
     }
 }

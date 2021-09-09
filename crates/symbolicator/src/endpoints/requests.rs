@@ -1,44 +1,30 @@
-use actix_web::{App, Error, HttpResponse, Path, Query, State};
+use axum::extract;
+use axum::http::StatusCode;
+use axum::response::Json;
 use serde::Deserialize;
 
 use crate::services::Service;
-use crate::types::RequestId;
-
-/// Path parameters of the symbolication poll request.
-#[derive(Deserialize)]
-struct PollSymbolicationRequestPath {
-    pub request_id: RequestId,
-}
+use crate::types::{RequestId, SymbolicationResponse};
 
 /// Query parameters of the symbolication poll request.
 #[derive(Deserialize)]
-struct PollSymbolicationRequestQueryParams {
+pub struct PollSymbolicationRequestQueryParams {
     #[serde(default)]
     pub timeout: Option<u64>,
 }
 
-async fn poll_request(
-    state: State<Service>,
-    path: Path<PollSymbolicationRequestPath>,
-    query: Query<PollSymbolicationRequestQueryParams>,
-) -> Result<HttpResponse, Error> {
-    let path = path.into_inner();
-    let query = query.into_inner();
-
+pub async fn poll_request(
+    extract::Extension(state): extract::Extension<Service>,
+    extract::Path(request_id): extract::Path<RequestId>,
+    extract::Query(query): extract::Query<PollSymbolicationRequestQueryParams>,
+) -> Result<Json<SymbolicationResponse>, StatusCode> {
     let response_opt = state
         .symbolication()
-        .get_response(path.request_id, query.timeout)
+        .get_response(request_id, query.timeout)
         .await;
 
-    Ok(match response_opt {
-        Some(response) => HttpResponse::Ok().json(response),
-        None => HttpResponse::NotFound().finish(),
-    })
-}
-
-pub fn configure(app: App<Service>) -> App<Service> {
-    app.resource("/requests/{request_id}", |r| {
-        let handler = compat_handler!(poll_request, s, p, q);
-        r.get().with_async(handler);
-    })
+    match response_opt {
+        Some(response) => Ok(Json(response)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }

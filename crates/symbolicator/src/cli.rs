@@ -1,4 +1,5 @@
 //! Exposes the command line application.
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -63,7 +64,7 @@ pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config()).context("failed loading config")?;
 
-    let _sentry = sentry::init(sentry::ClientOptions {
+    let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
         session_mode: sentry::SessionMode::Request,
@@ -73,7 +74,25 @@ pub fn execute() -> Result<()> {
 
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
-        metrics::configure_statsd(&config.metrics.prefix, statsd);
+        let mut tags = BTreeMap::new();
+
+        if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
+            if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
+                tags.insert(hostname_tag, hostname);
+            } else {
+                log::error!("could not read host name");
+            }
+        };
+        if let Some(environment_tag) = config.metrics.environment_tag.clone() {
+            if let Some(environment) = sentry.options().environment.as_ref().map(|s| s.to_string())
+            {
+                tags.insert(environment_tag, environment);
+            } else {
+                log::error!("environment name not available");
+            }
+        };
+
+        metrics::configure_statsd(&config.metrics.prefix, statsd, tags);
     }
 
     procspawn::ProcConfig::new()

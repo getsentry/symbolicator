@@ -5,17 +5,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
-use futures::compat::Future01CompatExt;
-use futures::future::{FutureExt, TryFutureExt};
+use futures::future::BoxFuture;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::Object;
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheKey, CacheStatus};
+use crate::cache::{Cache, CacheStatus};
 use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
-use crate::services::cacher::{CacheItemRequest, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
@@ -24,11 +23,32 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{BoxedFuture, ThreadPool};
+use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
+
+/// The supported symcache versions.
+///
+/// # How to version
+///
+/// The initial "unversioned" version is `0`.
+/// Whenever we want to increase the version in order to re-generate stale/broken
+/// symcaches, we need to:
+///
+/// * increase the `current` version.
+/// * prepend the `current` version to the `fallbacks`.
+/// * it is also possible to skip a version, in case a broken deploy needed to
+///   be reverted which left behind broken symcaches.
+///
+/// In case a symbolic update increased its own internal format version, bump the
+/// symcache file version as described above, and update the static assertion.
+const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 0,
+    fallbacks: &[],
+};
+static_assert!(symbolic::symcache::format::SYMCACHE_VERSION == 6);
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -66,7 +86,7 @@ pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: ObjectsActor,
     bitcode_svc: BitcodeService,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 }
 
 impl SymCacheActor {
@@ -74,7 +94,7 @@ impl SymCacheActor {
         cache: Cache,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
-        threadpool: ThreadPool,
+        threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache)),
@@ -99,12 +119,15 @@ pub struct SymCacheFile {
 
 impl SymCacheFile {
     pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        match self.status {
+        match &self.status {
             CacheStatus::Positive => Ok(Some(
                 SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
             )),
             CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed => Err(SymCacheError::Malformed),
+            CacheStatus::Malformed(_) => Err(SymCacheError::Malformed),
+            // If the cache entry is for a cache specific error, it must be
+            // from a previous symcache conversion attempt.
+            CacheStatus::CacheSpecificError(_) => Err(SymCacheError::Malformed),
         }
     }
 
@@ -139,7 +162,7 @@ struct FetchSymCacheInternal {
     object_meta: Arc<ObjectMetaHandle>,
 
     /// Thread pool on which to spawn the symcache computation.
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 
     /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
     ///
@@ -162,15 +185,20 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     bcsymbolmap_handle: Option<BcSymbolMapHandle>,
-    threadpool: ThreadPool,
+    threadpool: tokio::runtime::Handle,
 ) -> Result<CacheStatus, SymCacheError> {
     let object_handle = objects_actor
         .fetch(object_meta.clone())
         .await
         .map_err(SymCacheError::Fetching)?;
 
-    if object_handle.status() != CacheStatus::Positive {
-        return Ok(object_handle.status());
+    // The original has a download error so the sym cache entry should just be negative.
+    if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
+        return Ok(CacheStatus::Negative);
+    }
+
+    if object_handle.status() != &CacheStatus::Positive {
+        return Ok(object_handle.status().clone());
     }
 
     let compute_future = async move {
@@ -179,14 +207,13 @@ async fn fetch_difs_and_compute_symcache(
             Err(err) => {
                 log::warn!("Failed to write symcache: {}", err);
                 sentry::capture_error(&err);
-                CacheStatus::Malformed
+                CacheStatus::Malformed(err.to_string())
             }
         };
         Ok(status)
     };
 
-    threadpool
-        .spawn_handle(compute_future.bind_hub(Hub::current()))
+    CancelOnDrop::new(threadpool.spawn(compute_future.bind_hub(Hub::current())))
         .await
         .unwrap_or(Err(SymCacheError::Canceled))
 }
@@ -195,11 +222,13 @@ impl CacheItemRequest for FetchSymCacheInternal {
     type Item = SymCacheFile;
     type Error = SymCacheError;
 
+    const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
+
     fn get_cache_key(&self) -> CacheKey {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),
@@ -208,24 +237,25 @@ impl CacheItemRequest for FetchSymCacheInternal {
             self.threadpool.clone(),
         );
 
-        let num_sources = self.request.sources.len();
+        let num_sources = self.request.sources.len().to_string().into();
 
-        Box::pin(
-            future_metrics!(
-                "symcaches",
-                Some((Duration::from_secs(1200), SymCacheError::Timeout)),
-                future.boxed_local().compat(),
-                "num_sources" => &num_sources.to_string()
-            )
-            .compat(),
-        )
+        let future = tokio::time::timeout(Duration::from_secs(1200), future);
+        let future = measure(
+            "symcaches",
+            m::timed_result,
+            Some(("num_sources", num_sources)),
+            future,
+        );
+        Box::pin(async move { future.await.map_err(|_| SymCacheError::Timeout)? })
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
         let had_symbolmap = data.ends_with(SYMBOLMAP_MARKER);
         SymCache::parse(data)
-            .map(|symcache| {
-                symcache.is_latest() && had_symbolmap == self.bcsymbolmap_handle.is_some()
+            .map(|_symcache| {
+                // NOTE: we do *not* check for the `is_latest` version here.
+                // If the symcache is parsable, we want to use even outdated versions.
+                had_symbolmap == self.bcsymbolmap_handle.is_some()
             })
             .unwrap_or(false)
     }
@@ -246,7 +276,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         candidates.set_debug(
             self.object_meta.source_id().clone(),
             &self.object_meta.uri(),
-            ObjectUseInfo::from_derived_status(status, self.object_meta.status()),
+            ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
         );
 
         SymCacheFile {
@@ -398,7 +428,6 @@ mod tests {
         CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceConfig, SourceId,
     };
     use crate::test::{self, fixture};
-    use crate::utils::futures::ThreadPool;
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.
@@ -413,7 +442,7 @@ mod tests {
             ..Default::default()
         });
 
-        let cpu_pool = ThreadPool::new();
+        let cpu_pool = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(config);
@@ -442,7 +471,7 @@ mod tests {
     async fn test_symcache_refresh() {
         test::setup();
 
-        const TIMEOUT: Duration = Duration::from_millis(500);
+        const TIMEOUT: Duration = Duration::from_secs(5);
 
         let cache_dir = test::tempdir();
         let symbol_dir = test::tempdir();
@@ -480,48 +509,45 @@ mod tests {
 
         let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT);
 
-        test::spawn_compat(move || async move {
-            // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
-            // symcache will be obfuscated.
-            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-            let symcache = symcache_file.parse().unwrap().unwrap();
-            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
-            assert_eq!(line_info.filename(), "__hidden#42_");
-            assert_eq!(line_info.symbol(), "__hidden#0_");
+        // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
+        // symcache will be obfuscated.
+        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+        let symcache = symcache_file.parse().unwrap().unwrap();
+        let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+        assert_eq!(line_info.filename(), "__hidden#42_");
+        assert_eq!(line_info.symbol(), "__hidden#0_");
 
-            // Copy the plist and bcsymbolmap to the temporary symbol directory so that the SymCacheActor can find them.
-            fs::copy(
-                fixture("symbols/2d10c42f-591d-3265-b147-78ba0868073f.plist"),
-                macho_dir.join("uuidmap"),
-            )
-            .unwrap();
+        // Copy the plist and bcsymbolmap to the temporary symbol directory so that the SymCacheActor can find them.
+        fs::copy(
+            fixture("symbols/2d10c42f-591d-3265-b147-78ba0868073f.plist"),
+            macho_dir.join("uuidmap"),
+        )
+        .unwrap();
 
-            fs::copy(
-                fixture("symbols/c8374b6d-6e96-34d8-ae38-efaa5fec424f.bcsymbolmap"),
-                symbol_map_dir.join("bcsymbolmap"),
-            )
-            .unwrap();
+        fs::copy(
+            fixture("symbols/c8374b6d-6e96-34d8-ae38-efaa5fec424f.bcsymbolmap"),
+            symbol_map_dir.join("bcsymbolmap"),
+        )
+        .unwrap();
 
-            // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
-            // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
-            // be obfuscated like before.
-            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-            let symcache = symcache_file.parse().unwrap().unwrap();
-            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
-            assert_eq!(line_info.filename(), "__hidden#42_");
-            assert_eq!(line_info.symbol(), "__hidden#0_");
+        // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
+        // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
+        // be obfuscated like before.
+        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+        let symcache = symcache_file.parse().unwrap().unwrap();
+        let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+        assert_eq!(line_info.filename(), "__hidden#42_");
+        assert_eq!(line_info.symbol(), "__hidden#0_");
 
-            // Sleep long enough for the negative cache entry to become invalid.
-            std::thread::sleep(TIMEOUT);
+        // Sleep long enough for the negative cache entry to become invalid.
+        std::thread::sleep(TIMEOUT);
 
-            // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
-            // symcache are unobfuscated.
-            let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-            let symcache = symcache_file.parse().unwrap().unwrap();
-            let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
-            assert_eq!(line_info.filename(), "Sources/Sentry/SentryMessage.m");
-            assert_eq!(line_info.symbol(), "-[SentryMessage initWithFormatted:]");
-        })
-        .await;
+        // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
+        // symcache are unobfuscated.
+        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
+        let symcache = symcache_file.parse().unwrap().unwrap();
+        let line_info = symcache.lookup(0x5a75).unwrap().next().unwrap().unwrap();
+        assert_eq!(line_info.filename(), "Sources/Sentry/SentryMessage.m");
+        assert_eq!(line_info.symbol(), "-[SentryMessage initWithFormatted:]");
     }
 }
