@@ -50,8 +50,10 @@ pub struct SymbolicationRequestBody {
 pub async fn symbolicate_frames(
     extract::Extension(state): extract::Extension<Service>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
-    // TODO: limit body to 5M
-    extract::Json(body): extract::Json<SymbolicationRequestBody>,
+    extract::ContentLengthLimit(extract::Json(body)): extract::ContentLengthLimit<
+        extract::Json<SymbolicationRequestBody>,
+        { 5 * 1024 * 1024 }, // ~5MB
+    >,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
