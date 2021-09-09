@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
@@ -33,6 +33,7 @@ use thiserror::Error;
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
 use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::sources::{FileType, SourceConfig};
@@ -2045,6 +2046,16 @@ impl SymbolicationActor {
             log::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
+            let client_stacktraces = ByteView::open(&minidump_file).ok().and_then(|bv| {
+                match parse_stacktraces_from_minidump(&bv) {
+                    Ok(stacktraces) => stacktraces,
+                    Err(e) => {
+                        log::error!("invalid minidump extension: {}", e);
+                        None
+                    }
+                }
+            });
+
             let mut cfi_caches = CfiCacheModules::new();
 
             let result = self
@@ -2058,10 +2069,14 @@ impl SymbolicationActor {
 
             let StackWalkMinidumpResult {
                 all_modules,
-                stacktraces,
+                mut stacktraces,
                 minidump_state,
                 ..
             } = result;
+
+            if let Some(client_stacktraces) = client_stacktraces {
+                merge_clientside_with_processed_stacktraces(&mut stacktraces, client_stacktraces);
+            }
 
             // Start building the module list for the symbolication response.
             let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
@@ -2376,6 +2391,36 @@ impl From<&SymCacheError> for ObjectFileStatus {
                 // SymCacheError variant.
                 sentry::capture_error(e);
                 ObjectFileStatus::Other
+            }
+        }
+    }
+}
+
+/// Merges the Stack Traces processed via Breakpad with the ones captured on the Client.
+///
+/// For now, this means we will prefer the client-side stack trace over the processed one, but in
+/// the future we could be a bit smarter about what to do.
+fn merge_clientside_with_processed_stacktraces(
+    processed_stacktraces: &mut [RawStacktrace],
+    clientside_stacktraces: Vec<RawStacktrace>,
+) {
+    let mut client_traces_by_id: HashMap<_, _> = clientside_stacktraces
+        .into_iter()
+        .filter_map(|trace| trace.thread_id.map(|thread_id| (thread_id, trace)))
+        .collect();
+
+    for thread in processed_stacktraces {
+        if let Some(thread_id) = thread.thread_id {
+            if let Some(client_thread) = client_traces_by_id.remove(&thread_id) {
+                // NOTE: we could gather all kinds of metrics here, as in:
+                // - are we finding more or less frames via CFI?
+                // - how many frames are the same
+                // - etc.
+                // We could also be a lot smarter about which threads/frames we chose. For now we
+                // will just always prefer client-side stack traces
+                if !client_thread.frames.is_empty() {
+                    thread.frames = client_thread.frames;
+                }
             }
         }
     }
