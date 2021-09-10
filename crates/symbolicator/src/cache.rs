@@ -1,10 +1,10 @@
-/// Core logic for cache files. Used by `crate::services::common::cache`.
-///
-/// TODO:
-/// * We want to try upgrading derived caches without pruning them. This will likely require the concept of a content checksum (which would just be the cache key of the object file that would be used to create the derived cache.
+//! Core logic for cache files. Used by `crate::services::common::cache`.
+
 use std::fs::{self, read_dir, remove_file, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicIsize;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
@@ -142,6 +142,9 @@ pub struct Cache {
 
     /// Options intended to be user-configurable.
     cache_config: CacheConfig,
+
+    /// The maximum number of lazy refreshes of this cache.
+    max_lazy_refreshes: Arc<AtomicIsize>,
 }
 
 impl Cache {
@@ -150,6 +153,7 @@ impl Cache {
         cache_dir: Option<PathBuf>,
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
+        max_lazy_refreshes: Arc<AtomicIsize>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -160,6 +164,7 @@ impl Cache {
             tmp_dir,
             start_time: SystemTime::now(),
             cache_config,
+            max_lazy_refreshes,
         })
     }
 
@@ -169,6 +174,10 @@ impl Cache {
 
     pub fn cache_dir(&self) -> Option<&Path> {
         self.cache_dir.as_deref()
+    }
+
+    pub fn max_lazy_refreshes(&self) -> Arc<AtomicIsize> {
+        self.max_lazy_refreshes.clone()
     }
 
     pub fn cleanup(&self) -> Result<()> {
@@ -339,8 +348,8 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
     let mut file = File::open(path)?;
     let mut buf = vec![0; readable_amount];
 
-    tracing::trace!("First {} bytes: {:?}", buf.len(), buf);
     file.read_exact(&mut buf)?;
+    tracing::trace!("First {} bytes: {:?}", buf.len(), buf);
 
     let strategy = match CacheStatus::from_content(&buf) {
         CacheStatus::Positive => ExpirationStrategy::None,
@@ -391,6 +400,16 @@ pub struct Caches {
 
 impl Caches {
     pub fn from_config(config: &Config) -> io::Result<Self> {
+        // The minimum value here is clamped to 1, as it would otherwise completely disable lazy
+        // re-generation. We might as well decide to hard `panic!` on startup if users have
+        // misconfigured this instead of silently correcting it to a value that actually makes sense.
+        let max_lazy_redownloads = Arc::new(AtomicIsize::new(
+            config.caches.downloaded.max_lazy_redownloads.max(1),
+        ));
+        let max_lazy_recomputations = Arc::new(AtomicIsize::new(
+            config.caches.derived.max_lazy_recomputations.max(1),
+        ));
+
         let tmp_dir = config.cache_dir("tmp");
         Ok(Self {
             objects: {
@@ -400,6 +419,7 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
+                    max_lazy_redownloads.clone(),
                 )?
             },
             object_meta: {
@@ -409,6 +429,7 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                    max_lazy_recomputations.clone(),
                 )?
             },
             auxdifs: {
@@ -418,6 +439,7 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
+                    max_lazy_redownloads,
                 )?
             },
             symcaches: {
@@ -427,6 +449,7 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                    max_lazy_recomputations.clone(),
                 )?
             },
             cficaches: {
@@ -436,6 +459,7 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                    max_lazy_recomputations,
                 )?
             },
             diagnostics: {
@@ -445,6 +469,7 @@ impl Caches {
                     path,
                     tmp_dir,
                     config.caches.diagnostics.into(),
+                    Default::default(),
                 )?
             },
         })
@@ -536,6 +561,7 @@ mod tests {
             Some(cachedir.clone()),
             None,
             CacheConfig::Downloaded(Default::default()),
+            Default::default(),
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
@@ -594,6 +620,7 @@ mod tests {
                 max_unused_for: Some(Duration::from_millis(50)),
                 ..Default::default()
             }),
+            Default::default(),
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -631,6 +658,7 @@ mod tests {
                 retry_misses_after: Some(Duration::from_millis(50)),
                 ..Default::default()
             }),
+            Default::default(),
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -680,6 +708,7 @@ mod tests {
                 retry_misses_after: Some(Duration::from_millis(20)),
                 ..Default::default()
             }),
+            Default::default(),
         )?;
 
         cache.cleanup()?;
@@ -725,6 +754,7 @@ mod tests {
                 retry_misses_after: Some(Duration::from_millis(20)),
                 ..Default::default()
             }),
+            Default::default(),
         )?;
 
         sleep(Duration::from_millis(30));
@@ -770,6 +800,7 @@ mod tests {
                 retry_misses_after: Some(Duration::from_millis(20)),
                 ..Default::default()
             }),
+            Default::default(),
         )?;
 
         sleep(Duration::from_millis(30));
@@ -1005,6 +1036,7 @@ mod tests {
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(Default::default()),
+            Default::default(),
         )?;
 
         // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched

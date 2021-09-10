@@ -40,6 +40,7 @@ pub mod bitcode;
 pub mod cacher;
 pub mod cficaches;
 pub mod download;
+mod minidump;
 pub mod objects;
 pub mod symbolication;
 pub mod symcaches;
@@ -75,7 +76,7 @@ impl Service {
         let spawnpool = procspawn::Pool::new(config.processing_pool_size)
             .context("failed to create process pool")?;
 
-        let downloader = DownloadService::new(config.clone(), io_pool);
+        let downloader = DownloadService::new(config.clone());
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)
@@ -91,6 +92,7 @@ impl Service {
             symcaches,
             cficaches,
             caches.diagnostics,
+            io_pool,
             cpu_pool,
             spawnpool,
             config.max_concurrent_requests,

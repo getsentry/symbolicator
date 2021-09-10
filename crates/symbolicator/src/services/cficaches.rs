@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::{
@@ -13,7 +14,7 @@ use symbolic::{
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -21,8 +22,29 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure, timeout_compat, BoxedFuture};
+use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
+
+/// The supported cficache versions.
+///
+/// # How to version
+///
+/// The initial "unversioned" version is `0`.
+/// Whenever we want to increase the version in order to re-generate stale/broken
+/// cficaches, we need to:
+///
+/// * increase the `current` version.
+/// * prepend the `current` version to the `fallbacks`.
+/// * it is also possible to skip a version, in case a broken deploy needed to
+///   be reverted which left behind broken cficaches.
+///
+/// In case a symbolic update increased its own internal format version, bump the
+/// cficache file version as described above, and update the static assertion.
+const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 0,
+    fallbacks: &[],
+};
+static_assert!(symbolic::minidump::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
@@ -110,6 +132,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     type Item = CfiCacheFile;
     type Error = CfiCacheError;
 
+    const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
+
     fn get_cache_key(&self) -> CacheKey {
         self.meta_handle.cache_key()
     }
@@ -118,7 +142,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     ///
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
-    fn compute(&self, path: &Path) -> BoxedFuture<Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let path = path.to_owned();
         let threadpool = self.threadpool.clone();
         let objects_actor = self.objects_actor.clone();
@@ -151,15 +175,14 @@ impl CacheItemRequest for FetchCfiCacheInternal {
                 Ok(status)
             };
 
-            threadpool
-                .spawn(future.bind_hub(Hub::current()))
+            CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
                 .await
                 .unwrap_or(Err(CfiCacheError::Canceled))
         };
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = timeout_compat(Duration::from_secs(1200), result);
+        let future = tokio::time::timeout(Duration::from_secs(1200), result);
         let future = measure(
             "cficaches",
             m::timed_result,
@@ -170,9 +193,9 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
-        CfiCache::from_bytes(ByteView::from_slice(data))
-            .map(|cficache| cficache.is_latest())
-            .unwrap_or(false)
+        // NOTE: we do *not* check for the `is_latest` version here.
+        // If the cficache is parsable, we want to use even outdated versions.
+        CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
     }
 
     fn load(

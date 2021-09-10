@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
 use std::iter::FromIterator;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -32,6 +33,7 @@ use thiserror::Error;
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
 use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::sources::{FileType, SourceConfig};
@@ -43,7 +45,7 @@ use crate::types::{
     SystemInfo,
 };
 use crate::utils::addr::AddrMode;
-use crate::utils::futures::{delay, m, measure, spawn_compat, timeout_compat, CallOnDrop};
+use crate::utils::futures::{m, measure, CallOnDrop, CancelOnDrop};
 use crate::utils::hex::HexValue;
 
 /// Options for demangling all symbols.
@@ -388,19 +390,23 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
     diagnostics_cache: crate::cache::Cache,
-    threadpool: tokio::runtime::Handle,
+    io_pool: tokio::runtime::Handle,
+    cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
     spawnpool: Arc<procspawn::Pool>,
     max_concurrent_requests: Option<usize>,
+    current_requests: Arc<AtomicUsize>,
 }
 
 impl SymbolicationActor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         diagnostics_cache: crate::cache::Cache,
-        threadpool: tokio::runtime::Handle,
+        io_pool: tokio::runtime::Handle,
+        cpu_pool: tokio::runtime::Handle,
         spawnpool: procspawn::Pool,
         max_concurrent_requests: Option<usize>,
     ) -> Self {
@@ -409,10 +415,12 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             diagnostics_cache,
-            threadpool,
+            io_pool,
+            cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             spawnpool: Arc::new(spawnpool),
             max_concurrent_requests,
+            current_requests: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -422,27 +430,32 @@ impl SymbolicationActor {
     /// maximum number of requests, as given by `max_concurrent_requests`.
     fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, MaxRequestsError>
     where
-        F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>> + 'static,
+        F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
+            + Send
+            + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
         let hub = Arc::new(sentry::Hub::new_from_top(sentry::Hub::current()));
 
         // Assume that there are no UUID4 collisions in practice.
-        let requests = self.requests.clone();
+        let requests = Arc::clone(&self.requests);
+        let current_requests = Arc::clone(&self.current_requests);
 
-        let num_requests = requests.lock().len();
+        let num_requests = current_requests.load(Ordering::Relaxed);
         metric!(gauge("requests.in_flight") = num_requests as u64);
 
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.max_concurrent_requests {
             if num_requests >= max_concurrent_requests {
+                metric!(counter("requests.rejected") += 1);
                 return Err(MaxRequestsError);
             }
         }
 
         let request_id = RequestId::new(uuid::Uuid::new_v4());
         requests.lock().insert(request_id, receiver.shared());
+        current_requests.fetch_add(1, Ordering::Relaxed);
         let drop_hub = hub.clone();
         let token = CallOnDrop::new(move || {
             requests.lock().remove(&request_id);
@@ -474,19 +487,19 @@ impl SymbolicationActor {
 
             sender.send((Instant::now(), response)).ok();
 
+            // We stop counting the request as an in-flight request at this point, even though
+            // it will stay in the `requests` map for another 90s.
+            current_requests.fetch_sub(1, Ordering::Relaxed);
+
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
-            delay(MAX_POLL_DELAY).await;
+            tokio::time::sleep(MAX_POLL_DELAY).await;
 
             drop(token);
         }
         .bind_hub(hub);
 
-        // TODO: This spawns into the current_thread runtime of the caller, which usually is the web
-        // handler. This doesn't block the web request, but it congests the threads that should only
-        // do web I/O. Instead, this should spawn into a dedicated resource (e.g. a threadpool) to
-        // keep web requests flowing while symbolication tasks may backlog.
-        spawn_compat(request_future);
+        self.io_pool.spawn(request_future);
 
         Ok(request_id)
     }
@@ -498,7 +511,7 @@ async fn wrap_response_channel(
     channel: ComputationChannel,
 ) -> SymbolicationResponse {
     let channel_result = if let Some(timeout) = timeout {
-        match timeout_compat(Duration::from_secs(timeout), channel).await {
+        match tokio::time::timeout(Duration::from_secs(timeout), channel).await {
             Ok(outcome) => outcome,
             Err(_elapsed) => {
                 return SymbolicationResponse::Pending {
@@ -1262,7 +1275,7 @@ fn record_symbolication_metrics(
 
     metric!(
         time_raw("symbolication.num_frames") =
-            stacktraces.iter().map(|s| s.frames.len() as u64).sum(),
+            stacktraces.iter().map(|s| s.frames.len() as u64).sum::<u64>(),
         "platform" => &platform, "origin" => &origin,
     );
     metric!(
@@ -1475,7 +1488,7 @@ impl SymbolicationActor {
         let serialize_dif_candidates = request.options.dif_candidates;
 
         let f = self.do_symbolicate_impl(request);
-        let f = timeout_compat(Duration::from_secs(3600), f);
+        let f = tokio::time::timeout(Duration::from_secs(3600), f);
         let f = measure("symbolicate", m::timed_result, None, f);
 
         let mut response = f
@@ -1540,11 +1553,10 @@ impl SymbolicationActor {
             }
         };
 
-        let mut response = self
-            .threadpool
-            .spawn(future.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Symbolication future cancelled")?;
+        let mut response =
+            CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
+                .await
+                .context("Symbolication future cancelled")?;
 
         let source_lookup = source_lookup
             .fetch_sources(self.objects, scope, sources, &response)
@@ -1579,8 +1591,7 @@ impl SymbolicationActor {
             response
         };
 
-        self.threadpool
-            .spawn(future.bind_hub(sentry::Hub::current()))
+        CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
             .await
             .context("Source lookup future cancelled")
     }
@@ -1608,7 +1619,14 @@ impl SymbolicationActor {
     ) -> Option<SymbolicationResponse> {
         let channel_opt = self.requests.lock().get(&request_id).cloned();
         match channel_opt {
-            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
+            Some(channel) => {
+                // `wrap_response_channel` internally creates a `tokio::time::timeout`, which
+                // requires an active runtime to be present, otherwise it panics.
+                // This function however is called directly from the actix/tokio01 runtime.
+                let _guard = self.io_pool.enter();
+
+                Some(wrap_response_channel(request_id, timeout, channel).await)
+            }
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
@@ -1938,10 +1956,83 @@ impl SymbolicationActor {
         };
 
         Ok(self
-            .threadpool
+            .cpu_pool
             .spawn(lazy.bind_hub(sentry::Hub::current()))
             .await?
             .context("Minidump stackwalk future cancelled")?)
+    }
+
+    /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
+    fn maybe_persist_minidump(&self, minidump_file: TempPath) {
+        if let Some(dir) = self.diagnostics_cache.cache_dir() {
+            if let Some(file_name) = minidump_file.file_name() {
+                let path = dir.join(file_name);
+                match minidump_file.persist(&path) {
+                    Ok(_) => {
+                        sentry::configure_scope(|scope| {
+                            scope.set_extra(
+                                "crashed_minidump",
+                                sentry::protocol::Value::String(path.to_string_lossy().to_string()),
+                            );
+                        });
+                    }
+                    Err(e) => tracing::error!("Failed to save minidump {:?}", &e),
+                };
+            }
+        } else {
+            tracing::debug!("No diagnostics retention configured, not saving minidump");
+        }
+    }
+
+    /// Iteratively stackwalks/processes the given `minidump_file` using breakpad.
+    async fn stackwalk_minidump_iteratively_with_breakpad(
+        &self,
+        scope: Scope,
+        minidump_file: TempPath,
+        sources: Arc<[SourceConfig]>,
+        cfi_caches: &mut CfiCacheModules,
+    ) -> anyhow::Result<StackWalkMinidumpResult> {
+        let mut iterations = 0;
+
+        let result = loop {
+            iterations += 1;
+
+            let result = match self
+                .stackwalk_minidump_with_cfi(&minidump_file, cfi_caches)
+                .await
+            {
+                Ok(res) => res,
+                Err(err) => {
+                    self.maybe_persist_minidump(minidump_file);
+
+                    // we explicitly match and return here, otherwise the borrow checker will
+                    // complain that `minidump_file` is being moved into `save_minidump`
+                    return Err(err);
+                }
+            };
+
+            let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
+                .referenced_modules
+                .iter()
+                .filter(|(id, _)| !cfi_caches.has_module(id))
+                .map(|t| (t.0, &t.1))
+                .collect();
+
+            // We put a hard limit of 5 iterations here.
+            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+            if missing_modules.is_empty() || iterations >= 5 {
+                break result;
+            }
+
+            let loaded_caches = self
+                .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
+                .await;
+            cfi_caches.extend(loaded_caches);
+        };
+
+        metric!(time_raw("minidump.stackwalk.iterations") = iterations);
+
+        Ok(result)
     }
 
     async fn do_stackwalk_minidump(
@@ -1956,75 +2047,37 @@ impl SymbolicationActor {
             tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
+            let client_stacktraces = ByteView::open(&minidump_file).ok().and_then(|bv| {
+                match parse_stacktraces_from_minidump(&bv) {
+                    Ok(stacktraces) => stacktraces,
+                    Err(e) => {
+                        tracing::error!("invalid minidump extension: {}", e);
+                        None
+                    }
+                }
+            });
+
             let mut cfi_caches = CfiCacheModules::new();
 
-            let mut iterations = 0;
-
-            let result = loop {
-                iterations += 1;
-
-                let result = match self
-                    .stackwalk_minidump_with_cfi(&minidump_file, &cfi_caches)
-                    .await
-                {
-                    Ok(res) => res,
-                    Err(err) => {
-                        if let Some(dir) = self.diagnostics_cache.cache_dir() {
-                            if let Some(file_name) = minidump_file.file_name() {
-                                let path = dir.join(file_name);
-                                match minidump_file.persist(&path) {
-                                    Ok(_) => {
-                                        sentry::configure_scope(|scope| {
-                                            scope.set_extra(
-                                                "crashed_minidump",
-                                                sentry::protocol::Value::String(
-                                                    path.to_string_lossy().to_string(),
-                                                ),
-                                            );
-                                        });
-                                    }
-                                    Err(e) => tracing::error!("Failed to save minidump {:?}", &e),
-                                };
-                            }
-                        } else {
-                            tracing::debug!(
-                                "No diagnostics retention configured, not saving minidump"
-                            );
-                        }
-
-                        // we explicitly match and return here, otherwise the borrow checker will
-                        // complain that `minidump_file` is being moved into `save_minidump`
-                        return Err(err);
-                    }
-                };
-
-                let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
-                    .referenced_modules
-                    .iter()
-                    .filter(|(id, _)| !cfi_caches.has_module(id))
-                    .map(|t| (t.0, &t.1))
-                    .collect();
-
-                // We put a hard limit of 5 iterations here.
-                // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-                if missing_modules.is_empty() || iterations >= 5 {
-                    break result;
-                }
-
-                let loaded_caches = self
-                    .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
-                    .await;
-                cfi_caches.extend(loaded_caches);
-            };
+            let result = self
+                .stackwalk_minidump_iteratively_with_breakpad(
+                    scope.clone(),
+                    minidump_file,
+                    sources.clone(),
+                    &mut cfi_caches,
+                )
+                .await?;
 
             let StackWalkMinidumpResult {
                 all_modules,
-                stacktraces,
+                mut stacktraces,
                 minidump_state,
                 ..
             } = result;
 
-            metric!(time_raw("minidump.stackwalk.iterations") = iterations);
+            if let Some(client_stacktraces) = client_stacktraces {
+                merge_clientside_with_processed_stacktraces(&mut stacktraces, client_stacktraces);
+            }
 
             // Start building the module list for the symbolication response.
             let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
@@ -2042,7 +2095,7 @@ impl SymbolicationActor {
             Ok::<_, anyhow::Error>((request, minidump_state))
         };
 
-        let future = timeout_compat(Duration::from_secs(3600), future);
+        let future = tokio::time::timeout(Duration::from_secs(3600), future);
         let future = measure("minidump_stackwalk", m::timed_result, None, future);
         future
             .await
@@ -2236,13 +2289,15 @@ impl SymbolicationActor {
         };
 
         let future = async move {
-            self.threadpool
-                .spawn(parse_future.bind_hub(sentry::Hub::current()))
-                .await
-                .context("Parse applecrashreport future cancelled")
+            CancelOnDrop::new(
+                self.cpu_pool
+                    .spawn(parse_future.bind_hub(sentry::Hub::current())),
+            )
+            .await
+            .context("Parse applecrashreport future cancelled")
         };
 
-        let future = timeout_compat(Duration::from_secs(1200), future);
+        let future = tokio::time::timeout(Duration::from_secs(1200), future);
         let future = measure("parse_apple_crash_report", m::timed_result, None, future);
         future
             .await
@@ -2337,6 +2392,36 @@ impl From<&SymCacheError> for ObjectFileStatus {
                 // SymCacheError variant.
                 sentry::capture_error(e);
                 ObjectFileStatus::Other
+            }
+        }
+    }
+}
+
+/// Merges the Stack Traces processed via Breakpad with the ones captured on the Client.
+///
+/// For now, this means we will prefer the client-side stack trace over the processed one, but in
+/// the future we could be a bit smarter about what to do.
+fn merge_clientside_with_processed_stacktraces(
+    processed_stacktraces: &mut [RawStacktrace],
+    clientside_stacktraces: Vec<RawStacktrace>,
+) {
+    let mut client_traces_by_id: HashMap<_, _> = clientside_stacktraces
+        .into_iter()
+        .filter_map(|trace| trace.thread_id.map(|thread_id| (thread_id, trace)))
+        .collect();
+
+    for thread in processed_stacktraces {
+        if let Some(thread_id) = thread.thread_id {
+            if let Some(client_thread) = client_traces_by_id.remove(&thread_id) {
+                // NOTE: we could gather all kinds of metrics here, as in:
+                // - are we finding more or less frames via CFI?
+                // - how many frames are the same
+                // - etc.
+                // We could also be a lot smarter about which threads/frames we chose. For now we
+                // will just always prefer client-side stack traces
+                if !client_thread.frames.is_empty() {
+                    thread.frames = client_thread.frames;
+                }
             }
         }
     }
@@ -2439,22 +2524,19 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
 
-        assert_snapshot!(response.await.unwrap());
+        let request = get_symbolication_request(vec![source]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
+
+        assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
+        let request = get_symbolication_request(vec![]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         Ok(())
     }
@@ -2468,22 +2550,18 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
+        let request = get_symbolication_request(vec![]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request = get_symbolication_request(vec![source]);
-            let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-            symbolication.get_response(request_id, None).await
-        });
+        let request = get_symbolication_request(vec![source]);
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         Ok(())
     }
@@ -2517,27 +2595,22 @@ mod tests {
             options: Default::default(),
         };
 
-        test::spawn_compat(move || async move {
-            // Be aware, this spawns the work into a new current thread runtime, which gets
-            // dropped when test::spawn_compat() returns.
-            let request_id = service
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request)
+            .unwrap();
+
+        for _ in 0..2 {
+            let response = service
                 .symbolication()
-                .symbolicate_stacktraces(request)
+                .get_response(request_id, None)
+                .await
                 .unwrap();
 
-            for _ in 0..2 {
-                let response = service
-                    .symbolication()
-                    .get_response(request_id, None)
-                    .await
-                    .unwrap();
-
-                if !matches!(&response, SymbolicationResponse::Completed(_)) {
-                    panic!("Not a complete response: {:#?}", response);
-                }
+            if !matches!(&response, SymbolicationResponse::Completed(_)) {
+                panic!("Not a complete response: {:#?}", response);
             }
-        })
-        .await;
+        }
     }
 
     async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
@@ -2548,19 +2621,17 @@ mod tests {
         let mut minidump_file = NamedTempFile::new()?;
         minidump_file.write_all(&minidump)?;
         let symbolication = service.symbolication();
-        let response = test::spawn_compat(move || async move {
-            let request_id = symbolication.process_minidump(
-                Scope::Global,
-                minidump_file.into_temp_path(),
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            );
-            symbolication.get_response(request_id.unwrap(), None).await
-        });
+        let request_id = symbolication.process_minidump(
+            Scope::Global,
+            minidump_file.into_temp_path(),
+            Arc::new([source]),
+            RequestOptions {
+                dif_candidates: true,
+            },
+        );
+        let response = symbolication.get_response(request_id.unwrap(), None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
 
         let global_dir = service.config().cache_dir("object_meta/global").unwrap();
         let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
@@ -2594,23 +2665,21 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let response = test::spawn_compat(move || async move {
-            let request_id = service
-                .symbolication()
-                .process_apple_crash_report(
-                    Scope::Global,
-                    report_file,
-                    Arc::new([source]),
-                    RequestOptions {
-                        dif_candidates: true,
-                    },
-                )
-                .unwrap();
+        let request_id = service
+            .symbolication()
+            .process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                Arc::new([source]),
+                RequestOptions {
+                    dif_candidates: true,
+                },
+            )
+            .unwrap();
 
-            service.symbolication().get_response(request_id, None).await
-        });
+        let response = service.symbolication().get_response(request_id, None).await;
 
-        assert_snapshot!(response.await.unwrap());
+        assert_snapshot!(response.unwrap());
         Ok(())
     }
 
@@ -2653,15 +2722,13 @@ mod tests {
             options: Default::default(),
         };
 
-        let response = test::spawn_compat(move || async move {
-            let request_id = service
-                .symbolication()
-                .symbolicate_stacktraces(request)
-                .unwrap();
-            service.symbolication().get_response(request_id, None).await
-        });
+        let request_id = service
+            .symbolication()
+            .symbolicate_stacktraces(request)
+            .unwrap();
+        let response = service.symbolication().get_response(request_id, None).await;
 
-        insta::assert_yaml_snapshot!(response.await.unwrap());
+        insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())
     }
 
@@ -2824,18 +2891,15 @@ mod tests {
         let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();
 
-        test::spawn_compat(move || async move {
-            // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
-            // two concurrent requests, the first two should succeed and the third one should fail.
-            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+        // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+        // two concurrent requests, the first two should succeed and the third one should fail.
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-            let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_ok());
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
 
-            let request = get_symbolication_request(vec![symbol_server.pending_source]);
-            assert!(symbolication.symbolicate_stacktraces(request).is_err());
-        })
-        .await;
+        let request = get_symbolication_request(vec![symbol_server.pending_source]);
+        assert!(symbolication.symbolicate_stacktraces(request).is_err());
     }
 }

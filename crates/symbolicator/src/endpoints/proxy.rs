@@ -1,23 +1,25 @@
+use anyhow::Context;
+use axum::body::Body;
+use axum::extract;
+use axum::http::{Method, Request, Response, StatusCode};
+
 use std::io::Cursor;
 use std::sync::Arc;
-
-use actix_web::{http::Method, pred, App, HttpRequest, HttpResponse, Path, State};
-use failure::{Error, ResultExt};
-use futures01::Stream;
-use tokio01::codec::{BytesCodec, FramedRead};
 
 use crate::services::objects::{FindObject, ObjectHandle, ObjectPurpose};
 use crate::services::Service;
 use crate::types::Scope;
 use crate::utils::paths::parse_symstore_path;
 
-async fn load_object(state: &Service, path: &str) -> Result<Option<Arc<ObjectHandle>>, Error> {
+use super::ResponseError;
+
+async fn load_object(state: Service, path: String) -> anyhow::Result<Option<Arc<ObjectHandle>>> {
     let config = state.config();
     if !config.symstore_proxy {
         return Ok(None);
     }
 
-    let (filetypes, object_id) = match parse_symstore_path(path) {
+    let (filetypes, object_id) = match parse_symstore_path(&path) {
         Some(tuple) => tuple,
         None => return Ok(None),
     };
@@ -54,34 +56,28 @@ async fn load_object(state: &Service, path: &str) -> Result<Option<Arc<ObjectHan
     }
 }
 
-async fn proxy_symstore_request(
-    state: State<Service>,
-    request: HttpRequest<Service>,
-    path: Path<(String,)>,
-) -> Result<HttpResponse, Error> {
-    let object_handle = match load_object(&state, &path.0).await? {
+pub async fn proxy_symstore_request(
+    extract::Extension(state): extract::Extension<Service>,
+    extract::Path(path): extract::Path<String>,
+    request: Request<Body>,
+) -> Result<Response<Body>, ResponseError> {
+    let object_handle = match load_object(state, path).await? {
         Some(handle) => handle,
-        None => return Ok(HttpResponse::NotFound().finish()),
+        None => {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())?)
+        }
     };
 
-    let mut response = HttpResponse::Ok();
-    response
-        .content_length(object_handle.len() as u64)
+    let response = Response::builder()
+        .header("content-length", object_handle.len())
         .header("content-type", "application/octet-stream");
 
-    if request.method() == Method::HEAD {
-        return Ok(response.finish());
+    if *request.method() == Method::HEAD {
+        return Ok(response.body(Body::empty())?);
     }
 
     let bytes = Cursor::new(object_handle.data());
-    let async_bytes = FramedRead::new(bytes, BytesCodec::new()).map(|bytes| bytes.freeze());
-    Ok(response.streaming(async_bytes))
-}
-
-pub fn configure(app: App<Service>) -> App<Service> {
-    app.resource("/symbols/{path:.+}", |r| {
-        r.route()
-            .filter(pred::Any(pred::Get()).or(pred::Head()))
-            .with_async(compat_handler!(proxy_symstore_request, s, r, p));
-    })
+    Ok(response.body(Body::wrap_stream(tokio_util::io::ReaderStream::new(bytes)))?)
 }

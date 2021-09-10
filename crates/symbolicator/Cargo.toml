@@ -6,20 +6,17 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-actix-web = { version = "0.7.19", features = ["tls"], default-features = false }
+axum = { version = "0.2.1", features = ["multipart"] }
 anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
 backtrace = "0.3.55"
 base64 = "0.13.0"
-cadence = "0.25.0"
+cadence = "0.26.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.14.0"
-failure = "0.1.8"
 filetime = "0.2.14"
 flate2 = "1.0.0"
-fragile = "1.0.0" # used for vendoring sentry-actix
-futures = { version = "0.3.12", features = ["compat"] }
-futures01 = { version = "0.1.29", package = "futures" }
+futures = "0.3.12"
 glob = "0.3.0"
 hostname = "0.3.1"
 humantime-serde = "1.0.1"
@@ -28,14 +25,15 @@ jsonwebtoken = "7.2.0"
 lazy_static = "1.4.0"
 lru = "0.6.3"
 num_cpus = "1.13.0"
+minidump = "0.3"
 parking_lot = "0.11.1"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
-rusoto_core = "0.46.0"
-rusoto_credential = "0.46.0"
-rusoto_s3 = "0.46.0"
-sentry = { version = "0.23.0", features = ["debug-images", "tracing"] }
+rusoto_core = "0.47.0"
+rusoto_credential = "0.47.0"
+rusoto_s3 = "0.47.0"
+sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tower", "tracing"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
@@ -44,7 +42,9 @@ symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demang
 tempfile = "3.2.0"
 thiserror = "1.0.26"
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
-tokio01 = { version = "0.1.22", package = "tokio" }
+tokio-util = "0.6"
+tower-layer = "0.3"
+tower-service = "0.3"
 tracing = "0.1.26"
 tracing-log = "0.1.2"
 tracing-subscriber = { version = "0.2.20", features = ["chrono"] }
@@ -58,3 +58,4 @@ procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
 sha-1 = "0.9.2"
 warp = "0.3.0"
+test-assembler = "0.1.5"

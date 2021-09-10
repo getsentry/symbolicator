@@ -16,13 +16,11 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
-use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use futures::{FutureExt, TryFutureExt};
 use reqwest::Url;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
@@ -31,13 +29,13 @@ use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
 use crate::config::Config;
+use crate::endpoints;
 use crate::services::Service;
 use crate::sources::{
     CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
     SourceFilters, SourceId,
 };
 
-pub use actix_web::test::TestServer;
 pub use tempfile::TempDir;
 
 /// Setup the test environment.
@@ -103,41 +101,6 @@ pub(crate) fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
     std::fs::read(fixture(path)).unwrap()
 }
 
-/// Runs the provided function, blocking the current thread until the result **legacy**
-/// [`Future`](futures01::Future) completes.
-///
-/// This function can be used to synchronously block the current thread until the provided `Future`
-/// has resolved either successfully or with an error. The result of the future is then returned
-/// from this function call.
-///
-/// This is provided rather than a `block_on`-like interface to avoid accidentally calling a
-/// function which spawns before creating a future, which would attempt to spawn before actix is
-/// initialised.
-///
-/// Note that this function is intended to be used only for testing purpose. This function panics on
-/// nested call.
-pub async fn spawn_compat<F, T>(f: F) -> T::Output
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Future + 'static,
-    T::Output: Send,
-{
-    let (sender, receiver) = futures::channel::oneshot::channel();
-
-    std::thread::spawn(|| {
-        let result = tokio01::runtime::current_thread::Runtime::new()
-            .unwrap()
-            .block_on(f().never_error().boxed_local().compat());
-
-        sender.send(result)
-    });
-
-    match receiver.await.unwrap() {
-        Ok(output) => output,
-        Err(never) => match never {},
-    }
-}
-
 /// Get bucket configuration for the local fixtures.
 ///
 /// Files are served directly via the local file system without the indirection through a HTTP
@@ -196,6 +159,20 @@ impl Server {
     {
         let (socket, future) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
         let handle = tokio::spawn(future);
+
+        Self { handle, socket }
+    }
+
+    pub fn with_service(service: Service) -> Self {
+        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server =
+            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
+
+        let socket = server.local_addr();
+        let handle = tokio::spawn(async {
+            let _ = server.await;
+        });
 
         Self { handle, socket }
     }
