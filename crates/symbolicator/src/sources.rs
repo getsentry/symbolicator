@@ -4,6 +4,7 @@ use anyhow::Result;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -123,18 +124,39 @@ pub struct FilesystemSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-/// Local helper to deserializes an S3 region string in `S3SourceKey`.
+/// Local helper to deserialize an S3 region string in `S3SourceKey`.
 fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
 where
     D: Deserializer<'de>,
 {
-    // For safety reason we only want to parse the default AWS regions so that
-    // non AWS services cannot be accessed.
-    use serde::de::Error as _;
-    let region = String::deserialize(deserializer)?;
-    region
-        .parse()
-        .map_err(|e| D::Error::custom(format!("region: {}", e)))
+    // This is a Visitor that forwards string types to rusoto_core::Region's
+    // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
+    // impl.
+    struct RusotoRegion;
+
+    impl<'de> serde::de::Visitor<'de> for RusotoRegion {
+        type Value = rusoto_core::Region;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or tuple")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<rusoto_core::Region, E>
+        where
+            E: serde::de::Error,
+        {
+            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {:?}", e)))
+        }
+
+        fn visit_seq<S>(self, seq: S) -> Result<rusoto_core::Region, S::Error>
+        where
+            S: serde::de::SeqAccess<'de>,
+        {
+            Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(RusotoRegion)
 }
 
 /// The types of Amazon IAM credentials providers we support.
@@ -461,5 +483,153 @@ impl AsRef<str> for FileType {
             FileType::UuidMap => "uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rusoto_core::Region;
+
+    use super::*;
+
+    #[test]
+    fn test_s3_config_builtin_region() {
+        let text = r#"
+          - id: us-east
+            type: s3
+            bucket: my-supermarket-bucket
+            region: us-east-1
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let sources: Vec<SourceConfig> = serde_yaml::from_str(text).unwrap();
+        assert_eq!(*sources[0].id(), SourceId("us-east".to_string()));
+        match &sources[0] {
+            SourceConfig::S3(cfg) => {
+                assert_eq!(cfg.id, SourceId("us-east".to_string()));
+                assert_eq!(cfg.bucket, "my-supermarket-bucket");
+                assert_eq!(cfg.source_key.region, Region::UsEast1);
+                assert_eq!(cfg.source_key.access_key, "the-access-key");
+                assert_eq!(cfg.source_key.secret_key, "the-secret-key");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_s3_config_custom_region() {
+        let text = r#"
+          - id: minio
+            type: s3
+            bucket: my-homemade-bucket
+            region:
+              - minio
+              - http://minio.minio.svc.cluster.local:9000
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let sources: Vec<SourceConfig> = serde_yaml::from_str(text).unwrap();
+        match &sources[0] {
+            SourceConfig::S3(cfg) => {
+                assert_eq!(cfg.id, SourceId("minio".to_string()));
+                assert_eq!(
+                    cfg.source_key.region,
+                    Region::Custom {
+                        name: "minio".to_string(),
+                        endpoint: "http://minio.minio.svc.cluster.local:9000".to_string(),
+                    }
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_s3_config_bad_plain_region() {
+        let text = r#"
+          - id: honk
+            type: s3
+            bucket: me-bucket
+            region: my-cool-region
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn test_s3_config_plain_empty_region() {
+        let text = r#"
+          - id: honk
+            type: s3
+            bucket: me-bucket
+            region:
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn test_s3_config_custom_empty_region() {
+        let text = r#"
+          - id: honk
+            type: s3
+            bucket: me-bucket
+            region:
+                -
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn test_s3_config_custom_region_not_enough_fields() {
+        let text = r#"
+          - id: honk
+            type: s3
+            bucket: me-bucket
+            region:
+              - honk
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn test_s3_config_custom_region_too_many_fields() {
+        let text = r#"
+          - id: honk
+            type: s3
+            bucket: me-bucket
+            region:
+              - honk
+              - http://honk.honk.beep.local:9000
+              - beep
+            access_key: the-access-key
+            secret_key: the-secret-key
+            layout:
+              type: unified
+                  "#;
+        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
+        assert!(result.is_err())
     }
 }
