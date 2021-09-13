@@ -31,6 +31,7 @@
 ### Fixes
 
 - Skip trailing garbage frames after `_start`. ([#514](https://github.com/getsentry/symbolicator/pull/514))
+- Respect the build_id provided on the commandline of wasm-split. ([#554](https://github.com/getsentry/symbolicator/pull/554))
 
 ### Tools
 
