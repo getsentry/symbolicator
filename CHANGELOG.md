@@ -4,6 +4,7 @@
 
 ### Features
 
+- S3 sources: add support for custom regions. ([#448](https://github.com/getsentry/symbolicator/pull/448))
 - Bump symbolic to support versioning of CFI Caches. ([#467](https://github.com/getsentry/symbolicator/pull/467))
 - Update symbolic to write versioned CFI Caches, and fix SymCache conversion related to inline-parent offset. ([#470](https://github.com/getsentry/symbolicator/pull/470))
 - Update symbolic to allow processing PDB files with broken inlinee records. ([#477](https://github.com/getsentry/symbolicator/pull/477))

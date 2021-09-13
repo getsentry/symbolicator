@@ -132,7 +132,10 @@ issues as the SSQP protocol demands case insensitive lookups.
 - `type`: `"s3"`
 - `bucket`: the name of the S3 bucket
 - `prefix`: a path prefix to put in front of all keys (eg: `/windows`)
-- `region`: the AWS region where the bucket is located
+- `region`: the AWS region where the bucket is located. Default regions can be
+  supplied as strings, i.e. "us-east-1". In order to use a custom region for an
+  S3 compatible service such as Ceph or minio, specify a tuple:
+  `["custom-region-name", "http://minio-address/"]`.
 - `access_key`: the AWS access key to use
 - `secret_key`: the AWS secret key to use
 
