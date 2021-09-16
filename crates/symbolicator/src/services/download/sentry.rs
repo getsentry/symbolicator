@@ -21,7 +21,7 @@ use super::{
 };
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
-use crate::types::{ObjectId, ObjectType};
+use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, m, measure};
 
 /// The Sentry-specific [`RemoteDif`].
@@ -205,19 +205,10 @@ impl SentryDownloader {
                 .append_pair("debug_id", &debug_id.to_string());
         }
 
-        // Minidumps on Windows are assigned an object type of ObjectType::Pe, but it's possible
-        // that they're actually Elfs instead
-        let additional_filetype = if object_id.object_type == ObjectType::Pe {
-            Some(FileType::ElfDebug)
-        } else {
-            None
-        };
-
         // See <sentry-repo>/src/sentry/constants.py KNOWN_DIF_FORMATS for these query strings.
         index_url.query_pairs_mut().extend_pairs(
             file_types
                 .iter()
-                .chain(additional_filetype.iter())
                 .map(|file_type| match file_type {
                     FileType::UuidMap => "uuidmap",
                     FileType::BcSymbolMap => "bcsymbolmap",

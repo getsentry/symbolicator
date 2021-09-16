@@ -458,9 +458,21 @@ impl FileType {
     #[inline]
     pub fn from_object_type(ty: ObjectType) -> &'static [Self] {
         match ty {
-            ObjectType::Macho => &[FileType::MachDebug, FileType::MachCode, FileType::Breakpad],
-            ObjectType::Pe => &[FileType::Pdb, FileType::Pe, FileType::Breakpad],
-            ObjectType::Elf => &[FileType::ElfDebug, FileType::ElfCode, FileType::Breakpad],
+            // There are instances where applications have been cross-compiled for some target
+            // platform, but their debug files are emitted as ELF files (e.g. MinGW with GCC
+            // spits out a PE for Windows but an ELF debug companion). As a result, we return a
+            // union of all of the possible file types for the three below object types so avoid
+            // making any assumption about the type of debug companions that can be provided for a
+            // given executable.
+            ObjectType::Macho | ObjectType::Pe | ObjectType::Elf => &[
+                FileType::Breakpad,
+                FileType::MachDebug,
+                FileType::MachCode,
+                FileType::Pdb,
+                FileType::Pe,
+                FileType::ElfDebug,
+                FileType::ElfCode,
+            ],
             ObjectType::Wasm => &[FileType::WasmCode, FileType::WasmDebug],
             _ => Self::all(),
         }
