@@ -1,6 +1,7 @@
 ---
-source: src/services/symbolication.rs
-expression: response.await.unwrap()
+source: crates/symbolicator/src/services/symbolication.rs
+expression: response.unwrap()
+
 ---
 status: completed
 timestamp: 1547055742
@@ -134,7 +135,31 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/2d/903291397d3d14bfca52c7fb8c5e00"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/2d/903291397d3d14bfca52c7fb8c5e00.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMa_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397d3d14bfca52c7fb8c5e00/YetAnotherMa_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397d3d14bfca52c7fb8c5e00/YetAnotherMac"
         download:
           status: notfound
   - debug_status: unused
@@ -193,3 +218,4 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPxFoundationPROFILE.dylib
     image_addr: "0x1131fa000"
     image_size: 28671
+
