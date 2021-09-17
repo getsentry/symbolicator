@@ -31,10 +31,6 @@ modules:
     image_size: 4096
     candidates:
       - source: local
-        location: "http://localhost:<port>/download/50/2fc0a51ec13e479998684fa139dca7"
-        download:
-          status: notfound
-      - source: local
         location: "http://localhost:<port>/download/50/2fc0a51ec13e479998684fa139dca7.debug"
         download:
           status: notfound

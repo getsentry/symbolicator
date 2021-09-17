@@ -135,10 +135,6 @@ modules:
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/2d/903291397d3d14bfca52c7fb8c5e00"
-        download:
-          status: notfound
-      - source: local
         location: "http://localhost:<port>/download/2d/903291397d3d14bfca52c7fb8c5e00.debug"
         download:
           status: notfound
@@ -152,14 +148,6 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397d3d14bfca52c7fb8c5e00/YetAnotherMa_"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397d3d14bfca52c7fb8c5e00/YetAnotherMac"
         download:
           status: notfound
   - debug_status: unused

@@ -464,14 +464,26 @@ impl FileType {
             // union of all of the possible file types for the three below object types so avoid
             // making any assumption about the type of debug companions that can be provided for a
             // given executable.
-            ObjectType::Macho | ObjectType::Pe | ObjectType::Elf => &[
+            ObjectType::Macho => &[
+                FileType::MachCode,
                 FileType::Breakpad,
                 FileType::MachDebug,
-                FileType::MachCode,
                 FileType::Pdb,
-                FileType::Pe,
                 FileType::ElfDebug,
+            ],
+            ObjectType::Pe => &[
+                FileType::Pe,
+                FileType::Breakpad,
+                FileType::MachDebug,
+                FileType::Pdb,
+                FileType::ElfDebug,
+            ],
+            ObjectType::Elf => &[
                 FileType::ElfCode,
+                FileType::Breakpad,
+                FileType::MachDebug,
+                FileType::Pdb,
+                FileType::ElfDebug,
             ],
             ObjectType::Wasm => &[FileType::WasmCode, FileType::WasmDebug],
             _ => Self::all(),

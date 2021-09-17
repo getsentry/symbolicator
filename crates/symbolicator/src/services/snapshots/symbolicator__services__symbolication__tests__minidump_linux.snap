@@ -141,14 +141,6 @@ modules:
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/crash/F1C3BCC0279865fe3058404b2831d9e64135386c/cras_"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/crash/F1C3BCC0279865fe3058404b2831d9e64135386c/crash"
-        download:
-          status: notfound
-      - source: local
         location: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c"
         download:
           status: notfound
@@ -205,14 +197,6 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.so.sym"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/libc-2.23.so/B5381A457906d279073822a5ceb24c4bfef94ddb/libc-2.23.s_"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/libc-2.23.so/B5381A457906d279073822a5ceb24c4bfef94ddb/libc-2.23.so"
         download:
           status: notfound
   - debug_status: unused
@@ -294,14 +278,6 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so.sym"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/ld-2.23.so/5D7B6259552275a3c17bd4c3fd05f5a6bf40caa5/ld-2.23.s_"
-        download:
-          status: notfound
-      - source: local
-        location: "http://localhost:<port>/download/ld-2.23.so/5D7B6259552275a3c17bd4c3fd05f5a6bf40caa5/ld-2.23.so"
         download:
           status: notfound
   - debug_status: unused

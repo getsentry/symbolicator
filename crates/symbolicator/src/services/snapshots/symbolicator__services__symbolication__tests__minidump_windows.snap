@@ -171,10 +171,6 @@ modules:
     image_size: 36864
     candidates:
       - source: local
-        location: "http://localhost:<port>/download/5a/b380779000"
-        download:
-          status: notfound
-      - source: local
         location: "http://localhost:<port>/download/5a/b380779000.debug"
         download:
           status: notfound
@@ -268,10 +264,6 @@ modules:
     image_addr: "0x70b70000"
     image_size: 151552
     candidates:
-      - source: local
-        location: "http://localhost:<port>/download/57/898dab25000"
-        download:
-          status: notfound
       - source: local
         location: "http://localhost:<port>/download/57/898dab25000.debug"
         download:
@@ -403,10 +395,6 @@ modules:
     image_size: 917504
     candidates:
       - source: local
-        location: "http://localhost:<port>/download/59/0285e9e0000"
-        download:
-          status: notfound
-      - source: local
         location: "http://localhost:<port>/download/59/0285e9e0000.debug"
         download:
           status: notfound
@@ -461,10 +449,6 @@ modules:
     image_addr: "0x75810000"
     image_size: 790528
     candidates:
-      - source: local
-        location: "http://localhost:<port>/download/5a/49bb75c1000"
-        download:
-          status: notfound
       - source: local
         location: "http://localhost:<port>/download/5a/49bb75c1000.debug"
         download:
@@ -535,10 +519,6 @@ modules:
     image_addr: "0x77170000"
     image_size: 1585152
     candidates:
-      - source: local
-        location: "http://localhost:<port>/download/59/b0d8f3183000"
-        download:
-          status: notfound
       - source: local
         location: "http://localhost:<port>/download/59/b0d8f3183000.debug"
         download:
