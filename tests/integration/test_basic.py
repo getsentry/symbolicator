@@ -666,7 +666,7 @@ def test_malformed_objects(symbolicator, hitcounter):
 
 
 @pytest.mark.parametrize(
-    "patterns,output",
+    "patterns,expected_output",
     [
         [["?:/windows/**"], SUCCESS_WINDOWS],
         [["?:/windows/*"], SUCCESS_WINDOWS],
@@ -675,7 +675,7 @@ def test_malformed_objects(symbolicator, hitcounter):
         [["d:/windows/**"], NO_SOURCES],
     ],
 )
-def test_path_patterns(symbolicator, hitcounter, patterns, output):
+def test_path_patterns(symbolicator, hitcounter, patterns, expected_output):
     input = dict(
         sources=[
             {
@@ -691,9 +691,9 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
         },
         **WINDOWS_DATA,
     )
-    if output == NO_SOURCES:
-        output = copy.deepcopy(output)
-        output["modules"][0]["candidates"] = [
+    if expected_output == NO_SOURCES:
+        expected_output = copy.deepcopy(expected_output)
+        expected_output["modules"][0]["candidates"] = [
             {
                 "source": "microsoft",
                 "location": "No object files listed on this source",
@@ -709,7 +709,7 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert_symbolication(response.json(), output)
+    assert_symbolication(response.json(), expected_output)
 
 
 def test_redirects(symbolicator, hitcounter):
