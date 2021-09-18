@@ -551,7 +551,9 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                 },
             }
         ]
-        assert_symbolication(response, expected)
+        assert_symbolication(
+            response, expected, {"status code": statuscode, "bucket type": bucket_type}
+        )
     else:
         if statuscode == 500:
             expected = _make_error_result(
@@ -572,7 +574,9 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                         f"/respond_statuscode/{statuscode}/",
                     )
 
-        assert_symbolication(response, expected)
+        assert_symbolication(
+            response, expected, {"status code": statuscode, "bucket type": bucket_type}
+        )
 
 
 # can't test gcs because you get JWT errors, meaningless to test sentry sources
@@ -633,7 +637,7 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
                         "/respond_statuscode/403/",
                     )
 
-    assert_symbolication(response, expected)
+    assert_symbolication(response, expected, {"bucket type": bucket_type})
 
 
 def test_malformed_objects(symbolicator, hitcounter):
