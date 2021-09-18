@@ -579,7 +579,7 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
 @pytest.mark.parametrize("bucket_type", ["http", "s3"])
 def test_no_permission(symbolicator, hitcounter, bucket_type):
     if bucket_type == "http":
-        source_specific = {"layout": {"type": "symstore"}}
+        source_specific = {"url": f"{hitcounter.url}/respond_statuscode/403/"}
     elif bucket_type == "s3":
         source_specific = {
             "layout": {"type": "symstore"},
@@ -599,7 +599,7 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
     source = {
         "type": bucket_type,
         "id": "broken",
-        "url": f"{hitcounter.url}/respond_statuscode/403/",
+        "layout": {"type": "symstore"},
     }
     source.update(source_specific)
 
