@@ -154,7 +154,7 @@ def _make_error_result(
         "download": download_error,
         "source": source_name,
     }
-    if source_name == None:
+    if source_name is None:
         pass
     elif missing_candidates:
         module["candidates"] = [
