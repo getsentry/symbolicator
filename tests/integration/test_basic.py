@@ -27,65 +27,74 @@ WINDOWS_DATA = {
     ],
 }
 
-SUCCESS_WINDOWS = {
-    "stacktraces": [
-        {
-            "registers": {"eip": "0x1509530"},
-            "frames": [
-                {
-                    "status": "symbolicated",
-                    "original_index": 0,
-                    "instruction_addr": "0x749e8630",
-                    "lineno": 0,
-                    "package": "C:\\Windows\\System32\\kernel32.dll",
-                    "function": "@BaseThreadInitThunk@12",
-                    "symbol": "@BaseThreadInitThunk@12",
-                    "sym_addr": "0x749e8630",
-                }
-            ],
-        }
-    ],
-    "modules": [
-        {
-            "type": "pe",
-            "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
-            "code_file": "C:\\Windows\\System32\\kernel32.dll",
-            "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
-            "debug_status": "found",
-            "features": {
-                "has_debug_info": True,
-                "has_sources": False,
-                "has_symbols": True,
-                "has_unwind_info": True,
-            },
-            "arch": "x86",
-            "image_addr": "0x749d0000",
-            "image_size": 851_968,
-            "candidates": [
-                {
-                    "download": {"status": "notfound"},
-                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
-                    "source": "microsoft",
+def _make_successful_result(filtered=False):
+    response = {
+        "stacktraces": [
+            {
+                "registers": {"eip": "0x1509530"},
+                "frames": [
+                    {
+                        "status": "symbolicated",
+                        "original_index": 0,
+                        "instruction_addr": "0x749e8630",
+                        "lineno": 0,
+                        "package": "C:\\Windows\\System32\\kernel32.dll",
+                        "function": "@BaseThreadInitThunk@12",
+                        "symbol": "@BaseThreadInitThunk@12",
+                        "sym_addr": "0x749e8630",
+                    }
+                ],
+            }
+        ],
+        "modules": [
+            {
+                "type": "pe",
+                "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+                "code_file": "C:\\Windows\\System32\\kernel32.dll",
+                "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+                "debug_status": "found",
+                "features": {
+                    "has_debug_info": True,
+                    "has_sources": False,
+                    "has_symbols": True,
+                    "has_unwind_info": True,
                 },
-                {
-                    "debug": {"status": "ok"},
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
+                "arch": "x86",
+                "image_addr": "0x749d0000",
+                "image_size": 851_968,
+                "candidates": [
+                    {
+                        "download": {"status": "notfound"},
+                        "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+                        "source": "microsoft",
                     },
-                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
-                    "source": "microsoft",
-                },
-            ],
-        }
-    ],
-    "status": "completed",
-}
+                    {
+                        "debug": {"status": "ok"},
+                        "download": {
+                            "features": {
+                                "has_debug_info": True,
+                                "has_sources": False,
+                                "has_symbols": True,
+                                "has_unwind_info": True,
+                            },
+                            "status": "ok",
+                        },
+                        "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+                        "source": "microsoft",
+                    },
+                ],
+            }
+        ],
+        "status": "completed",
+    }
+    # if the request to symbolicator filters for only PDBs, other debug file types won't be included
+    if not filtered:
+        response["modules"][0]["candidates"].insert(0, {
+            "download": {"status": "notfound"},
+            "location": "http://127.0.0.1:1234/msdl/_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
+            "source": "microsoft",
+        })
+    return response
 
 
 def _make_unsuccessful_result(status, source="microsoft"):
@@ -125,6 +134,11 @@ def _make_unsuccessful_result(status, source="microsoft"):
     }
     if source in ["microsoft", "unknown", "broken"]:
         response["modules"][0]["candidates"] = [
+            {
+                "download": {"status": "notfound"},
+                "location": "http://127.0.0.1:1234/msdl/_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
+                "source": source,
+            },
             {
                 "download": {"status": "notfound"},
                 "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
@@ -186,6 +200,11 @@ def _make_error_result(download_error, source="microsoft", bucket_type="http"):
         response["modules"][0]["candidates"] = [
             {
                 "download": download_error,
+                "location": f"{prefix}_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
+                "source": source,
+            },
+            {
+                "download": download_error,
                 "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
                 "source": source,
             },
@@ -195,19 +214,11 @@ def _make_error_result(download_error, source="microsoft", bucket_type="http"):
                 "source": source,
             },
         ]
-        if bucket_type != "http":
-            response["modules"][0]["candidates"].append(
-                {
-                    "download": download_error,
-                    "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.sym",
-                    "source": source,
-                }
-            )
     return response
 
-
-MISSING_FILE = _make_unsuccessful_result("missing")
-MALFORMED_FILE = _make_unsuccessful_result("malformed")
+SUCCESS_WINDOWS_FILTERED = _make_successful_result(filtered=True)
+SUCCESS_WINDOWS = _make_successful_result()
+MISSING_BROKEN_SOURCE = _make_unsuccessful_result(status="missing", source="broken")
 MALFORMED_NO_SOURCES = _make_unsuccessful_result("malformed", source=None)
 NO_SOURCES = _make_unsuccessful_result("missing", source=None)
 UNKNOWN_SOURCE = _make_unsuccessful_result("missing", source="unknown")
@@ -251,7 +262,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
         response = service.post(f"/symbolicate?scope={scope}", json=input)
         response.raise_for_status()
 
-        assert_symbolication(response.json(), SUCCESS_WINDOWS)
+        assert_symbolication(response.json(), SUCCESS_WINDOWS_FILTERED)
 
         if cache_dir_param:
             stored_in_scope = "global" if is_public else scope
@@ -355,7 +366,7 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
         t.join()
 
     for response in responses:
-        assert_symbolication(response, SUCCESS_WINDOWS)
+        assert_symbolication(response, SUCCESS_WINDOWS_FILTERED)
 
     assert set(hitcounter.hits) == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
@@ -486,7 +497,7 @@ def test_timeouts(symbolicator, hitcounter):
         assert response["status"] == "pending"
         assert response["request_id"] == request_id
 
-    assert_symbolication(responses[-1], SUCCESS_WINDOWS)
+    assert_symbolication(responses[-1], SUCCESS_WINDOWS_FILTERED)
     assert len(responses) > 1
 
     assert hitcounter.hits == {
@@ -565,9 +576,11 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
     if bucket_type == "http":
         source_specific = {"layout": {"type": "symstore"}}
     elif bucket_type == "s3":
-        source_specific = {"bucket": "symbolicator-test", "region": "us-east-1"}
+        source_specific = {
+            "layout": {"type": "symstore"},"bucket": "symbolicator-test", "region": "us-east-1"}
     elif bucket_type == "gcs":
         source_specific = {
+            "layout": {"type": "symstore"},
             "bucket": "honk",
             "private_key": "",
             "client_email": "honk@sentry.io",
@@ -779,7 +792,7 @@ def test_no_dif_candidates(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=request_data)
     response.raise_for_status()
 
-    success_response = copy.deepcopy(SUCCESS_WINDOWS)
+    success_response = copy.deepcopy(SUCCESS_WINDOWS_FILTERED)
     for module in success_response["modules"]:
         del module["candidates"]
 
