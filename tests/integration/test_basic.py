@@ -27,6 +27,7 @@ WINDOWS_DATA = {
     ],
 }
 
+
 def _make_successful_result(filtered=False):
     response = {
         "stacktraces": [
@@ -89,11 +90,14 @@ def _make_successful_result(filtered=False):
     }
     # if the request to symbolicator filters for only PDBs, other debug file types won't be included
     if not filtered:
-        response["modules"][0]["candidates"].insert(0, {
-            "download": {"status": "notfound"},
-            "location": "http://127.0.0.1:1234/msdl/_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
-            "source": "microsoft",
-        })
+        response["modules"][0]["candidates"].insert(
+            0,
+            {
+                "download": {"status": "notfound"},
+                "location": "http://127.0.0.1:1234/msdl/_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
+                "source": "microsoft",
+            },
+        )
     return response
 
 
@@ -215,6 +219,7 @@ def _make_error_result(download_error, source="microsoft", bucket_type="http"):
             },
         ]
     return response
+
 
 SUCCESS_WINDOWS_FILTERED = _make_successful_result(filtered=True)
 SUCCESS_WINDOWS = _make_successful_result()
@@ -577,7 +582,10 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
         source_specific = {"layout": {"type": "symstore"}}
     elif bucket_type == "s3":
         source_specific = {
-            "layout": {"type": "symstore"},"bucket": "symbolicator-test", "region": "us-east-1"}
+            "layout": {"type": "symstore"},
+            "bucket": "symbolicator-test",
+            "region": "us-east-1",
+        }
     elif bucket_type == "gcs":
         source_specific = {
             "layout": {"type": "symstore"},
