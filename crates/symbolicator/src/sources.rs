@@ -458,12 +458,10 @@ impl FileType {
     #[inline]
     pub fn from_object_type(ty: ObjectType) -> &'static [Self] {
         match ty {
-            // There are instances where applications have been cross-compiled for some target
-            // platform, but their debug files are emitted as ELF files (e.g. MinGW with GCC
-            // spits out a PE for Windows but an ELF debug companion). As a result, we return a
-            // union of all of the possible file types for the three below object types so avoid
-            // making any assumption about the type of debug companions that can be provided for a
-            // given executable.
+            // There are instances where an application's debug files are ELFs despite the
+            // executable not being ELFs themselves. It probably isn't correct to assume that any
+            // specific debug file type is heavily coupled with a particular executable type so we
+            // return a union of all possible debug file types for native applications.
             ObjectType::Macho => &[
                 FileType::MachCode,
                 FileType::Breakpad,
