@@ -562,6 +562,7 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
                     "details": "failed to download: 500 Internal Server Error",
                 },
                 source="broken",
+                bucket_type="http",
             )
         else:
             expected = _make_unsuccessful_result(status="missing", source="broken")
@@ -778,7 +779,9 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
     else:
         assert not hitcounter.hits
         restricted_download_failure = _make_error_result(
-            download_error={"status": "error", "details": "failed to stream file"}
+            download_error={"status": "error", "details": "failed to stream file"},
+            source="microsoft",
+            bucket_type="http",
         )
         assert_symbolication(response.json(), restricted_download_failure)
 
