@@ -554,7 +554,7 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
     response = response.json()
 
     base_url = (
-        f"s3://symbolicator-test/"
+        "s3://symbolicator-test/"
         if bucket_type == "s3"
         else f"{hitcounter.url}/respond_statuscode/403/"
     )
