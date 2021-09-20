@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::task::{Context, Poll};
 
 use axum::body::Body;
@@ -46,25 +47,31 @@ where
 
     fn call(&mut self, request: Request<Body>) -> Self::Future {
         sentry::configure_scope(|scope| {
+            let mut sentry_headers = BTreeMap::new();
             let headers = request.headers();
             fn get_str(val: &HeaderValue) -> Option<&str> {
                 val.to_str().ok()
             }
             if let Some(worker_id) = headers.get("X-Sentry-Worker-Id").and_then(get_str) {
-                scope.set_tag("sentry.worker_id", worker_id);
+                sentry_headers.insert(String::from("X-Sentry-Worker-Id"), worker_id.into());
             }
             if let Some(project_id) = headers.get("X-Sentry-Project-Id").and_then(get_str) {
-                scope.set_tag("sentry.project_id", project_id);
+                sentry_headers.insert(String::from("X-Sentry-Project-Id"), project_id.into());
             }
             if let Some(event_id) = headers.get("X-Sentry-Event-Id").and_then(get_str) {
-                scope.set_tag("sentry.event_id", event_id);
+                sentry_headers.insert(String::from("X-Sentry-Event-Id"), event_id.into());
             }
 
             // TODO: We can use this in the future for distributed tracing once we make
             // properly support that in the SDK.
             if let Some(trace_id) = headers.get("Sentry-Trace").and_then(get_str) {
-                scope.set_tag("sentry.trace", trace_id);
+                sentry_headers.insert(String::from("Sentry-Trace"), trace_id.into());
             }
+
+            scope.set_context(
+                "Sentry HTTP Headers",
+                sentry::protocol::Context::Other(sentry_headers),
+            );
         });
         self.service.call(request)
     }
