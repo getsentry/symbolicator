@@ -1,7 +1,13 @@
 ---
-source: src/services/symbolication.rs
+source: crates/symbolicator/src/services/symbolication.rs
 expression: cache_entries
+
 ---
+- local_57_898dab25000_debug
+- local_59_0285e9e0000_debug
+- local_59_b0d8f3183000_debug
+- local_5a_49bb75c1000_debug
+- local_5a_b380779000_debug
 - local_crash_exe_5AB380779000_crash_ex_
 - local_crash_exe_5AB380779000_crash_exe
 - local_crash_pdb_3249D99D0C4049318610F4E4FB0B69361_crash_pd_
@@ -30,3 +36,4 @@ expression: cache_entries
 - local_wrpcrt4_pdb_AE131C6727A74FA19916B5A4AEF411901_wrpcrt4_pd_
 - local_wrpcrt4_pdb_AE131C6727A74FA19916B5A4AEF411901_wrpcrt4_pdb
 - local_wrpcrt4_pdb_AE131C6727A74FA19916B5A4AEF411901_wrpcrt4_sym
+

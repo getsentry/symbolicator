@@ -271,7 +271,7 @@ def hitcounter(request):
         yield app
 
 
-def assert_symbolication(output, expected):
+def assert_symbolication(output, expected, assertion_info=None):
     """Compares symbolication results, with redactions.
 
     Redactions are necessary to remove random port numbers.
@@ -298,4 +298,7 @@ def assert_symbolication(output, expected):
 
     redact(output)
     redact(expected)
-    assert output == expected
+    if assertion_info:
+        assert output == expected, assertion_info
+    else:
+        assert output == expected

@@ -27,30 +27,50 @@ WINDOWS_DATA = {
     ],
 }
 
-SUCCESS_WINDOWS = {
-    "stacktraces": [
+STACKTRACE_RESULT = {
+    "registers": {"eip": "0x1509530"},
+    "frames": [
         {
-            "registers": {"eip": "0x1509530"},
-            "frames": [
-                {
-                    "status": "symbolicated",
-                    "original_index": 0,
-                    "instruction_addr": "0x749e8630",
-                    "lineno": 0,
-                    "package": "C:\\Windows\\System32\\kernel32.dll",
-                    "function": "@BaseThreadInitThunk@12",
-                    "symbol": "@BaseThreadInitThunk@12",
-                    "sym_addr": "0x749e8630",
-                }
-            ],
+            "original_index": 0,
+            "package": "C:\\Windows\\System32\\kernel32.dll",
+            "instruction_addr": "0x749e8630",
         }
     ],
-    "modules": [
+}
+
+MODULE_RESULT = {
+    "type": "pe",
+    "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+    "code_file": "C:\\Windows\\System32\\kernel32.dll",
+    "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+    "image_addr": "0x749d0000",
+    "image_size": 851_968,
+}
+
+DEFAULT_SERVER_PATH = "http://127.0.0.1:1234/msdl/"
+
+PATHS = {
+    "dwarf": "_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
+    "pd_": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
+    "pdb": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+}
+
+
+def _make_successful_result(filtered=False):
+    stacktrace = copy.deepcopy(STACKTRACE_RESULT)
+    stacktrace["frames"][0].update(
         {
-            "type": "pe",
-            "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
-            "code_file": "C:\\Windows\\System32\\kernel32.dll",
-            "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+            "status": "symbolicated",
+            "lineno": 0,
+            "function": "@BaseThreadInitThunk@12",
+            "symbol": "@BaseThreadInitThunk@12",
+            "sym_addr": "0x749e8630",
+        }
+    )
+
+    module = copy.deepcopy(MODULE_RESULT)
+    module.update(
+        {
             "debug_status": "found",
             "features": {
                 "has_debug_info": True,
@@ -59,158 +79,99 @@ SUCCESS_WINDOWS = {
                 "has_unwind_info": True,
             },
             "arch": "x86",
-            "image_addr": "0x749d0000",
-            "image_size": 851_968,
-            "candidates": [
-                {
-                    "download": {"status": "notfound"},
-                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
-                    "source": "microsoft",
-                },
-                {
-                    "debug": {"status": "ok"},
-                    "download": {
-                        "features": {
-                            "has_debug_info": True,
-                            "has_sources": False,
-                            "has_symbols": True,
-                            "has_unwind_info": True,
-                        },
-                        "status": "ok",
-                    },
-                    "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
-                    "source": "microsoft",
-                },
-            ],
+            "candidates": [],
         }
-    ],
-    "status": "completed",
-}
-
-
-def _make_unsuccessful_result(status, source="microsoft"):
-    response = {
-        "stacktraces": [
+    )
+    # only include other debug file types if the request to symbolicator doesn't explicitly filter them out
+    if not filtered:
+        module["candidates"].append(
             {
-                "registers": {"eip": "0x1509530"},
-                "frames": [
-                    {
-                        "status": status,
-                        "original_index": 0,
-                        "package": "C:\\Windows\\System32\\kernel32.dll",
-                        "instruction_addr": "0x749e8630",
-                    }
-                ],
-            }
-        ],
-        "modules": [
-            {
-                "type": "pe",
-                "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
-                "code_file": "C:\\Windows\\System32\\kernel32.dll",
-                "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
-                "debug_status": status,
-                "features": {
-                    "has_debug_info": False,
-                    "has_sources": False,
-                    "has_symbols": False,
-                    "has_unwind_info": False,
-                },
-                "arch": "unknown",
-                "image_addr": "0x749d0000",
-                "image_size": 851_968,
-            }
-        ],
-        "status": "completed",
-    }
-    if source in ["microsoft", "unknown", "broken"]:
-        response["modules"][0]["candidates"] = [
-            {
+                "location": DEFAULT_SERVER_PATH + PATHS["dwarf"],
+                "source": "microsoft",
                 "download": {"status": "notfound"},
-                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
-                "source": source,
+            }
+        )
+    module["candidates"].extend(
+        [
+            {
+                "location": DEFAULT_SERVER_PATH + PATHS["pd_"],
+                "source": "microsoft",
+                "download": {"status": "notfound"},
             },
             {
-                "download": {"status": "notfound"},
-                "location": "http://127.0.0.1:1234/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
-                "source": source,
+                "location": DEFAULT_SERVER_PATH + PATHS["pdb"],
+                "source": "microsoft",
+                "debug": {"status": "ok"},
+                "download": {
+                    "features": {
+                        "has_debug_info": True,
+                        "has_sources": False,
+                        "has_symbols": True,
+                        "has_unwind_info": True,
+                    },
+                    "status": "ok",
+                },
             },
         ]
-    return response
+    )
 
-
-def _make_error_result(download_error, source="microsoft", bucket_type="http"):
-    """
-    Builds a standard error result. `download_error` should be an ObjectDownloadInfo.
-    """
-
-    response = {
-        "stacktraces": [
-            {
-                "registers": {"eip": "0x1509530"},
-                "frames": [
-                    {
-                        "status": "missing",
-                        "original_index": 0,
-                        "package": "C:\\Windows\\System32\\kernel32.dll",
-                        "instruction_addr": "0x749e8630",
-                    }
-                ],
-            }
-        ],
-        "modules": [
-            {
-                "type": "pe",
-                "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
-                "code_file": "C:\\Windows\\System32\\kernel32.dll",
-                "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
-                "debug_status": "missing",
-                "features": {
-                    "has_debug_info": False,
-                    "has_sources": False,
-                    "has_symbols": False,
-                    "has_unwind_info": False,
-                },
-                "arch": "unknown",
-                "image_addr": "0x749d0000",
-                "image_size": 851_968,
-            }
-        ],
+    return {
+        "stacktraces": [stacktrace],
+        "modules": [module],
         "status": "completed",
     }
-    prefix = "http://127.0.0.1:1234/msdl/"
-    if bucket_type == "s3":
-        prefix = "s3://symbolicator-test/"
 
-    if source in ["microsoft", "unknown", "broken"]:
-        response["modules"][0]["candidates"] = [
-            {
-                "download": download_error,
-                "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
-                "source": source,
+
+SUCCESS_WINDOWS_FILTERED = _make_successful_result(filtered=True)
+SUCCESS_WINDOWS = _make_successful_result()
+
+
+def _make_error_result(
+    status, download_error, source=(None, True), base_url=DEFAULT_SERVER_PATH
+):
+    """
+    Builds a standard error result. `download_error` should be an ObjectDownloadInfo. source is
+    a tuple composed of the expected source name, and whether it is expected to have any candidates.
+    """
+    stacktrace = copy.deepcopy(STACKTRACE_RESULT)
+    stacktrace["frames"][0].update({"status": status})
+
+    module = copy.deepcopy(MODULE_RESULT)
+    module.update(
+        {
+            "debug_status": status,
+            "features": {
+                "has_debug_info": False,
+                "has_sources": False,
+                "has_symbols": False,
+                "has_unwind_info": False,
             },
-            {
-                "download": download_error,
-                "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
-                "source": source,
-            },
+            "arch": "unknown",
+        }
+    )
+    (source_name, missing_candidates) = source if source else (None, True)
+    base_candidate = {
+        "download": download_error,
+        "source": source_name,
+    }
+    if source_name is None:
+        pass
+    elif missing_candidates:
+        module["candidates"] = [
+            {"location": "No object files listed on this source", **base_candidate}
         ]
-        if bucket_type != "http":
-            response["modules"][0]["candidates"].append(
-                {
-                    "download": download_error,
-                    "location": f"{prefix}wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.sym",
-                    "source": source,
-                }
-            )
-    return response
+    else:
+        module["candidates"] = [
+            {"location": base_url + PATHS["dwarf"], **base_candidate},
+            {"location": base_url + PATHS["pd_"], **base_candidate},
+            {"location": base_url + PATHS["pdb"], **base_candidate},
+        ]
 
-
-MISSING_FILE = _make_unsuccessful_result("missing")
-MALFORMED_FILE = _make_unsuccessful_result("malformed")
-MALFORMED_NO_SOURCES = _make_unsuccessful_result("malformed", source=None)
-NO_SOURCES = _make_unsuccessful_result("missing", source=None)
-UNKNOWN_SOURCE = _make_unsuccessful_result("missing", source="unknown")
+    return {
+        "stacktraces": [stacktrace],
+        "modules": [module],
+        "status": "completed",
+    }
 
 
 @pytest.fixture(params=[True, False], ids=["cachedir", "no_cachedir"])
@@ -251,7 +212,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
         response = service.post(f"/symbolicate?scope={scope}", json=input)
         response.raise_for_status()
 
-        assert_symbolication(response.json(), SUCCESS_WINDOWS)
+        assert_symbolication(response.json(), SUCCESS_WINDOWS_FILTERED)
 
         if cache_dir_param:
             stored_in_scope = "global" if is_public else scope
@@ -296,7 +257,13 @@ def test_no_sources(symbolicator, cache_dir_param):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert_symbolication(response.json(), NO_SOURCES)
+    expected = _make_error_result(
+        status="missing",
+        download_error={"status": "notfound"},
+        source=None,
+        base_url=f"{service.url}/msdl/",
+    )
+    assert_symbolication(response.json(), expected)
 
     if cache_dir_param:
         assert not cache_dir_param.join("objects/global").exists()
@@ -355,7 +322,7 @@ def test_lookup_deduplication(symbolicator, hitcounter, is_public):
         t.join()
 
     for response in responses:
-        assert_symbolication(response, SUCCESS_WINDOWS)
+        assert_symbolication(response, SUCCESS_WINDOWS_FILTERED)
 
     assert set(hitcounter.hits) == {
         "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
@@ -382,16 +349,12 @@ def test_sources_filetypes(symbolicator, hitcounter):
         },
         **WINDOWS_DATA,
     )
-    expected = copy.deepcopy(NO_SOURCES)
-    expected["modules"][0]["candidates"] = [
-        {
-            "source": "microsoft",
-            "location": "No object files listed on this source",
-            "download": {
-                "status": "notfound",
-            },
-        }
-    ]
+    expected = _make_error_result(
+        status="missing",
+        download_error={"status": "notfound"},
+        source=("microsoft", True),
+        base_url=f"{hitcounter.url}/msdl/",
+    )
 
     service = symbolicator()
     service.wait_healthcheck()
@@ -429,14 +392,12 @@ def test_unknown_source_config(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    expected = copy.deepcopy(UNKNOWN_SOURCE)
-    for module in expected.get("modules", []):
-        for candidate in module.get("candidates", []):
-            if "location" in candidate:
-                candidate["location"] = candidate["location"].replace(
-                    "/msdl/",
-                    "/respond_statuscode/400/",
-                )
+    expected = _make_error_result(
+        status="missing",
+        download_error={"status": "notfound"},
+        source=("unknown", False),
+        base_url=f"{hitcounter.url}/respond_statuscode/400/",
+    )
     assert_symbolication(response.json(), expected)
 
 
@@ -486,7 +447,7 @@ def test_timeouts(symbolicator, hitcounter):
         assert response["status"] == "pending"
         assert response["request_id"] == request_id
 
-    assert_symbolication(responses[-1], SUCCESS_WINDOWS)
+    assert_symbolication(responses[-1], SUCCESS_WINDOWS_FILTERED)
     assert len(responses) > 1
 
     assert hitcounter.hits == {
@@ -523,51 +484,46 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
     response = response.json()
+
     # TODO(markus): Better error reporting
     if bucket_type == "sentry":
-        expected = copy.deepcopy(NO_SOURCES)
-        expected["modules"][0]["candidates"] = [
-            {
-                "source": "broken",
-                "location": "No object files listed on this source",
-                "download": {
-                    "status": "notfound",
-                },
-            }
-        ]
-        assert_symbolication(response, expected)
+        source = ("broken", True)
+        download_error = {"status": "notfound"}
+    elif statuscode == 500:
+        source = ("broken", False)
+        download_error = {
+            "status": "error",
+            "details": "failed to download: 500 Internal Server Error",
+        }
     else:
-        if statuscode == 500:
-            expected = _make_error_result(
-                download_error={
-                    "status": "error",
-                    "details": "failed to download: 500 Internal Server Error",
-                },
-                source="broken",
-            )
-        else:
-            expected = _make_unsuccessful_result(status="missing", source="broken")
+        source = ("broken", False)
+        download_error = {"status": "notfound"}
 
-        for module in expected.get("modules", []):
-            for candidate in module.get("candidates", []):
-                if "location" in candidate:
-                    candidate["location"] = candidate["location"].replace(
-                        "/msdl/",
-                        f"/respond_statuscode/{statuscode}/",
-                    )
-
-        assert_symbolication(response, expected)
+    expected = _make_error_result(
+        status="missing",
+        download_error=download_error,
+        source=source,
+        base_url=f"{hitcounter.url}/respond_statuscode/{statuscode}/",
+    )
+    assert_symbolication(
+        response, expected, {"status code": statuscode, "bucket type": bucket_type}
+    )
 
 
 # can't test gcs because you get JWT errors, meaningless to test sentry sources
 @pytest.mark.parametrize("bucket_type", ["http", "s3"])
 def test_no_permission(symbolicator, hitcounter, bucket_type):
     if bucket_type == "http":
-        source_specific = {"layout": {"type": "symstore"}}
+        source_specific = {"url": f"{hitcounter.url}/respond_statuscode/403/"}
     elif bucket_type == "s3":
-        source_specific = {"bucket": "symbolicator-test", "region": "us-east-1"}
+        source_specific = {
+            "layout": {"type": "symstore"},
+            "bucket": "symbolicator-test",
+            "region": "us-east-1",
+        }
     elif bucket_type == "gcs":
         source_specific = {
+            "layout": {"type": "symstore"},
             "bucket": "honk",
             "private_key": "",
             "client_email": "honk@sentry.io",
@@ -578,7 +534,7 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
     source = {
         "type": bucket_type,
         "id": "broken",
-        "url": f"{hitcounter.url}/respond_statuscode/403/",
+        "layout": {"type": "symstore"},
     }
     source.update(source_specific)
 
@@ -597,22 +553,19 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
     response.raise_for_status()
     response = response.json()
 
+    base_url = (
+        "s3://symbolicator-test/"
+        if bucket_type == "s3"
+        else f"{hitcounter.url}/respond_statuscode/403/"
+    )
     expected = _make_error_result(
+        status="missing",
         download_error={"status": "noperm", "details": ""},
-        source="broken",
-        bucket_type=bucket_type,
+        source=("broken", False),
+        base_url=base_url,
     )
 
-    if bucket_type == "http":
-        for module in expected.get("modules", []):
-            for candidate in module.get("candidates", []):
-                if "location" in candidate:
-                    candidate["location"] = candidate["location"].replace(
-                        "/msdl/",
-                        "/respond_statuscode/403/",
-                    )
-
-    assert_symbolication(response, expected)
+    assert_symbolication(response, expected, {"bucket type": bucket_type})
 
 
 def test_malformed_objects(symbolicator, hitcounter):
@@ -637,20 +590,27 @@ def test_malformed_objects(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
     response = response.json()
-    assert_symbolication(response, MALFORMED_NO_SOURCES)
+
+    expected = _make_error_result(
+        status="malformed",
+        download_error={"status": "notfound"},
+        source=None,
+        base_url=f"{hitcounter.url}/msdl/",
+    )
+    assert_symbolication(response, expected)
 
 
 @pytest.mark.parametrize(
-    "patterns,output",
+    "patterns,expected_output",
     [
         [["?:/windows/**"], SUCCESS_WINDOWS],
         [["?:/windows/*"], SUCCESS_WINDOWS],
         [[], SUCCESS_WINDOWS],
-        [["?:/windows/"], NO_SOURCES],
-        [["d:/windows/**"], NO_SOURCES],
+        [["?:/windows/"], "no sources"],
+        [["d:/windows/**"], "no sources"],
     ],
 )
-def test_path_patterns(symbolicator, hitcounter, patterns, output):
+def test_path_patterns(symbolicator, hitcounter, patterns, expected_output):
     input = dict(
         sources=[
             {
@@ -666,17 +626,13 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
         },
         **WINDOWS_DATA,
     )
-    if output == NO_SOURCES:
-        output = copy.deepcopy(output)
-        output["modules"][0]["candidates"] = [
-            {
-                "source": "microsoft",
-                "location": "No object files listed on this source",
-                "download": {
-                    "status": "notfound",
-                },
-            }
-        ]
+    if expected_output == "no sources":
+        expected_output = _make_error_result(
+            status="missing",
+            download_error={"status": "notfound"},
+            source=("microsoft", True),
+            base_url=f"{hitcounter.url}/msdl/",
+        )
 
     service = symbolicator()
     service.wait_healthcheck()
@@ -684,7 +640,7 @@ def test_path_patterns(symbolicator, hitcounter, patterns, output):
     response = service.post("/symbolicate", json=input)
     response.raise_for_status()
 
-    assert_symbolication(response.json(), output)
+    assert_symbolication(response.json(), expected_output)
 
 
 def test_redirects(symbolicator, hitcounter):
@@ -753,7 +709,10 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
     else:
         assert not hitcounter.hits
         restricted_download_failure = _make_error_result(
-            download_error={"status": "error", "details": "failed to stream file"}
+            status="missing",
+            download_error={"status": "error", "details": "failed to stream file"},
+            source=("microsoft", False),
+            base_url=f"{url}/msdl/",
         )
         assert_symbolication(response.json(), restricted_download_failure)
 
@@ -779,7 +738,7 @@ def test_no_dif_candidates(symbolicator, hitcounter):
     response = service.post("/symbolicate", json=request_data)
     response.raise_for_status()
 
-    success_response = copy.deepcopy(SUCCESS_WINDOWS)
+    success_response = copy.deepcopy(SUCCESS_WINDOWS_FILTERED)
     for module in success_response["modules"]:
         del module["candidates"]
 

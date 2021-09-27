@@ -100,9 +100,14 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    // if we do have to build a new one, just roll a random uuid v4 as build id.
+    // if we do have to build a new one, use the one from the command line or fall back to
+    // a random uuid v4 as build id.
     let build_id = build_id.unwrap_or_else(|| {
-        let new_id = Uuid::new_v4().as_bytes().to_vec();
+        let new_id = cli
+            .build_id
+            .unwrap_or_else(Uuid::new_v4)
+            .as_bytes()
+            .to_vec();
         should_write_main_module = true;
         module
             .sections

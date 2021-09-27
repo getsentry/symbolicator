@@ -1,6 +1,7 @@
 ---
 source: crates/symbolicator/src/services/symbolication.rs
-expression: response.await.unwrap()
+expression: response.unwrap()
+
 ---
 status: completed
 timestamp: 1521713273
@@ -170,6 +171,10 @@ modules:
     image_size: 36864
     candidates:
       - source: local
+        location: "http://localhost:<port>/download/5a/b380779000.debug"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.ex_"
         download:
           status: notfound
@@ -259,6 +264,10 @@ modules:
     image_addr: "0x70b70000"
     image_size: 151552
     candidates:
+      - source: local
+        location: "http://localhost:<port>/download/57/898dab25000.debug"
+        download:
+          status: notfound
       - source: local
         location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dl_"
         download:
@@ -386,6 +395,10 @@ modules:
     image_size: 917504
     candidates:
       - source: local
+        location: "http://localhost:<port>/download/59/0285e9e0000.debug"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dl_"
         download:
           status: notfound
@@ -436,6 +449,10 @@ modules:
     image_addr: "0x75810000"
     image_size: 790528
     candidates:
+      - source: local
+        location: "http://localhost:<port>/download/5a/49bb75c1000.debug"
+        download:
+          status: notfound
       - source: local
         location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_"
         download:
@@ -503,6 +520,10 @@ modules:
     image_size: 1585152
     candidates:
       - source: local
+        location: "http://localhost:<port>/download/59/b0d8f3183000.debug"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dl_"
         download:
           status: notfound
@@ -522,3 +543,4 @@ modules:
         location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.sym"
         download:
           status: notfound
+

@@ -458,9 +458,31 @@ impl FileType {
     #[inline]
     pub fn from_object_type(ty: ObjectType) -> &'static [Self] {
         match ty {
-            ObjectType::Macho => &[FileType::MachDebug, FileType::MachCode, FileType::Breakpad],
-            ObjectType::Pe => &[FileType::Pdb, FileType::Pe, FileType::Breakpad],
-            ObjectType::Elf => &[FileType::ElfDebug, FileType::ElfCode, FileType::Breakpad],
+            // There are instances where an application's debug files are ELFs despite the
+            // executable not being ELFs themselves. It probably isn't correct to assume that any
+            // specific debug file type is heavily coupled with a particular executable type so we
+            // return a union of all possible debug file types for native applications.
+            ObjectType::Macho => &[
+                FileType::MachCode,
+                FileType::Breakpad,
+                FileType::MachDebug,
+                FileType::Pdb,
+                FileType::ElfDebug,
+            ],
+            ObjectType::Pe => &[
+                FileType::Pe,
+                FileType::Breakpad,
+                FileType::MachDebug,
+                FileType::Pdb,
+                FileType::ElfDebug,
+            ],
+            ObjectType::Elf => &[
+                FileType::ElfCode,
+                FileType::Breakpad,
+                FileType::MachDebug,
+                FileType::Pdb,
+                FileType::ElfDebug,
+            ],
             ObjectType::Wasm => &[FileType::WasmCode, FileType::WasmDebug],
             _ => Self::all(),
         }

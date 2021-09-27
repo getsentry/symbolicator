@@ -1,6 +1,7 @@
 ---
-source: src/services/symbolication.rs
-expression: response.await.unwrap()
+source: crates/symbolicator/src/services/symbolication.rs
+expression: response.unwrap()
+
 ---
 status: completed
 timestamp: 1521713398
@@ -73,11 +74,23 @@ modules:
     image_size: 69632
     candidates:
       - source: local
+        location: "http://localhost:<port>/download/67/e9247c814e392ba027dbde6748fcbf.debug"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/67E9/247C/814E/392B/A027/DBDE6748FCBF"
         download:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/67E9/247C/814E/392B/A027/DBDE6748FCBF.app"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash/67E9247C814E392BA027DBDE6748FCBF0/cras_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash/67E9247C814E392BA027DBDE6748FCBF0/crash"
         download:
           status: notfound
       - source: local
@@ -316,6 +329,18 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/9B2A/C56D/107C/3541/A127/9094A751F2C9.app"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/9b/2ac56d107c3541a1279094a751f2c9.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/libdyld.dylib/9B2AC56D107C3541A1279094A751F2C90/libdyld.dyli_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/libdyld.dylib/9B2AC56D107C3541A1279094A751F2C90/libdyld.dylib"
         download:
           status: notfound
       - source: local
@@ -727,3 +752,4 @@ modules:
     debug_file: libxpc.dylib
     image_addr: "0x7fffe8134000"
     image_size: 172032
+

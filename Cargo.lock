@@ -8,7 +8,7 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e61f2b7f93d2c7d2b08263acaa4a363b3e276806c68af6134c44f523bf1aacd"
 dependencies = [
- "gimli 0.25.0",
+ "gimli",
 ]
 
 [[package]]
@@ -994,19 +994,13 @@ dependencies = [
 
 [[package]]
 name = "gimli"
-version = "0.24.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e4075386626662786ddb0ec9081e7c7eeb1ba31951f447ca780ef9f5d568189"
+checksum = "f0a01e0497841a3b2db4f8afa483cce65f7e96a3498bd6c541734792aeac8fe7"
 dependencies = [
  "fallible-iterator",
  "stable_deref_trait",
 ]
-
-[[package]]
-name = "gimli"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0a01e0497841a3b2db4f8afa483cce65f7e96a3498bd6c541734792aeac8fe7"
 
 [[package]]
 name = "glob"
@@ -2972,7 +2966,7 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 [[package]]
 name = "symbolic"
 version = "8.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#a63354dd3681ed359594317d9e2b2dcb1101ff38"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#012512bd5ebe85d5032133406a55d7e21baefeaa"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2984,7 +2978,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#a63354dd3681ed359594317d9e2b2dcb1101ff38"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#012512bd5ebe85d5032133406a55d7e21baefeaa"
 dependencies = [
  "debugid",
  "memmap",
@@ -2996,13 +2990,13 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#a63354dd3681ed359594317d9e2b2dcb1101ff38"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#012512bd5ebe85d5032133406a55d7e21baefeaa"
 dependencies = [
  "dmsort",
  "elementtree",
  "fallible-iterator",
  "flate2",
- "gimli 0.24.0",
+ "gimli",
  "goblin",
  "lazy_static",
  "lazycell",
@@ -3025,7 +3019,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#a63354dd3681ed359594317d9e2b2dcb1101ff38"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#012512bd5ebe85d5032133406a55d7e21baefeaa"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3037,7 +3031,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#a63354dd3681ed359594317d9e2b2dcb1101ff38"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#012512bd5ebe85d5032133406a55d7e21baefeaa"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3051,7 +3045,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.3.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#a63354dd3681ed359594317d9e2b2dcb1101ff38"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#012512bd5ebe85d5032133406a55d7e21baefeaa"
 dependencies = [
  "dmsort",
  "fnv",
