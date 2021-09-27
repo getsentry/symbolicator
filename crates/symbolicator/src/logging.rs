@@ -101,12 +101,10 @@ pub fn init_logging(config: &Config) {
         env::set_var("RUST_BACKTRACE", "1");
     }
 
-    if env::var("RUST_LOG").is_err() {
-        let rust_log = get_rust_log(config.logging.level);
-        env::set_var("RUST_LOG", rust_log);
-    }
+    let rust_log =
+        env::var("RUST_LOG").unwrap_or_else(|_| get_rust_log(config.logging.level).to_string());
 
-    let filter = EnvFilter::from_default_env();
+    let filter = EnvFilter::new(rust_log);
     let sentry = sentry::integrations::tracing::layer();
     let subscriber = FmtSubscriber::new().with(filter).with(sentry);
 
