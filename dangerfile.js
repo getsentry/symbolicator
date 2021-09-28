@@ -60,16 +60,16 @@ Sentry runs a symbolicator integration test suite located at [\`tests/symbolicat
 Follow these steps to update snapshots in Sentry:
 
 1. Check out latest Sentry \`master\` and enable the virtualenv.
-2. Make sure your other devservices are running via \`sentry devservices up\`, and that symbolicator
-is enabled (\`symbolicator: true\`) in sentry via \`~/.sentry/config.yml\`.
-4. Stop the symbolicator devservice using \`sentry devservices down symbolicator\`. You want to use your
+2. Enable symbolicator (\`symbolicator: true\`) in sentry via \`~/.sentry/config.yml\`.
+3. Make sure your other devservices are running via \`sentry devservices up --exclude symbolicator\`. If
+they're already running, stop symbolicator with \`sentry devservices down symbolicator\`. You want to use your
 own development symbolicator to update the snapshots.
-5. Run your development symbolicator on port \`3021\`, or whatever port symbolicator is configured to use
+4. Run your development symbolicator on port \`3021\`, or whatever port symbolicator is configured to use
 in \`~/.sentry/config.yml\`.
-6. Export \`SENTRY_SNAPSHOTS_WRITEBACK=1\` to automatically update the existing snapshots with your new
+5. Export \`SENTRY_SNAPSHOTS_WRITEBACK=1\` to automatically update the existing snapshots with your new
 results and run symbolicator tests with pytest (\`pytest tests/symbolicator\`).
-7. Review snapshot changes locally, then create a PR to Sentry.
-8. Merge the Symbolicator PR, then merge the Sentry PR.
+6. Review snapshot changes locally, then create a PR to Sentry.
+7. Merge the Symbolicator PR, then merge the Sentry PR.
 
 </details>
   `;
