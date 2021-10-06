@@ -155,7 +155,7 @@ impl TryFrom<format::Frame<'_>> for types::RawFrame {
         let symbol = frame.symbol()?;
         Ok(types::RawFrame {
             instruction_addr: hex::HexValue(frame.instruction_addr()),
-            symbol: Some(String::from_utf8_lossy(symbol).into_owned()),
+            function: Some(String::from_utf8_lossy(symbol).into_owned()),
             trust: FrameTrust::Prewalked,
             ..Default::default()
         })
