@@ -6,8 +6,8 @@ on:
       - release/**
 
 jobs:
-  binary:
-    name: Build Binary
+  linux:
+    name: Build Binary on Linux
     runs-on: ubuntu-latest
 
     steps:
@@ -46,6 +46,27 @@ jobs:
         with:
           name: ${{ github.sha }}
           path: build/*
+
+  mac:
+    name: Build Binary on MacOS
+    runs-on: macos-10.15
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all --release --locked
 
   docs:
     name: Build Docs
