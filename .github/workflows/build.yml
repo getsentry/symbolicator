@@ -64,6 +64,8 @@ jobs:
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1
+        env:
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
         with:
           command: build
           args: --all --release --locked
@@ -72,12 +74,13 @@ jobs:
         run: |
           mkdir -p build
 
-          zip -j build/symbolicator-Darwin-x86_64-debug.zip target/release/symbolicator.debug
-
           # Move all binaries
           mv target/release/symbolicator build/symbolicator-Darwin-x86_64
           mv target/release/wasm-split build/wasm-split-Darwin-x86_64
           mv target/release/symsorter build/symsorter-Darwin-x86_64
+
+          cd target/release
+          zip -r ../../build/symbolicator-Darwin-x86_64-debug.zip symbolicator.dSYM
 
       - uses: actions/upload-artifact@v2
         with:
