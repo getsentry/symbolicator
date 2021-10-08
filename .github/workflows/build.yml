@@ -68,6 +68,22 @@ jobs:
           command: build
           args: --all --release --locked
 
+      - name: Archive debug info
+        run: |
+          mkdir -p build
+
+          zip -j build/symbolicator-Darwin-x86_64-debug.zip target/release/symbolicator.debug
+
+          # Move all binaries
+          mv target/release/symbolicator build/symbolicator-Darwin-x86_64
+          mv target/release/wasm-split build/wasm-split-Darwin-x86_64
+          mv target/release/symsorter build/symsorter-Darwin-x86_64
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          path: build/*
+
   docs:
     name: Build Docs
     runs-on: ubuntu-latest
