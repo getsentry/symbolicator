@@ -87,10 +87,9 @@ impl CfiCacheActor {
 
 #[derive(Debug)]
 pub struct CfiCacheFile {
-    object_type: ObjectType,
-    identifier: ObjectId,
-    scope: Scope,
-    data: ByteView<'static>,
+    // NOTE: while this really is a dead store, we keep it since the `ByteView` should keep the
+    // underlying file alive via its mmap mapping.
+    _data: ByteView<'static>,
     features: ObjectFeatures,
     status: CacheStatus,
     path: CachePath,
@@ -200,9 +199,9 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     fn load(
         &self,
-        scope: Scope,
+        _scope: Scope,
         status: CacheStatus,
-        data: ByteView<'static>,
+        _data: ByteView<'static>,
         path: CachePath,
     ) -> Self::Item {
         let mut candidates = self.candidates.clone();
@@ -213,10 +212,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         );
 
         CfiCacheFile {
-            object_type: self.request.object_type,
-            identifier: self.request.identifier.clone(),
-            scope,
-            data,
+            _data,
             features: self.meta_handle.features(),
             status,
             path,
@@ -270,10 +266,7 @@ impl CfiCacheActor {
                     .await
             }
             None => Ok(Arc::new(CfiCacheFile {
-                object_type: request.object_type,
-                identifier: request.identifier,
-                scope: request.scope,
-                data: ByteView::from_slice(b""),
+                _data: ByteView::from_slice(b""),
                 features: ObjectFeatures::default(),
                 status: CacheStatus::Negative,
                 path: CachePath::new(),

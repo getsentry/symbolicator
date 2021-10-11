@@ -22,7 +22,7 @@ use tempfile::tempfile_in;
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
-use crate::services::download::{DownloadError, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadError, DownloadStatus};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
@@ -45,7 +45,6 @@ pub struct ObjectHandle {
     pub(super) object_id: ObjectId,
     pub(super) scope: Scope,
 
-    pub(super) file_source: RemoteDif,
     pub(super) cache_key: CacheKey,
 
     /// The mmapped object.
@@ -285,7 +284,6 @@ impl CacheItemRequest for FetchFileDataRequest {
             object_id: self.0.object_id.clone(),
             scope,
 
-            file_source: self.0.file_source.clone(),
             cache_key: self.get_cache_key(),
 
             status,
