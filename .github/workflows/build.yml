@@ -53,9 +53,6 @@ jobs:
   mac:
     name: Build Binary on MacOS
     runs-on: macos-11
-    strategy:
-      matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -66,30 +63,52 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-          target: ${{ matrix.target }}
+          target: x86_64-apple-darwin
+          target: aarch64-apple-darwin
 
-      - name: Run cargo build
+      - name: Run cargo build x86_64
         uses: actions-rs/cargo@v1
         env:
           # Generates separate debug symbol files alongside release builds
           CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
         with:
           command: build
-          args: --all --release --locked --target=${{ matrix.target }}
+          args: --all --release --locked --target=x86_64-apple-darwin
+
+      - name: Run cargo build ARM
+        uses: actions-rs/cargo@v1
+        env:
+          # Generates separate debug symbol files alongside release builds
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+        with:
+          command: build
+          args: --all --release --locked --target=aarch64-apple-darwin
 
       - name: Archive debug info
         run: |
           mkdir -p build
 
-          cd target/${{ matrix.target }}/release
+          lipo -create -output build/symbolicator-Darwin-universal \
+              target/x86_64-apple-darwin/release/symbolicator      \
+              target/aarch64-apple-darwin/release/symbolicator
 
-          # Move all binaries to output directory
-          mv symbolicator ../../../build/symbolicator-${{ matrix.target }}
-          mv wasm-split ../../../build/wasm-split-${{ matrix.target }}
-          mv symsorter ../../../build/symsorter-${{ matrix.target }}
+          lipo -create -output build/wasm-split-Darwin-universal \
+              target/x86_64-apple-darwin/release/wasm-split      \
+              target/aarch64-apple-darwin/release/wasm-split
 
-          # Recursive zip the debug symbol folder and place the output in the output directory
-          zip -r ../../../build/symbolicator-${{ matrix.target }}-debug.zip symbolicator.dSYM
+          lipo -create -output build/symsorter-Darwin-universal \
+              target/x86_64-apple-darwin/release/symsorter      \
+              target/aarch64-apple-darwin/release/symsorter
+
+          # cd target/${{ matrix.target }}/release
+
+          # # Move all binaries to output directory
+          # mv symbolicator ../../../build/symbolicator-${{ matrix.target }}
+          # mv wasm-split ../../../build/wasm-split-${{ matrix.target }}
+          # mv symsorter ../../../build/symsorter-${{ matrix.target }}
+
+          # # Recursive zip the debug symbol folder and place the output in the output directory
+          # zip -r ../../../build/symbolicator-${{ matrix.target }}-debug.zip symbolicator.dSYM
 
       # - uses: actions/upload-artifact@v2
       #   with:
