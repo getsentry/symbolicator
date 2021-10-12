@@ -79,14 +79,15 @@ jobs:
         run: |
           mkdir -p build
 
+          cd target/aarch64-apple-darwin/release
+
           # Move all binaries to output directory
-          mv target/aarch64-apple-darwin/release/symbolicator build/symbolicator-Darwin-aarch64
-          mv target/aarch64-apple-darwin/release/wasm-split build/wasm-split-Darwin-aarch64
-          mv target/aarch64-apple-darwin/release/symsorter build/symsorter-Darwin-aarch64
+          mv symbolicator ../../../build/symbolicator-Darwin-aarch64
+          mv wasm-split ../../../build/wasm-split-Darwin-aarch64
+          mv symsorter ../../../build/symsorter-Darwin-aarch64
 
           # Recursive zip the debug symbol folder and place the output in the output directory
-          cd target/release
-          zip -r ../../build/symbolicator-Darwin-aarch64-debug.zip symbolicator.dSYM
+          zip -r ../../../build/symbolicator-Darwin-aarch64-debug.zip symbolicator.dSYM
 
       # - uses: actions/upload-artifact@v2
       #   with:
