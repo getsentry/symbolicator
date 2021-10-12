@@ -87,9 +87,12 @@ impl CfiCacheActor {
 
 #[derive(Debug)]
 pub struct CfiCacheFile {
-    // NOTE: while this really is a dead store, we keep it since the `ByteView` should keep the
-    // underlying file alive via its mmap mapping.
-    _data: ByteView<'static>,
+    // NOTE: ideally this would keep the ByteView it could receive via CacheItemRequest::load
+    // however we only use this file by opening it by filename from a subprocess.  Until we can
+    // pass a filedescriptor to the subprocess instead of a filename there is no point in storing
+    // this ByteView and instead we only rely on the cache semantics of touching the mtime
+    // before returning a cache item to ensure the cleanup process will not remove this while
+    // we are using it.
     features: ObjectFeatures,
     status: CacheStatus,
     path: CachePath,
