@@ -4,48 +4,50 @@ on:
   push:
     branches:
       - release/**
+      # Temp
+      - macos_universal_ci_release
 
 jobs:
-  linux:
-    name: Build Binary on Linux
-    runs-on: ubuntu-latest
+  # linux:
+  #   name: Build Binary on Linux
+  #   runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+  #     - name: Install rust stable toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: stable
+  #         profile: minimal
+  #         override: true
 
-      - name: Run cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all --release --locked
+  #     - name: Run cargo build
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: build
+  #         args: --all --release --locked
 
-      - name: Split and archive debug info
-        run: |
-          mkdir -p build
+  #     - name: Split and archive debug info
+  #       run: |
+  #         mkdir -p build
 
-          # Split only symbolicator's debug information
-          objcopy --only-keep-debug target/release/symbolicator{,.debug}
-          objcopy --strip-debug --strip-unneeded target/release/symbolicator
-          objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
-          zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
+  #         # Split only symbolicator's debug information
+  #         objcopy --only-keep-debug target/release/symbolicator{,.debug}
+  #         objcopy --strip-debug --strip-unneeded target/release/symbolicator
+  #         objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
+  #         zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
 
-          # Move all binaries
-          mv target/release/symbolicator build/symbolicator-Linux-x86_64
-          mv target/release/wasm-split build/wasm-split-Linux-x86_64
-          mv target/release/symsorter build/symsorter-Linux-x86_64
+  #         # Move all binaries
+  #         mv target/release/symbolicator build/symbolicator-Linux-x86_64
+  #         mv target/release/wasm-split build/wasm-split-Linux-x86_64
+  #         mv target/release/symsorter build/symsorter-Linux-x86_64
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.sha }}
-          path: build/*
+  #     - uses: actions/upload-artifact@v2
+  #       with:
+  #         name: ${{ github.sha }}
+  #         path: build/*
 
   mac:
     name: Build Binary on MacOS
@@ -84,34 +86,34 @@ jobs:
           cd target/release
           zip -r ../../build/symbolicator-Darwin-x86_64-debug.zip symbolicator.dSYM
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.sha }}
-          path: build/*
+      # - uses: actions/upload-artifact@v2
+      #   with:
+      #     name: ${{ github.sha }}
+      #     path: build/*
 
-  docs:
-    name: Build Docs
-    runs-on: ubuntu-latest
+  # docs:
+  #   name: Build Docs
+  #   runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
+  #     - name: Setup Python
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: 3.8
 
-      - name: Setup python dependencies
-        run: pip install --upgrade mkdocs mkdocs-material pygments
+  #     - name: Setup python dependencies
+  #       run: pip install --upgrade mkdocs mkdocs-material pygments
 
-      - name: Build Docs
-        run: |
-          mkdocs build
-          touch site/.nojekyll
-          cd site && zip -r gh-pages .
+  #     - name: Build Docs
+  #       run: |
+  #         mkdocs build
+  #         touch site/.nojekyll
+  #         cd site && zip -r gh-pages .
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.sha }}
-          path: site/gh-pages.zip
+  #     - uses: actions/upload-artifact@v2
+  #       with:
+  #         name: ${{ github.sha }}
+  #         path: site/gh-pages.zip
