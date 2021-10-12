@@ -38,6 +38,7 @@
 ### Tools
 
 - `symsorter` no longer emits files with empty debug identifiers. ([#469](https://github.com/getsentry/symbolicator/pull/469))
+- MacOS x86_64 builds of symbolicator, symsorter and wasm-split can be downloaded from GitHub releases now. ([#565](https://github.com/getsentry/symbolicator/pull/565))
 
 ### Internal
 

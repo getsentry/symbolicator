@@ -6,8 +6,8 @@ on:
       - release/**
 
 jobs:
-  binary:
-    name: Build Binary
+  linux:
+    name: Build Binary on Linux
     runs-on: ubuntu-latest
 
     steps:
@@ -41,6 +41,48 @@ jobs:
           mv target/release/symbolicator build/symbolicator-Linux-x86_64
           mv target/release/wasm-split build/wasm-split-Linux-x86_64
           mv target/release/symsorter build/symsorter-Linux-x86_64
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          path: build/*
+
+  mac:
+    name: Build Binary on MacOS
+    runs-on: macos-10.15
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        env:
+          # Generates separate debug symbol files alongside release builds
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+        with:
+          command: build
+          args: --all --release --locked
+
+      - name: Archive debug info
+        run: |
+          mkdir -p build
+
+          # Move all binaries to output directory
+          mv target/release/symbolicator build/symbolicator-Darwin-x86_64
+          mv target/release/wasm-split build/wasm-split-Darwin-x86_64
+          mv target/release/symsorter build/symsorter-Darwin-x86_64
+
+          # Recursive zip the debug symbol folder and place the output in the output directory
+          cd target/release
+          zip -r ../../build/symbolicator-Darwin-x86_64-debug.zip symbolicator.dSYM
 
       - uses: actions/upload-artifact@v2
         with:
