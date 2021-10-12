@@ -52,7 +52,7 @@ jobs:
 
   mac:
     name: Build Binary on MacOS
-    runs-on: macos-10.15
+    runs-on: macos-11
 
     steps:
       - name: Checkout sources
