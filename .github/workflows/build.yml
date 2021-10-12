@@ -53,7 +53,9 @@ jobs:
   mac:
     name: Build Binary on MacOS
     runs-on: macos-11
-
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -64,7 +66,7 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
-          target: aarch64-apple-darwin
+          target: ${{ matrix.target }}
 
       - name: Run cargo build
         uses: actions-rs/cargo@v1
@@ -73,21 +75,21 @@ jobs:
           CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
         with:
           command: build
-          args: --all --release --locked --target=aarch64-apple-darwin
+          args: --all --release --locked --target=${{ matrix.target }}
 
       - name: Archive debug info
         run: |
           mkdir -p build
 
-          cd target/aarch64-apple-darwin/release
+          cd target/${{ matrix.target }}/release
 
           # Move all binaries to output directory
-          mv symbolicator ../../../build/symbolicator-Darwin-aarch64
-          mv wasm-split ../../../build/wasm-split-Darwin-aarch64
-          mv symsorter ../../../build/symsorter-Darwin-aarch64
+          mv symbolicator ../../../build/symbolicator-${{ matrix.target }}
+          mv wasm-split ../../../build/wasm-split-${{ matrix.target }}
+          mv symsorter ../../../build/symsorter-${{ matrix.target }}
 
           # Recursive zip the debug symbol folder and place the output in the output directory
-          zip -r ../../../build/symbolicator-Darwin-aarch64-debug.zip symbolicator.dSYM
+          zip -r ../../../build/symbolicator-${{ matrix.target }}-debug.zip symbolicator.dSYM
 
       # - uses: actions/upload-artifact@v2
       #   with:
