@@ -4,8 +4,9 @@ on:
   push:
     branches:
       - release/**
-      # Temp
-      - macos_universal_ci_release
+
+  # Temp
+  pull_request:
 
 jobs:
   # linux:
