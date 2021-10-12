@@ -215,7 +215,6 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         );
 
         CfiCacheFile {
-            _data,
             features: self.meta_handle.features(),
             status,
             path,
@@ -269,7 +268,6 @@ impl CfiCacheActor {
                     .await
             }
             None => Ok(Arc::new(CfiCacheFile {
-                _data: ByteView::from_slice(b""),
                 features: ObjectFeatures::default(),
                 status: CacheStatus::Negative,
                 path: CachePath::new(),
