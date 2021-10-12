@@ -57,14 +57,13 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
+      - name: Install rust stable toolchain x86_64
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           override: true
           target: x86_64-apple-darwin
-          target: aarch64-apple-darwin
 
       - name: Run cargo build x86_64
         uses: actions-rs/cargo@v1
@@ -74,6 +73,14 @@ jobs:
         with:
           command: build
           args: --all --release --locked --target=x86_64-apple-darwin
+
+      - name: Install rust stable toolchain ARM
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: aarch64-apple-darwin
 
       - name: Run cargo build ARM
         uses: actions-rs/cargo@v1
