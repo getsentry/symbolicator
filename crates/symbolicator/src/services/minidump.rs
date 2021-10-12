@@ -211,7 +211,6 @@ mod format {
 
     #[derive(Debug)]
     pub struct Format<'data> {
-        header: &'data RawHeader,
         threads: &'data [RawThread],
         frames: &'data [RawFrame],
         symbol_bytes: &'data [u8],
@@ -270,7 +269,6 @@ mod format {
             };
 
             Ok(Format {
-                header,
                 threads,
                 frames,
                 symbol_bytes,

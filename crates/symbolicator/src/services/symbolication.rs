@@ -2607,9 +2607,11 @@ mod tests {
                 .await
                 .unwrap();
 
-            if !matches!(&response, SymbolicationResponse::Completed(_)) {
-                panic!("Not a complete response: {:#?}", response);
-            }
+            assert!(
+                matches!(&response, SymbolicationResponse::Completed(_)),
+                "Not a complete response: {:#?}",
+                response
+            );
         }
     }
 
