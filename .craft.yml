@@ -33,3 +33,8 @@ requireNames:
   - /^symbolicator-Linux-x86_64-debug.zip$/
   - /^symsorter-Linux-x86_64$/
   - /^wasm-split-Linux-x86_64$/
+  - /^symbolicator-Darwin-universal$/
+  - /^wasm-split-Darwin-universal$/
+  - /^symsorter-Darwin-universal$/
+  - /^symbolicator-x86_64-apple-darwin-debug.zip$/
+  - /^symbolicator-aarch64-apple-darwin-debug.zip$/

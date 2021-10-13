@@ -48,41 +48,72 @@ jobs:
           path: build/*
 
   mac:
+    # Note: This doesn't use a build matrix, as it requires a last step to merge the x86
+    # and ARM binaries into one universal one. This need will go away once
+    # https://github.com/rust-lang/cargo/issues/8875 is resolved.
     name: Build Binary on MacOS
-    runs-on: macos-10.15
-
+    runs-on: macos-11
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install rust stable toolchain
+      - name: Install rust stable toolchain for x86_64
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           override: true
+          target: x86_64-apple-darwin
 
-      - name: Run cargo build
+      - name: Run cargo build for x86_64
         uses: actions-rs/cargo@v1
         env:
           # Generates separate debug symbol files alongside release builds
           CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
         with:
           command: build
-          args: --all --release --locked
+          args: --all --release --locked --target=x86_64-apple-darwin
 
-      - name: Archive debug info
+      - name: Install rust stable toolchain for ARM
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: aarch64-apple-darwin
+
+      - name: Run cargo build for ARM
+        uses: actions-rs/cargo@v1
+        env:
+          # Generates separate debug symbol files alongside release builds
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+        with:
+          command: build
+          args: --all --release --locked --target=aarch64-apple-darwin
+
+      - name: Archive debug info and create universal binary
         run: |
           mkdir -p build
 
-          # Move all binaries to output directory
-          mv target/release/symbolicator build/symbolicator-Darwin-x86_64
-          mv target/release/wasm-split build/wasm-split-Darwin-x86_64
-          mv target/release/symsorter build/symsorter-Darwin-x86_64
+          lipo -create -output build/symbolicator-Darwin-universal \
+              target/x86_64-apple-darwin/release/symbolicator      \
+              target/aarch64-apple-darwin/release/symbolicator
 
+          lipo -create -output build/wasm-split-Darwin-universal \
+              target/x86_64-apple-darwin/release/wasm-split      \
+              target/aarch64-apple-darwin/release/wasm-split
+
+          lipo -create -output build/symsorter-Darwin-universal \
+              target/x86_64-apple-darwin/release/symsorter      \
+              target/aarch64-apple-darwin/release/symsorter
+
+          cd target/x86_64-apple-darwin/release
           # Recursive zip the debug symbol folder and place the output in the output directory
-          cd target/release
-          zip -r ../../build/symbolicator-Darwin-x86_64-debug.zip symbolicator.dSYM
+          zip -r ../../../build/symbolicator-x86_64-apple-darwin-debug.zip symbolicator.dSYM
+          cd ../../../
+
+          cd target/x86_64-apple-darwin/release
+          zip -r ../../../build/symbolicator-aarch64-apple-darwin-debug.zip symbolicator.dSYM
 
       - uses: actions/upload-artifact@v2
         with:
