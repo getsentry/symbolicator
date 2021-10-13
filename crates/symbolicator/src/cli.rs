@@ -63,13 +63,47 @@ pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config()).context("failed loading config")?;
 
+    let sentry = sentry::init(sentry::ClientOptions {
+        dsn: config.sentry_dsn.clone(),
+        release: Some(env!("SYMBOLICATOR_RELEASE").into()),
+        session_mode: sentry::SessionMode::Request,
+        auto_session_tracking: false,
+        ..Default::default()
+    });
+
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
-        metrics::configure_statsd(
-            &config.metrics.prefix,
-            statsd,
-            config.metrics.custom_tags.clone(),
-        );
+        let mut tags = config.metrics.custom_tags.clone();
+
+        if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
+            if tags.contains_key(&hostname_tag) {
+                log::warn!(
+                    "tag {} defined both as hostname tag and as a custom tag",
+                    hostname_tag
+                );
+            }
+            if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
+                tags.insert(hostname_tag, hostname);
+            } else {
+                log::error!("could not read host name");
+            }
+        };
+        if let Some(environment_tag) = config.metrics.environment_tag.clone() {
+            if tags.contains_key(&environment_tag) {
+                log::warn!(
+                    "tag {} defined both as environment tag and as a custom tag",
+                    environment_tag
+                );
+            }
+            if let Some(environment) = sentry.options().environment.as_ref().map(|s| s.to_string())
+            {
+                tags.insert(environment_tag, environment);
+            } else {
+                log::error!("environment name not available");
+            }
+        };
+
+        metrics::configure_statsd(&config.metrics.prefix, statsd, tags);
     }
 
     procspawn::ProcConfig::new()
