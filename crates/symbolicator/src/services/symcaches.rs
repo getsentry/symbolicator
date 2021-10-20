@@ -107,9 +107,6 @@ impl SymCacheActor {
 
 #[derive(Clone, Debug)]
 pub struct SymCacheFile {
-    object_type: ObjectType,
-    identifier: ObjectId,
-    scope: Scope,
     data: ByteView<'static>,
     features: ObjectFeatures,
     status: CacheStatus,
@@ -262,7 +259,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
     fn load(
         &self,
-        scope: Scope,
+        _scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
         _: CachePath,
@@ -280,9 +277,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
         );
 
         SymCacheFile {
-            object_type: self.request.object_type,
-            identifier: self.request.identifier.clone(),
-            scope,
             data,
             features: self.object_meta.features(),
             status,
@@ -347,9 +341,6 @@ impl SymCacheActor {
                     .await
             }
             None => Ok(Arc::new(SymCacheFile {
-                object_type: request.object_type,
-                identifier: request.identifier,
-                scope: request.scope,
                 data: ByteView::from_slice(b""),
                 features: ObjectFeatures::default(),
                 status: CacheStatus::Negative,

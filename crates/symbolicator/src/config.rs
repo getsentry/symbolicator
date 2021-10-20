@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
 use std::fs;
@@ -61,6 +62,10 @@ pub struct Metrics {
     pub hostname_tag: Option<String>,
     /// A tag name to report the environment to, for each metric. Defaults to not sending such a tag.
     pub environment_tag: Option<String>,
+    /// A map containing custom tags and their values.
+    ///
+    /// These tags will be appended to every metric.
+    pub custom_tags: BTreeMap<String, String>,
 }
 
 impl Default for Metrics {
@@ -73,6 +78,7 @@ impl Default for Metrics {
             prefix: "symbolicator".into(),
             hostname_tag: None,
             environment_tag: None,
+            custom_tags: BTreeMap::new(),
         }
     }
 }

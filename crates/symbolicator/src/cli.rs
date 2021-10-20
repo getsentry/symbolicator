@@ -1,5 +1,4 @@
 //! Exposes the command line application.
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -74,9 +73,15 @@ pub fn execute() -> Result<()> {
 
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
-        let mut tags = BTreeMap::new();
+        let mut tags = config.metrics.custom_tags.clone();
 
         if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
+            if tags.contains_key(&hostname_tag) {
+                tracing::warn!(
+                    "tag {} defined both as hostname tag and as a custom tag",
+                    hostname_tag
+                );
+            }
             if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
                 tags.insert(hostname_tag, hostname);
             } else {
@@ -84,6 +89,12 @@ pub fn execute() -> Result<()> {
             }
         };
         if let Some(environment_tag) = config.metrics.environment_tag.clone() {
+            if tags.contains_key(&environment_tag) {
+                tracing::warn!(
+                    "tag {} defined both as environment tag and as a custom tag",
+                    environment_tag
+                );
+            }
             if let Some(environment) = sentry.options().environment.as_ref().map(|s| s.to_string())
             {
                 tags.insert(environment_tag, environment);

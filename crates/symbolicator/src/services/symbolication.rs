@@ -338,7 +338,8 @@ impl ModuleListBuilder {
         for trace in stacktraces {
             for frame in &trace.frames {
                 let addr = frame.instruction_addr.0;
-                self.mark_referenced(addr);
+                let is_prewalked = frame.trust == FrameTrust::Prewalked;
+                self.mark_referenced(addr, is_prewalked);
             }
         }
     }
@@ -346,7 +347,7 @@ impl ModuleListBuilder {
     /// Marks the module loaded at the given address as referenced.
     ///
     /// The respective module will always be included in the final list of modules.
-    pub fn mark_referenced(&mut self, addr: u64) {
+    pub fn mark_referenced(&mut self, addr: u64, is_prewalked: bool) {
         let info_index = match self.find_module_index(addr) {
             Some(idx) => idx,
             None => return,
@@ -355,7 +356,7 @@ impl ModuleListBuilder {
         let (info, marked) = &mut self.inner[info_index];
         *marked = true;
 
-        if info.unwind_status.is_none() {
+        if info.unwind_status.is_none() && !is_prewalked {
             info.unwind_status = Some(ObjectFileStatus::Missing);
         }
     }
@@ -2047,15 +2048,8 @@ impl SymbolicationActor {
             tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
-            let client_stacktraces = ByteView::open(&minidump_file).ok().and_then(|bv| {
-                match parse_stacktraces_from_minidump(&bv) {
-                    Ok(stacktraces) => stacktraces,
-                    Err(e) => {
-                        tracing::error!("invalid minidump extension: {}", e);
-                        None
-                    }
-                }
-            });
+            let client_stacktraces = ByteView::open(&minidump_file)
+                .map_or(Ok(None), |bv| parse_stacktraces_from_minidump(&bv));
 
             let mut cfi_caches = CfiCacheModules::new();
 
@@ -2075,8 +2069,15 @@ impl SymbolicationActor {
                 ..
             } = result;
 
-            if let Some(client_stacktraces) = client_stacktraces {
-                merge_clientside_with_processed_stacktraces(&mut stacktraces, client_stacktraces);
+            match client_stacktraces {
+                Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(
+                    &mut stacktraces,
+                    client_stacktraces,
+                ),
+                Err(e) => {
+                    tracing::error!("invalid minidump extension: {}", e);
+                }
+                _ => {}
             }
 
             // Start building the module list for the symbolication response.
@@ -2607,9 +2608,11 @@ mod tests {
                 .await
                 .unwrap();
 
-            if !matches!(&response, SymbolicationResponse::Completed(_)) {
-                panic!("Not a complete response: {:#?}", response);
-            }
+            assert!(
+                matches!(&response, SymbolicationResponse::Completed(_)),
+                "Not a complete response: {:#?}",
+                response
+            );
         }
     }
 
@@ -2821,7 +2824,7 @@ mod tests {
         let mut builder = ModuleListBuilder {
             inner: modules.iter().map(|m| (m.clone(), false)).collect(),
         };
-        builder.mark_referenced(0x3500);
+        builder.mark_referenced(0x3500, false);
         let valid = builder.build();
         assert_eq!(valid, modules);
     }
@@ -2836,7 +2839,7 @@ mod tests {
         let mut builder = ModuleListBuilder {
             inner: modules.iter().map(|m| (m.clone(), false)).collect(),
         };
-        builder.mark_referenced(0xfff);
+        builder.mark_referenced(0xfff, false);
         let valid = builder.build();
         assert_eq!(valid, vec![]);
     }
@@ -2851,7 +2854,7 @@ mod tests {
         let mut builder = ModuleListBuilder {
             inner: modules.iter().map(|m| (m.clone(), false)).collect(),
         };
-        builder.mark_referenced(0x2800); // in the gap between both modules
+        builder.mark_referenced(0x2800, false); // in the gap between both modules
         let valid = builder.build();
         assert_eq!(valid, vec![]);
     }
@@ -2867,7 +2870,7 @@ mod tests {
         let mut builder = ModuleListBuilder {
             inner: modules.iter().map(|m| (m.clone(), false)).collect(),
         };
-        builder.mark_referenced(0x2800); // in the gap between both modules
+        builder.mark_referenced(0x2800, false); // in the gap between both modules
         let valid = builder.build();
         assert_eq!(valid, vec![valid_object]);
     }

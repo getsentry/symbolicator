@@ -61,8 +61,6 @@ pub struct Service {
     objects: ObjectsActor,
     /// The config object.
     config: Arc<Config>,
-    /// The download service.
-    downloader: Arc<DownloadService>,
 }
 
 impl Service {
@@ -82,7 +80,7 @@ impl Service {
             .clear_tmp(&config)
             .context("failed to clear tmp caches")?;
         let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
-        let bitcode = BitcodeService::new(caches.auxdifs, downloader.clone());
+        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
         let symcaches =
             SymCacheActor::new(caches.symcaches, objects.clone(), bitcode, cpu_pool.clone());
         let cficaches = CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_pool.clone());
@@ -102,7 +100,6 @@ impl Service {
             symbolication,
             objects,
             config,
-            downloader,
         })
     }
 

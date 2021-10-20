@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 ### Features
 
@@ -28,16 +28,19 @@
 - Symbolicator now allows explicitly versioning its caches. It will fall back to supported outdated cache versions immediately instead of eagerly waiting for updated cache files. Recomputations of newer cache versions are being done lazily in the background, bounded by new settings `max_lazy_redownloads` and `max_lazy_recomputations` for downloaded and derived caches respectively. ([#524](https://github.com/getsentry/symbolicator/pull/524), [#533](https://github.com/getsentry/symbolicator/pull/533), [#535](https://github.com/getsentry/symbolicator/pull/535))
 - Remove actix-web in favor of axum. This changes the web framework and also completely switches to the tokio 1 Runtime. ([#544](https://github.com/getsentry/symbolicator/pull/544))
 - Search for all known types of debug companion files during symbolication, in case there exists for example an ELF debug companion for a PE. ([#555](https://github.com/getsentry/symbolicator/pull/555))
+- Introduced the `custom_tags` config setting for metrics ([#569](https://github.com/getsentry/symbolicator/pull/569))
 - Use the `tracing` crate for logging ([#534](https://github.com/getsentry/symbolicator/pull/534))
 
 ### Fixes
 
 - Skip trailing garbage frames after `_start`. ([#514](https://github.com/getsentry/symbolicator/pull/514))
 - Respect the build_id provided on the commandline of wasm-split. ([#554](https://github.com/getsentry/symbolicator/pull/554))
+- Update symbolic to a version with more lenient ELF parsing which is able to process invalid flutter 2.5 debug files. ([#562](https://github.com/getsentry/symbolicator/pull/562))
 
 ### Tools
 
 - `symsorter` no longer emits files with empty debug identifiers. ([#469](https://github.com/getsentry/symbolicator/pull/469))
+- MacOS universal builds (x86_64 + ARM in one fat binary) of symbolicator, symsorter and wasm-split can be downloaded from GitHub releases now. ([#565](https://github.com/getsentry/symbolicator/pull/565), [#568](https://github.com/getsentry/symbolicator/pull/568))
 
 ### Internal
 
