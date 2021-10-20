@@ -11,19 +11,21 @@
         <meta name="author" content="Sentry">
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.2.1, mkdocs-material-7.1.7">
+        <link rel="canonical" href="https://getsentry.github.io/symbolicator/advanced/source-bundles/">
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.2.3, mkdocs-material-7.3.4">
     
     
       
-        <title>POST /minidump - Sentry Symbolicator</title>
+        <title>Source Bundles - Sentry Symbolicator</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ca7ac06f.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.db9e7362.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.f1a3b89f.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.3f5d1f46.min.css">
         
       
     
@@ -38,10 +40,12 @@
     
     
     
-      <link rel="stylesheet" href="../_css/extra.css">
+      <link rel="stylesheet" href="../../_css/extra.css">
     
     
       
+
+
     
     
   </head>
@@ -55,7 +59,7 @@
     <body dir="ltr" data-md-color-scheme="" data-md-color-primary="none" data-md-color-accent="none">
   
     
-    <script>function __prefix(e){return new URL("..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+    <script>function __prefix(e){return new URL("../..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
@@ -63,7 +67,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#minidump-request" class="md-skip">
+        <a href="#source-bundles" class="md-skip">
           Skip to content
         </a>
       
@@ -72,11 +76,13 @@
       
     </div>
     
-      <header class="md-header" data-md-component="header">
-  <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../index.html" title="Sentry Symbolicator" class="md-header__button md-logo" aria-label="Sentry Symbolicator" data-md-component="logo">
       
-  <img src="../static/icon.png" alt="logo">
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Sentry Symbolicator" class="md-header__button md-logo" aria-label="Sentry Symbolicator" data-md-component="logo">
+      
+  <img src="../../static/icon.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -92,7 +98,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              POST /minidump
+              Source Bundles
             
           </span>
         </div>
@@ -109,14 +115,18 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" data-md-state="active" required>
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"/></svg>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
       </label>
-      <button type="reset" class="md-search__icon md-icon" aria-label="Clear" tabindex="-1">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
-      </button>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" aria-label="Clear" tabindex="-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
+        </button>
+      </nav>
+      
     </form>
     <div class="md-search__output">
       <div class="md-search__scrollwrap" data-md-scrollfix>
@@ -146,11 +156,14 @@
       </div>
     
   </nav>
+  
 </header>
     
     <div class="md-container" data-md-component="container">
       
       
+        
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -166,9 +179,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../index.html" title="Sentry Symbolicator" class="md-nav__button md-logo" aria-label="Sentry Symbolicator" data-md-component="logo">
+    <a href="../.." title="Sentry Symbolicator" class="md-nav__button md-logo" aria-label="Sentry Symbolicator" data-md-component="logo">
       
-  <img src="../static/icon.png" alt="logo">
+  <img src="../../static/icon.png" alt="logo">
 
     </a>
     Sentry Symbolicator
@@ -197,111 +210,9 @@
   
   
     <li class="md-nav__item">
-      <a href="../index.html" class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         Introduction
       </a>
-    </li>
-  
-
-    
-      
-      
-      
-
-  
-  
-  
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-      
-        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2" type="checkbox" id="__nav_2" >
-      
-      <label class="md-nav__link" for="__nav_2">
-        Advanced
-        <span class="md-nav__icon md-icon"></span>
-      </label>
-      <nav class="md-nav" aria-label="Advanced" data-md-level="1">
-        <label class="md-nav__title" for="__nav_2">
-          <span class="md-nav__icon md-icon"></span>
-          Advanced
-        </label>
-        <ul class="md-nav__list" data-md-scrollfix>
-          
-            
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../advanced/background-and-principles.html" class="md-nav__link">
-        Background and Principles
-      </a>
-    </li>
-  
-
-          
-            
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../advanced/system-architecture.html" class="md-nav__link">
-        System Architecture
-      </a>
-    </li>
-  
-
-          
-            
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../advanced/caching.html" class="md-nav__link">
-        Caching
-      </a>
-    </li>
-  
-
-          
-            
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../advanced/symbol-lookup.html" class="md-nav__link">
-        Lookup Strategy
-      </a>
-    </li>
-  
-
-          
-            
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../advanced/symbol-server-compatibility.html" class="md-nav__link">
-        Symbol Server Compatibility
-      </a>
-    </li>
-  
-
-          
-            
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../advanced/source-bundles.html" class="md-nav__link">
-        Source Bundles
-      </a>
-    </li>
-  
-
-          
-        </ul>
-      </nav>
     </li>
   
 
@@ -319,32 +230,95 @@
     <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
       
-        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_3" type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2" type="checkbox" id="__nav_2" checked>
       
-      <label class="md-nav__link" for="__nav_3">
-        API
-        <span class="md-nav__icon md-icon"></span>
-      </label>
-      <nav class="md-nav" aria-label="API" data-md-level="1">
-        <label class="md-nav__title" for="__nav_3">
+      
+      
+      
+        <label class="md-nav__link" for="__nav_2">
+          Advanced
           <span class="md-nav__icon md-icon"></span>
-          API
+        </label>
+      
+      <nav class="md-nav" aria-label="Advanced" data-md-level="1">
+        <label class="md-nav__title" for="__nav_2">
+          <span class="md-nav__icon md-icon"></span>
+          Advanced
         </label>
         <ul class="md-nav__list" data-md-scrollfix>
           
             
+              
   
   
   
     <li class="md-nav__item">
-      <a href="index.html" class="md-nav__link">
-        Overview
+      <a href="../background-and-principles/" class="md-nav__link">
+        Background and Principles
       </a>
     </li>
   
 
+            
           
             
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system-architecture/" class="md-nav__link">
+        System Architecture
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../caching/" class="md-nav__link">
+        Caching
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../symbol-lookup/" class="md-nav__link">
+        Lookup Strategy
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../symbol-server-compatibility/" class="md-nav__link">
+        Symbol Server Compatibility
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
   
   
     
@@ -359,12 +333,12 @@
       
       
         <label class="md-nav__link md-nav__link--active" for="__toc">
-          POST /minidump
+          Source Bundles
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <a href="minidump.html" class="md-nav__link md-nav__link--active">
-        POST /minidump
+      <a href="./" class="md-nav__link md-nav__link--active">
+        Source Bundles
       </a>
       
         
@@ -382,22 +356,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#query-parameters" class="md-nav__link">
-    Query Parameters
+  <a href="#header" class="md-nav__link">
+    Header
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#request-body" class="md-nav__link">
-    Request Body
+  <a href="#structure" class="md-nav__link">
+    Structure
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#response" class="md-nav__link">
-    Response
+  <a href="#manifest" class="md-nav__link">
+    Manifest
   </a>
   
 </li>
@@ -409,54 +383,125 @@
     </li>
   
 
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_3" type="checkbox" id="__nav_3" >
+      
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3">
+          API
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" aria-label="API" data-md-level="1">
+        <label class="md-nav__title" for="__nav_3">
+          <span class="md-nav__icon md-icon"></span>
+          API
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
           
             
+              
   
   
   
     <li class="md-nav__item">
-      <a href="symbolication.html" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
+        Overview
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/minidump/" class="md-nav__link">
+        POST /minidump
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/symbolication/" class="md-nav__link">
         POST /symbolicate
       </a>
     </li>
   
 
+            
           
             
+              
   
   
   
     <li class="md-nav__item">
-      <a href="applecrashreport.html" class="md-nav__link">
+      <a href="../../api/applecrashreport/" class="md-nav__link">
         POST /applecrashreport
       </a>
     </li>
   
 
+            
           
             
+              
   
   
   
     <li class="md-nav__item">
-      <a href="response.html" class="md-nav__link">
+      <a href="../../api/response/" class="md-nav__link">
         Symbolication Response
       </a>
     </li>
   
 
+            
           
             
+              
   
   
   
     <li class="md-nav__item">
-      <a href="proxy.html" class="md-nav__link">
+      <a href="../../api/proxy/" class="md-nav__link">
         Symbol Server Proxy
       </a>
     </li>
   
 
+            
           
         </ul>
       </nav>
@@ -490,22 +535,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#query-parameters" class="md-nav__link">
-    Query Parameters
+  <a href="#header" class="md-nav__link">
+    Header
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#request-body" class="md-nav__link">
-    Request Body
+  <a href="#structure" class="md-nav__link">
+    Structure
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#response" class="md-nav__link">
-    Response
+  <a href="#manifest" class="md-nav__link">
+    Manifest
   </a>
   
 </li>
@@ -522,52 +567,76 @@
             <article class="md-content__inner md-typeset">
               
                 
-                  <a href="https://github.com/getsentry/symbolicator/edit/master/docs/api/minidump.md" title="Edit this page" class="md-content__button md-icon">
+                  <a href="https://github.com/getsentry/symbolicator/edit/master/docs/advanced/source-bundles.md" title="Edit this page" class="md-content__button md-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25z"/></svg>
                   </a>
                 
                 
-                <h1 id="minidump-request">Minidump Request</h1>
-<div class="codehilite"><pre><span></span><code><span class="nf">POST</span> <span class="nn">/minidump?timeout=5&amp;scope=123</span> <span class="kr">HTTP</span><span class="o">/</span><span class="m">1.1</span>
-<span class="na">Content-Type</span><span class="o">:</span> <span class="l">multipart/form-data; boundary=xxx</span>
-
---xxx
-Content-Disposition: form-data; name=&quot;upload_file_minidump&quot;
-[binary blob]
-
---xxx
-Content-Disposition: form-data; name=&quot;sources&quot;
-[
-  {
-    &quot;id&quot;: &quot;&lt;uuid&gt;&quot;,
-    &quot;type&quot;: &quot;http&quot;,
-    ... // see &quot;Sources&quot;
-  },
-  ...
-]
-
---xxx--
+                <h1 id="source-bundles">Source Bundles</h1>
+<p>Symbolicator supports the concept of source bundles.  These are zip archives
+containing source code that goes along debug information files.  These archives
+can be created with the <code>sentry-cli</code> tool as well as <code>symsorter</code> and are also
+supported by the underlying <code>symbolic</code> library.</p>
+<p>Source bundles are ZIP archives with a well-defined internal structure. Most
+importantly, they contain source files in a nested directory structure.
+Additionally, there is meta data associated to every source file, which
+allows to store additional properties, such as the original file system path,
+a web URL, and custom headers.</p>
+<h2 id="header">Header</h2>
+<p>The source bundle is a regular ZIP archive but has a special header prepended
+to identify it uniquely as source bundle.</p>
+<p>The header is in little endian:</p>
+<div class="codehilite"><pre><span></span><code><span class="nt">BUNDLE_MAGIC</span><span class="o">:</span>    <span class="cp">[</span><span class="nx">u8</span><span class="p">;</span> <span class="mi">4</span><span class="cp">]</span>
+<span class="nt">BUNDLE_VERSION</span><span class="o">:</span>  <span class="nt">u32</span>
 </code></pre></div>
 
-<h2 id="query-parameters">Query Parameters</h2>
-<ul>
-<li><code>timeout</code>: If given, a response status of <code>pending</code> might be sent by the
-  server.</li>
-<li><code>scope</code>: An optional scope which will be used to isolate cached files from
-  each other</li>
-</ul>
-<h2 id="request-body">Request Body</h2>
-<p>A multipart form data body containing the minidump, as well as the external
-sources to pull symbols from.</p>
-<ul>
-<li><code>sources</code>: A list of descriptors for internal or external symbol sources. See
-  <a href="index.html">Sources</a>.</li>
-<li><code>upload_file_minidump</code>: The minidump file to be analyzed.</li>
-</ul>
-<h2 id="response">Response</h2>
-<p>See <a href="response.html">Symbolication Response</a>.</p>
-                
-                  
+<p>The bundle magic is always ASCII "SYSB" (symbolic source bundle)</p>
+<h2 id="structure">Structure</h2>
+<p>The internal structure is as follows:</p>
+<div class="codehilite"><pre><span></span><code>manifest.json
+files/
+  file1.txt
+  subfolder/
+    file2.txt
+</code></pre></div>
+
+<h2 id="manifest">Manifest</h2>
+<p>The manifest is a JSON file with the following structure:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+  <span class="nt">&quot;files&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="nt">&quot;path/in/bundle&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;source&quot;</span><span class="p">,</span>
+      <span class="nt">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;original/file/name&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+  <span class="p">},</span>
+  <span class="nt">&quot;code_id&quot;</span><span class="p">:</span> <span class="s2">&quot;CODE_ID&quot;</span><span class="p">,</span>
+  <span class="nt">&quot;debug_id&quot;</span><span class="p">:</span> <span class="s2">&quot;DEBUG_ID&quot;</span><span class="p">,</span>
+  <span class="nt">&quot;object_name&quot;</span><span class="p">:</span> <span class="s2">&quot;OBJECT_NAME&quot;</span><span class="p">,</span>
+  <span class="nt">&quot;arch&quot;</span><span class="p">:</span> <span class="s2">&quot;ARCHITECTURE&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>The attributes must match the attributes of the debug information file (.pdb,
+or DWARF file) that goes along with it.</p>
+<p>Example Manifest:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+  <span class="nt">&quot;files&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="nt">&quot;files/actix-web-0.7.19/src/server/h1.rs&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="s2">&quot;source&quot;</span><span class="p">,</span>
+      <span class="nt">&quot;path&quot;</span><span class="p">:</span>
+      <span class="s2">&quot;/usr/local/cargo/registry/src/github.com-1ecc6299db9ec823/actix-web-0.7.19/src/server/h1.rs&quot;</span>
+    <span class="p">},</span>
+    <span class="err">...</span>
+  <span class="p">},</span>
+  <span class="nt">&quot;arch&quot;</span><span class="p">:</span> <span class="s2">&quot;x86_64&quot;</span><span class="p">,</span>
+  <span class="nt">&quot;code_id&quot;</span><span class="p">:</span> <span class="s2">&quot;f53af9062b83bc3b6dfd27a46912605f23e874de&quot;</span><span class="p">,</span>
+  <span class="nt">&quot;debug_id&quot;</span><span class="p">:</span> <span class="s2">&quot;06f93af5-832b-3bbc-6dfd-27a46912605f&quot;</span><span class="p">,</span>
+  <span class="nt">&quot;object_name&quot;</span><span class="p">:</span> <span class="s2">&quot;relay&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>In this case the source file needs to be stored in the following location
+in the bundle: <code>files/actix-web-0.7.19/src/server/h1.rs</code>.</p>
                 
               
               
@@ -587,7 +656,7 @@ sources to pull symbols from.</p>
     <nav class="md-footer__inner md-grid" aria-label="Footer">
       
         
-        <a href="index.html" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview" rel="prev">
+        <a href="../symbol-server-compatibility/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Symbol Server Compatibility" rel="prev">
           <div class="md-footer__button md-icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
           </div>
@@ -596,20 +665,20 @@ sources to pull symbols from.</p>
               <span class="md-footer__direction">
                 Previous
               </span>
-              Overview
+              Symbol Server Compatibility
             </div>
           </div>
         </a>
       
       
         
-        <a href="symbolication.html" class="md-footer__link md-footer__link--next" aria-label="Next: POST /symbolicate" rel="next">
+        <a href="../../api/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview" rel="next">
           <div class="md-footer__title">
             <div class="md-ellipsis">
               <span class="md-footer__direction">
                 Next
               </span>
-              POST /symbolicate
+              Overview
             </div>
           </div>
           <div class="md-footer__button md-icon">
@@ -623,10 +692,12 @@ sources to pull symbols from.</p>
     <div class="md-footer-meta__inner md-grid">
       <div class="md-footer-copyright">
         
-        Made with
-        <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
-          Material for MkDocs
-        </a>
+        
+          Made with
+          <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+            Material for MkDocs
+          </a>
+        
         
       </div>
       
@@ -638,10 +709,10 @@ sources to pull symbols from.</p>
     <div class="md-dialog" data-md-component="dialog">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
-    <script id="__config" type="application/json">{"base": "..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../assets/javascripts/workers/search.b0710199.min.js", "version": null}</script>
+    <script id="__config" type="application/json">{"base": "../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../../assets/javascripts/workers/search.8397ff9e.min.js", "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.76f349be.min.js"></script>
+      <script src="../../assets/javascripts/bundle.1e84347e.min.js"></script>
       
     
   </body>
