@@ -776,6 +776,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "findshlibs"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6a45a0ab393d7a1b52a0f9900df2dc842ff3d8456dd68c28dc3c37963b57f6"
+dependencies = [
+ "cc",
+ "lazy_static",
+ "libc",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2052,7 +2064,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "reqwest 0.11.5",
@@ -2069,7 +2081,7 @@ checksum = "e7ea53b370a4ef8702226eccd780e956a481d877a377f2de4f8fb5295f0d6d9c"
 dependencies = [
  "backtrace",
  "ctor",
- "findshlibs",
+ "findshlibs 0.8.0",
  "ipc-channel",
  "libc",
  "serde",
@@ -2542,7 +2554,7 @@ checksum = "568a8e6258aa33c13358f81fd834adb854c6f7c9468520910a9b1e8fac068012"
 [[package]]
 name = "sentry"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "httpdate",
  "reqwest 0.11.5",
@@ -2560,7 +2572,7 @@ dependencies = [
 [[package]]
 name = "sentry-anyhow"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "anyhow",
  "sentry-backtrace",
@@ -2570,7 +2582,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -2581,7 +2593,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "hostname",
  "lazy_static",
@@ -2595,7 +2607,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "chrono",
  "lazy_static",
@@ -2608,9 +2620,9 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
- "findshlibs",
+ "findshlibs 0.10.0",
  "lazy_static",
  "sentry-core",
 ]
@@ -2618,7 +2630,7 @@ dependencies = [
 [[package]]
 name = "sentry-log"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "log",
  "sentry-core",
@@ -2627,7 +2639,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2636,7 +2648,7 @@ dependencies = [
 [[package]]
 name = "sentry-tower"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "sentry-core",
  "tower-layer",
@@ -2646,7 +2658,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.23.0"
-source = "git+https://github.com/getsentry/sentry-rust#9e0cb222713e2336c66c32ad842e37b1b2418968"
+source = "git+https://github.com/getsentry/sentry-rust#f8be1b86cedb5524bb1d086044680c8c920306d3"
 dependencies = [
  "chrono",
  "debugid",
@@ -2994,7 +3006,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -3049,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3716,7 +3728,7 @@ checksum = "0237232789cf037d5480773fe568aac745bfe2afbc11a863e97901780a6b47cc"
 
 [[package]]
 name = "wasm-split"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "hex",
