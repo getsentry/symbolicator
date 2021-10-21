@@ -3065,7 +3065,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
- "tracing-log",
  "tracing-subscriber",
  "url",
  "uuid",
