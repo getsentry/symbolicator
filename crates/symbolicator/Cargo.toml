@@ -51,6 +51,7 @@ tracing-subscriber = { version = "0.2.20", features = ["chrono"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.9.0"
+tracing-futures = "0.2.5"
 
 [dev-dependencies]
 insta = { version = "1.5.2", features = ["redactions"] }
