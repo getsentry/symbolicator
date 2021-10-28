@@ -161,7 +161,7 @@ jobs:
           kafka: true
           snuba: true
           cache-files-hash: ${{ hashFiles('sentry/requirements**.txt') }}
-          python-version: 3.6
+          python-version: 3.8
 
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
