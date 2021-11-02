@@ -50,6 +50,7 @@ pub fn init_logging(config: &Config) {
 
     let subscriber = fmt()
         .with_timer(ChronoUtc::rfc3339())
+        .with_target(true)
         .with_env_filter(rust_log);
 
     match (config.logging.format, console::user_attended()) {
@@ -66,8 +67,8 @@ pub fn init_logging(config: &Config) {
         (LogFormat::Json, _) => subscriber
             .json()
             .flatten_event(true)
-            .with_current_span(false)
-            .with_span_list(false)
+            .with_current_span(true)
+            .with_span_list(true)
             .finish()
             .with(sentry::integrations::tracing::layer())
             .init(),
