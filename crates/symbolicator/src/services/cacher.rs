@@ -196,14 +196,19 @@ impl<T: CacheItemRequest> Cacher<T> {
     fn get_cache_path(&self, key: &CacheKey, version: u32) -> Option<PathBuf> {
         let mut cache_dir = self.config.cache_dir()?.to_path_buf();
 
-        if version != 0 {
-            cache_dir.push(version.to_string());
-        }
-
-        cache_dir.push(safe_path_segment(key.scope.as_ref()));
-        cache_dir.push(safe_path_segment(&key.cache_key));
+        self.append_cache_path(&mut cache_dir, key, version);
 
         Some(cache_dir)
+    }
+
+    /// Appends the key/version specific path fragments to the given `cache_path`.
+    fn append_cache_path(&self, cache_path: &mut PathBuf, key: &CacheKey, version: u32) {
+        if version != 0 {
+            cache_path.push(version.to_string());
+        }
+
+        cache_path.push(safe_path_segment(key.scope.as_ref()));
+        cache_path.push(safe_path_segment(&key.cache_key));
     }
 
     /// Look up an item in the file system cache and load it if available.
@@ -284,10 +289,28 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
+        let shared_cache = self.config.shared_cache().map(|sc| {
+            let mut shared_path = PathBuf::new();
+            self.append_cache_path(&mut shared_path, &key, T::VERSIONS.current);
+            (sc, shared_path)
+        });
+
         let name = self.config.name();
         let temp_file = self.tempfile()?;
 
-        let status = request.compute(temp_file.path()).await?;
+        let mut shared_cache_hit = false;
+        if let Some((_cache, ref _shared_path)) = shared_cache {
+            // TODO: fetch `shared_path` from `cache`
+            // set `shared_cache_hit` on success, log error on failure
+            // metric!(counter(&format!("shared_caches.{}.file.hit", name)) += 1);
+            shared_cache_hit = false;
+        }
+
+        let status = if shared_cache_hit {
+            CacheStatus::Positive
+        } else {
+            request.compute(temp_file.path()).await?
+        };
 
         if let Some(ref cache_path) = cache_path {
             sentry::configure_scope(|scope| {
@@ -314,12 +337,25 @@ impl<T: CacheItemRequest> Cacher<T> {
         );
 
         let path = match cache_path {
-            Some(ref cache_path) => {
-                status.persist_item(cache_path, temp_file)?;
-                CachePath::Cached(cache_path.to_path_buf())
+            Some(cache_path) => {
+                status.persist_item(&cache_path, temp_file)?;
+                CachePath::Cached(cache_path)
             }
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
+
+        if let Some((_cache, _shared_path)) = shared_cache {
+            if !shared_cache_hit {
+                // spawn saving into the shared cache as an async task, so we don't wait for
+                // any kind of upload to complete.
+                let byteview = byteview.clone();
+                tokio::spawn(async move {
+                    let _ = byteview;
+                    // TODO: persist the `byteview` into the `cache` at `shared_path`
+                    // metric!(counter(&format!("shared_caches.{}.file.write", name)) += 1);
+                });
+            }
+        }
 
         Ok(request.load(key.scope.clone(), status, byteview, path))
     }
@@ -568,6 +604,7 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
+            None,
         )
         .unwrap();
         let cacher = Cacher::new(cache);
@@ -610,6 +647,7 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
+            None,
         )
         .unwrap();
         let cacher = Cacher::new(cache);

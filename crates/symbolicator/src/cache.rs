@@ -117,6 +117,11 @@ impl CacheStatus {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SharedCache {
+    // TODO: have the credentials or even a downloader/uploader here
+}
+
 /// Utilities for a sym/cfi or object cache.
 #[derive(Debug, Clone)]
 pub struct Cache {
@@ -145,6 +150,9 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
+
+    /// A second-layer Cache that is shared between multiple symbolicator instances.
+    shared_cache: Option<SharedCache>,
 }
 
 impl Cache {
@@ -154,6 +162,7 @@ impl Cache {
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
+        shared_cache: Option<SharedCache>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -165,6 +174,7 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
+            shared_cache,
         })
     }
 
@@ -178,6 +188,10 @@ impl Cache {
 
     pub fn max_lazy_refreshes(&self) -> Arc<AtomicIsize> {
         self.max_lazy_refreshes.clone()
+    }
+
+    pub fn shared_cache(&self) -> Option<&SharedCache> {
+        self.shared_cache.as_ref()
     }
 
     pub fn cleanup(&self) -> Result<()> {
@@ -410,6 +424,9 @@ impl Caches {
             config.caches.derived.max_lazy_recomputations.max(1),
         ));
 
+        // TODO: construct the shared cache from `config`.
+        let shared_cache = None;
+
         let tmp_dir = config.cache_dir("tmp");
         Ok(Self {
             objects: {
@@ -420,6 +437,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
+                    shared_cache.clone(),
                 )?
             },
             object_meta: {
@@ -430,6 +448,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    shared_cache.clone(),
                 )?
             },
             auxdifs: {
@@ -440,6 +459,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads,
+                    shared_cache.clone(),
                 )?
             },
             symcaches: {
@@ -450,6 +470,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    shared_cache.clone(),
                 )?
             },
             cficaches: {
@@ -460,6 +481,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations,
+                    shared_cache,
                 )?
             },
             diagnostics: {
@@ -470,6 +492,7 @@ impl Caches {
                     tmp_dir,
                     config.caches.diagnostics.into(),
                     Default::default(),
+                    None,
                 )?
             },
         })
@@ -562,6 +585,7 @@ mod tests {
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
+            None,
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
@@ -621,6 +645,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -659,6 +684,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -709,6 +735,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         cache.cleanup()?;
@@ -755,6 +782,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -801,6 +829,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -1037,6 +1066,7 @@ mod tests {
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
+            None,
         )?;
 
         // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched
