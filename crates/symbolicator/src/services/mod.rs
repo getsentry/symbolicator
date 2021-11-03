@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 
-use crate::cache::Caches;
+use crate::cache::{Caches, SharedCache};
 use crate::config::Config;
 
 pub mod bitcode;
@@ -79,11 +79,30 @@ impl Service {
         caches
             .clear_tmp(&config)
             .context("failed to clear tmp caches")?;
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
-        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
-        let symcaches =
-            SymCacheActor::new(caches.symcaches, objects.clone(), bitcode, cpu_pool.clone());
-        let cficaches = CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_pool.clone());
+        let shared_cache = config
+            .shared_cache
+            .as_ref()
+            .map(|sc| SharedCache::gcs(sc.clone(), Arc::clone(&downloader)));
+        let objects = ObjectsActor::new(
+            caches.object_meta,
+            caches.objects,
+            shared_cache.clone(),
+            downloader.clone(),
+        );
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader);
+        let symcaches = SymCacheActor::new(
+            caches.symcaches,
+            shared_cache.clone(),
+            objects.clone(),
+            bitcode,
+            cpu_pool.clone(),
+        );
+        let cficaches = CfiCacheActor::new(
+            caches.cficaches,
+            shared_cache,
+            objects.clone(),
+            cpu_pool.clone(),
+        );
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),

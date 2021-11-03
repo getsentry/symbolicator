@@ -63,10 +63,10 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache) -> Self {
+    pub fn new(config: Cache, shared_cache: Option<SharedCache>) -> Self {
         Cacher {
             config,
-            shared_cache: None,
+            shared_cache,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -290,6 +290,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
         let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
+        let name = self.config.name();
         if let Some(ref path) = cache_path {
             if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(item);
@@ -297,17 +298,17 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         let shared_cache = self.shared_cache.as_ref().map(|sc| {
-            let mut shared_path = String::new();
+            let mut shared_path = String::from(name);
             if T::VERSIONS.current != 0 {
-                write!(shared_path, "{}", T::VERSIONS.current);
+                write!(shared_path, "/{}", T::VERSIONS.current).unwrap();
             }
-
+            shared_path.push('/');
             shared_path.push_str(&safe_path_segment(key.scope.as_ref()));
+            shared_path.push('/');
             shared_path.push_str(&safe_path_segment(&key.cache_key));
             (sc, SourceLocation::new(shared_path))
         });
 
-        let name = self.config.name();
         let temp_file = self.tempfile()?;
 
         let mut shared_cache_hit = false;
@@ -628,10 +629,9 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
-            None,
         )
         .unwrap();
-        let cacher = Cacher::new(cache);
+        let cacher = Cacher::new(cache, None);
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -671,10 +671,9 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
-            None,
         )
         .unwrap();
-        let cacher = Cacher::new(cache);
+        let cacher = Cacher::new(cache, None);
 
         let request = TestCacheItem::new("0");
 

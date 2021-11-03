@@ -9,7 +9,7 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, SharedCache};
 use crate::logging::LogError;
 use crate::services::cacher::Cacher;
 use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
@@ -171,10 +171,15 @@ pub struct ObjectsActor {
 }
 
 impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
+    pub fn new(
+        meta_cache: Cache,
+        data_cache: Cache,
+        shared_cache: Option<SharedCache>,
+        download_svc: Arc<DownloadService>,
+    ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache)),
-            data_cache: Arc::new(Cacher::new(data_cache)),
+            meta_cache: Arc::new(Cacher::new(meta_cache, shared_cache.clone())),
+            data_cache: Arc::new(Cacher::new(data_cache, shared_cache)),
             download_svc,
         }
     }

@@ -12,7 +12,7 @@ use symbolic::debuginfo::Object;
 use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, SharedCache};
 use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -92,12 +92,13 @@ pub struct SymCacheActor {
 impl SymCacheActor {
     pub fn new(
         cache: Cache,
+        shared_cache: Option<SharedCache>,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
             bitcode_svc,
             threadpool,

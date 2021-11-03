@@ -17,7 +17,7 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, SharedCache};
 use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
@@ -210,9 +210,13 @@ pub struct BitcodeService {
 }
 
 impl BitcodeService {
-    pub fn new(difs_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
+    pub fn new(
+        difs_cache: Cache,
+        shared_cache: Option<SharedCache>,
+        download_svc: Arc<DownloadService>,
+    ) -> Self {
         Self {
-            cache: Arc::new(Cacher::new(difs_cache)),
+            cache: Arc::new(Cacher::new(difs_cache, shared_cache)),
             download_svc,
         }
     }

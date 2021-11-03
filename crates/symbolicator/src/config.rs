@@ -292,6 +292,8 @@ pub struct Config {
     ///
     /// A value of `None` indicates no limit.
     pub max_concurrent_requests: Option<usize>,
+
+    pub shared_cache: Option<SourceConfig>,
 }
 
 impl Config {
@@ -361,6 +363,7 @@ impl Default for Config {
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
             max_concurrent_requests: Some(120),
+            shared_cache: None,
         }
     }
 }

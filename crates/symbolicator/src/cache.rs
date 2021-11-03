@@ -14,9 +14,9 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::services::download::gcs::{GcsDownloader, GcsRemoteDif};
-use crate::services::download::{DownloadError, DownloadStatus, SourceLocation};
-use crate::sources::GcsSourceConfig;
+use crate::services::download::gcs::GcsRemoteDif;
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus, SourceLocation};
+use crate::sources::SourceConfig;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -120,25 +120,16 @@ impl CacheStatus {
     }
 }
 
-#[derive(Debug)]
-enum SharedCacheBackend {
-    Gcs {
-        downloader: GcsDownloader,
-        config: GcsSourceConfig,
-    },
-}
-
 /// A remote cache that can be shared between symbolicator instances.
 #[derive(Debug, Clone)]
 pub struct SharedCache {
-    backend: Arc<SharedCacheBackend>,
+    config: SourceConfig,
+    downloader: Arc<DownloadService>,
 }
 
 impl SharedCache {
-    pub fn gcs(config: GcsSourceConfig, downloader: GcsDownloader) -> Self {
-        Self {
-            backend: Arc::new(SharedCacheBackend::Gcs { downloader, config }),
-        }
+    pub fn gcs(config: SourceConfig, downloader: Arc<DownloadService>) -> Self {
+        Self { config, downloader }
     }
 
     pub async fn fetch(
@@ -146,14 +137,14 @@ impl SharedCache {
         shared_path: SourceLocation,
         local_path: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
-        match self.backend.as_ref() {
-            SharedCacheBackend::Gcs { downloader, config } => {
-                let file_source = GcsRemoteDif::new(Arc::new(config.clone()), shared_path);
-                downloader
-                    .download_source(file_source, local_path.to_path_buf())
-                    .await
+        let remote_dif = match self.config {
+            SourceConfig::Gcs(ref gcs_config) => {
+                GcsRemoteDif::new(gcs_config.clone(), shared_path).into()
             }
-        }
+            _ => unimplemented!(),
+        };
+
+        self.downloader.download(remote_dif, local_path).await
     }
 
     pub async fn store(&self, _shared_path: SourceLocation, _contents: &[u8]) -> Result<(), ()> {

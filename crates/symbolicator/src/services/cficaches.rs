@@ -13,7 +13,7 @@ use symbolic::{
 };
 use thiserror::Error;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, SharedCache};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -76,9 +76,14 @@ pub struct CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: tokio::runtime::Handle) -> Self {
+    pub fn new(
+        cache: Cache,
+        shared_cache: Option<SharedCache>,
+        objects: ObjectsActor,
+        threadpool: tokio::runtime::Handle,
+    ) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
             threadpool,
         }

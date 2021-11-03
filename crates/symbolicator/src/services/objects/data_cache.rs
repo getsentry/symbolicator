@@ -317,7 +317,6 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Default::default(),
-            None,
         )
         .unwrap();
 
@@ -327,7 +326,6 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().downloaded),
             Default::default(),
-            None,
         )
         .unwrap();
 
