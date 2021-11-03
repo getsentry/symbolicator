@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::fmt::Write;
 use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -14,7 +15,8 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, SharedCache};
+use crate::services::download::{DownloadStatus, SourceLocation};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
@@ -42,6 +44,9 @@ type ComputationMap<T, E> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T, E
 pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
 
+    /// A second-layer Cache that is shared between multiple symbolicator instances.
+    shared_cache: Option<SharedCache>,
+
     /// Used for deduplicating cache lookups.
     current_computations: ComputationMap<T::Item, T::Error>,
 }
@@ -51,6 +56,7 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         // https://github.com/rust-lang/rust/issues/26925
         Cacher {
             config: self.config.clone(),
+            shared_cache: None,
             current_computations: self.current_computations.clone(),
         }
     }
@@ -60,6 +66,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache) -> Self {
         Cacher {
             config,
+            shared_cache: None,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -220,7 +227,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// # Errors
     ///
     /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
-    fn lookup_cache(
+    fn lookup_local_cache(
         &self,
         request: &T,
         key: &CacheKey,
@@ -284,26 +291,38 @@ impl<T: CacheItemRequest> Cacher<T> {
         // computed. To avoid duplicated work in that case, we will check the cache here again.
         let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
         if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+            if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(item);
             }
         }
 
-        let shared_cache = self.config.shared_cache().map(|sc| {
-            let mut shared_path = PathBuf::new();
-            self.append_cache_path(&mut shared_path, &key, T::VERSIONS.current);
-            (sc, shared_path)
+        let shared_cache = self.shared_cache.as_ref().map(|sc| {
+            let mut shared_path = String::new();
+            if T::VERSIONS.current != 0 {
+                write!(shared_path, "{}", T::VERSIONS.current);
+            }
+
+            shared_path.push_str(&safe_path_segment(key.scope.as_ref()));
+            shared_path.push_str(&safe_path_segment(&key.cache_key));
+            (sc, SourceLocation::new(shared_path))
         });
 
         let name = self.config.name();
         let temp_file = self.tempfile()?;
 
         let mut shared_cache_hit = false;
-        if let Some((_cache, ref _shared_path)) = shared_cache {
-            // TODO: fetch `shared_path` from `cache`
-            // set `shared_cache_hit` on success, log error on failure
-            // metric!(counter(&format!("shared_caches.{}.file.hit", name)) += 1);
-            shared_cache_hit = false;
+        if let Some((shared_cache, ref shared_path)) = shared_cache {
+            let local_path = temp_file.path();
+            match shared_cache.fetch(shared_path.clone(), local_path).await {
+                Ok(DownloadStatus::Completed) => {
+                    shared_cache_hit = true;
+                    metric!(counter(&format!("shared_caches.{}.file.hit", name)) += 1);
+                }
+                Ok(DownloadStatus::NotFound) => {}
+                Err(e) => {
+                    log::error!("failed to fetch from shared cache: {}", e);
+                }
+            }
         }
 
         let status = if shared_cache_hit {
@@ -323,7 +342,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             log::trace!("Creating {} at path {:?}", name, cache_path);
         }
 
-        let byteview = ByteView::open(temp_file.path())?;
+        let byte_view = ByteView::open(temp_file.path())?;
 
         metric!(
             counter(&format!("caches.{}.file.write", name)) += 1,
@@ -331,7 +350,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             "is_refresh" => &is_refresh.to_string(),
         );
         metric!(
-            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+            time_raw(&format!("caches.{}.file.size", name)) = byte_view.len() as u64,
             "hit" => "false",
             "is_refresh" => &is_refresh.to_string(),
         );
@@ -344,20 +363,25 @@ impl<T: CacheItemRequest> Cacher<T> {
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
 
-        if let Some((_cache, _shared_path)) = shared_cache {
-            if !shared_cache_hit {
+        if let Some((shared_cache, shared_path)) = shared_cache {
+            if !shared_cache_hit && status == CacheStatus::Positive {
+                let byte_view = byte_view.clone();
+                let shared_cache = shared_cache.clone();
                 // spawn saving into the shared cache as an async task, so we don't wait for
                 // any kind of upload to complete.
-                let byteview = byteview.clone();
                 tokio::spawn(async move {
-                    let _ = byteview;
-                    // TODO: persist the `byteview` into the `cache` at `shared_path`
-                    // metric!(counter(&format!("shared_caches.{}.file.write", name)) += 1);
+                    match shared_cache.store(shared_path, &byte_view).await {
+                        Ok(()) => {
+                            metric!(counter(&format!("shared_caches.{}.file.write", name)) += 1)
+                        }
+
+                        Err(()) => log::error!("failed to store in shared cache"),
+                    }
                 });
             }
         }
 
-        Ok(request.load(key.scope.clone(), status, byteview, path))
+        Ok(request.load(key.scope.clone(), status, byte_view, path))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -482,7 +506,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // cache_path is None when caching is disabled.
         let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
         if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+            if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(Arc::new(item));
             }
 
@@ -491,7 +515,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 self.get_cache_path(&key, *version)
                     .map(|path| (*version, path))
             }) {
-                if let Ok(Some(item)) = self.lookup_cache(&request, &key, &fallback_path) {
+                if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, &fallback_path) {
                     // we have found an outdated cache that we will use right away,
                     // and we will kick off a recomputation for the `current` cache version
                     // in a deduplicated background task, which we will not await

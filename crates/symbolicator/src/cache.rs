@@ -14,6 +14,9 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
+use crate::services::download::gcs::{GcsDownloader, GcsRemoteDif};
+use crate::services::download::{DownloadError, DownloadStatus, SourceLocation};
+use crate::sources::GcsSourceConfig;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -117,9 +120,45 @@ impl CacheStatus {
     }
 }
 
+#[derive(Debug)]
+enum SharedCacheBackend {
+    Gcs {
+        downloader: GcsDownloader,
+        config: GcsSourceConfig,
+    },
+}
+
+/// A remote cache that can be shared between symbolicator instances.
 #[derive(Debug, Clone)]
 pub struct SharedCache {
-    // TODO: have the credentials or even a downloader/uploader here
+    backend: Arc<SharedCacheBackend>,
+}
+
+impl SharedCache {
+    pub fn gcs(config: GcsSourceConfig, downloader: GcsDownloader) -> Self {
+        Self {
+            backend: Arc::new(SharedCacheBackend::Gcs { downloader, config }),
+        }
+    }
+
+    pub async fn fetch(
+        &self,
+        shared_path: SourceLocation,
+        local_path: &Path,
+    ) -> Result<DownloadStatus, DownloadError> {
+        match self.backend.as_ref() {
+            SharedCacheBackend::Gcs { downloader, config } => {
+                let file_source = GcsRemoteDif::new(Arc::new(config.clone()), shared_path);
+                downloader
+                    .download_source(file_source, local_path.to_path_buf())
+                    .await
+            }
+        }
+    }
+
+    pub async fn store(&self, _shared_path: SourceLocation, _contents: &[u8]) -> Result<(), ()> {
+        Err(())
+    }
 }
 
 /// Utilities for a sym/cfi or object cache.
@@ -150,9 +189,6 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
-
-    /// A second-layer Cache that is shared between multiple symbolicator instances.
-    shared_cache: Option<SharedCache>,
 }
 
 impl Cache {
@@ -162,7 +198,6 @@ impl Cache {
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
-        shared_cache: Option<SharedCache>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -174,7 +209,6 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
-            shared_cache,
         })
     }
 
@@ -188,10 +222,6 @@ impl Cache {
 
     pub fn max_lazy_refreshes(&self) -> Arc<AtomicIsize> {
         self.max_lazy_refreshes.clone()
-    }
-
-    pub fn shared_cache(&self) -> Option<&SharedCache> {
-        self.shared_cache.as_ref()
     }
 
     pub fn cleanup(&self) -> Result<()> {
@@ -424,9 +454,6 @@ impl Caches {
             config.caches.derived.max_lazy_recomputations.max(1),
         ));
 
-        // TODO: construct the shared cache from `config`.
-        let shared_cache = None;
-
         let tmp_dir = config.cache_dir("tmp");
         Ok(Self {
             objects: {
@@ -437,7 +464,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
-                    shared_cache.clone(),
                 )?
             },
             object_meta: {
@@ -448,7 +474,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
-                    shared_cache.clone(),
                 )?
             },
             auxdifs: {
@@ -459,7 +484,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads,
-                    shared_cache.clone(),
                 )?
             },
             symcaches: {
@@ -470,7 +494,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
-                    shared_cache.clone(),
                 )?
             },
             cficaches: {
@@ -481,7 +504,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations,
-                    shared_cache,
                 )?
             },
             diagnostics: {
@@ -492,7 +514,6 @@ impl Caches {
                     tmp_dir,
                     config.caches.diagnostics.into(),
                     Default::default(),
-                    None,
                 )?
             },
         })

@@ -19,7 +19,7 @@ use crate::utils::futures::{self as future_utils, m, measure};
 use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
-mod gcs;
+pub(crate) mod gcs;
 mod http;
 mod locations;
 mod s3;
