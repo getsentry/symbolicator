@@ -88,13 +88,14 @@ impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
+    // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
     async fn fetch_file(self, path: PathBuf) -> Result<CacheStatus, Error> {
         let download_file = self.cache.tempfile()?;
         let cache_key = self.get_cache_key();
 
         let result = self
             .download_svc
-            .download(self.file_source, download_file.path().to_path_buf())
+            .download(self.file_source, download_file.path())
             .await;
 
         match result {

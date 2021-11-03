@@ -4,7 +4,7 @@
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::convert::TryInto;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -150,10 +150,9 @@ impl DownloadService {
     async fn dispatch_download(
         &self,
         source: &RemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let result = future_utils::retry(|| async {
-            let destination = destination.clone();
             match source {
                 RemoteDif::Sentry(inner) => {
                     self.sentry
@@ -200,7 +199,7 @@ impl DownloadService {
     pub async fn download(
         &self,
         source: RemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let job = self.dispatch_download(&source, destination);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
@@ -256,17 +255,15 @@ impl DownloadService {
 /// - [`DownloadError::Write`]
 /// - [`DownloadError::Canceled`]
 async fn download_stream(
-    source: impl Into<RemoteDif>,
+    source: &RemoteDif,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
-    destination: PathBuf,
+    destination: &Path,
     timeout: Option<Duration>,
 ) -> Result<DownloadStatus, DownloadError> {
-    let source = source.into();
-
     // All file I/O in this function is blocking!
     log::trace!("Downloading from {}", source);
     let future = async {
-        let mut file = File::create(&destination)
+        let mut file = File::create(destination)
             .await
             .map_err(DownloadError::BadDestination)?;
         futures::pin_mut!(stream);
@@ -471,7 +468,7 @@ mod tests {
         test::setup();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path().to_owned();
+        let dest = tmpfile.path();
 
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
@@ -487,10 +484,9 @@ mod tests {
         });
 
         let service = DownloadService::new(config);
-        let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
-        let download_status = service.download(file_source, dest2).await.unwrap();
+        let download_status = service.download(file_source, dest).await.unwrap();
         assert_eq!(download_status, DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")

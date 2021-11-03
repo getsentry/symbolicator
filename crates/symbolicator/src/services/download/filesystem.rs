@@ -5,7 +5,7 @@
 //! testing.
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::fs;
@@ -61,12 +61,12 @@ impl FilesystemDownloader {
     pub async fn download_source(
         &self,
         file_source: FilesystemRemoteDif,
-        dest: PathBuf,
+        dest: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         // All file I/O in this function is blocking!
         let abspath = file_source.path();
         log::debug!("Fetching debug file from {:?}", abspath);
-        match fs::copy(abspath, &dest).await {
+        match fs::copy(abspath, dest).await {
             Ok(_) => Ok(DownloadStatus::Completed),
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),

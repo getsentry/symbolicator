@@ -4,7 +4,7 @@
 //! to fetch files which were directly uploaded to Sentry itself.
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -253,7 +253,7 @@ impl SentryDownloader {
     pub async fn download_source(
         &self,
         file_source: SentryRemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let request = self
             .client
@@ -282,7 +282,7 @@ impl SentryDownloader {
                         content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination, timeout).await
+                    super::download_stream(&source, stream, destination, timeout).await
                 } else if matches!(
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
