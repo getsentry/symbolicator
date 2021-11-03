@@ -170,9 +170,7 @@ impl CacheItemRequest for FetchFileDataRequest {
                 .parent()
                 .ok_or(ObjectError::NoTempDir)?;
 
-            let status = downloader
-                .download(file_id, download_file.path().to_owned())
-                .await;
+            let status = downloader.download(file_id, download_file.path()).await;
 
             match status {
                 Ok(DownloadStatus::NotFound) => {
