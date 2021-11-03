@@ -2,7 +2,7 @@
 //!
 //! Specifically this supports the [`GcsSourceConfig`] source.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
@@ -215,7 +215,7 @@ impl GcsDownloader {
     pub async fn download_source(
         &self,
         file_source: GcsRemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
@@ -254,7 +254,7 @@ impl GcsDownloader {
                         content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination, timeout).await
+                    super::download_stream(&source, stream, destination, timeout).await
                 } else if matches!(
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
@@ -412,7 +412,7 @@ mod tests {
         let file_source = GcsRemoteDif::new(source, source_location);
 
         let download_status = downloader
-            .download_source(file_source, target_path.clone())
+            .download_source(file_source, &target_path)
             .await
             .unwrap();
 
@@ -442,7 +442,7 @@ mod tests {
         let file_source = GcsRemoteDif::new(source, source_location);
 
         let download_status = downloader
-            .download_source(file_source, target_path.clone())
+            .download_source(file_source, &target_path)
             .await
             .unwrap();
 
@@ -473,7 +473,7 @@ mod tests {
         let file_source = GcsRemoteDif::new(source, source_location);
 
         downloader
-            .download_source(file_source, target_path.clone())
+            .download_source(file_source, &target_path)
             .await
             .expect_err("authentication should fail");
 
