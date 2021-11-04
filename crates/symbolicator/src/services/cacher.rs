@@ -56,7 +56,7 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         // https://github.com/rust-lang/rust/issues/26925
         Cacher {
             config: self.config.clone(),
-            shared_cache: None,
+            shared_cache: self.shared_cache.clone(),
             current_computations: self.current_computations.clone(),
         }
     }
@@ -319,18 +319,28 @@ impl<T: CacheItemRequest> Cacher<T> {
                     shared_cache_hit = true;
                     metric!(counter(&format!("shared_caches.{}.file.hit", name)) += 1);
                 }
-                Ok(DownloadStatus::NotFound) => {}
+                Ok(DownloadStatus::NotFound) => {
+                }
                 Err(e) => {
                     log::error!("failed to fetch from shared cache: {}", e);
                 }
             }
         }
 
-        let status = if shared_cache_hit {
-            CacheStatus::Positive
+        let (status, byte_view) = if shared_cache_hit {
+            let byte_view = ByteView::open(temp_file.path())?;
+            (CacheStatus::from_content(&byte_view), byte_view)
         } else {
-            request.compute(temp_file.path()).await?
+            let status = request.compute(temp_file.path()).await?;
+            let byte_view = ByteView::open(temp_file.path())?;
+            (status, byte_view)
         };
+
+        debug_assert!(
+            !(status == CacheStatus::Positive && byte_view.is_empty()),
+            "invalid cache status for {}",
+            name
+        );
 
         if let Some(ref cache_path) = cache_path {
             sentry::configure_scope(|scope| {
@@ -342,8 +352,6 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             log::trace!("Creating {} at path {:?}", name, cache_path);
         }
-
-        let byte_view = ByteView::open(temp_file.path())?;
 
         metric!(
             counter(&format!("caches.{}.file.write", name)) += 1,
@@ -372,11 +380,11 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // any kind of upload to complete.
                 tokio::spawn(async move {
                     match shared_cache.store(shared_path, &byte_view).await {
-                        Ok(()) => {
+                        Ok(_) => {
                             metric!(counter(&format!("shared_caches.{}.file.write", name)) += 1)
                         }
 
-                        Err(()) => log::error!("failed to store in shared cache"),
+                        Err(e) => log::error!("failed to store in shared cache: {}", e),
                     }
                 });
             }

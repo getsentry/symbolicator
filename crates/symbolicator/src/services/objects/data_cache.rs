@@ -336,7 +336,7 @@ mod tests {
         });
 
         let download_svc = DownloadService::new(config);
-        ObjectsActor::new(meta_cache, data_cache, download_svc)
+        ObjectsActor::new(meta_cache, data_cache, None, download_svc)
     }
 
     #[tokio::test]

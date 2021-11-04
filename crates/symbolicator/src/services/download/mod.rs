@@ -211,6 +211,18 @@ impl DownloadService {
         }
     }
 
+    pub async fn upload(
+        &self,
+        destination: RemoteDif,
+        contents: &[u8],
+    ) -> Result<DownloadStatus, DownloadError> {
+        match destination {
+            RemoteDif::Gcs(destination) => self.gcs.upload(destination, contents).await,
+            RemoteDif::Filesystem(destination) => self.fs.upload(destination, contents).await,
+            _ => unimplemented!(),
+        }
+    }
+
     /// Returns all objects matching the [`ObjectId`] at the source.
     ///
     /// Some sources, namely all the symbol servers, simply return the locations at which a

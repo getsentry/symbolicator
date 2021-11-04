@@ -300,6 +300,84 @@ impl GcsDownloader {
         }
     }
 
+    /// Uploads a file to GCS.
+    pub async fn upload(
+        &self,
+        destination: GcsRemoteDif,
+        contents: &[u8],
+    ) -> Result<DownloadStatus, DownloadError> {
+        let key = destination.key();
+        let bucket = destination.source.bucket.clone();
+        log::debug!("Fetching from GCS: {} (from {})", &key, bucket);
+        let token = self.get_token(&destination.source.source_key).await?;
+        log::debug!("Got valid GCS token");
+
+        let mut url =
+            Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
+                .map_err(|_| GcsError::InvalidUrl)?;
+        // Append path segments manually for proper encoding
+        url.path_segments_mut()
+            .map_err(|_| GcsError::InvalidUrl)?
+            .extend(&[&bucket, "o"]);
+        url.query_pairs_mut().append_pair("name", &key);
+
+        let request = self
+            .client
+            .post(url.clone())
+            .header("authorization", format!("Bearer {}", token.access_token))
+            .body(contents.to_owned()) // TODO: ideally don't allocate here, but lifetime needs to be 'static
+            .send();
+        let request = tokio::time::timeout(self.connect_timeout, request);
+
+        match request.await {
+            Ok(Ok(response)) => {
+                if response.status().is_success() {
+                    Ok(DownloadStatus::Completed)
+                } else if matches!(
+                    response.status(),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+                ) {
+                    log::debug!(
+                        "Insufficient permissions to download from GCS {} (from {})",
+                        &key,
+                        &bucket,
+                    );
+                    Err(DownloadError::Permissions)
+                // If it's a client error, chances are either it's a 404 or it's permission-related.
+                } else if response.status().is_client_error() {
+                    log::debug!(
+                        "Unexpected client error status code from GCS {} (from {}): {}",
+                        &key,
+                        &bucket,
+                        response.status()
+                    );
+                    Ok(DownloadStatus::NotFound)
+                } else {
+                    log::debug!(
+                        "Unexpected status code from GCS {} (from {}): {}",
+                        &key,
+                        &bucket,
+                        response.status()
+                    );
+                    Err(DownloadError::Rejected(response.status()))
+                }
+            }
+            Ok(Err(e)) => {
+                log::debug!(
+                    "Skipping response from GCS {} (from {}): {}",
+                    &key,
+                    &bucket,
+                    &e
+                );
+                Err(DownloadError::Reqwest(e))
+            }
+            Err(_) => {
+                // Timeout
+                Err(DownloadError::Canceled)
+            }
+        }
+    }
+
     pub fn list_files(
         &self,
         source: Arc<GcsSourceConfig>,

@@ -129,7 +129,7 @@ pub struct SharedCache {
 }
 
 impl SharedCache {
-    pub fn gcs(config: SourceConfig, downloader: Arc<DownloadService>) -> Self {
+    pub fn new(config: SourceConfig, downloader: Arc<DownloadService>) -> Self {
         Self { config, downloader }
     }
 
@@ -151,8 +151,23 @@ impl SharedCache {
         self.downloader.download(remote_dif, local_path).await
     }
 
-    pub async fn store(&self, _shared_path: SourceLocation, _contents: &[u8]) -> Result<(), ()> {
-        Err(())
+    pub async fn store(
+        &self,
+        shared_path: SourceLocation,
+        contents: &[u8],
+    ) -> Result<DownloadStatus, DownloadError> {
+        match self.config {
+            SourceConfig::Filesystem(ref fs_config) => {
+                let destination =
+                    FilesystemRemoteDif::new(Arc::clone(fs_config), shared_path).into();
+                self.downloader.upload(destination, contents).await
+            }
+            SourceConfig::Gcs(ref gcs_config) => {
+                let destination = GcsRemoteDif::new(Arc::clone(gcs_config), shared_path).into();
+                self.downloader.upload(destination, contents).await
+            }
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -601,7 +616,6 @@ mod tests {
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
-            None,
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
@@ -661,7 +675,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -700,7 +713,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -751,7 +763,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         cache.cleanup()?;
@@ -798,7 +809,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -845,7 +855,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -1082,7 +1091,6 @@ mod tests {
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
-            None,
         )?;
 
         // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched

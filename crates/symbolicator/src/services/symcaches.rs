@@ -438,10 +438,11 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(config);
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
-        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
+        let objects =
+            ObjectsActor::new(caches.object_meta, caches.objects, None, downloader.clone());
+        let bitcode = BitcodeService::new(caches.auxdifs, None, downloader);
 
-        SymCacheActor::new(caches.symcaches, objects, bitcode, cpu_pool)
+        SymCacheActor::new(caches.symcaches, None, objects, bitcode, cpu_pool)
     }
 
     /// Tests that a symcache is regenerated when it was created without a BcSymbolMap

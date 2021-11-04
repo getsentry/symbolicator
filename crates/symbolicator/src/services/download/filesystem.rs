@@ -75,6 +75,20 @@ impl FilesystemDownloader {
         }
     }
 
+    pub async fn upload(
+        &self,
+        destination: FilesystemRemoteDif,
+        contents: &[u8],
+    ) -> Result<DownloadStatus, DownloadError> {
+        let abspath = destination.path();
+        if let Some(parent_dir) = abspath.parent() {
+            std::fs::create_dir_all(parent_dir).map_err(DownloadError::Io)?;
+        }
+        match std::fs::write(abspath, contents) {
+            Ok(()) => Ok(DownloadStatus::Completed),
+            Err(e) => Err(DownloadError::Io(e)),
+        }
+    }
     pub fn list_files(
         &self,
         source: Arc<FilesystemSourceConfig>,

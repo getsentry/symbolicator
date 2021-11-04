@@ -82,7 +82,7 @@ impl Service {
         let shared_cache = config
             .shared_cache
             .as_ref()
-            .map(|sc| SharedCache::gcs(sc.clone(), Arc::clone(&downloader)));
+            .map(|sc| SharedCache::new(sc.clone(), Arc::clone(&downloader)));
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
