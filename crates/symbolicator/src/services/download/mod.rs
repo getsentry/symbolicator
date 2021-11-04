@@ -18,7 +18,7 @@ use crate::cache::CacheStatus;
 use crate::utils::futures::{self as future_utils, m, measure};
 use crate::utils::paths::get_directory_paths;
 
-mod filesystem;
+pub(crate) mod filesystem;
 pub(crate) mod gcs;
 mod http;
 mod locations;

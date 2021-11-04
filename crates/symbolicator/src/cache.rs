@@ -14,6 +14,7 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
+use crate::services::download::filesystem::FilesystemRemoteDif;
 use crate::services::download::gcs::GcsRemoteDif;
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus, SourceLocation};
 use crate::sources::SourceConfig;
@@ -139,7 +140,10 @@ impl SharedCache {
     ) -> Result<DownloadStatus, DownloadError> {
         let remote_dif = match self.config {
             SourceConfig::Gcs(ref gcs_config) => {
-                GcsRemoteDif::new(gcs_config.clone(), shared_path).into()
+                GcsRemoteDif::new(Arc::clone(gcs_config), shared_path).into()
+            }
+            SourceConfig::Filesystem(ref fs_config) => {
+                FilesystemRemoteDif::new(Arc::clone(fs_config), shared_path).into()
             }
             _ => unimplemented!(),
         };
