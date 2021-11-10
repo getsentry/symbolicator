@@ -9,7 +9,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libssl-dev pkg-config \
+    && apt-get install -y --no-install-recommends libssl-dev pkg-config g++ \
     && rm -rf /var/lib/apt/lists/*
 # Build without --locked.
 #
