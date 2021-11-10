@@ -1,27 +1,16 @@
 FROM getsentry/sentry-cli:1 AS sentry-cli
-FROM debian:buster-slim AS symbolicator-build
+FROM rust:slim-bullseye AS symbolicator-build
 
 WORKDIR /work
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
-
-# We should really depend on the rust:slim-buster images again as this
-# will automatically upgrade our Rust toolchains when a new one is
-# released.  But while we can't: bump versions manually.
-ENV RUST_TOOLCHAIN=1.56.1
-
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $RUST_TOOLCHAIN
 
 # Build only dependencies to speed up subsequent builds
 COPY Cargo.toml Cargo.lock ./
 
 COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libssl-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 # Build without --locked.
 #
 # CI already builds with --locked so we are sure exactly which
@@ -53,7 +42,7 @@ RUN sentry-cli --version \
 # Copy the compiled binary to a clean image #
 #############################################
 
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates gosu cabextract \
     && rm -rf /var/lib/apt/lists/*
