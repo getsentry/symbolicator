@@ -22,6 +22,8 @@ use meta_cache::FetchFileMetaRequest;
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
 
+use super::shared_cache::SharedCacheService;
+
 mod data_cache;
 mod meta_cache;
 
@@ -171,10 +173,15 @@ pub struct ObjectsActor {
 }
 
 impl ObjectsActor {
-    pub fn new(meta_cache: Cache, data_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
+    pub fn new(
+        meta_cache: Cache,
+        data_cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
+        download_svc: Arc<DownloadService>,
+    ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache)),
-            data_cache: Arc::new(Cacher::new(data_cache)),
+            meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
+            data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc)),
             download_svc,
         }
     }

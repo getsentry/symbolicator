@@ -26,6 +26,8 @@ use crate::types::{
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
+use super::shared_cache::SharedCacheService;
+
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 
@@ -92,12 +94,13 @@ pub struct SymCacheActor {
 impl SymCacheActor {
     pub fn new(
         cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             bitcode_svc,
             threadpool,

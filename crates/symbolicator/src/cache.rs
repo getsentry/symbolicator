@@ -9,11 +9,16 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use filetime::FileTime;
+use serde::{Deserialize, Deserializer, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
+use crate::services::download::filesystem::FilesystemRemoteDif;
+use crate::services::download::gcs::GcsRemoteDif;
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus, SourceLocation};
+use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -117,6 +122,67 @@ impl CacheStatus {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilesystemSharedCacheConfig {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GcsSharedCacheConfig {
+    /// Name of the GCS bucket.
+    pub bucket: String,
+
+    /// A path from the root of the bucket where files are located.
+    #[serde(default)]
+    pub prefix: String,
+
+    /// Authorization information for this bucket. Needs read access.
+    #[serde(flatten)]
+    pub source_key: Arc<GcsSourceKey>,
+}
+
+/// A remote cache that can be shared between symbolicator instances.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SharedCacheConfig {
+    Gcs(GcsSharedCacheConfig),
+    Fs(FilesystemSharedCacheConfig),
+}
+
+pub async fn fetch(
+    &self,
+    shared_path: SourceLocation,
+    local_path: &Path,
+) -> Result<DownloadStatus, DownloadError> {
+    let remote_dif = match self.config {
+        SourceConfig::Gcs(ref gcs_config) => {
+            GcsRemoteDif::new(Arc::clone(gcs_config), shared_path).into()
+        }
+        SourceConfig::Filesystem(ref fs_config) => {
+            FilesystemRemoteDif::new(Arc::clone(fs_config), shared_path).into()
+        }
+        _ => unimplemented!(),
+    };
+
+    self.downloader.download(remote_dif, local_path).await
+}
+pub async fn store(
+    &self,
+    shared_path: SourceLocation,
+    contents: &[u8],
+) -> Result<DownloadStatus, DownloadError> {
+    match self.config {
+        SourceConfig::Filesystem(ref fs_config) => {
+            let destination = FilesystemRemoteDif::new(Arc::clone(fs_config), shared_path).into();
+            self.downloader.upload(destination, contents).await
+        }
+        SourceConfig::Gcs(ref gcs_config) => {
+            let destination = GcsRemoteDif::new(Arc::clone(gcs_config), shared_path).into();
+            self.downloader.upload(destination, contents).await
+        }
+        _ => unimplemented!(),
+    }
+}
+
 /// Utilities for a sym/cfi or object cache.
 #[derive(Debug, Clone)]
 pub struct Cache {
@@ -145,6 +211,9 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
+
+    /// A cache that may be shared between symbolicator instances.
+    shared_cache: Option<SharedCacheConfig>,
 }
 
 impl Cache {
@@ -320,6 +389,10 @@ impl Cache {
             }
             None => Ok(NamedTempFile::new()?),
         }
+    }
+
+    pub fn shared_cache(&self) -> Option<SharedCacheConfig> {
+        self.shared_cache
     }
 }
 

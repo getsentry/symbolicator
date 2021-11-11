@@ -20,7 +20,7 @@ use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+pub(crate) type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 
 /// Maximum number of cached GCS OAuth tokens.
 ///
@@ -30,7 +30,7 @@ type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 ///
 /// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
 /// metrics.
-const GCS_TOKEN_CACHE_SIZE: usize = 100;
+pub(crate) const GCS_TOKEN_CACHE_SIZE: usize = 100;
 
 /// The GCS-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -77,20 +77,20 @@ struct JwtClaims {
 }
 
 #[derive(Serialize)]
-struct OAuth2Grant {
+pub(crate) struct OAuth2Grant {
     grant_type: String,
     assertion: String,
 }
 
 #[derive(Deserialize)]
-struct GcsTokenResponse {
-    access_token: String,
+pub(crate) struct GcsTokenResponse {
+    pub(crate) access_token: String,
 }
 
 #[derive(Debug)]
-struct GcsToken {
-    access_token: String,
-    expires_at: DateTime<Utc>,
+pub(crate) struct GcsToken {
+    pub(crate) access_token: String,
+    pub(crate) expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Error)]
@@ -117,7 +117,7 @@ fn key_from_string(key: &str) -> Result<EncodingKey, jsonwebtoken::errors::Error
 }
 
 /// Computes a JWT authentication assertion for the given GCS bucket.
-fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
+pub(crate) fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
 
     let jwt_claims = JwtClaims {

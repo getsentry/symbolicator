@@ -14,7 +14,9 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, GcsSharedCacheConfig, SharedCacheConfig};
+use crate::services::download::{DownloadStatus, SourceLocation};
+use crate::services::shared_cache::SharedCacheService;
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
@@ -44,6 +46,9 @@ pub struct Cacher<T: CacheItemRequest> {
 
     /// Used for deduplicating cache lookups.
     current_computations: ComputationMap<T::Item, T::Error>,
+
+    /// A service used to communicate with the shared cache, if there is one.
+    shared_cache_service: Arc<SharedCacheService>,
 }
 
 impl<T: CacheItemRequest> Clone for Cacher<T> {
@@ -52,14 +57,16 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         Cacher {
             config: self.config.clone(),
             current_computations: self.current_computations.clone(),
+            shared_cache_service: Arc::clone(&self.shared_cache_service),
         }
     }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache) -> Self {
+    pub fn new(config: Cache, shared_cache_service: Arc<SharedCacheService>) -> Self {
         Cacher {
             config,
+            shared_cache_service,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -284,10 +291,53 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
-        let name = self.config.name();
+        let shared_cache = self.config.shared_cache().as_ref().map(|sc| {
+            let mut shared_path = String::from(name);
+            if T::VERSIONS.current != 0 {
+                write!(shared_path, "/{}", T::VERSIONS.current).unwrap();
+            }
+            shared_path.push('/');
+            shared_path.push_str(&safe_path_segment(key.scope.as_ref()));
+            shared_path.push('/');
+            shared_path.push_str(&safe_path_segment(&key.cache_key));
+            (sc, SourceLocation::new(shared_path))
+        });
+
         let temp_file = self.tempfile()?;
 
-        let status = request.compute(temp_file.path()).await?;
+        let mut shared_cache_hit = false;
+        if let Some((shared_cache, ref shared_path)) = shared_cache {
+            let local_path = temp_file.path();
+            match self
+                .shared_cache_service
+                .fetch(shared_cache, shared_path.clone(), local_path)
+                .await
+            {
+                Ok(DownloadStatus::Completed) => {
+                    shared_cache_hit = true;
+                    metric!(counter(&format!("shared_caches.{}.file.hit", name)) += 1);
+                }
+                Ok(DownloadStatus::NotFound) => {}
+                Err(e) => {
+                    log::error!("failed to fetch from shared cache: {}", e);
+                }
+            }
+        }
+
+        let (status, byte_view) = if shared_cache_hit {
+            let byte_view = ByteView::open(temp_file.path())?;
+            (CacheStatus::from_content(&byte_view), byte_view)
+        } else {
+            let status = request.compute(temp_file.path()).await?;
+            let byte_view = ByteView::open(temp_file.path())?;
+            (status, byte_view)
+        };
+
+        debug_assert!(
+            !(status == CacheStatus::Positive && byte_view.is_empty()),
+            "invalid cache status for {}",
+            name
+        );
 
         if let Some(ref cache_path) = cache_path {
             sentry::configure_scope(|scope| {
@@ -321,7 +371,29 @@ impl<T: CacheItemRequest> Cacher<T> {
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
 
-        Ok(request.load(key.scope.clone(), status, byteview, path))
+        if let Some((shared_cache, shared_path)) = shared_cache {
+            if !shared_cache_hit && status == CacheStatus::Positive {
+                let byte_view = byte_view.clone();
+                let shared_cache = shared_cache.clone();
+                // spawn saving into the shared cache as an async task, so we don't wait for
+                // any kind of upload to complete.
+                tokio::spawn(async move {
+                    match self
+                        .shared_cache_service
+                        .store(&shared_cache, shared_path, &byte_view)
+                        .await
+                    {
+                        Ok(_) => {
+                            metric!(counter(&format!("shared_caches.{}.file.write", name)) += 1)
+                        }
+
+                        Err(e) => log::error!("failed to store in shared cache: {}", e),
+                    }
+                });
+            }
+        }
+
+        Ok(request.load(key.scope.clone(), status, byte_view, path))
     }
 
     /// Creates a shareable channel that computes an item.
