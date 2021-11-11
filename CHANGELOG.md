@@ -10,6 +10,8 @@
 - Bump Native SDK to v0.5.0 ([#865](https://github.com/getsentry/symbolicator/pull/865))
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#050)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.4.17-2-gbd56100...0.5.0)
+- Use `rust:bullseye-slim` as base image for docker container builder. ([#578](https://github.com/getsentry/symbolicator/pull/578))
+- Use `debian:bullseye-slim` as base image for docker container runner. ([#578](https://github.com/getsentry/symbolicator/pull/578))
 
 ### Fixes
 
