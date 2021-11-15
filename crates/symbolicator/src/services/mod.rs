@@ -50,6 +50,7 @@ use self::bitcode::BitcodeService;
 use self::cficaches::CfiCacheActor;
 use self::download::DownloadService;
 use self::objects::ObjectsActor;
+use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 
@@ -76,6 +77,7 @@ impl Service {
             .context("failed to create process pool")?;
 
         let downloader = DownloadService::new(config.clone());
+        let shared_cache = SharedCacheService::new(config.shared_cache.clone());
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)

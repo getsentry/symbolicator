@@ -468,6 +468,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
+                    config.shared_cache.clone(),
                 )?
             },
             object_meta: {
@@ -478,6 +479,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    config.shared_cache.clone(),
                 )?
             },
             auxdifs: {
@@ -488,6 +490,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads,
+                    config.shared_cache.clone(),
                 )?
             },
             symcaches: {
@@ -498,6 +501,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    config.shared_cache.clone(),
                 )?
             },
             cficaches: {
@@ -508,6 +512,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations,
+                    config.shared_cache.clone(),
                 )?
             },
             diagnostics: {
@@ -518,6 +523,7 @@ impl Caches {
                     tmp_dir,
                     config.caches.diagnostics.into(),
                     Default::default(),
+                    config.shared_cache.clone(),
                 )?
             },
         })
