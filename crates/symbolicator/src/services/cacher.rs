@@ -335,30 +335,26 @@ impl<T: CacheItemRequest> Cacher<T> {
             (status, byte_view)
         };
 
-        if let Some(ref cache_path) = cache_path {
-            sentry::configure_scope(|scope| {
-                scope.set_extra(
-                    &format!("cache.{}.cache_path", self.config.name()),
-                    cache_path.to_string_lossy().into(),
-                );
-            });
-
-            log::trace!("Creating {} at path {:?}", self.config.name(), cache_path);
-        }
-
-        metric!(
-            counter(&format!("caches.{}.file.write", self.config.name())) += 1,
-            "status" => status.as_ref(),
-            "is_refresh" => &is_refresh.to_string(),
-        );
-        metric!(
-            time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
-            "hit" => "false",
-            "is_refresh" => &is_refresh.to_string(),
-        );
-
         let path = match cache_path {
             Some(ref cache_path) => {
+                metric!(
+                    counter(&format!("caches.{}.file.write", self.config.name())) += 1,
+                    "status" => status.as_ref(),
+                    "is_refresh" => &is_refresh.to_string(),
+                );
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                    "hit" => "false",
+                    "is_refresh" => &is_refresh.to_string(),
+                );
+                sentry::configure_scope(|scope| {
+                    scope.set_extra(
+                        &format!("cache.{}.cache_path", self.config.name()),
+                        cache_path.to_string_lossy().into(),
+                    );
+                });
+                log::trace!("Creating {} at path {:?}", self.config.name(), cache_path);
+
                 status.persist_item(cache_path, temp_file)?;
                 CachePath::Cached(cache_path.to_path_buf())
             }
