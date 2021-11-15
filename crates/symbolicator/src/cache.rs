@@ -9,15 +9,13 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use filetime::FileTime;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::services::download::filesystem::FilesystemRemoteDif;
-use crate::services::download::gcs::GcsRemoteDif;
-use crate::services::download::{DownloadError, DownloadService, DownloadStatus, SourceLocation};
+use crate::services::shared_cache;
 use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
@@ -133,8 +131,10 @@ pub struct GcsSharedCacheConfig {
     pub bucket: String,
 
     /// A path from the root of the bucket where files are located.
+    ///
+    /// If not present the root of the bucket will be used directly.
     #[serde(default)]
-    pub prefix: String,
+    pub prefix: Option<String>,
 
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
@@ -148,42 +148,11 @@ pub enum SharedCacheConfig {
     Fs(FilesystemSharedCacheConfig),
 }
 
-pub async fn fetch(
-    &self,
-    shared_path: SourceLocation,
-    local_path: &Path,
-) -> Result<DownloadStatus, DownloadError> {
-    let remote_dif = match self.config {
-        SourceConfig::Gcs(ref gcs_config) => {
-            GcsRemoteDif::new(Arc::clone(gcs_config), shared_path).into()
-        }
-        SourceConfig::Filesystem(ref fs_config) => {
-            FilesystemRemoteDif::new(Arc::clone(fs_config), shared_path).into()
-        }
-        _ => unimplemented!(),
-    };
-
-    self.downloader.download(remote_dif, local_path).await
-}
-pub async fn store(
-    &self,
-    shared_path: SourceLocation,
-    contents: &[u8],
-) -> Result<DownloadStatus, DownloadError> {
-    match self.config {
-        SourceConfig::Filesystem(ref fs_config) => {
-            let destination = FilesystemRemoteDif::new(Arc::clone(fs_config), shared_path).into();
-            self.downloader.upload(destination, contents).await
-        }
-        SourceConfig::Gcs(ref gcs_config) => {
-            let destination = GcsRemoteDif::new(Arc::clone(gcs_config), shared_path).into();
-            self.downloader.upload(destination, contents).await
-        }
-        _ => unimplemented!(),
-    }
-}
-
-/// Utilities for a sym/cfi or object cache.
+/// Common cache configuration.
+///
+/// Many parts of symbolicator use a cache to save having to re-download data or reprocess
+/// downloaded data.  All caches behave similarly and their behaviour is determined by this
+/// struct.
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// Cache identifier used for metric names.
@@ -213,6 +182,10 @@ pub struct Cache {
     max_lazy_refreshes: Arc<AtomicIsize>,
 
     /// A cache that may be shared between symbolicator instances.
+    ///
+    /// If it is present any missing cache item will first be looked up here before being
+    /// computed.  If it is still missing it will be computed and then uploaded to the
+    /// shared cache.
     shared_cache: Option<SharedCacheConfig>,
 }
 
@@ -223,6 +196,7 @@ impl Cache {
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
+        shared_cache: Option<SharedCacheConfig>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -234,6 +208,7 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
+            shared_cache,
         })
     }
 

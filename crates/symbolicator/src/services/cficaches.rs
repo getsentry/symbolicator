@@ -80,7 +80,7 @@ pub struct CfiCacheActor {
 impl CfiCacheActor {
     pub fn new(
         cache: Cache,
-        shared_cache_svc: SharedCacheService,
+        shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
         threadpool: tokio::runtime::Handle,
     ) -> Self {

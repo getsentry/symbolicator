@@ -14,8 +14,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::cache::{Cache, CacheStatus, GcsSharedCacheConfig, SharedCacheConfig};
-use crate::services::download::{DownloadStatus, SourceLocation};
+use crate::cache::{Cache, CacheStatus};
 use crate::services::shared_cache::SharedCacheService;
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
@@ -197,20 +196,34 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
+    /// Constructs the relative subpath to use inside a cache directory.
+    ///
+    /// See [`Cacher::get_cache_path`] or [`Cacher::get_shared_cache`] for what you want to
+    /// use instead.
+    fn get_cache_subpath(&self, key: &CacheKey, version: u32) -> PathBuf {
+        let mut path = PathBuf::new();
+        if version != 0 {
+            path.push(version.to_string());
+        }
+        path.push(safe_path_segment(key.scope.as_ref()));
+        path.push(safe_path_segment(&key.cache_key));
+        path
+    }
+
     /// Constructs the path corresponding to the given [`CacheKey`].
     ///
     /// Returns [`None`] if caching is disabled.
     fn get_cache_path(&self, key: &CacheKey, version: u32) -> Option<PathBuf> {
         let mut cache_dir = self.config.cache_dir()?.to_path_buf();
-
-        if version != 0 {
-            cache_dir.push(version.to_string());
-        }
-
-        cache_dir.push(safe_path_segment(key.scope.as_ref()));
-        cache_dir.push(safe_path_segment(&key.cache_key));
-
+        cache_dir.push(self.get_cache_subpath(key, version));
         Some(cache_dir)
+    }
+
+    /// Constructs the relative path to use inside the [`SharedCacheConfig`].
+    fn get_shared_cache_path(&self, key: &CacheKey, version: u32) -> PathBuf {
+        let mut path = PathBuf::from(self.config.name());
+        path.push(self.get_cache_subpath(key, version));
+        path
     }
 
     /// Look up an item in the file system cache and load it if available.
@@ -222,7 +235,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// # Errors
     ///
     /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
-    fn lookup_cache(
+    fn lookup_local_cache(
         &self,
         request: &T,
         key: &CacheKey,
@@ -286,43 +299,32 @@ impl<T: CacheItemRequest> Cacher<T> {
         // computed. To avoid duplicated work in that case, we will check the cache here again.
         let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
         if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+            if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(item);
             }
         }
 
-        let shared_cache = self.config.shared_cache().as_ref().map(|sc| {
-            let mut shared_path = String::from(name);
-            if T::VERSIONS.current != 0 {
-                write!(shared_path, "/{}", T::VERSIONS.current).unwrap();
-            }
-            shared_path.push('/');
-            shared_path.push_str(&safe_path_segment(key.scope.as_ref()));
-            shared_path.push('/');
-            shared_path.push_str(&safe_path_segment(&key.cache_key));
-            (sc, SourceLocation::new(shared_path))
-        });
-
         let temp_file = self.tempfile()?;
 
-        let mut shared_cache_hit = false;
-        if let Some((shared_cache, ref shared_path)) = shared_cache {
-            let local_path = temp_file.path();
+        let shared_cache_path = self.get_shared_cache_path(&key, T::VERSIONS.current);
+        let shared_cache_hit = if let Some(ref shared_cache) = self.config.shared_cache() {
             match self
                 .shared_cache_service
-                .fetch(shared_cache, shared_path.clone(), local_path)
+                .fetch(&shared_cache_path, temp_file.path())
                 .await
             {
-                Ok(DownloadStatus::Completed) => {
-                    shared_cache_hit = true;
-                    metric!(counter(&format!("shared_caches.{}.file.hit", name)) += 1);
+                Some(_) => {
+                    metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "true");
+                    true
                 }
-                Ok(DownloadStatus::NotFound) => {}
-                Err(e) => {
-                    log::error!("failed to fetch from shared cache: {}", e);
+                None => {
+                    metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "false");
+                    false
                 }
             }
-        }
+        } else {
+            false
+        };
 
         let (status, byte_view) = if shared_cache_hit {
             let byte_view = ByteView::open(temp_file.path())?;
@@ -333,32 +335,24 @@ impl<T: CacheItemRequest> Cacher<T> {
             (status, byte_view)
         };
 
-        debug_assert!(
-            !(status == CacheStatus::Positive && byte_view.is_empty()),
-            "invalid cache status for {}",
-            name
-        );
-
         if let Some(ref cache_path) = cache_path {
             sentry::configure_scope(|scope| {
                 scope.set_extra(
-                    &format!("cache.{}.cache_path", name),
+                    &format!("cache.{}.cache_path", self.config.name()),
                     cache_path.to_string_lossy().into(),
                 );
             });
 
-            log::trace!("Creating {} at path {:?}", name, cache_path);
+            log::trace!("Creating {} at path {:?}", self.config.name(), cache_path);
         }
 
-        let byteview = ByteView::open(temp_file.path())?;
-
         metric!(
-            counter(&format!("caches.{}.file.write", name)) += 1,
+            counter(&format!("caches.{}.file.write", self.config.name())) += 1,
             "status" => status.as_ref(),
             "is_refresh" => &is_refresh.to_string(),
         );
         metric!(
-            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+            time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
             "hit" => "false",
             "is_refresh" => &is_refresh.to_string(),
         );
@@ -371,25 +365,19 @@ impl<T: CacheItemRequest> Cacher<T> {
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
 
-        if let Some((shared_cache, shared_path)) = shared_cache {
+        if let Some(ref shared_cache) = self.config.shared_cache() {
+            // TODO: Not handling negative caches probably has a huge perf impact.  Need to
+            // figure out negative caches.  Maybe also put them in the GCS bucket but make
+            // them expire?
             if !shared_cache_hit && status == CacheStatus::Positive {
-                let byte_view = byte_view.clone();
-                let shared_cache = shared_cache.clone();
-                // spawn saving into the shared cache as an async task, so we don't wait for
-                // any kind of upload to complete.
-                tokio::spawn(async move {
-                    match self
-                        .shared_cache_service
-                        .store(&shared_cache, shared_path, &byte_view)
-                        .await
-                    {
-                        Ok(_) => {
-                            metric!(counter(&format!("shared_caches.{}.file.write", name)) += 1)
-                        }
-
-                        Err(e) => log::error!("failed to store in shared cache: {}", e),
-                    }
-                });
+                self.shared_cache_service
+                    .store(&shared_cache_path, byte_view.clone())
+                    .await;
+                // TODO: maybe push the metrics to the SharedCacheService?  It would need to
+                // know the cache for which this is being stored though.  Maybe that could
+                // be done by changing the Path arg into a SharedCacheKey which has the
+                // CacheKey, name and version.
+                metric!(counter(&format!("shared_caches.{}.file.write", self.config.name())) += 1);
             }
         }
 
@@ -518,7 +506,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // cache_path is None when caching is disabled.
         let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
         if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+            if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(Arc::new(item));
             }
 
@@ -527,7 +515,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 self.get_cache_path(&key, *version)
                     .map(|path| (*version, path))
             }) {
-                if let Ok(Some(item)) = self.lookup_cache(&request, &key, &fallback_path) {
+                if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, &fallback_path) {
                     // we have found an outdated cache that we will use right away,
                     // and we will kick off a recomputation for the `current` cache version
                     // in a deduplicated background task, which we will not await
