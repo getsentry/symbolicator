@@ -77,16 +77,31 @@ impl Service {
             .context("failed to create process pool")?;
 
         let downloader = DownloadService::new(config.clone());
-        let shared_cache = SharedCacheService::new(config.shared_cache.clone());
+        let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()));
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)
             .context("failed to clear tmp caches")?;
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
-        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
-        let symcaches =
-            SymCacheActor::new(caches.symcaches, objects.clone(), bitcode, cpu_pool.clone());
-        let cficaches = CfiCacheActor::new(caches.cficaches, objects.clone(), cpu_pool.clone());
+        let objects = ObjectsActor::new(
+            caches.object_meta,
+            caches.objects,
+            shared_cache.clone(),
+            downloader.clone(),
+        );
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader);
+        let symcaches = SymCacheActor::new(
+            caches.symcaches,
+            shared_cache.clone(),
+            objects.clone(),
+            bitcode,
+            cpu_pool.clone(),
+        );
+        let cficaches = CfiCacheActor::new(
+            caches.cficaches,
+            shared_cache,
+            objects.clone(),
+            cpu_pool.clone(),
+        );
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),

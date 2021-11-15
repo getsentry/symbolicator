@@ -15,7 +15,6 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::services::shared_cache;
 use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
@@ -364,10 +363,6 @@ impl Cache {
             }
             None => Ok(NamedTempFile::new()?),
         }
-    }
-
-    pub fn shared_cache(&self) -> Option<SharedCacheConfig> {
-        self.shared_cache
     }
 }
 

@@ -307,23 +307,19 @@ impl<T: CacheItemRequest> Cacher<T> {
         let temp_file = self.tempfile()?;
 
         let shared_cache_path = self.get_shared_cache_path(&key, T::VERSIONS.current);
-        let shared_cache_hit = if let Some(ref shared_cache) = self.config.shared_cache() {
-            match self
-                .shared_cache_service
-                .fetch(&shared_cache_path, temp_file.path())
-                .await
-            {
-                Some(_) => {
-                    metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "true");
-                    true
-                }
-                None => {
-                    metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "false");
-                    false
-                }
+        let shared_cache_hit = match self
+            .shared_cache_service
+            .fetch(&shared_cache_path, temp_file.path())
+            .await
+        {
+            Some(_) => {
+                metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "true");
+                true
             }
-        } else {
-            false
+            None => {
+                metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "false");
+                false
+            }
         };
 
         let (status, byte_view) = if shared_cache_hit {
@@ -361,20 +357,18 @@ impl<T: CacheItemRequest> Cacher<T> {
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
 
-        if let Some(ref shared_cache) = self.config.shared_cache() {
-            // TODO: Not handling negative caches probably has a huge perf impact.  Need to
-            // figure out negative caches.  Maybe also put them in the GCS bucket but make
-            // them expire?
-            if !shared_cache_hit && status == CacheStatus::Positive {
-                self.shared_cache_service
-                    .store(&shared_cache_path, byte_view.clone())
-                    .await;
-                // TODO: maybe push the metrics to the SharedCacheService?  It would need to
-                // know the cache for which this is being stored though.  Maybe that could
-                // be done by changing the Path arg into a SharedCacheKey which has the
-                // CacheKey, name and version.
-                metric!(counter(&format!("shared_caches.{}.file.write", self.config.name())) += 1);
-            }
+        // TODO: Not handling negative caches probably has a huge perf impact.  Need to
+        // figure out negative caches.  Maybe also put them in the GCS bucket but make
+        // them expire?
+        if !shared_cache_hit && status == CacheStatus::Positive {
+            self.shared_cache_service
+                .store(&shared_cache_path, byte_view.clone())
+                .await;
+            // TODO: maybe push the metrics to the SharedCacheService?  It would need to
+            // know the cache for which this is being stored though.  Maybe that could
+            // be done by changing the Path arg into a SharedCacheKey which has the
+            // CacheKey, name and version.
+            metric!(counter(&format!("shared_caches.{}.file.write", self.config.name())) += 1);
         }
 
         Ok(request.load(key.scope.clone(), status, byte_view, path))

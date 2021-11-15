@@ -273,13 +273,13 @@ impl GcsSharedCacheConfig {
 }
 
 #[derive(Debug)]
-pub(crate) struct SharedCacheService {
-    config: SharedCacheConfig,
+pub struct SharedCacheService {
+    config: Option<SharedCacheConfig>,
     gcs: GcsState,
 }
 
 impl SharedCacheService {
-    pub fn new(config: SharedCacheConfig) -> Self {
+    pub fn new(config: Option<SharedCacheConfig>) -> Self {
         // Yes, it is wasteful to create a GcsState when the config does not use GCS.
         // However currently we only have Filesystem as alternative and that is only used
         // for testing purposes.
@@ -297,22 +297,20 @@ impl SharedCacheService {
     /// Errors are transparently hidden, either a cache item is available or it is not.
     pub async fn fetch(&self, cache_path: &Path, destination: &Path) -> Option<()> {
         match self.config {
-            SharedCacheConfig::Gcs(_) => todo!(),
-            SharedCacheConfig::Fs(ref cfg) => match cfg.fetch(cache_path, destination).await {
-                Ok(_) => Some(()),
-                Err(err) => {
-                    let cache_type = match self.config {
-                        SharedCacheConfig::Gcs(_) => "GCS",
-                        SharedCacheConfig::Fs(_) => "filesystem",
-                    };
-                    log::error!(
-                        "Error fetching from {} shared cache: {}",
-                        cache_type,
-                        LogError(&err)
-                    );
-                    None
+            Some(SharedCacheConfig::Gcs(_)) => todo!(),
+            Some(SharedCacheConfig::Fs(ref cfg)) => {
+                match cfg.fetch(cache_path, destination).await {
+                    Ok(_) => Some(()),
+                    Err(err) => {
+                        log::error!(
+                            "Error fetching from filesystem shared cache: {}",
+                            LogError(&err)
+                        );
+                        None
+                    }
                 }
-            },
+            }
+            None => None,
         }
     }
 
@@ -330,22 +328,23 @@ impl SharedCacheService {
         // TODO: spawn or enqueue here, don't want to be blocking the caller's progress.
 
         match &self.config {
-            SharedCacheConfig::Gcs(_) => todo!(),
-            SharedCacheConfig::Fs(cfg) => match cfg.store(cache_path, &contents).await {
+            Some(SharedCacheConfig::Gcs(cfg)) => match cfg.store(cache_path, &contents).await {
                 Ok(_) => {}
                 Err(err) => {
-                    let cache_type = match self.config {
-                        SharedCacheConfig::Gcs(_) => "GCS",
-                        SharedCacheConfig::Fs(_) => "filesystem",
-                    };
+                    log::error!("Error storing on GCS shared cache: {}", LogError(&err));
+                }
+            },
+            Some(SharedCacheConfig::Fs(cfg)) => match cfg.store(cache_path, &contents).await {
+                Ok(_) => {}
+                Err(err) => {
                     log::error!(
-                        "Error storing on {} shared cache: {}",
-                        cache_type,
+                        "Error storing on filesystem shared cache: {}",
                         LogError(&err)
                     );
                 }
             },
-        }
+            None => (),
+        };
     }
 }
 
