@@ -46,7 +46,7 @@ pub struct Cacher<T: CacheItemRequest> {
     /// Used for deduplicating cache lookups.
     current_computations: ComputationMap<T::Item, T::Error>,
 
-    /// A service used to communicate with the shared cache, if there is one.
+    /// A service used to communicate with the shared cache.
     shared_cache_service: Arc<SharedCacheService>,
 }
 
@@ -221,7 +221,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
     /// Constructs the relative path to use inside the [`SharedCacheConfig`].
     fn get_shared_cache_path(&self, key: &CacheKey, version: u32) -> PathBuf {
-        let mut path = PathBuf::from(self.config.name());
+        let mut path = PathBuf::from(self.config.name().to_string());
         path.push(self.get_cache_subpath(key, version));
         path
     }

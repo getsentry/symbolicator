@@ -1,5 +1,6 @@
 //! Core logic for cache files. Used by `crate::services::common::cache`.
 
+use core::fmt;
 use std::fs::{self, read_dir, remove_file, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -141,6 +142,30 @@ pub enum SharedCacheConfig {
     Fs(FilesystemSharedCacheConfig),
 }
 
+/// All known cache names.
+#[derive(Debug, Clone, Copy)]
+pub enum CacheName {
+    Objects,
+    ObjectMeta,
+    Auxdifs,
+    Symcaches,
+    Cficaches,
+    Diagnostics,
+}
+
+impl fmt::Display for CacheName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Objects => write!(f, "objects"),
+            Self::ObjectMeta => write!(f, "object_meta"),
+            Self::Auxdifs => write!(f, "auxdifs"),
+            Self::Symcaches => write!(f, "symcaches"),
+            Self::Cficaches => write!(f, "cficaches"),
+            Self::Diagnostics => write!(f, "diagnostics"),
+        }
+    }
+}
+
 /// Common cache configuration.
 ///
 /// Many parts of symbolicator use a cache to save having to re-download data or reprocess
@@ -149,7 +174,7 @@ pub enum SharedCacheConfig {
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// Cache identifier used for metric names.
-    name: &'static str,
+    name: CacheName,
 
     /// Directory to use for storing cache items. Will be created if it does not exist.
     ///
@@ -184,7 +209,7 @@ pub struct Cache {
 
 impl Cache {
     pub fn from_config(
-        name: &'static str,
+        name: CacheName,
         cache_dir: Option<PathBuf>,
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
@@ -205,7 +230,7 @@ impl Cache {
         })
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> CacheName {
         self.name
     }
 
@@ -452,7 +477,7 @@ impl Caches {
             objects: {
                 let path = config.cache_dir("objects");
                 Cache::from_config(
-                    "objects",
+                    CacheName::Objects,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
@@ -463,7 +488,7 @@ impl Caches {
             object_meta: {
                 let path = config.cache_dir("object_meta");
                 Cache::from_config(
-                    "object_meta",
+                    CacheName::ObjectMeta,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
@@ -474,7 +499,7 @@ impl Caches {
             auxdifs: {
                 let path = config.cache_dir("auxdifs");
                 Cache::from_config(
-                    "auxdifs",
+                    CacheName::Auxdifs,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
@@ -485,7 +510,7 @@ impl Caches {
             symcaches: {
                 let path = config.cache_dir("symcaches");
                 Cache::from_config(
-                    "symcaches",
+                    CacheName::Symcaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
@@ -496,7 +521,7 @@ impl Caches {
             cficaches: {
                 let path = config.cache_dir("cficaches");
                 Cache::from_config(
-                    "cficaches",
+                    CacheName::Cficaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
@@ -507,7 +532,7 @@ impl Caches {
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
                 Cache::from_config(
-                    "diagnostics",
+                    CacheName::Diagnostics,
                     path,
                     tmp_dir,
                     config.caches.diagnostics.into(),

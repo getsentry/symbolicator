@@ -272,6 +272,10 @@ impl GcsSharedCacheConfig {
     }
 }
 
+/// A shared cache service.\
+///
+/// For simplicity in the rest of the application this service always exists, regardless of
+/// whether it is configured or not.  If it is not configured this becomes a no-op.
 #[derive(Debug)]
 pub struct SharedCacheService {
     config: Option<SharedCacheConfig>,
