@@ -306,7 +306,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
         let shared_cache_hit = match self
             .shared_cache_service
-            .fetch(&shared_cache_key, temp_file.path())
+            .fetch(&shared_cache_key, temp_file.as_file())
             .await
         {
             Some(_) => true,

@@ -247,10 +247,15 @@ impl GcsState {
 }
 
 impl FilesystemSharedCacheConfig {
-    async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> std::io::Result<()> {
+    async fn fetch(
+        &self,
+        key: &SharedCacheKey,
+        mut writer: impl std::io::Write,
+    ) -> std::io::Result<()> {
         let abspath = self.path.join(key.relative_path());
-        log::debug!("Fetching debug file from {:?}", abspath);
-        fs::copy(abspath, destination).await?;
+        log::debug!("Fetching debug file from {}", abspath.display());
+        let mut file = std::fs::File::open(abspath)?;
+        std::io::copy(&mut file, &mut writer)?;
         Ok(())
     }
 
@@ -265,7 +270,11 @@ impl FilesystemSharedCacheConfig {
 }
 
 impl GcsSharedCacheConfig {
-    async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> std::io::Result<()> {
+    async fn fetch(
+        &self,
+        key: &SharedCacheKey,
+        mut writer: impl std::io::Write,
+    ) -> std::io::Result<()> {
         todo!()
     }
 
@@ -322,10 +331,10 @@ impl SharedCacheService {
     /// write the file locally.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
-    pub async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> Option<()> {
+    pub async fn fetch(&self, key: &SharedCacheKey, writer: impl std::io::Write) -> Option<()> {
         let ret = match self.config {
             Some(SharedCacheConfig::Gcs(_)) => todo!(),
-            Some(SharedCacheConfig::Fs(ref cfg)) => match cfg.fetch(key, destination).await {
+            Some(SharedCacheConfig::Fs(ref cfg)) => match cfg.fetch(key, writer).await {
                 Ok(_) => Some(()),
                 Err(err) => {
                     log::error!(
