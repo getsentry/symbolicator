@@ -323,7 +323,7 @@ impl SharedCacheService {
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
     pub async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> Option<()> {
-        match self.config {
+        let ret = match self.config {
             Some(SharedCacheConfig::Gcs(_)) => todo!(),
             Some(SharedCacheConfig::Fs(ref cfg)) => match cfg.fetch(key, destination).await {
                 Ok(_) => Some(()),
@@ -336,7 +336,13 @@ impl SharedCacheService {
                 }
             },
             None => None,
-        }
+        };
+        let hit = match ret {
+            Some(_) => "true",
+            None => "false",
+        };
+        metric!(counter(&format!("services.shared_cache.{}", key.name)) += 1, "hit" => hit);
+        ret
     }
 
     /// Place a file on the shared cache, if it does not yet exist there.
@@ -352,23 +358,28 @@ impl SharedCacheService {
 
         // TODO: spawn or enqueue here, don't want to be blocking the caller's progress.
 
-        match &self.config {
-            Some(SharedCacheConfig::Gcs(cfg)) => match cfg.store(key, &contents).await {
-                Ok(_) => {}
-                Err(err) => {
-                    log::error!("Error storing on GCS shared cache: {}", LogError(&err));
-                }
-            },
-            Some(SharedCacheConfig::Fs(cfg)) => match cfg.store(key, &contents).await {
-                Ok(_) => {}
-                Err(err) => {
-                    log::error!(
-                        "Error storing on filesystem shared cache: {}",
-                        LogError(&err)
-                    );
-                }
-            },
-            None => (),
+        let backend_name = match self.config {
+            Some(SharedCacheConfig::Fs(_)) => "filesystem",
+            Some(SharedCacheConfig::Gcs(_)) => "gcs",
+            None => "<not-configured>",
+        };
+        let cache_name = key.name.clone();
+        let res = match &self.config {
+            Some(SharedCacheConfig::Gcs(cfg)) => cfg.store(key, &contents).await,
+            Some(SharedCacheConfig::Fs(cfg)) => cfg.store(key, &contents).await,
+            None => Ok(()),
+        };
+        match res {
+            Ok(_) => {
+                metric!(counter(&format!("shared_caches.{}.file.write", cache_name)) += 1);
+            }
+            Err(err) => {
+                log::error!(
+                    "Error storing on {} shared cache: {}",
+                    backend_name,
+                    LogError(&err),
+                );
+            }
         };
     }
 }

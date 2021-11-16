@@ -309,14 +309,8 @@ impl<T: CacheItemRequest> Cacher<T> {
             .fetch(&shared_cache_key, temp_file.path())
             .await
         {
-            Some(_) => {
-                metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "true");
-                true
-            }
-            None => {
-                metric!(counter(&format!("shared_cache.{}", self.config.name())) += 1, "hit" => "false");
-                false
-            }
+            Some(_) => true,
+            None => false,
         };
 
         let (status, byte_view) = if shared_cache_hit {
@@ -361,11 +355,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             self.shared_cache_service
                 .store(shared_cache_key, byte_view.clone())
                 .await;
-            // TODO: maybe push the metrics to the SharedCacheService?  It would need to
-            // know the cache for which this is being stored though.  Maybe that could
-            // be done by changing the Path arg into a SharedCacheKey which has the
-            // CacheKey, name and version.
-            metric!(counter(&format!("shared_caches.{}.file.write", self.config.name())) += 1);
         }
 
         Ok(request.load(scope, status, byte_view, path))
