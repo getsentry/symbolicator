@@ -129,12 +129,6 @@ pub struct GcsSharedCacheConfig {
     /// Name of the GCS bucket.
     pub bucket: String,
 
-    /// A path from the root of the bucket where files are located.
-    ///
-    /// If not present the root of the bucket will be used directly.
-    #[serde(default)]
-    pub prefix: Option<String>,
-
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
     pub source_key: Arc<GcsSourceKey>,
