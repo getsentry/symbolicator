@@ -1,5 +1,5 @@
 // use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 // use std::sync::Arc;
 
 // use chrono::{Duration, Utc};
@@ -9,7 +9,9 @@ use symbolic::common::ByteView;
 use tokio::fs;
 // use url::Url;
 
-use crate::cache::{FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheConfig};
+use crate::cache::{
+    CacheName, FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheConfig,
+};
 use crate::logging::LogError;
 // use crate::services::download::gcs::{
 //     get_auth_jwt, GcsError, GcsToken, GcsTokenCache, GcsTokenResponse, OAuth2Grant,
@@ -245,15 +247,15 @@ impl GcsState {
 }
 
 impl FilesystemSharedCacheConfig {
-    async fn fetch(&self, cache_path: &Path, destination: &Path) -> std::io::Result<()> {
-        let abspath = self.path.join(cache_path);
+    async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> std::io::Result<()> {
+        let abspath = self.path.join(key.relative_path());
         log::debug!("Fetching debug file from {:?}", abspath);
         fs::copy(abspath, destination).await?;
         Ok(())
     }
 
-    async fn store(&self, cache_path: &Path, contents: &[u8]) -> std::io::Result<()> {
-        let abspath = self.path.join(cache_path);
+    async fn store(&self, key: SharedCacheKey, contents: &[u8]) -> std::io::Result<()> {
+        let abspath = self.path.join(key.relative_path());
         if let Some(parent_dir) = abspath.parent() {
             fs::create_dir_all(parent_dir).await?;
         }
@@ -263,12 +265,33 @@ impl FilesystemSharedCacheConfig {
 }
 
 impl GcsSharedCacheConfig {
-    async fn fetch(&self, cache_path: &Path, destination: &Path) -> std::io::Result<()> {
+    async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> std::io::Result<()> {
         todo!()
     }
 
-    async fn store(&self, cache_path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    async fn store(&self, key: SharedCacheKey, contents: &[u8]) -> std::io::Result<()> {
         todo!()
+    }
+}
+
+/// Key for a shared cache item.
+pub struct SharedCacheKey {
+    /// The name of the cache.
+    pub name: CacheName,
+    /// The cache version.
+    pub version: u32,
+    /// The local cache key.
+    pub local_key: CacheKey,
+}
+
+impl SharedCacheKey {
+    fn relative_path(&self) -> PathBuf {
+        // Note that this always pushes the version into the path, this is fine since we do
+        // not need any backwards compatibility with existing caches for the shared cache.
+        let mut path = PathBuf::new();
+        path.push(self.version.to_string());
+        path.push(self.local_key.relative_path());
+        path
     }
 }
 
@@ -299,21 +322,19 @@ impl SharedCacheService {
     /// write the file locally.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
-    pub async fn fetch(&self, cache_path: &Path, destination: &Path) -> Option<()> {
+    pub async fn fetch(&self, key: &SharedCacheKey, destination: &Path) -> Option<()> {
         match self.config {
             Some(SharedCacheConfig::Gcs(_)) => todo!(),
-            Some(SharedCacheConfig::Fs(ref cfg)) => {
-                match cfg.fetch(cache_path, destination).await {
-                    Ok(_) => Some(()),
-                    Err(err) => {
-                        log::error!(
-                            "Error fetching from filesystem shared cache: {}",
-                            LogError(&err)
-                        );
-                        None
-                    }
+            Some(SharedCacheConfig::Fs(ref cfg)) => match cfg.fetch(key, destination).await {
+                Ok(_) => Some(()),
+                Err(err) => {
+                    log::error!(
+                        "Error fetching from filesystem shared cache: {}",
+                        LogError(&err)
+                    );
+                    None
                 }
-            }
+            },
             None => None,
         }
     }
@@ -325,20 +346,20 @@ impl SharedCacheService {
     /// Errors are transparently hidden, this service handles any errors itself.
     // TODO: Can this be made sync?  That would make it clearer it spawns.  But maybe that
     // doesn't matter.
-    pub async fn store(&self, cache_path: &Path, contents: ByteView<'_>) {
+    pub async fn store(&self, key: SharedCacheKey, contents: ByteView<'_>) {
         // TODO: concurrency control, handle overload (aka backpressure, but we're not
         // pressing back at all here since we have no return value).
 
         // TODO: spawn or enqueue here, don't want to be blocking the caller's progress.
 
         match &self.config {
-            Some(SharedCacheConfig::Gcs(cfg)) => match cfg.store(cache_path, &contents).await {
+            Some(SharedCacheConfig::Gcs(cfg)) => match cfg.store(key, &contents).await {
                 Ok(_) => {}
                 Err(err) => {
                     log::error!("Error storing on GCS shared cache: {}", LogError(&err));
                 }
             },
-            Some(SharedCacheConfig::Fs(cfg)) => match cfg.store(cache_path, &contents).await {
+            Some(SharedCacheConfig::Fs(cfg)) => match cfg.store(key, &contents).await {
                 Ok(_) => {}
                 Err(err) => {
                     log::error!(
@@ -350,12 +371,4 @@ impl SharedCacheService {
             None => (),
         };
     }
-}
-
-// TODO: we could consider this struct for the `cache_path` which is probably a bit nicer to
-// handle.
-pub struct SharedCacheKey {
-    name: String, // TODO: maybe an enum?  would avoid collisions
-    key: CacheKey,
-    version: u32,
 }

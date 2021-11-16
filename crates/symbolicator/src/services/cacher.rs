@@ -15,7 +15,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::services::shared_cache::SharedCacheService;
+use crate::services::shared_cache::{SharedCacheKey, SharedCacheService};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
@@ -84,6 +84,28 @@ pub struct CacheKey {
 impl fmt::Display for CacheKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} (scope {})", self.cache_key, self.scope)
+    }
+}
+
+impl CacheKey {
+    /// Returns the relative path inside the cache for this cache key.
+    pub fn relative_path(&self) -> PathBuf {
+        let mut path = PathBuf::new();
+        path.push(safe_path_segment(self.scope.as_ref()));
+        path.push(safe_path_segment(&self.cache_key));
+        path
+    }
+
+    /// Returns the full cache path for this key inside the provided cache.
+    ///
+    /// If caching is disabled returns `None`.
+    pub fn cache_path(&self, version: u32, cache: &Cache) -> Option<PathBuf> {
+        let mut path = cache.cache_dir()?.to_path_buf();
+        if version != 0 {
+            path.push(version.to_string());
+        }
+        path.push(self.relative_path());
+        Some(path)
     }
 }
 
@@ -196,36 +218,6 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    /// Constructs the relative subpath to use inside a cache directory.
-    ///
-    /// See [`Cacher::get_cache_path`] or [`Cacher::get_shared_cache`] for what you want to
-    /// use instead.
-    fn get_cache_subpath(&self, key: &CacheKey, version: u32) -> PathBuf {
-        let mut path = PathBuf::new();
-        if version != 0 {
-            path.push(version.to_string());
-        }
-        path.push(safe_path_segment(key.scope.as_ref()));
-        path.push(safe_path_segment(&key.cache_key));
-        path
-    }
-
-    /// Constructs the path corresponding to the given [`CacheKey`].
-    ///
-    /// Returns [`None`] if caching is disabled.
-    fn get_cache_path(&self, key: &CacheKey, version: u32) -> Option<PathBuf> {
-        let mut cache_dir = self.config.cache_dir()?.to_path_buf();
-        cache_dir.push(self.get_cache_subpath(key, version));
-        Some(cache_dir)
-    }
-
-    /// Constructs the relative path to use inside the [`SharedCacheConfig`].
-    fn get_shared_cache_path(&self, key: &CacheKey, version: u32) -> PathBuf {
-        let mut path = PathBuf::from(self.config.name().to_string());
-        path.push(self.get_cache_subpath(key, version));
-        path
-    }
-
     /// Look up an item in the file system cache and load it if available.
     ///
     /// Returns `Ok(None)` if the cache item needs to be re-computed, otherwise reads the
@@ -297,7 +289,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // lookup without going through the deduplication/channel creation logic. This creates a
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
-        let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
+        let cache_path = key.cache_path(T::VERSIONS.current, &self.config);
         if let Some(ref path) = cache_path {
             if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(item);
@@ -306,10 +298,15 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let temp_file = self.tempfile()?;
 
-        let shared_cache_path = self.get_shared_cache_path(&key, T::VERSIONS.current);
+        let scope = key.scope.clone();
+        let shared_cache_key = SharedCacheKey {
+            name: self.config.name(),
+            version: T::VERSIONS.current,
+            local_key: key,
+        };
         let shared_cache_hit = match self
             .shared_cache_service
-            .fetch(&shared_cache_path, temp_file.path())
+            .fetch(&shared_cache_key, temp_file.path())
             .await
         {
             Some(_) => {
@@ -362,7 +359,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // them expire?
         if !shared_cache_hit && status == CacheStatus::Positive {
             self.shared_cache_service
-                .store(&shared_cache_path, byte_view.clone())
+                .store(shared_cache_key, byte_view.clone())
                 .await;
             // TODO: maybe push the metrics to the SharedCacheService?  It would need to
             // know the cache for which this is being stored though.  Maybe that could
@@ -371,7 +368,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             metric!(counter(&format!("shared_caches.{}.file.write", self.config.name())) += 1);
         }
 
-        Ok(request.load(key.scope.clone(), status, byte_view, path))
+        Ok(request.load(scope, status, byte_view, path))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -494,7 +491,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let key = request.get_cache_key();
 
         // cache_path is None when caching is disabled.
-        let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
+        let cache_path = key.cache_path(T::VERSIONS.current, &self.config);
         if let Some(ref path) = cache_path {
             if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
                 return Ok(Arc::new(item));
@@ -502,7 +499,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // try fallback cache paths next
             for (version, fallback_path) in T::VERSIONS.fallbacks.iter().flat_map(|version| {
-                self.get_cache_path(&key, *version)
+                key.cache_path(*version, &self.config)
                     .map(|path| (*version, path))
             }) {
                 if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, &fallback_path) {
