@@ -1,8 +1,8 @@
 //! Core logic for cache files. Used by `crate::services::common::cache`.
 
 use core::fmt;
-use std::fs::{self, read_dir, remove_file, File};
-use std::io::{self, Read, Write};
+use std::fs::{read_dir, remove_file, File};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -87,35 +87,29 @@ impl CacheStatus {
         }
     }
 
-    /// Persist the operation in the cache.
+    /// Writes the status marker to the file, leaving the cursor at the end.
     ///
-    /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
-    /// file to the final cache location.  Otherwise it writes corresponding marker in the
-    /// cache location.
-    pub fn persist_item(&self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
-        let dir = path.parent().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
-        })?;
-        fs::create_dir_all(dir)?;
+    /// For a positive status this only seeks to the end.  For the other cases this seeks
+    /// to the beginning, writes the appropriate marker and truncates the file.
+    pub fn write_marker(&self, mut file: &File) -> Result<(), io::Error> {
         match self {
             CacheStatus::Positive => {
-                file.persist(path).map_err(|x| x.error)?;
+                file.seek(SeekFrom::End(0))?;
             }
             CacheStatus::Negative => {
-                File::create(path)?;
+                file.rewind()?;
+                file.set_len(0)?;
             }
             CacheStatus::Malformed(details) => {
-                let mut f = File::create(path)?;
-                f.write_all(MALFORMED_MARKER)?;
-                f.write_all(details.as_bytes())?;
+                file.rewind()?;
+                file.write_all(details.as_bytes())?;
             }
             CacheStatus::CacheSpecificError(details) => {
-                let mut f = File::create(path)?;
-                f.write_all(CACHE_SPECIFIC_ERROR_MARKER)?;
-                f.write_all(details.as_bytes())?;
+                file.rewind()?;
+                file.write_all(CACHE_SPECIFIC_ERROR_MARKER)?;
+                file.write_all(details.as_bytes())?;
             }
         }
-
         Ok(())
     }
 }

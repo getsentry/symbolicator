@@ -3,6 +3,8 @@ use std::fmt;
 use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -13,6 +15,7 @@ use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use tokio::fs;
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::shared_cache::{SharedCacheKey, SharedCacheService};
@@ -96,16 +99,14 @@ impl CacheKey {
         path
     }
 
-    /// Returns the full cache path for this key inside the provided cache.
-    ///
-    /// If caching is disabled returns `None`.
-    pub fn cache_path(&self, version: u32, cache: &Cache) -> Option<PathBuf> {
-        let mut path = cache.cache_dir()?.to_path_buf();
+    /// Returns the full cache path for this key inside the provided cache directory.
+    pub fn cache_path(&self, cache_dir: &Path, version: u32) -> PathBuf {
+        let mut path = PathBuf::from(cache_dir);
         if version != 0 {
             path.push(version.to_string());
         }
         path.push(self.relative_path());
-        Some(path)
+        path
     }
 }
 
@@ -224,6 +225,8 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// cached data from disk and returns the cached item as returned by
     /// [`CacheItemRequest::load`].
     ///
+    /// Calling this function when the cache is not enabled will simply return `Ok(None)`.
+    ///
     /// # Errors
     ///
     /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
@@ -231,45 +234,52 @@ impl<T: CacheItemRequest> Cacher<T> {
         &self,
         request: &T,
         key: &CacheKey,
-        path: &Path,
+        version: u32,
     ) -> Result<Option<T::Item>, T::Error> {
-        let name = self.config.name();
-        log::trace!("Trying {} cache at path {:?}", name, path);
-        sentry::with_scope(
-            |scope| {
-                scope.set_extra(
-                    &format!("cache.{}.cache_path", name),
-                    format!("{:?}", path).into(),
-                );
-            },
-            || {
-                let byteview = match self.config.open_cachefile(path)? {
-                    Some(x) => x,
-                    None => return Ok(None),
-                };
+        match self.config.cache_dir() {
+            Some(ref cache_dir) => {
+                let name = self.config.name();
+                let item_path = key.cache_path(cache_dir, version);
+                log::trace!("Trying {} cache at path {}", name, item_path.display());
+                sentry::with_scope(
+                    |scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            item_path.to_string_lossy().into(),
+                        );
+                    },
+                    || {
+                        let byteview = match self.config.open_cachefile(&item_path)? {
+                            Some(bv) => bv,
+                            None => return Ok(None),
+                        };
+                        let status = CacheStatus::from_content(&byteview);
+                        if status == CacheStatus::Positive && !request.should_load(&byteview) {
+                            log::trace!("Discarding {} at path {}", name, item_path.display());
+                            metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+                            return Ok(None);
+                        }
+                        // This is also reported for "negative cache hits": When we cached
+                        // the 404 response from a server as empty file.
+                        metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+                        metric!(
+                            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                            "hit" => "true"
+                        );
 
-                let status = CacheStatus::from_content(&byteview);
-                if status == CacheStatus::Positive && !request.should_load(&byteview) {
-                    log::trace!("Discarding {} at path {:?}", name, path);
-                    metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
-                    return Ok(None);
-                }
-
-                // This is also reported for "negative cache hits": When we cached the 404 response from a
-                // server as empty file.
-                metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                    "hit" => "true"
-                );
-
-                let path = path.to_path_buf();
-                log::trace!("Loading {} at path {:?}", name, path);
-                let item =
-                    request.load(key.scope.clone(), status, byteview, CachePath::Cached(path));
-                Ok(Some(item))
-            },
-        )
+                        log::trace!("Loading {} at path {}", name, item_path.display());
+                        let item = request.load(
+                            key.scope.clone(),
+                            status,
+                            byteview,
+                            CachePath::Cached(item_path.clone()),
+                        );
+                        Ok(Some(item))
+                    },
+                )
+            }
+            None => Ok(None),
+        }
     }
 
     /// Compute an item.
@@ -289,21 +299,18 @@ impl<T: CacheItemRequest> Cacher<T> {
         // lookup without going through the deduplication/channel creation logic. This creates a
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
-        let cache_path = key.cache_path(T::VERSIONS.current, &self.config);
-        if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
-                return Ok(item);
-            }
+        if let Some(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current)? {
+            return Ok(item);
         }
 
         let temp_file = self.tempfile()?;
-
-        let scope = key.scope.clone();
         let shared_cache_key = SharedCacheKey {
             name: self.config.name(),
             version: T::VERSIONS.current,
-            local_key: key,
+            local_key: key.clone(),
         };
+
+        // TODO: consider cache expiry!
         let shared_cache_hit = match self
             .shared_cache_service
             .fetch(&shared_cache_key, temp_file.as_file())
@@ -313,24 +320,39 @@ impl<T: CacheItemRequest> Cacher<T> {
             None => false,
         };
 
-        let (status, byte_view) = if shared_cache_hit {
-            let byte_view = ByteView::open(temp_file.path())?;
-            (CacheStatus::from_content(&byte_view), byte_view)
-        } else {
+        let status = if !shared_cache_hit {
             let status = request.compute(temp_file.path()).await?;
+            status.write_marker(temp_file.as_file())?;
+            status
+        } else {
             let byte_view = ByteView::open(temp_file.path())?;
-            (status, byte_view)
+            CacheStatus::from_content(&byte_view)
         };
 
-        let path = match cache_path {
-            Some(ref cache_path) => {
+        let path = match self.config.cache_dir() {
+            Some(ref cache_dir) => {
+                // Cache is enabled, write it!
+                let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
+
+                log::trace!(
+                    "Creating {} at path {:?}",
+                    self.config.name(),
+                    cache_path.display()
+                );
+                let parent = cache_path.parent().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
+                })?;
+                fs::create_dir_all(parent).await?;
+                let mut file = temp_file.persist(&cache_path).map_err(|x| x.error)?;
+
+                let file_size = file.seek(SeekFrom::End(0))?;
                 metric!(
                     counter(&format!("caches.{}.file.write", self.config.name())) += 1,
                     "status" => status.as_ref(),
                     "is_refresh" => &is_refresh.to_string(),
                 );
                 metric!(
-                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                    time_raw(&format!("caches.{}.file.size", self.config.name())) = file_size,
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
                 );
@@ -340,13 +362,13 @@ impl<T: CacheItemRequest> Cacher<T> {
                         cache_path.to_string_lossy().into(),
                     );
                 });
-                log::trace!("Creating {} at path {:?}", self.config.name(), cache_path);
 
-                status.persist_item(cache_path, temp_file)?;
-                CachePath::Cached(cache_path.to_path_buf())
+                CachePath::Cached(cache_path)
             }
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
+
+        let byte_view = ByteView::open(&path)?;
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe also put them in the GCS bucket but make
@@ -357,7 +379,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await;
         }
 
-        Ok(request.load(scope, status, byte_view, path))
+        Ok(request.load(key.scope.clone(), status, byte_view, path))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -480,25 +502,21 @@ impl<T: CacheItemRequest> Cacher<T> {
         let key = request.get_cache_key();
 
         // cache_path is None when caching is disabled.
-        let cache_path = key.cache_path(T::VERSIONS.current, &self.config);
-        if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_local_cache(&request, &key, path)? {
+        if let Some(ref cache_dir) = self.config.cache_dir() {
+            if let Some(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current)? {
                 return Ok(Arc::new(item));
             }
 
             // try fallback cache paths next
-            for (version, fallback_path) in T::VERSIONS.fallbacks.iter().flat_map(|version| {
-                key.cache_path(*version, &self.config)
-                    .map(|path| (*version, path))
-            }) {
-                if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, &fallback_path) {
+            for version in T::VERSIONS.fallbacks.iter() {
+                if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, *version) {
                     // we have found an outdated cache that we will use right away,
                     // and we will kick off a recomputation for the `current` cache version
                     // in a deduplicated background task, which we will not await
                     log::trace!(
                         "Spawning deduplicated {} computation for path {:?}",
                         name,
-                        path
+                        key.cache_path(cache_dir, *version).display()
                     );
                     metric!(
                         counter(&format!("caches.{}.file.fallback", name)) += 1,
