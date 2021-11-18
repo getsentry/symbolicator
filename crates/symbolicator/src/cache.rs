@@ -619,11 +619,12 @@ mod tests {
         let basedir = tempdir().unwrap();
         let cachedir = basedir.path().join("cache");
         let _cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cachedir.clone()),
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
+            None,
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
@@ -675,7 +676,7 @@ mod tests {
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -683,6 +684,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -713,7 +715,7 @@ mod tests {
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -721,6 +723,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -763,7 +766,7 @@ mod tests {
         // Creation of this struct == "process startup", this tests that all malformed files created
         // before startup are cleaned
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -771,6 +774,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         cache.cleanup()?;
@@ -809,7 +813,7 @@ mod tests {
         // Creation of this struct == "process startup", this tests that all cache-specific error files created
         // before startup are cleaned
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -817,6 +821,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -855,7 +860,7 @@ mod tests {
             .write_all(b"malformedcachespecificerror")?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(DownloadedCacheConfig {
@@ -863,6 +868,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -1094,11 +1100,12 @@ mod tests {
         // Assert that opening a cache touches the mtime but does not invalidate it.
         let tempdir = tempdir()?;
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
+            None,
         )?;
 
         // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched

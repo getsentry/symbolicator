@@ -299,11 +299,12 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::cache::{Cache, CacheStatus};
+    use crate::cache::{Cache, CacheName, CacheStatus};
     use crate::config::{CacheConfig, CacheConfigs, Config};
     use crate::services::download::{DownloadError, DownloadService};
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
+    use crate::services::shared_cache::SharedCacheService;
     use crate::sources::FileType;
     use crate::test::{self, tempdir};
 
@@ -312,20 +313,22 @@ mod tests {
 
     fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let meta_cache = Cache::from_config(
-            "meta",
+            CacheName::ObjectMeta,
             Some(tempdir.path().join("meta")),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Default::default(),
+            None,
         )
         .unwrap();
 
         let data_cache = Cache::from_config(
-            "data",
+            CacheName::Objects,
             Some(tempdir.path().join("data")),
             None,
             CacheConfig::from(CacheConfigs::default().downloaded),
             Default::default(),
+            None,
         )
         .unwrap();
 
@@ -336,7 +339,8 @@ mod tests {
         });
 
         let download_svc = DownloadService::new(config);
-        ObjectsActor::new(meta_cache, data_cache, download_svc)
+        let shared_cache_svc = Arc::new(SharedCacheService::new(None));
+        ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
     }
 
     #[tokio::test]

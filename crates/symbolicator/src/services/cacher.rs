@@ -547,6 +547,7 @@ mod tests {
     use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
     use std::time::Duration;
 
+    use crate::cache::CacheName;
     use crate::config::{CacheConfig, CacheConfigs};
     use crate::test;
 
@@ -622,14 +623,16 @@ mod tests {
         .unwrap();
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cache_dir),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
+            None,
         )
         .unwrap();
-        let cacher = Cacher::new(cache);
+        let shared_cache = Arc::new(SharedCacheService::new(None));
+        let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -664,14 +667,16 @@ mod tests {
         }
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cache_dir),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
+            None,
         )
         .unwrap();
-        let cacher = Cacher::new(cache);
+        let shared_cache = Arc::new(SharedCacheService::new(None));
+        let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("0");
 
