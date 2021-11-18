@@ -323,11 +323,16 @@ impl<T: CacheItemRequest> Cacher<T> {
         let status = if !shared_cache_hit {
             let status = request.compute(temp_file.path()).await?;
             status.write_marker(temp_file.as_file())?;
-            status
+            Some(status)
         } else {
-            let byte_view = ByteView::open(temp_file.path())?;
-            CacheStatus::from_content(&byte_view)
+            None
         };
+
+        // Now we have written the data to the tempfile we can mmap it, persisting it later
+        // is fine as it does not move filesystem boundaries there.
+        let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
+
+        let status = status.unwrap_or_else(|| CacheStatus::from_content(&byte_view));
 
         let path = match self.config.cache_dir() {
             Some(ref cache_dir) => {
