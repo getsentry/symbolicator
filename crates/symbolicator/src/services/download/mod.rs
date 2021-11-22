@@ -47,7 +47,7 @@ pub enum DownloadError {
     #[error("download was cancelled")]
     Canceled,
     #[error("failed to fetch data from GCS")]
-    Gcs(#[from] gcs::GcsError),
+    Gcs(#[from] crate::utils::gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
     #[error("failed to fetch data from S3")]
@@ -388,7 +388,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
 ///
 /// A tag with the source name is also added to the metric, in addition to a tag recording the
 /// status of the future.
-fn measure_download_time<'a, F, T, E>(
+pub fn measure_download_time<'a, F, T, E>(
     source_name: &'a str,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a

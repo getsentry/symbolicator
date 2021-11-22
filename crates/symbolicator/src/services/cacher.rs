@@ -1,10 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::io;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Seek;
-use std::io::SeekFrom;
+use std::io::{Error, ErrorKind, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -73,7 +69,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
     }
 
-    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
+    pub fn tempfile(&self) -> std::io::Result<NamedTempFile> {
         self.config.tempfile()
     }
 }
@@ -183,7 +179,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     // XXX: Probably should have our own concrete error type for cacheactor instead of forcing our
     // ioerrors into other errors
-    type Error: 'static + From<io::Error> + Send + Sync;
+    type Error: 'static + From<std::io::Error> + Send + Sync;
 
     /// The cache versioning scheme that is used for this type of request.
     ///
@@ -309,20 +305,18 @@ impl<T: CacheItemRequest> Cacher<T> {
             version: T::VERSIONS.current,
             local_key: key.clone(),
         };
+        let dup_file = temp_file.as_file().try_clone()?;
+        let mut temp_fd = tokio::fs::File::from_std(dup_file);
 
         // TODO: consider cache expiry!
-        let shared_cache_hit = match self
+        let shared_cache_hit = self
             .shared_cache_service
-            .fetch(&shared_cache_key, temp_file.as_file())
-            .await
-        {
-            Some(_) => true,
-            None => false,
-        };
+            .fetch(&shared_cache_key, &mut temp_fd)
+            .await;
 
         let status = if !shared_cache_hit {
             let status = request.compute(temp_file.path()).await?;
-            status.write_marker(temp_file.as_file())?;
+            status.write_marker(&mut temp_fd).await?;
             Some(status)
         } else {
             None
@@ -345,7 +339,10 @@ impl<T: CacheItemRequest> Cacher<T> {
                     cache_path.display()
                 );
                 let parent = cache_path.parent().ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "no parent directory to persist item",
+                    )
                 })?;
                 fs::create_dir_all(parent).await?;
                 let mut file = temp_file.persist(&cache_path).map_err(|x| x.error)?;
@@ -480,7 +477,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let future = channel.unwrap_or_else(move |_cancelled_error| {
             let message = format!("{} computation channel dropped", name);
             Err(Arc::new(
-                io::Error::new(io::ErrorKind::Interrupted, message).into(),
+                std::io::Error::new(std::io::ErrorKind::Interrupted, message).into(),
             ))
         });
 

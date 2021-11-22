@@ -1,8 +1,8 @@
 //! Core logic for cache files. Used by `crate::services::common::cache`.
 
 use core::fmt;
-use std::fs::{read_dir, remove_file, File};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::fs::{read_dir, remove_file};
+use std::io::{self, Read, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -13,6 +13,8 @@ use filetime::FileTime;
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use tokio::fs::File;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
@@ -91,23 +93,23 @@ impl CacheStatus {
     ///
     /// For a positive status this only seeks to the end.  For the other cases this seeks
     /// to the beginning, writes the appropriate marker and truncates the file.
-    pub fn write_marker(&self, mut file: &File) -> Result<(), io::Error> {
+    pub async fn write_marker(&self, file: &mut File) -> Result<(), io::Error> {
         match self {
             CacheStatus::Positive => {
-                file.seek(SeekFrom::End(0))?;
+                file.seek(SeekFrom::End(0)).await?;
             }
             CacheStatus::Negative => {
-                file.rewind()?;
-                file.set_len(0)?;
+                file.rewind().await?;
+                file.set_len(0).await?;
             }
             CacheStatus::Malformed(details) => {
-                file.rewind()?;
-                file.write_all(details.as_bytes())?;
+                file.rewind().await?;
+                file.write_all(details.as_bytes()).await?;
             }
             CacheStatus::CacheSpecificError(details) => {
-                file.rewind()?;
-                file.write_all(CACHE_SPECIFIC_ERROR_MARKER)?;
-                file.write_all(details.as_bytes())?;
+                file.rewind().await?;
+                file.write_all(CACHE_SPECIFIC_ERROR_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
             }
         }
         Ok(())
@@ -401,7 +403,7 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
         .len()
         .max(CACHE_SPECIFIC_ERROR_MARKER.len());
     let readable_amount = largest_sentinel.min(metadata.len() as usize);
-    let mut file = File::open(path)?;
+    let mut file = std::fs::File::open(path)?;
     let mut buf = vec![0; readable_amount];
 
     file.read_exact(&mut buf)?;
@@ -602,7 +604,7 @@ mod tests {
     use super::*;
 
     use std::convert::TryInto;
-    use std::fs::{self, create_dir_all};
+    use std::fs::{self, create_dir_all, File};
     use std::io::Write;
     use std::thread::sleep;
 

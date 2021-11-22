@@ -5,22 +5,20 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use chrono::{DateTime, Duration, Utc};
 use futures::prelude::*;
-use jsonwebtoken::EncodingKey;
 use parking_lot::Mutex;
 use reqwest::{header, Client, StatusCode};
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use url::Url;
+
+use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
+use crate::types::ObjectId;
+use crate::utils::gcs::{request_new_token, GcsError, GcsToken};
 
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
-use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
-use crate::types::ObjectId;
 
 /// An LRU cache for GCS OAuth tokens.
-pub(crate) type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 
 /// Maximum number of cached GCS OAuth tokens.
 ///
@@ -30,7 +28,7 @@ pub(crate) type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 ///
 /// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
 /// metrics.
-pub(crate) const GCS_TOKEN_CACHE_SIZE: usize = 100;
+const GCS_TOKEN_CACHE_SIZE: usize = 100;
 
 /// The GCS-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -50,7 +48,7 @@ impl GcsRemoteDif {
         Self { source, location }
     }
 
-    /// Returns the S3 key.
+    /// Returns the GCS key.
     ///
     /// This is equivalent to the pathname within the bucket.
     pub fn key(&self) -> String {
@@ -61,76 +59,6 @@ impl GcsRemoteDif {
     pub fn uri(&self) -> RemoteDifUri {
         RemoteDifUri::from_parts("gs", &self.source.bucket, &self.key())
     }
-}
-
-#[derive(Serialize)]
-struct JwtClaims {
-    #[serde(rename = "iss")]
-    issuer: String,
-    scope: String,
-    #[serde(rename = "aud")]
-    audience: String,
-    #[serde(rename = "exp")]
-    expiration: i64,
-    #[serde(rename = "iat")]
-    issued_at: i64,
-}
-
-#[derive(Serialize)]
-pub(crate) struct OAuth2Grant {
-    grant_type: String,
-    assertion: String,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct GcsTokenResponse {
-    pub(crate) access_token: String,
-}
-
-#[derive(Debug)]
-pub(crate) struct GcsToken {
-    pub(crate) access_token: String,
-    pub(crate) expires_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Error)]
-pub enum GcsError {
-    #[error("failed decoding key")]
-    Base64(#[from] base64::DecodeError),
-    #[error("failed to construct URL")]
-    InvalidUrl,
-    #[error("failed encoding JWT")]
-    Jwt(#[from] jsonwebtoken::errors::Error),
-    #[error("failed to send authentication request")]
-    Auth(#[source] reqwest::Error),
-}
-
-/// Returns the JWT key parsed from a string.
-///
-/// Because Google provides this key in JSON format a lot of users just copy-paste this key
-/// directly, leaving the escaped newlines from the JSON-encoding in place.  In normal
-/// base64 this should not occur so we pre-process the key to convert these back to real
-/// newlines, ensuring they are in the correct PEM format.
-fn key_from_string(key: &str) -> Result<EncodingKey, jsonwebtoken::errors::Error> {
-    let buffer = key.replace("\\n", "\n");
-    EncodingKey::from_rsa_pem(buffer.as_bytes())
-}
-
-/// Computes a JWT authentication assertion for the given GCS bucket.
-pub(crate) fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
-    let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
-
-    let jwt_claims = JwtClaims {
-        issuer: source_key.client_email.clone(),
-        scope: "https://www.googleapis.com/auth/devstorage.read_only".into(),
-        audience: "https://www.googleapis.com/oauth2/v4/token".into(),
-        expiration,
-        issued_at: Utc::now().timestamp(),
-    };
-
-    let key = key_from_string(&source_key.private_key)?;
-
-    Ok(jsonwebtoken::encode(&header, &jwt_claims, &key)?)
 }
 
 /// Downloader implementation that supports the [`GcsSourceConfig`] source.
@@ -156,49 +84,20 @@ impl GcsDownloader {
         }
     }
 
-    /// Requests a new GCS OAuth token.
-    async fn request_new_token(&self, source_key: &GcsSourceKey) -> Result<GcsToken, GcsError> {
-        let expires_at = Utc::now() + Duration::minutes(58);
-        let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
-
-        let request = self
-            .client
-            .post("https://www.googleapis.com/oauth2/v4/token")
-            .form(&OAuth2Grant {
-                grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer".into(),
-                assertion: auth_jwt,
-            });
-
-        let response = request.send().await.map_err(|err| {
-            log::debug!("Failed to authenticate against gcs: {}", err);
-            GcsError::Auth(err)
-        })?;
-
-        let token = response
-            .json::<GcsTokenResponse>()
-            .await
-            .map_err(GcsError::Auth)?;
-
-        Ok(GcsToken {
-            access_token: token.access_token,
-            expires_at,
-        })
-    }
-
     /// Resolves a valid GCS OAuth token.
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
     async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, GcsError> {
         if let Some(token) = self.token_cache.lock().get(source_key) {
-            if token.expires_at >= Utc::now() {
+            if !token.is_expired() {
                 metric!(counter("source.gcs.token.cached") += 1);
                 return Ok(token.clone());
             }
         }
 
         let source_key = source_key.clone();
-        let token = self.request_new_token(&source_key).await?;
+        let token = request_new_token(&self.client, &source_key).await?;
         metric!(counter("source.gcs.token.requests") += 1);
         let token = Arc::new(token);
         self.token_cache.lock().put(source_key, token.clone());
@@ -234,7 +133,7 @@ impl GcsDownloader {
         let request = self
             .client
             .get(url.clone())
-            .header("authorization", format!("Bearer {}", token.access_token))
+            .header("authorization", token.bearer_token())
             .send();
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
@@ -478,20 +377,6 @@ mod tests {
             .expect_err("authentication should fail");
 
         assert!(!target_path.exists());
-    }
-
-    #[test]
-    fn test_key_from_string() {
-        let creds = gcs_source_key!();
-
-        let key = key_from_string(&creds.private_key);
-        assert!(key.is_ok());
-
-        let json_key = serde_json::to_string(&creds.private_key).unwrap();
-        let json_like_key = json_key.trim_matches('"');
-
-        let key = key_from_string(json_like_key);
-        assert!(key.is_ok());
     }
 
     #[test]
