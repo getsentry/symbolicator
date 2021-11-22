@@ -128,82 +128,60 @@ impl GcsState {
     }
 
     async fn store(&self, key: SharedCacheKey, contents: &[u8]) -> Result<()> {
-        todo!()
+        let token = self.get_token().await?;
+        let mut url =
+            Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
+                .map_err(|_| GcsError::InvalidUrl)?;
+        // Append path segments manually for proper encoding
+        url.path_segments_mut()
+            .map_err(|_| GcsError::InvalidUrl)?
+            .extend(&[&self.config.bucket, "o"]);
+        url.query_pairs_mut().append_pair("name", &key);
+
+        let request = self
+            .client
+            .post(url.clone())
+            .header("authorization", format!("Bearer {}", token.access_token))
+            .body(contents.to_owned()) // TODO: ideally don't allocate here, but lifetime needs to be 'static
+            .send();
+
+        let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
+
+        match request.await {
+            Ok(Ok(response)) => {
+                let status = response.status();
+                if status.is_success() {
+                    log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                    Ok(())
+                } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+                    Err(anyhow!(
+                        "Insufficient permissions for bucket {}",
+                        self.config.bucket
+                    ))
+                } else {
+                    Err(anyhow!(
+                        "Error response from GCS for bucket={}, key={}: {} {}",
+                        self.config.bucket,
+                        key.gcs_bucket_key(),
+                        status,
+                        status.canonical_reason().unwrap_or("")
+                    ))
+                }
+            }
+            Ok(Err(e)) => {
+                log::trace!(
+                    "Error in shared_cache GCS response for {}",
+                    key.gcs_bucket_key()
+                );
+                // TODO: Would like to use: e.context("Bad GCS response for shared_cache: {}")
+                Err(anyhow!(
+                    "Bad GCS response for shared_cache: {}",
+                    LogError(&e)
+                ))
+            }
+            Err(_) => Err(Error::msg("Timeout from GCS for shared_cache")),
+        }
     }
-
-    // /// Uploads a file to GCS.
-    // pub async fn store(
-    //     &self,
-    //     shared_cache: &GcsSharedCacheConfig,
-    //     destination: SourceLocation,
-    //     contents: &[u8],
-    // ) -> Result<DownloadStatus, DownloadError> {
-    //     let key = destination.prefix(&shared_cache.prefix);
-    //     let bucket = shared_cache.bucket.clone();
-    //     log::debug!("Fetching from GCS: {} (from {})", &key, bucket);
-    //     let token = self.get_token(&shared_cache.source_key).await?;
-    //     log::debug!("Got valid GCS token");
-
-    //     let mut url =
-    //         Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
-    //             .map_err(|_| GcsError::InvalidUrl)?;
-    //     // Append path segments manually for proper encoding
-    //     url.path_segments_mut()
-    //         .map_err(|_| GcsError::InvalidUrl)?
-    //         .extend(&[&bucket, "o"]);
-    //     url.query_pairs_mut().append_pair("name", &key);
-
-    //     let request = self
-    //         .client
-    //         .post(url.clone())
-    //         .header("authorization", format!("Bearer {}", token.access_token))
-    //         .body(contents.to_owned()) // TODO: ideally don't allocate here, but lifetime needs to be 'static
-    //         .send();
-
-    //     match request.await {
-    //         Ok(response) => {
-    //             if response.status().is_success() {
-    //                 Ok(DownloadStatus::Completed)
-    //             } else if matches!(
-    //                 response.status(),
-    //                 StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-    //             ) {
-    //                 log::debug!(
-    //                     "Insufficient permissions to download from GCS {} (from {})",
-    //                     &key,
-    //                     &bucket,
-    //                 );
-    //                 Err(DownloadError::Permissions)
-    //             // If it's a client error, chances are either it's a 404 or it's permission-related.
-    //             } else if response.status().is_client_error() {
-    //                 log::debug!(
-    //                     "Unexpected client error status code from GCS {} (from {}): {}",
-    //                     &key,
-    //                     &bucket,
-    //                     response.status()
-    //                 );
-    //                 Ok(DownloadStatus::NotFound)
-    //             } else {
-    //                 log::debug!(
-    //                     "Unexpected status code from GCS {} (from {}): {}",
-    //                     &key,
-    //                     &bucket,
-    //                     response.status()
-    //                 );
-    //                 Err(DownloadError::Rejected(response.status()))
-    //             }
-    //         }
-    //         Err(e) => {
-    //             log::debug!(
-    //                 "Skipping response from GCS {} (from {}): {}",
-    //                 &key,
-    //                 &bucket,
-    //                 &e
-    //             );
-    //             Err(DownloadError::Reqwest(e))
-    //         }
-    //     }
-    // }
 }
 
 impl FilesystemSharedCacheConfig {
