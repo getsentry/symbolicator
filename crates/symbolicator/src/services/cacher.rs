@@ -233,7 +233,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         version: u32,
     ) -> Result<Option<T::Item>, T::Error> {
         match self.config.cache_dir() {
-            Some(ref cache_dir) => {
+            Some(cache_dir) => {
                 let name = self.config.name();
                 let item_path = key.cache_path(cache_dir, version);
                 log::trace!("Trying {} cache at path {}", name, item_path.display());
@@ -329,7 +329,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let status = status.unwrap_or_else(|| CacheStatus::from_content(&byte_view));
 
         let path = match self.config.cache_dir() {
-            Some(ref cache_dir) => {
+            Some(cache_dir) => {
                 // Cache is enabled, write it!
                 let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
@@ -504,7 +504,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let key = request.get_cache_key();
 
         // cache_path is None when caching is disabled.
-        if let Some(ref cache_dir) = self.config.cache_dir() {
+        if let Some(cache_dir) = self.config.cache_dir() {
             if let Some(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current)? {
                 return Ok(Arc::new(item));
             }

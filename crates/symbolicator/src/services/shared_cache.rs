@@ -325,7 +325,7 @@ impl SharedCacheService {
 
         // TODO: spawn or enqueue here, don't want to be blocking the caller's progress.
 
-        let cache_name = key.name.clone();
+        let cache_name = key.name;
         let res = match &self.backend {
             Some(SharedCacheBackend::Gcs(state)) => state.store(key, &contents).await,
             Some(SharedCacheBackend::Fs(cfg)) => cfg.store(key, &contents).await,
