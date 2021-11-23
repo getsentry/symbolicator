@@ -4,12 +4,11 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Error, Result};
 use futures::TryStreamExt;
-use reqwest::{Client, StatusCode};
-use symbolic::common::ByteView;
+use reqwest::{Body, Client, StatusCode};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio::sync::RwLock;
-use tokio_util::io::StreamReader;
+use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
 use crate::cache::{
@@ -127,7 +126,7 @@ impl GcsState {
         }
     }
 
-    async fn store(&self, key: SharedCacheKey, contents: &[u8]) -> Result<()> {
+    async fn store(&self, key: SharedCacheKey, src: File) -> Result<()> {
         let token = self.get_token().await?;
         let mut url =
             Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
@@ -139,11 +138,13 @@ impl GcsState {
         url.query_pairs_mut()
             .append_pair("name", &key.gcs_bucket_key());
 
+        let stream = ReaderStream::new(src);
+        let body = Body::wrap_stream(stream);
         let request = self
             .client
             .post(url.clone())
             .header("authorization", token.bearer_token())
-            .body(contents.to_owned()) // TODO: ideally don't allocate here, but lifetime needs to be 'static
+            .body(body)
             .send();
 
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
@@ -197,12 +198,13 @@ impl FilesystemSharedCacheConfig {
         Ok(())
     }
 
-    async fn store(&self, key: SharedCacheKey, contents: &[u8]) -> Result<()> {
+    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<()> {
         let abspath = self.path.join(key.relative_path());
         if let Some(parent_dir) = abspath.parent() {
             fs::create_dir_all(parent_dir).await?;
         }
-        fs::write(abspath, contents).await?;
+        let mut dest = File::open(abspath).await?;
+        io::copy(&mut src, &mut dest).await?;
         Ok(())
     }
 }
@@ -319,7 +321,7 @@ impl SharedCacheService {
     /// `cache_path` is where the relative path on the shared cache.
     ///
     /// Errors are transparently hidden, this service handles any errors itself.
-    pub async fn store(&self, key: SharedCacheKey, contents: ByteView<'_>) {
+    pub async fn store(&self, key: SharedCacheKey, src: File) {
         // TODO: concurrency control, handle overload (aka backpressure, but we're not
         // pressing back at all here since we have no return value).
 
@@ -327,8 +329,8 @@ impl SharedCacheService {
 
         let cache_name = key.name;
         let res = match &self.backend {
-            Some(SharedCacheBackend::Gcs(state)) => state.store(key, &contents).await,
-            Some(SharedCacheBackend::Fs(cfg)) => cfg.store(key, &contents).await,
+            Some(SharedCacheBackend::Gcs(state)) => state.store(key, src).await,
+            Some(SharedCacheBackend::Fs(cfg)) => cfg.store(key, src).await,
             None => Ok(()),
         };
         match res {

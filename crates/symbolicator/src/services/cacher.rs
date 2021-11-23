@@ -370,14 +370,14 @@ impl<T: CacheItemRequest> Cacher<T> {
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
 
-        let byte_view = ByteView::open(&path)?;
-
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe also put them in the GCS bucket but make
         // them expire?
+        // NOTE: temp_fd is still a valid filedescriptor to the file's data, even after we
+        // persisted the file.
         if !shared_cache_hit && status == CacheStatus::Positive {
             self.shared_cache_service
-                .store(shared_cache_key, byte_view.clone())
+                .store(shared_cache_key, temp_fd)
                 .await;
         }
 
