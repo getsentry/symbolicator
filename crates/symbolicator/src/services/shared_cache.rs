@@ -254,10 +254,11 @@ enum SharedCacheBackend {
     Fs(FilesystemSharedCacheConfig),
 }
 
-/// A shared cache service.\
+/// A shared cache service.
 ///
 /// For simplicity in the rest of the application this service always exists, regardless of
-/// whether it is configured or not.  If it is not configured this becomes a no-op.
+/// whether it is configured or not.  If it is not configured calls to it's methods become a
+/// no-op.
 #[derive(Debug)]
 pub struct SharedCacheService {
     backend: Option<SharedCacheBackend>,
@@ -265,9 +266,6 @@ pub struct SharedCacheService {
 
 impl SharedCacheService {
     pub fn new(config: Option<SharedCacheConfig>) -> Self {
-        // Yes, it is wasteful to create a GcsState when the config does not use GCS.
-        // However currently we only have Filesystem as alternative and that is only used
-        // for testing purposes.
         let backend = config.map(|cfg| match cfg {
             SharedCacheConfig::Gcs(cfg) => SharedCacheBackend::Gcs(GcsState::new(cfg)),
             SharedCacheConfig::Fs(cfg) => SharedCacheBackend::Fs(cfg),
@@ -286,8 +284,11 @@ impl SharedCacheService {
 
     /// Retrieve a file from the shared cache.
     ///
-    /// `cache_path` is the relative path on the shared cache.  `destination` is where to
-    /// write the file locally.
+    /// Looks up the `key` in the shared cache, if found the cache contents will be written
+    /// to `writer`.
+    ///
+    /// Returns `true` if the shared cache was found and written to the `writer`.  If the
+    /// shared cache was not found nothing will have been written to `writer`.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
     pub async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> bool
@@ -317,8 +318,6 @@ impl SharedCacheService {
     }
 
     /// Place a file on the shared cache, if it does not yet exist there.
-    ///
-    /// `cache_path` is where the relative path on the shared cache.
     ///
     /// Errors are transparently hidden, this service handles any errors itself.
     pub async fn store(&self, key: SharedCacheKey, src: File) {
