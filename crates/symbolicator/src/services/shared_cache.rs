@@ -136,12 +136,13 @@ impl GcsState {
         url.path_segments_mut()
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&self.config.bucket, "o"]);
-        url.query_pairs_mut().append_pair("name", &key);
+        url.query_pairs_mut()
+            .append_pair("name", &key.gcs_bucket_key());
 
         let request = self
             .client
             .post(url.clone())
-            .header("authorization", format!("Bearer {}", token.access_token))
+            .header("authorization", token.bearer_token())
             .body(contents.to_owned()) // TODO: ideally don't allocate here, but lifetime needs to be 'static
             .send();
 
