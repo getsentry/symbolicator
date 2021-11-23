@@ -347,14 +347,13 @@ impl<T: CacheItemRequest> Cacher<T> {
                 fs::create_dir_all(parent).await?;
                 let mut file = temp_file.persist(&cache_path).map_err(|x| x.error)?;
 
-                let file_size = file.seek(SeekFrom::End(0))?;
                 metric!(
                     counter(&format!("caches.{}.file.write", self.config.name())) += 1,
                     "status" => status.as_ref(),
                     "is_refresh" => &is_refresh.to_string(),
                 );
                 metric!(
-                    time_raw(&format!("caches.{}.file.size", self.config.name())) = file_size,
+                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len(),
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
                 );
