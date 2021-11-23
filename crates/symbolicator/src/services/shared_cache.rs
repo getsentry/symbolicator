@@ -121,11 +121,7 @@ impl GcsState {
                     "Error in shared_cache GCS response for {}",
                     key.gcs_bucket_key()
                 );
-                // TODO: Would like to use: e.context("Bad GCS response for shared_cache: {}")
-                Err(anyhow!(
-                    "Bad GCS response for shared_cache: {}",
-                    LogError(&e)
-                ))
+                Err(Error::new(e).context("Bad GCS response for shared_cache"))
             }
             Err(_) => Err(Error::msg("Timeout from GCS for shared_cache")),
         }
@@ -175,16 +171,12 @@ impl GcsState {
                     ))
                 }
             }
-            Ok(Err(e)) => {
+            Ok(Err(err)) => {
                 log::trace!(
                     "Error in shared_cache GCS response for {}",
                     key.gcs_bucket_key()
                 );
-                // TODO: Would like to use: e.context("Bad GCS response for shared_cache: {}")
-                Err(anyhow!(
-                    "Bad GCS response for shared_cache: {}",
-                    LogError(&e)
-                ))
+                Err(Error::new(err).context("Bad GCS response for shared_cache"))
             }
             Err(_) => Err(Error::msg("Timeout from GCS for shared_cache")),
         }
