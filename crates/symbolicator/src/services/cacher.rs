@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::io::{Error, ErrorKind, Seek, SeekFrom};
+use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -345,7 +345,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     )
                 })?;
                 fs::create_dir_all(parent).await?;
-                let mut file = temp_file.persist(&cache_path).map_err(|x| x.error)?;
+                temp_file.persist(&cache_path).map_err(|x| x.error)?;
 
                 metric!(
                     counter(&format!("caches.{}.file.write", self.config.name())) += 1,
@@ -353,7 +353,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     "is_refresh" => &is_refresh.to_string(),
                 );
                 metric!(
-                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len(),
+                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
                 );

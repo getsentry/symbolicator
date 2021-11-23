@@ -62,7 +62,7 @@ impl GcsState {
         Ok(token)
     }
 
-    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<()>
+    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<()>>
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
@@ -92,15 +92,20 @@ impl GcsState {
                         .bytes_stream()
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
                     let mut stream = StreamReader::new(stream);
-                    io::copy(&mut stream, writer)
+                    let res = io::copy(&mut stream, writer)
                         .await
                         .map(|_| ())
-                        .context("IO Error streaming HTTP bytes to writer")
+                        .context("IO Error streaming HTTP bytes to writer");
+                    Some(res).transpose()
                 } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
                     Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
                     ))
+                } else if status.is_client_error() {
+                    // TODO: A client error is probably a 404 but actually handle this correctly.
+                    log::debug!("Client error status code from shared cache GCS {}", status);
+                    Ok(None)
                 } else {
                     Err(anyhow!(
                         "Error response from GCS for bucket={}, key={}: {} {}",
@@ -187,15 +192,24 @@ impl GcsState {
 }
 
 impl FilesystemSharedCacheConfig {
-    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<()>
+    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<()>>
     where
         W: AsyncWrite + Unpin,
     {
         let abspath = self.path.join(key.relative_path());
         log::debug!("Fetching debug file from {}", abspath.display());
         let mut file = File::open(abspath).await?;
-        io::copy(&mut file, writer).await?;
-        Ok(())
+        match io::copy(&mut file, writer).await {
+            Ok(_) => Ok(Some(())),
+            Err(err) => match err.kind() {
+                io::ErrorKind::NotFound => Ok(None),
+                // TODO: this should be: Err(err.context("Failed to copy file from shared cache")),
+                _ => Err(anyhow!(
+                    "Failed to copy file from shared cache: {}",
+                    LogError(&err)
+                )),
+            },
+        }
     }
 
     async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<()> {
@@ -301,12 +315,15 @@ impl SharedCacheService {
             None => return false,
         };
         match res {
-            Ok(_) => {
+            Ok(Some(_)) => {
                 metric!(counter(&format!("services.shared_cache.{}", key.name)) += 1, "hit" => "true");
                 true
             }
-            Err(err) => {
+            Ok(None) => {
                 metric!(counter(&format!("services.shared_cache.{}", key.name)) += 1, "hit" => "false");
+                false
+            }
+            Err(err) => {
                 log::error!(
                     "Error fetching from {} shared cache: {}",
                     self.backend_name(),
