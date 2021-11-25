@@ -431,7 +431,7 @@ mod tests {
         });
         let svc = SharedCacheService::new(Some(cfg));
 
-        // This mimmics how Cacher::compute creates this file.
+        // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir)?;
         let stdfile = temp_file.reopen()?;
         let mut file = File::from_std(stdfile);
@@ -493,7 +493,7 @@ mod tests {
         });
         let svc = SharedCacheService::new(Some(cfg));
 
-        // This mimmics how the downloader and Cacher::compute write the cache data.
+        // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir)?;
         let dup_file = temp_file.reopen()?;
         let temp_fd = File::from_std(dup_file);
@@ -507,6 +507,106 @@ mod tests {
 
         let data = fs::read(&cache_path).await?;
         assert_eq!(data, b"cache data");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_gcs_fetch_not_found() -> Result<()> {
+        test::setup();
+        let credentials = test::gcs_credentials!();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+
+        let cfg = SharedCacheConfig::Gcs(GcsSharedCacheConfig {
+            source_key: credentials.source_key(),
+            bucket: credentials.bucket,
+        });
+        let svc = SharedCacheService::new(Some(cfg));
+
+        let mut writer = Vec::new();
+
+        let ret = svc.fetch(&key, &mut writer).await;
+
+        assert!(!ret);
+        assert_eq!(writer, b"");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_gcs_state_fetch_not_found() -> Result<()> {
+        test::setup();
+        let credentials = test::gcs_credentials!();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+
+        let state = GcsState::new(GcsSharedCacheConfig {
+            source_key: credentials.source_key(),
+            bucket: credentials.bucket,
+        });
+
+        let mut writer = Vec::new();
+
+        let ret = state.fetch(&key, &mut writer).await?;
+
+        assert!(ret.is_none());
+        assert_eq!(writer, b"");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_gcs_state_store_fetch() -> Result<()> {
+        test::setup();
+        let dir = test::tempdir();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+
+        let credentials = test::gcs_credentials!();
+        let cfg = SharedCacheConfig::Gcs(GcsSharedCacheConfig {
+            source_key: credentials.source_key(),
+            bucket: credentials.bucket.clone(),
+        });
+        let svc = SharedCacheService::new(Some(cfg));
+
+        // This mimics how the downloader and Cacher::compute write the cache data.
+        let temp_file = NamedTempFile::new_in(&dir)?;
+        let dup_file = temp_file.reopen()?;
+        let temp_fd = File::from_std(dup_file);
+        {
+            let mut file = File::create(temp_file.path()).await?;
+            file.write_all(b"cache data").await?;
+            file.flush().await?;
+        }
+
+        svc.store(key.clone(), temp_fd).await;
+
+        let mut writer = Vec::new();
+
+        let ret = svc.fetch(&key, &mut writer).await;
+
+        assert!(ret);
+        assert_eq!(writer, b"cache data");
+
         Ok(())
     }
 }

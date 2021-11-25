@@ -12,6 +12,7 @@ __pycache__
 /cache/
 /symbols/
 /shared_cache/
+/symbolicator-gcs-test-key.json
 
 # mkdocs
 site
