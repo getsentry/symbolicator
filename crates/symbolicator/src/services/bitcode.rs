@@ -262,31 +262,19 @@ impl BitcodeService {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
-        sentry::with_scope(
-            |scope| {
-                scope.set_tag("auxdif.debugid", uuid);
-                scope.set_extra("auxdif.kind", dif_kind.to_string().into());
-            },
-            || async {
-                let mut jobs = Vec::with_capacity(sources.len());
-                for source in sources.iter() {
-                    let job =
-                        self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone());
-                    jobs.push(job);
-                }
-                let results = future::join_all(jobs).await;
-                let mut ret = None;
-                for result in results {
-                    match result {
-                        Ok(Some(handle)) => ret = Some(handle),
-                        Ok(None) => (),
-                        Err(err) => return Err(err),
-                    }
-                }
-                Ok(ret)
-            },
-        )
-        .await
+        let jobs = sources.iter().map(|source| {
+            self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone())
+        });
+        let results = future::join_all(jobs).await;
+        let mut ret = None;
+        for result in results {
+            match result {
+                Ok(Some(handle)) => ret = Some(handle),
+                Ok(None) => (),
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(ret)
     }
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
@@ -300,8 +288,12 @@ impl BitcodeService {
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
-        let hub = Arc::new(Hub::new_from_top(Hub::current()));
-        hub.configure_scope(|scope| scope.set_extra("auxdif.source", source.type_name().into()));
+        let _guard = Hub::current().push_scope();
+        sentry::configure_scope(|scope| {
+            scope.set_tag("auxdif.debugid", uuid);
+            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
+            scope.set_extra("auxdif.source", source.type_name().into());
+        });
 
         let file_type = match dif_kind {
             AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
@@ -310,11 +302,9 @@ impl BitcodeService {
         let file_sources = self
             .download_svc
             .list_files(source, file_type, uuid.into())
-            .bind_hub(hub.clone())
             .await?;
 
-        let mut fetch_jobs = Vec::with_capacity(file_sources.len());
-        for file_source in file_sources {
+        let fetch_jobs = file_sources.into_iter().map(|file_source| {
             let scope = if file_source.is_public() {
                 Scope::Global
             } else {
@@ -328,9 +318,8 @@ impl BitcodeService {
                 download_svc: self.download_svc.clone(),
                 cache: self.cache.clone(),
             };
-            let job = self.cache.compute_memoized(request).bind_hub(hub.clone());
-            fetch_jobs.push(job);
-        }
+            self.cache.compute_memoized(request)
+        });
 
         let all_results = future::join_all(fetch_jobs).await;
         let mut ret = None;
@@ -342,7 +331,7 @@ impl BitcodeService {
                     let stderr: &dyn std::error::Error = (*err).as_ref();
                     let mut event = sentry::event_from_error(stderr);
                     event.message = Some("Failure fetching auxiliary DIF file from source".into());
-                    hub.capture_event(event);
+                    sentry::capture_event(event);
                 }
             }
         }

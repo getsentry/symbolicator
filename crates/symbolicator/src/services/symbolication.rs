@@ -1801,13 +1801,11 @@ impl SymbolicationActor {
         requests: &[(CodeModuleId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
-        let mut futures = Vec::with_capacity(requests.len());
-
-        for (module_id, object_info) in requests {
+        let futures = requests.iter().map(|(module_id, object_info)| {
             let sources = sources.clone();
             let scope = scope.clone();
 
-            let fut = async move {
+            async move {
                 let result = self
                     .cficaches
                     .fetch(FetchCfiCache {
@@ -1818,11 +1816,8 @@ impl SymbolicationActor {
                     })
                     .await;
                 ((*module_id).to_owned(), result)
-            };
-
-            // Clone hub because of join_all concurrency.
-            futures.push(fut.bind_hub(Hub::new_from_top(Hub::current())));
-        }
+            }
+        });
 
         future::join_all(futures).await
     }
