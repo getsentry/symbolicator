@@ -126,35 +126,11 @@ pub async fn request_new_token(
 mod tests {
     use super::*;
 
-    fn gcs_source_key() -> Option<GcsSourceKey> {
-        let private_key = std::env::var("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY").ok()?;
-        let client_email = std::env::var("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL").ok()?;
-
-        if private_key.is_empty() || client_email.is_empty() {
-            None
-        } else {
-            Some(GcsSourceKey {
-                private_key,
-                client_email,
-            })
-        }
-    }
-
-    macro_rules! gcs_source_key {
-        () => {
-            match gcs_source_key() {
-                Some(key) => key,
-                None => {
-                    println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY or SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL");
-                    return;
-                }
-            }
-        }
-    }
+    use crate::test;
 
     #[test]
     fn test_key_from_string() {
-        let creds = gcs_source_key!();
+        let creds = test::gcs_source_key!();
 
         let key = key_from_string(&creds.private_key);
         assert!(key.is_ok());

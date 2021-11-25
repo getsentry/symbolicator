@@ -228,32 +228,6 @@ mod tests {
 
     use sha1::{Digest as _, Sha1};
 
-    fn gcs_source_key() -> Option<GcsSourceKey> {
-        let private_key = std::env::var("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY").ok()?;
-        let client_email = std::env::var("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL").ok()?;
-
-        if private_key.is_empty() || client_email.is_empty() {
-            None
-        } else {
-            Some(GcsSourceKey {
-                private_key,
-                client_email,
-            })
-        }
-    }
-
-    macro_rules! gcs_source_key {
-        () => {
-            match gcs_source_key() {
-                Some(key) => key,
-                None => {
-                    println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY or SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL");
-                    return;
-                }
-            }
-        }
-    }
-
     fn gcs_source(source_key: GcsSourceKey) -> Arc<GcsSourceConfig> {
         Arc::new(GcsSourceConfig {
             id: SourceId::new("gcs-test"),
@@ -268,7 +242,7 @@ mod tests {
     fn test_list_files() {
         test::setup();
 
-        let source = gcs_source(gcs_source_key!());
+        let source = gcs_source(test::gcs_source_key!());
         let downloader = GcsDownloader::new(
             Client::new(),
             std::time::Duration::from_secs(30),
@@ -296,7 +270,7 @@ mod tests {
     async fn test_download_complete() {
         test::setup();
 
-        let source = gcs_source(gcs_source_key!());
+        let source = gcs_source(test::gcs_source_key!());
         let downloader = GcsDownloader::new(
             Client::new(),
             std::time::Duration::from_secs(30),
@@ -327,7 +301,7 @@ mod tests {
     async fn test_download_missing() {
         test::setup();
 
-        let source = gcs_source(gcs_source_key!());
+        let source = gcs_source(test::gcs_source_key!());
         let downloader = GcsDownloader::new(
             Client::new(),
             std::time::Duration::from_secs(30),

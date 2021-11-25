@@ -31,8 +31,8 @@ use crate::config::Config;
 use crate::endpoints;
 use crate::services::Service;
 use crate::sources::{
-    CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
-    SourceFilters, SourceId,
+    CommonSourceConfig, FileType, FilesystemSourceConfig, GcsSourceKey, HttpSourceConfig,
+    SourceConfig, SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -333,5 +333,42 @@ impl FailingSymbolServer {
         self.times_accessed.swap(0, Ordering::SeqCst)
     }
 }
+
 // make sure procspawn works.
 procspawn::enable_test_support!();
+
+/// Returns the legacy read-only GCS credentials for testing GCS support.
+///
+/// Use the `gcs_source_key!()` macro instead which will skip correctly.
+pub fn gcs_source_key_from_env() -> Option<GcsSourceKey> {
+    let private_key = std::env::var("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY").ok()?;
+    let client_email = std::env::var("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL").ok()?;
+
+    if private_key.is_empty() || client_email.is_empty() {
+        None
+    } else {
+        Some(GcsSourceKey {
+            private_key,
+            client_email,
+        })
+    }
+}
+
+/// Returns the legacy read-only GCS credentials for testing GCS support.
+///
+/// If the credentials are not available this will exit the test early, as a poor substitute
+/// for skipping tests.
+macro_rules! gcs_source_key {
+    () => {
+        match $crate::test::gcs_source_key_from_env() {
+            Some(key) => key,
+            None => {
+                println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY or SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL");
+                return;
+            }
+        }
+    }
+}
+
+// Allow other modules to use this macro.
+pub(crate) use gcs_source_key;
