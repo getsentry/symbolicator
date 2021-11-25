@@ -15,7 +15,7 @@ use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
-use sentry::{Hub, SentryFutureExt};
+use sentry::SentryFutureExt;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{
