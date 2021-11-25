@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Error, Result};
 use futures::TryStreamExt;
 use reqwest::{Body, Client, StatusCode};
 use tokio::fs::{self, File};
-use tokio::io::{self, AsyncWrite};
+use tokio::io::{self, AsyncSeekExt, AsyncWrite};
 use tokio::sync::RwLock;
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
@@ -127,7 +127,8 @@ impl GcsState {
         }
     }
 
-    async fn store(&self, key: SharedCacheKey, src: File) -> Result<()> {
+    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<()> {
+        src.rewind().await?;
         let token = self.get_token().await?;
         let mut url =
             Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
@@ -190,27 +191,33 @@ impl FilesystemSharedCacheConfig {
     {
         let abspath = self.path.join(key.relative_path());
         log::debug!("Fetching debug file from {}", abspath.display());
-        let mut file = File::open(abspath).await?;
+        let mut file = match File::open(abspath).await {
+            Ok(file) => file,
+            Err(err) => match err.kind() {
+                io::ErrorKind::NotFound => return Ok(None),
+                _ => return Err(err).context("Failed to open file in shared cache"),
+            },
+        };
         match io::copy(&mut file, writer).await {
             Ok(_) => Ok(Some(())),
-            Err(err) => match err.kind() {
-                io::ErrorKind::NotFound => Ok(None),
-                // TODO: this should be: Err(err.context("Failed to copy file from shared cache")),
-                _ => Err(anyhow!(
-                    "Failed to copy file from shared cache: {}",
-                    LogError(&err)
-                )),
-            },
+            Err(err) => Err(err).context("Failed to copy file from shared cache"),
         }
     }
 
     async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<()> {
         let abspath = self.path.join(key.relative_path());
         if let Some(parent_dir) = abspath.parent() {
-            fs::create_dir_all(parent_dir).await?;
+            fs::create_dir_all(parent_dir)
+                .await
+                .context("Failed to create parent directories")?;
         }
-        let mut dest = File::open(abspath).await?;
-        io::copy(&mut src, &mut dest).await?;
+        let mut dest = File::create(abspath)
+            .await
+            .context("Failed to create cache file")?;
+        src.rewind().await.context("Failed to seek to src start")?;
+        io::copy(&mut src, &mut dest)
+            .await
+            .context("Failed to copy data into file")?;
         Ok(())
     }
 }
@@ -353,5 +360,153 @@ impl SharedCacheService {
                 );
             }
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::NamedTempFile;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use crate::test;
+    use crate::types::Scope;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_noop_fetch() {
+        test::setup();
+        let svc = SharedCacheService::new(None);
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+        let mut writer = Vec::new();
+
+        let ret = svc.fetch(&key, &mut writer).await;
+        assert!(!ret);
+    }
+
+    #[tokio::test]
+    async fn test_noop_store() {
+        test::setup();
+        let svc = SharedCacheService::new(None);
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+        let stdfile = tempfile::tempfile().unwrap();
+        let file = File::from_std(stdfile);
+
+        svc.store(key, file).await;
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_fetch_found() -> Result<()> {
+        test::setup();
+        let dir = test::tempdir();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+        let cache_path = dir.path().join(key.relative_path());
+        fs::create_dir_all(cache_path.parent().unwrap()).await?;
+        fs::write(&cache_path, b"cache data").await?;
+
+        let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
+            path: dir.path().to_path_buf(),
+        });
+        let svc = SharedCacheService::new(Some(cfg));
+
+        // This mimmics how Cacher::compute creates this file.
+        let temp_file = NamedTempFile::new_in(&dir)?;
+        let stdfile = temp_file.reopen()?;
+        let mut file = File::from_std(stdfile);
+
+        let ret = svc.fetch(&key, &mut file).await;
+
+        assert!(ret);
+        file.rewind().await?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await?;
+        assert_eq!(buf, b"cache data");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_fetch_not_found() {
+        test::setup();
+        let dir = test::tempdir();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+
+        let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
+            path: dir.path().to_path_buf(),
+        });
+        let svc = SharedCacheService::new(Some(cfg));
+
+        let mut writer = Vec::new();
+
+        let ret = svc.fetch(&key, &mut writer).await;
+
+        assert!(!ret);
+        assert_eq!(writer, b"");
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_store() -> Result<()> {
+        test::setup();
+        let dir = test::tempdir();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Global,
+            },
+        };
+        let cache_path = dir.path().join(key.relative_path());
+
+        let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
+            path: dir.path().to_path_buf(),
+        });
+        let svc = SharedCacheService::new(Some(cfg));
+
+        // This mimmics how the downloader and Cacher::compute write the cache data.
+        let temp_file = NamedTempFile::new_in(&dir)?;
+        let dup_file = temp_file.reopen()?;
+        let temp_fd = File::from_std(dup_file);
+        {
+            let mut file = File::create(temp_file.path()).await?;
+            file.write_all(b"cache data").await?;
+            file.flush().await?;
+        }
+
+        svc.store(key, temp_fd).await;
+
+        let data = fs::read(&cache_path).await?;
+        assert_eq!(data, b"cache data");
+        Ok(())
     }
 }

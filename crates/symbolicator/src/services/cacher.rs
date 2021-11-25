@@ -305,7 +305,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             version: T::VERSIONS.current,
             local_key: key.clone(),
         };
-        let dup_file = temp_file.as_file().try_clone()?;
+        let dup_file = temp_file.reopen()?;
         let mut temp_fd = tokio::fs::File::from_std(dup_file);
 
         // TODO: consider cache expiry!
