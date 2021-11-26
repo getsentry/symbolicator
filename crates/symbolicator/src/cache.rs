@@ -1,7 +1,8 @@
 //! Core logic for cache files. Used by `crate::services::common::cache`.
 
-use std::fs::{self, read_dir, remove_file, File};
-use std::io::{self, Read, Write};
+use core::fmt;
+use std::fs::{read_dir, remove_file};
+use std::io::{self, Read, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -9,11 +10,15 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use filetime::FileTime;
+use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use tokio::fs::File;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
+use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -84,44 +89,94 @@ impl CacheStatus {
         }
     }
 
-    /// Persist the operation in the cache.
+    /// Writes the status marker to the file, leaving the cursor at the end.
     ///
-    /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
-    /// file to the final cache location.  Otherwise it writes corresponding marker in the
-    /// cache location.
-    pub fn persist_item(&self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
-        let dir = path.parent().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
-        })?;
-        fs::create_dir_all(dir)?;
+    /// For a positive status this only seeks to the end.  For the other cases this seeks
+    /// to the beginning, writes the appropriate marker and truncates the file.
+    pub async fn write_marker(&self, file: &mut File) -> Result<(), io::Error> {
         match self {
             CacheStatus::Positive => {
-                file.persist(path).map_err(|x| x.error)?;
+                file.seek(SeekFrom::End(0)).await?;
             }
             CacheStatus::Negative => {
-                File::create(path)?;
+                file.rewind().await?;
+                file.set_len(0).await?;
             }
             CacheStatus::Malformed(details) => {
-                let mut f = File::create(path)?;
-                f.write_all(MALFORMED_MARKER)?;
-                f.write_all(details.as_bytes())?;
+                file.rewind().await?;
+                file.write_all(details.as_bytes()).await?;
             }
             CacheStatus::CacheSpecificError(details) => {
-                let mut f = File::create(path)?;
-                f.write_all(CACHE_SPECIFIC_ERROR_MARKER)?;
-                f.write_all(details.as_bytes())?;
+                file.rewind().await?;
+                file.write_all(CACHE_SPECIFIC_ERROR_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
             }
         }
-
         Ok(())
     }
 }
 
-/// Utilities for a sym/cfi or object cache.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilesystemSharedCacheConfig {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GcsSharedCacheConfig {
+    /// Name of the GCS bucket.
+    pub bucket: String,
+
+    /// Authorization information for this bucket. Needs read access.
+    #[serde(flatten)]
+    pub source_key: Arc<GcsSourceKey>,
+}
+
+/// A remote cache that can be shared between symbolicator instances.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SharedCacheConfig {
+    Gcs(GcsSharedCacheConfig),
+    Fs(FilesystemSharedCacheConfig),
+}
+
+/// All known cache names.
+#[derive(Debug, Clone, Copy)]
+pub enum CacheName {
+    Objects,
+    ObjectMeta,
+    Auxdifs,
+    Symcaches,
+    Cficaches,
+    Diagnostics,
+}
+
+impl AsRef<str> for CacheName {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Objects => "objects",
+            Self::ObjectMeta => "object_meta",
+            Self::Auxdifs => "auxdifs",
+            Self::Symcaches => "symcaches",
+            Self::Cficaches => "cficaches",
+            Self::Diagnostics => "diagnostics",
+        }
+    }
+}
+
+impl fmt::Display for CacheName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
+
+/// Common cache configuration.
+///
+/// Many parts of symbolicator use a cache to save having to re-download data or reprocess
+/// downloaded data.  All caches behave similarly and their behaviour is determined by this
+/// struct.
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// Cache identifier used for metric names.
-    name: &'static str,
+    name: CacheName,
 
     /// Directory to use for storing cache items. Will be created if it does not exist.
     ///
@@ -145,15 +200,23 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
+
+    /// A cache that may be shared between symbolicator instances.
+    ///
+    /// If it is present any missing cache item will first be looked up here before being
+    /// computed.  If it is still missing it will be computed and then uploaded to the
+    /// shared cache.
+    shared_cache: Option<SharedCacheConfig>,
 }
 
 impl Cache {
     pub fn from_config(
-        name: &'static str,
+        name: CacheName,
         cache_dir: Option<PathBuf>,
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
+        shared_cache: Option<SharedCacheConfig>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -165,10 +228,11 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
+            shared_cache,
         })
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> CacheName {
         self.name
     }
 
@@ -345,7 +409,7 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
         .len()
         .max(CACHE_SPECIFIC_ERROR_MARKER.len());
     let readable_amount = largest_sentinel.min(metadata.len() as usize);
-    let mut file = File::open(path)?;
+    let mut file = std::fs::File::open(path)?;
     let mut buf = vec![0; readable_amount];
 
     file.read_exact(&mut buf)?;
@@ -415,61 +479,67 @@ impl Caches {
             objects: {
                 let path = config.cache_dir("objects");
                 Cache::from_config(
-                    "objects",
+                    CacheName::Objects,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
+                    config.shared_cache.clone(),
                 )?
             },
             object_meta: {
                 let path = config.cache_dir("object_meta");
                 Cache::from_config(
-                    "object_meta",
+                    CacheName::ObjectMeta,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    config.shared_cache.clone(),
                 )?
             },
             auxdifs: {
                 let path = config.cache_dir("auxdifs");
                 Cache::from_config(
-                    "auxdifs",
+                    CacheName::Auxdifs,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads,
+                    config.shared_cache.clone(),
                 )?
             },
             symcaches: {
                 let path = config.cache_dir("symcaches");
                 Cache::from_config(
-                    "symcaches",
+                    CacheName::Symcaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    config.shared_cache.clone(),
                 )?
             },
             cficaches: {
                 let path = config.cache_dir("cficaches");
                 Cache::from_config(
-                    "cficaches",
+                    CacheName::Cficaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations,
+                    config.shared_cache.clone(),
                 )?
             },
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
                 Cache::from_config(
-                    "diagnostics",
+                    CacheName::Diagnostics,
                     path,
                     tmp_dir,
                     config.caches.diagnostics.into(),
                     Default::default(),
+                    config.shared_cache.clone(),
                 )?
             },
         })
@@ -540,7 +610,7 @@ mod tests {
     use super::*;
 
     use std::convert::TryInto;
-    use std::fs::{self, create_dir_all};
+    use std::fs::{self, create_dir_all, File};
     use std::io::Write;
     use std::thread::sleep;
 
@@ -557,11 +627,12 @@ mod tests {
         let basedir = tempdir().unwrap();
         let cachedir = basedir.path().join("cache");
         let _cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cachedir.clone()),
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
+            None,
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
@@ -613,7 +684,7 @@ mod tests {
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -621,6 +692,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -651,7 +723,7 @@ mod tests {
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -659,6 +731,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -701,7 +774,7 @@ mod tests {
         // Creation of this struct == "process startup", this tests that all malformed files created
         // before startup are cleaned
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -709,6 +782,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         cache.cleanup()?;
@@ -747,7 +821,7 @@ mod tests {
         // Creation of this struct == "process startup", this tests that all cache-specific error files created
         // before startup are cleaned
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -755,6 +829,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -793,7 +868,7 @@ mod tests {
             .write_all(b"malformedcachespecificerror")?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(DownloadedCacheConfig {
@@ -801,6 +876,7 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
+            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -1032,11 +1108,12 @@ mod tests {
         // Assert that opening a cache touches the mtime but does not invalidate it.
         let tempdir = tempdir()?;
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
+            None,
         )?;
 
         // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched

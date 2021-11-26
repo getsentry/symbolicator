@@ -16,13 +16,16 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use anyhow::Context;
 use log::LevelFilter;
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use warp::filters::fs::File;
 use warp::reject::{Reject, Rejection};
 use warp::Filter;
@@ -31,8 +34,8 @@ use crate::config::Config;
 use crate::endpoints;
 use crate::services::Service;
 use crate::sources::{
-    CommonSourceConfig, FileType, FilesystemSourceConfig, HttpSourceConfig, SourceConfig,
-    SourceFilters, SourceId,
+    CommonSourceConfig, FileType, FilesystemSourceConfig, GcsSourceKey, HttpSourceConfig,
+    SourceConfig, SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -333,5 +336,124 @@ impl FailingSymbolServer {
         self.times_accessed.swap(0, Ordering::SeqCst)
     }
 }
+
 // make sure procspawn works.
 procspawn::enable_test_support!();
+
+/// Returns the legacy read-only GCS credentials for testing GCS support.
+///
+/// Use the `gcs_source_key!()` macro instead which will skip correctly.
+pub fn gcs_source_key_from_env() -> Option<GcsSourceKey> {
+    let private_key = std::env::var("SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY").ok()?;
+    let client_email = std::env::var("SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL").ok()?;
+
+    if private_key.is_empty() || client_email.is_empty() {
+        None
+    } else {
+        Some(GcsSourceKey {
+            private_key,
+            client_email,
+        })
+    }
+}
+
+/// Returns the legacy read-only GCS credentials for testing GCS support.
+///
+/// If the credentials are not available this will exit the test early, as a poor substitute
+/// for skipping tests.
+macro_rules! gcs_source_key {
+    () => {
+        match $crate::test::gcs_source_key_from_env() {
+            Some(key) => key,
+            None => {
+                println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY or SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL");
+                return;
+            }
+        }
+    }
+}
+
+// Allow other modules to use this macro.
+pub(crate) use gcs_source_key;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestGcsCredentials {
+    pub bucket: String,
+    pub client_email: String,
+    pub private_key: String,
+}
+
+impl TestGcsCredentials {
+    pub fn source_key(&self) -> Arc<GcsSourceKey> {
+        Arc::new(GcsSourceKey {
+            client_email: self.client_email.clone(),
+            private_key: self.private_key.clone(),
+        })
+    }
+}
+
+/// Retrieve the symbolicator GCS test credentials from a JSON file.
+///
+/// Reads a file named `symbolicator-gcs-test-key.json` in the git root.  Use the
+/// [`gcs_credentials!`] macro instead.
+///
+/// Sentry employees can find this file under the `symbolicator-gcs-test-key` entry in
+/// 1Password.
+pub fn gcs_credentials_from_json() -> anyhow::Result<Option<TestGcsCredentials>> {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop(); // to /crates/
+    path.pop(); // to /
+    path.push("symbolicator-gcs-test-key.json");
+
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(data) => Ok(data),
+        Err(err) => match err.kind() {
+            ErrorKind::NotFound => return Ok(None),
+            _ => Err(err).context("Failed to read symbolicator-gcs-test-key.json"),
+        },
+    }?;
+
+    serde_json::from_str(&raw)
+        .context("Failed to parse symbolicator-gcs-test-key.json")
+        .map(Some)
+}
+
+/// Retrieve the symbolicator GCS test credentials from the environment.
+///
+/// This is used in our CI setup to get hold of the test credentials.
+pub fn gcs_credentials_from_env() -> anyhow::Result<Option<TestGcsCredentials>> {
+    let raw = match std::env::var("SENTRY_SYMBOLICATOR_GCS_TEST_KEY") {
+        Ok(s) => s,
+        Err(_) => return Ok(None),
+    };
+
+    serde_json::from_str(&raw)
+        .context("Failed to parse symbolicator-gcs-test-key.json")
+        .map(Some)
+}
+
+/// Returns GCS credentials for testing GCS support.
+///
+/// If the credentials are not available this will exit the test early, as a poor substitute
+/// for skipping tests.
+macro_rules! gcs_credentials {
+    () => {
+        match $crate::test::gcs_credentials_from_env() {
+            Ok(Some(creds)) => creds,
+            Ok(None) => {
+                match $crate::test::gcs_credentials_from_json() {
+                    Ok(Some(creds)) => creds,
+                    Ok(None) => {
+                        println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_TEST_KEY or symbolicator-gcs-test-key.json");
+                        return Ok(())
+                    }
+                    Err(err) => panic!("{}", err),
+                }
+            }
+            Err(err) => panic!("{}", err),
+        }
+    }
+}
+
+// Allow other modules to use this macro.
+pub(crate) use gcs_credentials;

@@ -26,6 +26,8 @@ use crate::types::{
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
+use super::shared_cache::SharedCacheService;
+
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 
@@ -92,12 +94,13 @@ pub struct SymCacheActor {
 impl SymCacheActor {
     pub fn new(
         cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             bitcode_svc,
             threadpool,
@@ -437,10 +440,16 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(config);
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
-        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
+        let shared_cache = Arc::new(SharedCacheService::new(None));
+        let objects = ObjectsActor::new(
+            caches.object_meta,
+            caches.objects,
+            shared_cache.clone(),
+            downloader.clone(),
+        );
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader);
 
-        SymCacheActor::new(caches.symcaches, objects, bitcode, cpu_pool)
+        SymCacheActor::new(caches.symcaches, shared_cache, objects, bitcode, cpu_pool)
     }
 
     /// Tests that a symcache is regenerated when it was created without a BcSymbolMap

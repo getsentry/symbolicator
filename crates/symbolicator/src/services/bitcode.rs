@@ -26,6 +26,8 @@ use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 
+use super::shared_cache::SharedCacheService;
+
 /// Handle to a valid BCSymbolMap.
 ///
 /// While this handle points to the raw data, this data is guaranteed to be valid, you can
@@ -210,9 +212,13 @@ pub struct BitcodeService {
 }
 
 impl BitcodeService {
-    pub fn new(difs_cache: Cache, download_svc: Arc<DownloadService>) -> Self {
+    pub fn new(
+        difs_cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
+        download_svc: Arc<DownloadService>,
+    ) -> Self {
         Self {
-            cache: Arc::new(Cacher::new(difs_cache)),
+            cache: Arc::new(Cacher::new(difs_cache, shared_cache_svc)),
             download_svc,
         }
     }

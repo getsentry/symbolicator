@@ -25,6 +25,8 @@ use crate::types::{
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
+use super::shared_cache::SharedCacheService;
+
 /// The supported cficache versions.
 ///
 /// # How to version
@@ -76,9 +78,14 @@ pub struct CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: tokio::runtime::Handle) -> Self {
+    pub fn new(
+        cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
+        objects: ObjectsActor,
+        threadpool: tokio::runtime::Handle,
+    ) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             threadpool,
         }
