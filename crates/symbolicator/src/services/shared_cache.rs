@@ -11,7 +11,6 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Error, Result};
 use futures::TryStreamExt;
 use reqwest::{Body, Client, StatusCode};
-use static_assertions::assert_impl_all;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
 use tokio::sync::{mpsc, RwLock};
@@ -302,7 +301,6 @@ enum SharedCacheBackend {
     Gcs(GcsState),
     Fs(FilesystemSharedCacheConfig),
 }
-assert_impl_all!(SharedCacheBackend: Send, Sync);
 
 impl SharedCacheBackend {
     fn name(&self) -> &'static str {
@@ -368,6 +366,8 @@ impl SharedCacheService {
                 Some((key, src)) = work_rx.recv(), if uploads_counter > 0 => {
                     uploads_counter -= 1;
                     tokio::spawn(Self::single_uploader(done_tx.clone(), backend.clone(), key, src));
+                    let uploads_in_flight: u64 = (max_concurrent_uploads - uploads_counter) as u64;
+                    metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight);
                 }
                 Some(_) = done_rx.recv() => {
                     uploads_counter += 1;
@@ -477,6 +477,7 @@ impl SharedCacheService {
     /// Errors are transparently hidden, this service handles any errors itself.
     pub async fn store(&self, key: SharedCacheKey, src: File) {
         if let Some(ref tx) = self.upload_queue_tx {
+            metric!(gauge("services.shared_cache.uploads_queue_capacity") = tx.capacity() as u64);
             tx.try_send((key, src)).unwrap_or_else(|_| {
                 metric!(counter("services.shared_cache.store.dropped") += 1);
                 log::error!("Shared cache upload queue full");
