@@ -1,3 +1,8 @@
+//! A global cache to be shared between different symbolicator instances.
+//!
+//! The goal of this cache is to have a faster warmup time when starting a new symbolicator
+//! instance.
+
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -6,9 +11,10 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Error, Result};
 use futures::TryStreamExt;
 use reqwest::{Body, Client, StatusCode};
+use static_assertions::assert_impl_all;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
@@ -216,6 +222,7 @@ impl FilesystemSharedCacheConfig {
             return Ok(SharedCacheStoreResult::Skipped);
         }
 
+        // TODO: this must be atomic!  can't have partially written files in the cache.
         let mut dest = File::create(abspath)
             .await
             .context("Failed to create cache file")?;
@@ -295,6 +302,16 @@ enum SharedCacheBackend {
     Gcs(GcsState),
     Fs(FilesystemSharedCacheConfig),
 }
+assert_impl_all!(SharedCacheBackend: Send, Sync);
+
+impl SharedCacheBackend {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Gcs(_) => "GCS",
+            Self::Fs(_) => "filesystem",
+        }
+    }
+}
 
 /// A shared cache service.
 ///
@@ -303,23 +320,106 @@ enum SharedCacheBackend {
 /// no-op.
 #[derive(Debug)]
 pub struct SharedCacheService {
-    backend: Option<SharedCacheBackend>,
+    backend: Option<Arc<SharedCacheBackend>>,
+    upload_queue_tx: Option<mpsc::Sender<(SharedCacheKey, File)>>,
 }
 
 impl SharedCacheService {
     pub fn new(config: Option<SharedCacheConfig>) -> Self {
-        let backend = config.map(|cfg| match cfg {
-            SharedCacheConfig::Gcs(cfg) => SharedCacheBackend::Gcs(GcsState::new(cfg)),
-            SharedCacheConfig::Fs(cfg) => SharedCacheBackend::Fs(cfg),
+        // TODO: move these to the config
+        let max_queue_size = 50;
+        let max_concurrent_uploads = 25;
+
+        match config {
+            Some(cfg) => {
+                let (tx, rx) = mpsc::channel(max_queue_size);
+                let backend = match cfg {
+                    SharedCacheConfig::Gcs(cfg) => SharedCacheBackend::Gcs(GcsState::new(cfg)),
+                    SharedCacheConfig::Fs(cfg) => SharedCacheBackend::Fs(cfg),
+                };
+                let backend = Arc::new(backend);
+                tokio::spawn(Self::upload_worker(
+                    rx,
+                    backend.clone(),
+                    max_concurrent_uploads,
+                ));
+                Self {
+                    backend: Some(backend),
+                    upload_queue_tx: Some(tx),
+                }
+            }
+            None => Self {
+                backend: None,
+                upload_queue_tx: None,
+            },
+        }
+    }
+
+    /// Long running task managing concurrent uploads to the shared cache.
+    async fn upload_worker(
+        mut work_rx: mpsc::Receiver<(SharedCacheKey, File)>,
+        backend: Arc<SharedCacheBackend>,
+        max_concurrent_uploads: usize,
+    ) {
+        let (done_tx, mut done_rx) = mpsc::channel::<()>(max_concurrent_uploads);
+        let mut uploads_counter = max_concurrent_uploads;
+        loop {
+            tokio::select! {
+                Some((key, src)) = work_rx.recv(), if uploads_counter > 0 => {
+                    uploads_counter -= 1;
+                    tokio::spawn(Self::single_uploader(done_tx.clone(), backend.clone(), key, src));
+                }
+                Some(_) = done_rx.recv() => {
+                    uploads_counter += 1;
+                }
+                else => break,
+            }
+        }
+        log::info!("Shared cache upload worker terminated");
+    }
+
+    /// Does a single upload to the shared cache backend.
+    ///
+    /// Handles metrics and error reporting.
+    async fn single_uploader(
+        done_tx: mpsc::Sender<()>,
+        backend: Arc<SharedCacheBackend>,
+        key: SharedCacheKey,
+        src: File,
+    ) {
+        let cache_name = key.name;
+        let res = match *backend {
+            SharedCacheBackend::Gcs(ref state) => state.store(key, src).await,
+            SharedCacheBackend::Fs(ref cfg) => cfg.store(key, src).await,
+        };
+        match res {
+            Ok(op) => {
+                metric!(
+                    counter("services.shared_cache.store") += 1,
+                    "cache" => cache_name.as_ref(),
+                    "write" => op.as_ref(),
+                );
+            }
+            Err(err) => {
+                log::error!(
+                    "Error storing file on {} shared cache: {}",
+                    backend.name(),
+                    LogError(&*err),
+                );
+            }
+        }
+        done_tx.send(()).await.unwrap_or_else(|err| {
+            log::error!(
+                "Shared cache single_uploader failed to send done message: {}",
+                LogError(&err)
+            );
         });
-        Self { backend }
     }
 
     /// Returns the name of the backend configured.
-    fn backend_name(&self) -> &str {
+    fn backend_name(&self) -> &'static str {
         match self.backend {
-            Some(SharedCacheBackend::Fs(_)) => "filesystem",
-            Some(SharedCacheBackend::Gcs(_)) => "GCS",
+            Some(ref backend) => backend.name(),
             None => "<not-configured>",
         }
     }
@@ -337,9 +437,11 @@ impl SharedCacheService {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
-        let res = match self.backend {
-            Some(SharedCacheBackend::Gcs(ref state)) => state.fetch(key, writer).await,
-            Some(SharedCacheBackend::Fs(ref cfg)) => cfg.fetch(key, writer).await,
+        let res = match self.backend.as_deref() {
+            Some(backend) => match backend {
+                SharedCacheBackend::Gcs(ref state) => state.fetch(key, writer).await,
+                SharedCacheBackend::Fs(ref cfg) => cfg.fetch(key, writer).await,
+            },
             None => return false,
         };
         match res {
@@ -374,32 +476,11 @@ impl SharedCacheService {
     ///
     /// Errors are transparently hidden, this service handles any errors itself.
     pub async fn store(&self, key: SharedCacheKey, src: File) {
-        // TODO: concurrency control, handle overload (aka backpressure, but we're not
-        // pressing back at all here since we have no return value).
-
-        // TODO: spawn or enqueue here, don't want to be blocking the caller's progress.
-
-        let cache_name = key.name;
-        let res = match &self.backend {
-            Some(SharedCacheBackend::Gcs(state)) => state.store(key, src).await,
-            Some(SharedCacheBackend::Fs(cfg)) => cfg.store(key, src).await,
-            None => Ok(SharedCacheStoreResult::Skipped),
-        };
-        match res {
-            Ok(op) => {
-                metric!(
-                    counter("services.shared_caches.store") += 1,
-                    "cache" => cache_name.as_ref(),
-                    "write" => op.as_ref(),
-                );
-            }
-            Err(err) => {
-                log::error!(
-                    "Error storing file on {} shared cache: {}",
-                    self.backend_name(),
-                    LogError(&*err),
-                );
-            }
+        if let Some(ref tx) = self.upload_queue_tx {
+            tx.try_send((key, src)).unwrap_or_else(|_| {
+                metric!(counter("services.shared_cache.store.dropped") += 1);
+                log::error!("Shared cache upload queue full");
+            })
         };
     }
 }
