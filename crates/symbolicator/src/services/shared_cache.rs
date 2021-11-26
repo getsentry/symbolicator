@@ -87,35 +87,31 @@ impl GcsState {
         match request.await {
             Ok(Ok(response)) => {
                 let status = response.status();
-
-                if status.is_success() {
-                    log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
-                    let stream = response
-                        .bytes_stream()
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
-                    let mut stream = StreamReader::new(stream);
-                    let res = io::copy(&mut stream, writer)
-                        .await
-                        .map(|_| ())
-                        .context("IO Error streaming HTTP bytes to writer");
-                    Some(res).transpose()
-                } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
-                    Err(anyhow!(
+                match status {
+                    _ if status.is_success() => {
+                        log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                        let stream = response
+                            .bytes_stream()
+                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                        let mut stream = StreamReader::new(stream);
+                        let res = io::copy(&mut stream, writer)
+                            .await
+                            .map(|_| ())
+                            .context("IO Error streaming HTTP bytes to writer");
+                        Some(res).transpose()
+                    }
+                    StatusCode::NOT_FOUND => Ok(None),
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
-                    ))
-                } else if status.is_client_error() {
-                    // TODO: A client error is probably a 404 but actually handle this correctly.
-                    log::debug!("Client error status code from shared cache GCS {}", status);
-                    Ok(None)
-                } else {
-                    Err(anyhow!(
+                    )),
+                    _ => Err(anyhow!(
                         "Error response from GCS for bucket={}, key={}: {} {}",
                         self.config.bucket,
                         key.gcs_bucket_key(),
                         status,
                         status.canonical_reason().unwrap_or("")
-                    ))
+                    )),
                 }
             }
             Ok(Err(e)) => {
