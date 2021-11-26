@@ -354,7 +354,7 @@ impl SharedCacheService {
             }
             Err(err) => {
                 log::error!(
-                    "Error storing on {} shared cache: {}",
+                    "Error storing file on {} shared cache: {}",
                     self.backend_name(),
                     LogError(&*err),
                 );
