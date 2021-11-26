@@ -127,7 +127,7 @@ impl GcsState {
         }
     }
 
-    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<()> {
+    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
         src.rewind().await?;
         let token = self.get_token().await?;
         let mut url =
@@ -138,7 +138,9 @@ impl GcsState {
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&self.config.bucket, "o"]);
         url.query_pairs_mut()
-            .append_pair("name", &key.gcs_bucket_key());
+            .append_pair("name", &key.gcs_bucket_key())
+            // Upload only if it's not already there
+            .append_pair("ifGenerationMatch", "0");
 
         let stream = ReaderStream::new(src);
         let body = Body::wrap_stream(stream);
@@ -154,22 +156,32 @@ impl GcsState {
         match request.await {
             Ok(Ok(response)) => {
                 let status = response.status();
-                if status.is_success() {
-                    log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
-                    Ok(())
-                } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
-                    Err(anyhow!(
+                match status {
+                    successful if successful.is_success() => {
+                        log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                        Ok(SharedCacheStoreResult::Written)
+                    }
+                    // TODO: It may be better to skip `ifGenerationMatch` entirely unless
+                    // we're doing a multipart upload, or if the upload is streamed to GCS.
+                    StatusCode::PRECONDITION_FAILED => {
+                        // TODO: emit to sentry?
+                        log::warn!(
+                            "Skipped writing {}, already in shared_cache GCS",
+                            key.gcs_bucket_key()
+                        );
+                        Ok(SharedCacheStoreResult::Skipped)
+                    }
+                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
-                    ))
-                } else {
-                    Err(anyhow!(
+                    )),
+                    _ => Err(anyhow!(
                         "Error response from GCS for bucket={}, key={}: {} {}",
                         self.config.bucket,
                         key.gcs_bucket_key(),
                         status,
                         status.canonical_reason().unwrap_or("")
-                    ))
+                    )),
                 }
             }
             Ok(Err(err)) => {
@@ -204,13 +216,17 @@ impl FilesystemSharedCacheConfig {
         }
     }
 
-    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<()> {
+    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
         let abspath = self.path.join(key.relative_path());
         if let Some(parent_dir) = abspath.parent() {
             fs::create_dir_all(parent_dir)
                 .await
                 .context("Failed to create parent directories")?;
         }
+        if abspath.as_path().exists() {
+            return Ok(SharedCacheStoreResult::Written);
+        }
+
         let mut dest = File::create(abspath)
             .await
             .context("Failed to create cache file")?;
@@ -218,8 +234,16 @@ impl FilesystemSharedCacheConfig {
         io::copy(&mut src, &mut dest)
             .await
             .context("Failed to copy data into file")?;
-        Ok(())
+        Ok(SharedCacheStoreResult::Written)
     }
+}
+
+/// The result of an attempt to write an entry to the shared cache.
+enum SharedCacheStoreResult {
+    /// Successfully written to the cache as a new entry.
+    Written,
+    /// Skipped writing the item as it was already on the cache.
+    Skipped,
 }
 
 /// Key for a shared cache item.
@@ -346,11 +370,14 @@ impl SharedCacheService {
         let res = match &self.backend {
             Some(SharedCacheBackend::Gcs(state)) => state.store(key, src).await,
             Some(SharedCacheBackend::Fs(cfg)) => cfg.store(key, src).await,
-            None => Ok(()),
+            None => Ok(SharedCacheStoreResult::Skipped),
         };
         match res {
-            Ok(_) => {
+            Ok(SharedCacheStoreResult::Written) => {
                 metric!(counter(&format!("shared_caches.{}.file.write", cache_name)) += 1);
+            }
+            Ok(SharedCacheStoreResult::Skipped) => {
+                // metric!(counter(&format!("shared_caches.{}.file.skipped", cache_name)) += 1);
             }
             Err(err) => {
                 log::error!(
