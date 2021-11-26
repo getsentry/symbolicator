@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -86,6 +87,7 @@ impl GcsState {
         match request.await {
             Ok(Ok(response)) => {
                 let status = response.status();
+
                 if status.is_success() {
                     log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
                     let stream = response
@@ -163,14 +165,7 @@ impl GcsState {
                     }
                     // TODO: It may be better to skip `ifGenerationMatch` entirely unless
                     // we're doing a multipart upload, or if the upload is streamed to GCS.
-                    StatusCode::PRECONDITION_FAILED => {
-                        // TODO: emit to sentry?
-                        log::warn!(
-                            "Skipped writing {}, already in shared_cache GCS",
-                            key.gcs_bucket_key()
-                        );
-                        Ok(SharedCacheStoreResult::Skipped)
-                    }
+                    StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
@@ -224,7 +219,7 @@ impl FilesystemSharedCacheConfig {
                 .context("Failed to create parent directories")?;
         }
         if abspath.as_path().exists() {
-            return Ok(SharedCacheStoreResult::Written);
+            return Ok(SharedCacheStoreResult::Skipped);
         }
 
         let mut dest = File::create(abspath)
@@ -239,11 +234,27 @@ impl FilesystemSharedCacheConfig {
 }
 
 /// The result of an attempt to write an entry to the shared cache.
+#[derive(Debug, Clone, Copy)]
 enum SharedCacheStoreResult {
     /// Successfully written to the cache as a new entry.
     Written,
     /// Skipped writing the item as it was already on the cache.
     Skipped,
+}
+
+impl AsRef<str> for SharedCacheStoreResult {
+    fn as_ref(&self) -> &str {
+        match self {
+            SharedCacheStoreResult::Written => "written",
+            SharedCacheStoreResult::Skipped => "skipped",
+        }
+    }
+}
+
+impl fmt::Display for SharedCacheStoreResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
 }
 
 /// Key for a shared cache item.
@@ -339,11 +350,19 @@ impl SharedCacheService {
         };
         match res {
             Ok(Some(_)) => {
-                metric!(counter(&format!("services.shared_cache.{}", key.name)) += 1, "hit" => "true");
+                metric!(
+                    counter("services.shared_cache.store") += 1,
+                    "cache" => key.name.as_ref(),
+                    "hit" => "true",
+                );
                 true
             }
             Ok(None) => {
-                metric!(counter(&format!("services.shared_cache.{}", key.name)) += 1, "hit" => "false");
+                metric!(
+                    counter("services.shared_cache.store") += 1,
+                    "cache" => key.name.as_ref(),
+                    "hit" => "false",
+                );
                 false
             }
             Err(err) => {
@@ -373,11 +392,12 @@ impl SharedCacheService {
             None => Ok(SharedCacheStoreResult::Skipped),
         };
         match res {
-            Ok(SharedCacheStoreResult::Written) => {
-                metric!(counter(&format!("shared_caches.{}.file.write", cache_name)) += 1);
-            }
-            Ok(SharedCacheStoreResult::Skipped) => {
-                // metric!(counter(&format!("shared_caches.{}.file.skipped", cache_name)) += 1);
+            Ok(op) => {
+                metric!(
+                    counter("services.shared_caches.store") += 1,
+                    "cache" => cache_name.as_ref(),
+                    "write" => op.as_ref(),
+                );
             }
             Err(err) => {
                 log::error!(
@@ -394,6 +414,7 @@ impl SharedCacheService {
 mod tests {
     use tempfile::NamedTempFile;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use uuid::Uuid;
 
     use crate::test;
     use crate::types::Scope;
@@ -547,7 +568,7 @@ mod tests {
             version: 0,
             local_key: CacheKey {
                 cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                scope: Scope::Scoped(Uuid::new_v4().to_string()),
             },
         };
 
@@ -576,7 +597,7 @@ mod tests {
             version: 0,
             local_key: CacheKey {
                 cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                scope: Scope::Scoped(Uuid::new_v4().to_string()),
             },
         };
 
@@ -604,7 +625,7 @@ mod tests {
             version: 0,
             local_key: CacheKey {
                 cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                scope: Scope::Scoped(Uuid::new_v4().to_string()),
             },
         };
 

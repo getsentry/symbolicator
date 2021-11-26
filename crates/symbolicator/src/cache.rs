@@ -149,16 +149,22 @@ pub enum CacheName {
     Diagnostics,
 }
 
+impl AsRef<str> for CacheName {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Objects => "objects",
+            Self::ObjectMeta => "object_meta",
+            Self::Auxdifs => "auxdifs",
+            Self::Symcaches => "symcaches",
+            Self::Cficaches => "cficaches",
+            Self::Diagnostics => "diagnostics",
+        }
+    }
+}
+
 impl fmt::Display for CacheName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Objects => write!(f, "objects"),
-            Self::ObjectMeta => write!(f, "object_meta"),
-            Self::Auxdifs => write!(f, "auxdifs"),
-            Self::Symcaches => write!(f, "symcaches"),
-            Self::Cficaches => write!(f, "cficaches"),
-            Self::Diagnostics => write!(f, "diagnostics"),
-        }
+        write!(f, "{}", self.as_ref())
     }
 }
 
