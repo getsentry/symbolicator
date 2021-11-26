@@ -159,8 +159,6 @@ impl GcsState {
                         log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
                         Ok(SharedCacheStoreResult::Written)
                     }
-                    // TODO: It may be better to skip `ifGenerationMatch` entirely unless
-                    // we're doing a multipart upload, or if the upload is streamed to GCS.
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
