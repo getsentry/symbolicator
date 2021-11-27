@@ -445,7 +445,7 @@ macro_rules! gcs_credentials {
                     Ok(Some(creds)) => creds,
                     Ok(None) => {
                         println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_TEST_KEY or symbolicator-gcs-test-key.json");
-                        return Ok(())
+                        return;
                     }
                     Err(err) => panic!("{}", err),
                 }

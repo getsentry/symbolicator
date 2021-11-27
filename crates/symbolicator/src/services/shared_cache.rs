@@ -13,7 +13,7 @@ use futures::TryStreamExt;
 use reqwest::{Body, Client, StatusCode};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
@@ -311,6 +311,16 @@ impl SharedCacheBackend {
     }
 }
 
+/// Message to send upload tasks across the [`SharedCacheService::upload_queue_tx`].
+struct UploadMessage {
+    /// The cache key to store the data at.
+    key: SharedCacheKey,
+    /// The [`File`] to read the cache data from.
+    src: File,
+    /// A channel to notify completion of storage.
+    done_tx: oneshot::Sender<()>,
+}
+
 /// A shared cache service.
 ///
 /// For simplicity in the rest of the application this service always exists, regardless of
@@ -319,7 +329,7 @@ impl SharedCacheBackend {
 #[derive(Debug)]
 pub struct SharedCacheService {
     backend: Option<Arc<SharedCacheBackend>>,
-    upload_queue_tx: Option<mpsc::Sender<(SharedCacheKey, File)>>,
+    upload_queue_tx: Option<mpsc::Sender<UploadMessage>>,
 }
 
 impl SharedCacheService {
@@ -355,7 +365,7 @@ impl SharedCacheService {
 
     /// Long running task managing concurrent uploads to the shared cache.
     async fn upload_worker(
-        mut work_rx: mpsc::Receiver<(SharedCacheKey, File)>,
+        mut work_rx: mpsc::Receiver<UploadMessage>,
         backend: Arc<SharedCacheBackend>,
         max_concurrent_uploads: usize,
     ) {
@@ -363,9 +373,9 @@ impl SharedCacheService {
         let mut uploads_counter = max_concurrent_uploads;
         loop {
             tokio::select! {
-                Some((key, src)) = work_rx.recv(), if uploads_counter > 0 => {
+                Some(message) = work_rx.recv(), if uploads_counter > 0 => {
                     uploads_counter -= 1;
-                    tokio::spawn(Self::single_uploader(done_tx.clone(), backend.clone(), key, src));
+                    tokio::spawn(Self::single_uploader(done_tx.clone(), backend.clone(), message));
                     let uploads_in_flight: u64 = (max_concurrent_uploads - uploads_counter) as u64;
                     metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight);
                 }
@@ -384,9 +394,9 @@ impl SharedCacheService {
     async fn single_uploader(
         done_tx: mpsc::Sender<()>,
         backend: Arc<SharedCacheBackend>,
-        key: SharedCacheKey,
-        src: File,
+        message: UploadMessage,
     ) {
+        let UploadMessage { key, src, done_tx: complete_tx } = message;
         let cache_name = key.name;
         let res = match *backend {
             SharedCacheBackend::Gcs(ref state) => state.store(key, src).await,
@@ -408,12 +418,17 @@ impl SharedCacheService {
                 );
             }
         }
+
+        // Tell the work coordinator we're done.
         done_tx.send(()).await.unwrap_or_else(|err| {
             log::error!(
                 "Shared cache single_uploader failed to send done message: {}",
                 LogError(&err)
             );
         });
+
+        // Tell the original work submitter we're done, if they dropped this we don't care.
+        complete_tx.send(()).ok();
     }
 
     /// Returns the name of the backend configured.
@@ -475,14 +490,35 @@ impl SharedCacheService {
     /// Place a file on the shared cache, if it does not yet exist there.
     ///
     /// Errors are transparently hidden, this service handles any errors itself.
-    pub async fn store(&self, key: SharedCacheKey, src: File) {
-        if let Some(ref tx) = self.upload_queue_tx {
-            metric!(gauge("services.shared_cache.uploads_queue_capacity") = tx.capacity() as u64);
-            tx.try_send((key, src)).unwrap_or_else(|_| {
-                metric!(counter("services.shared_cache.store.dropped") += 1);
-                log::error!("Shared cache upload queue full");
-            })
-        };
+    ///
+    /// # Return
+    ///
+    /// If the shared cache is enabled a [`oneshot::Receiver`] is returned which will
+    /// receive a value once the file has been stored in the shared cache.  Due to
+    /// backpressure it is possible that the file is never stored, in which case the
+    /// corresponding [`oneshot::Sender`] is dropped and awaiting the receiver will resolve
+    /// into an [`Err`].
+    ///
+    /// This [`oneshot::Receiver`] can also be safely ignored if you do not need to know
+    /// when the file is stored.  This mostly exists to enable testing.
+    pub async fn store(&self, key: SharedCacheKey, src: File) -> Option<oneshot::Receiver<()>> {
+        match self.upload_queue_tx {
+            Some(ref work_tx) => {
+                metric!(
+                    gauge("services.shared_cache.uploads_queue_capacity") =
+                        work_tx.capacity() as u64
+                );
+                let (done_tx, done_rx) = oneshot::channel::<()>();
+                work_tx
+                    .try_send(UploadMessage { key, src, done_tx })
+                    .unwrap_or_else(|_| {
+                        metric!(counter("services.shared_cache.store.dropped") += 1);
+                        log::error!("Shared cache upload queue full");
+                    });
+                Some(done_rx)
+            }
+            None => None,
+        }
     }
 }
 
@@ -534,7 +570,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_filesystem_fetch_found() -> Result<()> {
+    async fn test_filesystem_fetch_found() {
         test::setup();
         let dir = test::tempdir();
 
@@ -547,8 +583,8 @@ mod tests {
             },
         };
         let cache_path = dir.path().join(key.relative_path());
-        fs::create_dir_all(cache_path.parent().unwrap()).await?;
-        fs::write(&cache_path, b"cache data").await?;
+        fs::create_dir_all(cache_path.parent().unwrap()).await.unwrap();
+        fs::write(&cache_path, b"cache data").await.unwrap();
 
         let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
             path: dir.path().to_path_buf(),
@@ -556,18 +592,17 @@ mod tests {
         let svc = SharedCacheService::new(Some(cfg));
 
         // This mimics how Cacher::compute creates this file.
-        let temp_file = NamedTempFile::new_in(&dir)?;
-        let stdfile = temp_file.reopen()?;
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let stdfile = temp_file.reopen().unwrap();
         let mut file = File::from_std(stdfile);
 
         let ret = svc.fetch(&key, &mut file).await;
 
         assert!(ret);
-        file.rewind().await?;
+        file.rewind().await.unwrap();
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await?;
+        file.read_to_end(&mut buf).await.unwrap();
         assert_eq!(buf, b"cache data");
-        Ok(())
     }
 
     #[tokio::test]
@@ -598,7 +633,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_filesystem_store() -> Result<()> {
+    async fn test_filesystem_store() {
         test::setup();
         let dir = test::tempdir();
 
@@ -618,24 +653,29 @@ mod tests {
         let svc = SharedCacheService::new(Some(cfg));
 
         // This mimics how the downloader and Cacher::compute write the cache data.
-        let temp_file = NamedTempFile::new_in(&dir)?;
-        let dup_file = temp_file.reopen()?;
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let dup_file = temp_file.reopen().unwrap();
         let temp_fd = File::from_std(dup_file);
         {
-            let mut file = File::create(temp_file.path()).await?;
-            file.write_all(b"cache data").await?;
-            file.flush().await?;
+            let mut file = File::create(temp_file.path()).await.unwrap();
+            file.write_all(b"cache data").await.unwrap();
+            file.flush().await.unwrap();
         }
 
-        svc.store(key, temp_fd).await;
+        if let Some(recv) = svc.store(key, temp_fd).await {
+            // Wait for storing to complete.
+            recv.await.unwrap();
+        }
 
-        let data = fs::read(&cache_path).await?;
+        let data = fs::read(&cache_path)
+            .await
+            .context("Failed to read written cache file")
+            .unwrap();
         assert_eq!(data, b"cache data");
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_gcs_fetch_not_found() -> Result<()> {
+    async fn test_gcs_fetch_not_found() {
         test::setup();
         let credentials = test::gcs_credentials!();
 
@@ -660,11 +700,10 @@ mod tests {
 
         assert!(!ret);
         assert_eq!(writer, b"");
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_gcs_state_fetch_not_found() -> Result<()> {
+    async fn test_gcs_state_fetch_not_found() {
         test::setup();
         let credentials = test::gcs_credentials!();
 
@@ -684,15 +723,14 @@ mod tests {
 
         let mut writer = Vec::new();
 
-        let ret = state.fetch(&key, &mut writer).await?;
+        let ret = state.fetch(&key, &mut writer).await.unwrap();
 
         assert!(ret.is_none());
         assert_eq!(writer, b"");
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_gcs_state_store_fetch() -> Result<()> {
+    async fn test_gcs_state_store_fetch() {
         test::setup();
         let dir = test::tempdir();
 
@@ -713,16 +751,19 @@ mod tests {
         let svc = SharedCacheService::new(Some(cfg));
 
         // This mimics how the downloader and Cacher::compute write the cache data.
-        let temp_file = NamedTempFile::new_in(&dir)?;
-        let dup_file = temp_file.reopen()?;
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let dup_file = temp_file.reopen().unwrap();
         let temp_fd = File::from_std(dup_file);
         {
-            let mut file = File::create(temp_file.path()).await?;
-            file.write_all(b"cache data").await?;
-            file.flush().await?;
+            let mut file = File::create(temp_file.path()).await.unwrap();
+            file.write_all(b"cache data").await.unwrap();
+            file.flush().await.unwrap();
         }
 
-        svc.store(key.clone(), temp_fd).await;
+        if let Some(recv) = svc.store(key.clone(), temp_fd).await {
+            // Wait for storing to complete.
+            recv.await.unwrap();
+        }
 
         let mut writer = Vec::new();
 
@@ -730,7 +771,5 @@ mod tests {
 
         assert!(ret);
         assert_eq!(writer, b"cache data");
-
-        Ok(())
     }
 }
