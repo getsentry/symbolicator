@@ -730,7 +730,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_gcs_state_store_fetch() {
+    async fn test_gcs_svc_store_fetch() {
         test::setup();
         let dir = test::tempdir();
 
@@ -771,5 +771,46 @@ mod tests {
 
         assert!(ret);
         assert_eq!(writer, b"cache data");
+    }
+
+    #[tokio::test]
+    async fn test_gcs_state_store_twice() {
+        test::setup();
+        let credentials = test::gcs_credentials!();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+            },
+        };
+
+        let state = GcsState::new(GcsSharedCacheConfig {
+            source_key: credentials.source_key(),
+            bucket: credentials.bucket,
+        });
+
+        // This mimics how the downloader and Cacher::compute write the cache data.
+        let temp_file = NamedTempFile::new().unwrap();
+        let dup_file = temp_file.reopen().unwrap();
+        let temp_fd = File::from_std(dup_file);
+        {
+            let mut file = File::create(temp_file.path()).await.unwrap();
+            file.write_all(b"cache data").await.unwrap();
+            file.flush().await.unwrap();
+        }
+
+        let ret = state.store(key.clone(), temp_fd).await.unwrap();
+
+        assert!(matches!(ret, SharedCacheStoreResult::Written));
+
+        let dup_file = temp_file.reopen().unwrap();
+        let temp_fd = File::from_std(dup_file);
+
+        let ret = state.store(key, temp_fd).await.unwrap();
+
+        assert!(matches!(ret, SharedCacheStoreResult::Skipped));
     }
 }
