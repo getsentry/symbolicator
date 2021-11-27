@@ -11,6 +11,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Error, Result};
 use futures::TryStreamExt;
 use reqwest::{Body, Client, StatusCode};
+use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
 use tokio::sync::{mpsc, oneshot, RwLock};
@@ -212,23 +213,30 @@ impl FilesystemSharedCacheConfig {
 
     async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
         let abspath = self.path.join(key.relative_path());
-        if let Some(parent_dir) = abspath.parent() {
-            fs::create_dir_all(parent_dir)
-                .await
-                .context("Failed to create parent directories")?;
-        }
+        let parent_dir = abspath
+            .parent()
+            .ok_or_else(|| Error::msg("Shared cache directory not found"))?;
+        fs::create_dir_all(parent_dir)
+            .await
+            .context("Failed to create parent directories")?;
         if abspath.as_path().exists() {
             return Ok(SharedCacheStoreResult::Skipped);
         }
 
-        // TODO: this must be atomic!  can't have partially written files in the cache.
-        let mut dest = File::create(abspath)
-            .await
-            .context("Failed to create cache file")?;
-        src.rewind().await.context("Failed to seek to src start")?;
+        let temp_dir = parent_dir.join(".tmp");
+        fs::create_dir_all(&temp_dir)
+            .await?;
+        let temp_file = NamedTempFile::new_in(&temp_dir)?;
+        let dup_file = temp_file.reopen()?;
+        let mut dest = File::from_std(dup_file);
+
+        src.rewind().await?;
         io::copy(&mut src, &mut dest)
             .await
             .context("Failed to copy data into file")?;
+
+        temp_file.persist(abspath)
+            .context("Failed to save file in shared cache")?;
         Ok(SharedCacheStoreResult::Written)
     }
 }
@@ -396,7 +404,11 @@ impl SharedCacheService {
         backend: Arc<SharedCacheBackend>,
         message: UploadMessage,
     ) {
-        let UploadMessage { key, src, done_tx: complete_tx } = message;
+        let UploadMessage {
+            key,
+            src,
+            done_tx: complete_tx,
+        } = message;
         let cache_name = key.name;
         let res = match *backend {
             SharedCacheBackend::Gcs(ref state) => state.store(key, src).await,
@@ -583,7 +595,9 @@ mod tests {
             },
         };
         let cache_path = dir.path().join(key.relative_path());
-        fs::create_dir_all(cache_path.parent().unwrap()).await.unwrap();
+        fs::create_dir_all(cache_path.parent().unwrap())
+            .await
+            .unwrap();
         fs::write(&cache_path, b"cache data").await.unwrap();
 
         let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
