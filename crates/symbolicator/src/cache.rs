@@ -106,11 +106,19 @@ impl CacheStatus {
                 file.rewind().await?;
                 file.write_all(MALFORMED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
+
+                let new_len = MALFORMED_MARKER.len().saturating_add(details.len());
+                file.set_len(new_len as u64).await?;
             }
             CacheStatus::CacheSpecificError(details) => {
                 file.rewind().await?;
                 file.write_all(CACHE_SPECIFIC_ERROR_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
+
+                let new_len = CACHE_SPECIFIC_ERROR_MARKER
+                    .len()
+                    .saturating_add(details.len());
+                file.set_len(new_len as u64).await?;
             }
         }
         Ok(())
@@ -1330,6 +1338,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cache_status_write_malformed_truncates() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        async_file
+            .write_all(
+                b"i'm a little teapot short and stout here is my handle and here is my spout",
+            )
+            .await?;
+
+        let error_message = "unsupported object file format";
+        let status = CacheStatus::Malformed(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            MALFORMED_MARKER.len() + error_message.len()
+        );
+
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(MALFORMED_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_cache_status_write_cache_error() -> Result<()> {
         let dir = tempdir()?;
         create_dir_all(&dir).unwrap();
@@ -1339,6 +1390,49 @@ mod tests {
         // tokio::fs::File::create() directly
         let sync_file = File::create(&path)?;
         let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        let error_message = "missing permissions for file";
+        let status = CacheStatus::CacheSpecificError(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
+        );
+
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_cache_error_truncates() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        async_file
+            .write_all(
+                b"i'm a little teapot short and stout here is my handle and here is my spout",
+            )
+            .await?;
 
         let error_message = "missing permissions for file";
         let status = CacheStatus::CacheSpecificError(error_message.to_owned());
