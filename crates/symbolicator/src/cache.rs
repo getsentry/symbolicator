@@ -1199,4 +1199,170 @@ mod tests {
         assert!(!cficaches_entry.is_file());
         assert!(!diagnostics_entry.is_file());
     }
+
+    #[tokio::test]
+    async fn test_cache_status_write_positive() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        async_file.write_all(b"beep").await?;
+        // moving the cursor back to the beginning so the cursor behaviour
+        // is checked
+        async_file.rewind().await?;
+
+        let status = CacheStatus::Positive;
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(current_pos, 4);
+
+        // make sure write doesn't change the pre-existing contents of the file
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+        assert_eq!(contents, b"beep");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_negative() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+        let status = CacheStatus::Negative;
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(current_pos, 0);
+
+        // negative entries are empty
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+        assert_eq!(contents, b"");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_negative_with_garbage() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+        async_file.write_all(b"beep").await?;
+        async_file.rewind().await?;
+        let status = CacheStatus::Negative;
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(current_pos, 0);
+
+        // negative entries are empty, and pre-existing contents will be "removed"
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+        assert_eq!(contents, b"");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_malformed() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        let error_message = "unsupported object file format";
+        let status = CacheStatus::Malformed(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            MALFORMED_MARKER.len() + error_message.len()
+        );
+
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(MALFORMED_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_cache_error() -> Result<()> {
+        let dir = tempdir()?;
+        create_dir_all(&dir).unwrap();
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        let error_message = "missing permissions for file";
+        let status = CacheStatus::CacheSpecificError(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
+        );
+
+        // rewinding and then reading to the end of async_file throws bad file
+        // descriptor errors, so just reopen the file
+        let mut final_file = File::open(&path)?;
+        let mut contents = Vec::new();
+        final_file.read_to_end(&mut contents)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
 }
