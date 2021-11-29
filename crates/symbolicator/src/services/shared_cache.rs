@@ -224,8 +224,7 @@ impl FilesystemSharedCacheConfig {
         }
 
         let temp_dir = parent_dir.join(".tmp");
-        fs::create_dir_all(&temp_dir)
-            .await?;
+        fs::create_dir_all(&temp_dir).await?;
         let temp_file = NamedTempFile::new_in(&temp_dir)?;
         let dup_file = temp_file.reopen()?;
         let mut dest = File::from_std(dup_file);
@@ -235,7 +234,8 @@ impl FilesystemSharedCacheConfig {
             .await
             .context("Failed to copy data into file")?;
 
-        temp_file.persist(abspath)
+        temp_file
+            .persist(abspath)
             .context("Failed to save file in shared cache")?;
         Ok(SharedCacheStoreResult::Written)
     }
