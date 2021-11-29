@@ -93,7 +93,7 @@ impl CacheStatus {
     ///
     /// For a positive status this only seeks to the end.  For the other cases this seeks
     /// to the beginning, writes the appropriate marker and truncates the file.
-    pub async fn write_marker(&self, file: &mut File) -> Result<(), io::Error> {
+    pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
         match self {
             CacheStatus::Positive => {
                 file.seek(SeekFrom::End(0)).await?;

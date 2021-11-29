@@ -316,7 +316,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let status = if !shared_cache_hit {
             let status = request.compute(temp_file.path()).await?;
-            status.write_marker(&mut temp_fd).await?;
+            status.write(&mut temp_fd).await?;
             Some(status)
         } else {
             None
