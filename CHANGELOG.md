@@ -5,6 +5,7 @@
 ### Features
 
 - Very basic shared-cache support, allowing multiple symbolicators to share one global cache and have faster warmup times. ([#581](https://github.com/getsentry/symbolicator/pull/581))
+- Support concurrency control and backpressure on uploading to shared cache. ([#584](https://github.com/getsentry/symbolicator/pull/584))
 
 ## 0.4.0
 
