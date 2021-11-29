@@ -104,6 +104,7 @@ impl CacheStatus {
             }
             CacheStatus::Malformed(details) => {
                 file.rewind().await?;
+                file.write_all(MALFORMED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
             }
             CacheStatus::CacheSpecificError(details) => {
