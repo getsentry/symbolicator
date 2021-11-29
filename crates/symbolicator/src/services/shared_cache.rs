@@ -19,7 +19,8 @@ use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
 use crate::cache::{
-    CacheName, FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheConfig,
+    CacheName, FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheBackendConfig,
+    SharedCacheConfig,
 };
 use crate::logging::LogError;
 use crate::services::download::measure_download_time;
@@ -342,22 +343,20 @@ pub struct SharedCacheService {
 
 impl SharedCacheService {
     pub fn new(config: Option<SharedCacheConfig>) -> Self {
-        // TODO: move these to the config
-        let max_queue_size = 50;
-        let max_concurrent_uploads = 25;
-
         match config {
             Some(cfg) => {
-                let (tx, rx) = mpsc::channel(max_queue_size);
-                let backend = match cfg {
-                    SharedCacheConfig::Gcs(cfg) => SharedCacheBackend::Gcs(GcsState::new(cfg)),
-                    SharedCacheConfig::Fs(cfg) => SharedCacheBackend::Fs(cfg),
+                let (tx, rx) = mpsc::channel(cfg.max_upload_queue_size);
+                let backend = match cfg.backend {
+                    SharedCacheBackendConfig::Gcs(cfg) => {
+                        SharedCacheBackend::Gcs(GcsState::new(cfg))
+                    }
+                    SharedCacheBackendConfig::Filesystem(cfg) => SharedCacheBackend::Fs(cfg),
                 };
                 let backend = Arc::new(backend);
                 tokio::spawn(Self::upload_worker(
                     rx,
                     backend.clone(),
-                    max_concurrent_uploads,
+                    cfg.max_concurrent_uploads,
                 ));
                 Self {
                     backend: Some(backend),
@@ -600,9 +599,13 @@ mod tests {
             .unwrap();
         fs::write(&cache_path, b"cache data").await.unwrap();
 
-        let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
-            path: dir.path().to_path_buf(),
-        });
+        let cfg = SharedCacheConfig {
+            max_concurrent_uploads: 10,
+            max_upload_queue_size: 10,
+            backend: SharedCacheBackendConfig::Filesystem(FilesystemSharedCacheConfig {
+                path: dir.path().to_path_buf(),
+            }),
+        };
         let svc = SharedCacheService::new(Some(cfg));
 
         // This mimics how Cacher::compute creates this file.
@@ -633,9 +636,13 @@ mod tests {
             },
         };
 
-        let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
-            path: dir.path().to_path_buf(),
-        });
+        let cfg = SharedCacheConfig {
+            max_concurrent_uploads: 10,
+            max_upload_queue_size: 10,
+            backend: SharedCacheBackendConfig::Filesystem(FilesystemSharedCacheConfig {
+                path: dir.path().to_path_buf(),
+            }),
+        };
         let svc = SharedCacheService::new(Some(cfg));
 
         let mut writer = Vec::new();
@@ -661,9 +668,13 @@ mod tests {
         };
         let cache_path = dir.path().join(key.relative_path());
 
-        let cfg = SharedCacheConfig::Fs(FilesystemSharedCacheConfig {
-            path: dir.path().to_path_buf(),
-        });
+        let cfg = SharedCacheConfig {
+            max_concurrent_uploads: 10,
+            max_upload_queue_size: 10,
+            backend: SharedCacheBackendConfig::Filesystem(FilesystemSharedCacheConfig {
+                path: dir.path().to_path_buf(),
+            }),
+        };
         let svc = SharedCacheService::new(Some(cfg));
 
         // This mimics how the downloader and Cacher::compute write the cache data.
@@ -702,10 +713,14 @@ mod tests {
             },
         };
 
-        let cfg = SharedCacheConfig::Gcs(GcsSharedCacheConfig {
-            source_key: credentials.source_key(),
-            bucket: credentials.bucket,
-        });
+        let cfg = SharedCacheConfig {
+            max_concurrent_uploads: 10,
+            max_upload_queue_size: 10,
+            backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig {
+                source_key: credentials.source_key(),
+                bucket: credentials.bucket,
+            }),
+        };
         let svc = SharedCacheService::new(Some(cfg));
 
         let mut writer = Vec::new();
@@ -758,10 +773,14 @@ mod tests {
         };
 
         let credentials = test::gcs_credentials!();
-        let cfg = SharedCacheConfig::Gcs(GcsSharedCacheConfig {
-            source_key: credentials.source_key(),
-            bucket: credentials.bucket.clone(),
-        });
+        let cfg = SharedCacheConfig {
+            max_concurrent_uploads: 10,
+            max_upload_queue_size: 10,
+            backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig {
+                source_key: credentials.source_key(),
+                bucket: credentials.bucket.clone(),
+            }),
+        };
         let svc = SharedCacheService::new(Some(cfg));
 
         // This mimics how the downloader and Cacher::compute write the cache data.
