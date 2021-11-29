@@ -11,6 +11,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Context;
 use futures::future::BoxFuture;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
@@ -163,14 +164,15 @@ impl CacheItemRequest for FetchFileMetaRequest {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
         let features = match status {
-            CacheStatus::Positive => serde_json::from_slice(&data).unwrap_or_else(|err| {
-                log::error!(
-                    "Failed to load positive ObjectFileMeta cache for {:?}: {:?}",
-                    self.get_cache_key(),
-                    err
-                );
-                Default::default()
-            }),
+            CacheStatus::Positive => serde_json::from_slice(&data)
+                .context("Failed to load positive ObjectFileMeta cache")
+                .unwrap_or_else(|err| {
+                    sentry::configure_scope(|scope| {
+                        scope.set_extra("cache_key", self.get_cache_key().to_string().into());
+                    });
+                    sentry::capture_error(&*err);
+                    Default::default()
+                }),
             _ => Default::default(),
         };
 
