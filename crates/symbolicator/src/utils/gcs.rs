@@ -80,7 +80,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 
     let jwt_claims = JwtClaims {
         issuer: source_key.client_email.clone(),
-        scope: "https://www.googleapis.com/auth/devstorage.read_write".into(),
+        scope: "https://www.googleapis.com/auth/devstorage.read_only".into(),
         audience: "https://www.googleapis.com/oauth2/v4/token".into(),
         expiration,
         issued_at: Utc::now().timestamp(),
