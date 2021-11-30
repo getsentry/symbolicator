@@ -106,19 +106,15 @@ impl CacheStatus {
                 file.rewind().await?;
                 file.write_all(MALFORMED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
-
-                let new_len = MALFORMED_MARKER.len().saturating_add(details.len());
-                file.set_len(new_len as u64).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
             CacheStatus::CacheSpecificError(details) => {
                 file.rewind().await?;
                 file.write_all(CACHE_SPECIFIC_ERROR_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
-
-                let new_len = CACHE_SPECIFIC_ERROR_MARKER
-                    .len()
-                    .saturating_add(details.len());
-                file.set_len(new_len as u64).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
         }
         Ok(())
@@ -1249,7 +1245,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_positive() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1269,12 +1264,7 @@ mod tests {
         let current_pos = async_file.stream_position().await?;
         assert_eq!(current_pos, 4);
 
-        // make sure write doesn't change the pre-existing contents of the file
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
         assert_eq!(contents, b"beep");
 
         Ok(())
@@ -1283,7 +1273,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_negative() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1297,12 +1286,7 @@ mod tests {
         let current_pos = async_file.stream_position().await?;
         assert_eq!(current_pos, 0);
 
-        // negative entries are empty
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
         assert_eq!(contents, b"");
 
         Ok(())
@@ -1311,7 +1295,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_negative_with_garbage() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1319,7 +1302,6 @@ mod tests {
         let sync_file = File::create(&path)?;
         let mut async_file = tokio::fs::File::from_std(sync_file);
         async_file.write_all(b"beep").await?;
-        async_file.rewind().await?;
         let status = CacheStatus::Negative;
         status.write(&mut async_file).await?;
 
@@ -1327,12 +1309,7 @@ mod tests {
         let current_pos = async_file.stream_position().await?;
         assert_eq!(current_pos, 0);
 
-        // negative entries are empty, and pre-existing contents will be "removed"
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
         assert_eq!(contents, b"");
 
         Ok(())
@@ -1341,7 +1318,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_malformed() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1360,11 +1336,7 @@ mod tests {
             MALFORMED_MARKER.len() + error_message.len()
         );
 
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
         expected.extend(MALFORMED_MARKER);
@@ -1378,7 +1350,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_malformed_truncates() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1403,11 +1374,7 @@ mod tests {
             MALFORMED_MARKER.len() + error_message.len()
         );
 
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
         expected.extend(MALFORMED_MARKER);
@@ -1421,7 +1388,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_cache_error() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1440,11 +1406,7 @@ mod tests {
             CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
         );
 
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
         expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
@@ -1458,7 +1420,6 @@ mod tests {
     #[tokio::test]
     async fn test_cache_status_write_cache_error_truncates() -> Result<()> {
         let dir = tempdir()?;
-        create_dir_all(&dir).unwrap();
         let path = dir.path().join("honk");
 
         // copying what compute does here instead of just using
@@ -1483,11 +1444,7 @@ mod tests {
             CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
         );
 
-        // rewinding and then reading to the end of async_file throws bad file
-        // descriptor errors, so just reopen the file
-        let mut final_file = File::open(&path)?;
-        let mut contents = Vec::new();
-        final_file.read_to_end(&mut contents)?;
+        let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
         expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
