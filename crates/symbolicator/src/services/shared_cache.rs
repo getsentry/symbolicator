@@ -1,7 +1,9 @@
 //! A global cache to be shared between different symbolicator instances.
 //!
-//! The goal of this cache is to have a faster warmup time when starting a new symbolicator
-//! instance.
+//! The goal of this cache is to have a faster warm-up time when starting a new symbolicator
+//! instance by reducing the cost of populating its cache via an additional caching layer that
+//! lives closer to symbolicator. Expensive computations related to the computation of derived
+//! caches may also be saved via this shared cache.
 
 use std::fmt;
 use std::path::PathBuf;
