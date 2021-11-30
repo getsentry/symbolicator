@@ -5,7 +5,9 @@
 //! lives closer to symbolicator. Expensive computations related to the computation of derived
 //! caches may also be saved via this shared cache.
 
+use std::convert::TryInto;
 use std::fmt;
+use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -72,7 +74,12 @@ impl GcsState {
         Ok(token)
     }
 
-    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<()>>
+    /// Fetches item from shared cache if available and copies them to the writer.
+    ///
+    /// # Returns
+    ///
+    /// If successful the number of bytes written to the writer are returned.
+    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<u64>>
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
@@ -105,7 +112,6 @@ impl GcsState {
                         let mut stream = StreamReader::new(stream);
                         let res = io::copy(&mut stream, writer)
                             .await
-                            .map(|_| ())
                             .context("IO Error streaming HTTP bytes to writer");
                         Some(res).transpose()
                     }
@@ -135,6 +141,7 @@ impl GcsState {
     }
 
     async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
+        let total_bytes = src.seek(SeekFrom::End(0)).await?;
         src.rewind().await?;
         let token = self.get_token().await?;
         let mut url =
@@ -166,7 +173,7 @@ impl GcsState {
                 match status {
                     successful if successful.is_success() => {
                         log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
-                        Ok(SharedCacheStoreResult::Written)
+                        Ok(SharedCacheStoreResult::Written(total_bytes))
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
@@ -195,7 +202,12 @@ impl GcsState {
 }
 
 impl FilesystemSharedCacheConfig {
-    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<()>>
+    /// Fetches item from shared cache if available and copies them to the writer.
+    ///
+    /// # Returns
+    ///
+    /// If successful the number of bytes written to the writer are returned.
+    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<u64>>
     where
         W: AsyncWrite + Unpin,
     {
@@ -209,7 +221,7 @@ impl FilesystemSharedCacheConfig {
             },
         };
         match io::copy(&mut file, writer).await {
-            Ok(_) => Ok(Some(())),
+            Ok(bytes) => Ok(Some(bytes)),
             Err(err) => Err(err).context("Failed to copy file from shared cache"),
         }
     }
@@ -233,22 +245,22 @@ impl FilesystemSharedCacheConfig {
         let mut dest = File::from_std(dup_file);
 
         src.rewind().await?;
-        io::copy(&mut src, &mut dest)
+        let bytes = io::copy(&mut src, &mut dest)
             .await
             .context("Failed to copy data into file")?;
 
         temp_file
             .persist(abspath)
             .context("Failed to save file in shared cache")?;
-        Ok(SharedCacheStoreResult::Written)
+        Ok(SharedCacheStoreResult::Written(bytes))
     }
 }
 
 /// The result of an attempt to write an entry to the shared cache.
 #[derive(Debug, Clone, Copy)]
 enum SharedCacheStoreResult {
-    /// Successfully written to the cache as a new entry.
-    Written,
+    /// Successfully written to the cache as a new entry, contains number of bytes written.
+    Written(u64),
     /// Skipped writing the item as it was already on the cache.
     Skipped,
 }
@@ -256,7 +268,7 @@ enum SharedCacheStoreResult {
 impl AsRef<str> for SharedCacheStoreResult {
     fn as_ref(&self) -> &str {
         match self {
-            SharedCacheStoreResult::Written => "written",
+            SharedCacheStoreResult::Written(_) => "written",
             SharedCacheStoreResult::Skipped => "skipped",
         }
     }
@@ -422,6 +434,13 @@ impl SharedCacheService {
                     "cache" => cache_name.as_ref(),
                     "write" => op.as_ref(),
                 );
+                if let SharedCacheStoreResult::Written(bytes) = op {
+                    let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
+                    metric!(
+                        counter("services.shared_cache.store.bytes") += bytes,
+                        "cache" => cache_name.as_ref(),
+                    );
+                }
             }
             Err(err) => {
                 log::error!(
@@ -473,17 +492,22 @@ impl SharedCacheService {
             None => return false,
         };
         match res {
-            Ok(Some(_)) => {
+            Ok(Some(bytes)) => {
                 metric!(
-                    counter("services.shared_cache.store") += 1,
+                    counter("services.shared_cache.fetch") += 1,
                     "cache" => key.name.as_ref(),
                     "hit" => "true",
+                );
+                let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
+                metric!(
+                    counter("services.shared_cache.fetch.bytes") += bytes,
+                    "cache" => key.name.as_ref(),
                 );
                 true
             }
             Ok(None) => {
                 metric!(
-                    counter("services.shared_cache.store") += 1,
+                    counter("services.shared_cache.fetch") += 1,
                     "cache" => key.name.as_ref(),
                     "hit" => "false",
                 );
@@ -839,7 +863,7 @@ mod tests {
 
         let ret = state.store(key.clone(), temp_fd).await.unwrap();
 
-        assert!(matches!(ret, SharedCacheStoreResult::Written));
+        assert!(matches!(ret, SharedCacheStoreResult::Written(_)));
 
         let dup_file = temp_file.reopen().unwrap();
         let temp_fd = File::from_std(dup_file);
