@@ -159,7 +159,7 @@ pub struct SharedCacheConfig {
     /// If more items need to be uploaded to the shared cache than there are allowed
     /// concurrently the uploads will be queued.  If the queue is full the uploads are
     /// simply dropped as they are not critical to symbolicator's operation and not
-    /// disrupting symbolicator is more important than uploading to the sahred cache.
+    /// disrupting symbolicator is more important than uploading to the shared cache.
     #[serde(default = "default_max_upload_queue_size")]
     pub max_upload_queue_size: usize,
 
@@ -1293,7 +1293,7 @@ mod tests {
                     "-----BEGIN PRIVATE KEY----\n..."
                 );
             }
-            SharedCacheBackendConfig::Filesystem(_) => panic!("wring backend"),
+            SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
         }
     }
 }
