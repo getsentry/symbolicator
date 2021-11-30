@@ -131,11 +131,49 @@ pub struct GcsSharedCacheConfig {
     pub source_key: Arc<GcsSourceKey>,
 }
 
-/// A remote cache that can be shared between symbolicator instances.
+/// The backend to use for the shared cache.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SharedCacheConfig {
+#[serde(rename_all = "lowercase")]
+pub enum SharedCacheBackendConfig {
     Gcs(GcsSharedCacheConfig),
-    Fs(FilesystemSharedCacheConfig),
+    Filesystem(FilesystemSharedCacheConfig),
+}
+
+/// A remote cache that can be shared between symbolicator instances.
+///
+/// Any files not in the local cache will be looked up from here before being looked up in
+/// their original source.  Additionally derived caches are also stored in here to save
+/// computations if another symbolicator has already done the computation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SharedCacheConfig {
+    /// The number of allowed concurrent uploads to the shared cache.
+    ///
+    /// Uploading to the shared cache is not critical for symbolicator's operation and
+    /// should not disrupt any normal work it does.  This limits the number of concurrent
+    /// uploads so that associated resources are kept in check.
+    #[serde(default = "default_max_concurrent_uploads")]
+    pub max_concurrent_uploads: usize,
+
+    /// The number of queued up uploads to the cache.
+    ///
+    /// If more items need to be uploaded to the shared cache than there are allowed
+    /// concurrently the uploads will be queued.  If the queue is full the uploads are
+    /// simply dropped as they are not critical to symbolicator's operation and not
+    /// disrupting symbolicator is more important than uploading to the shared cache.
+    #[serde(default = "default_max_upload_queue_size")]
+    pub max_upload_queue_size: usize,
+
+    /// The backend to use for the shared cache.
+    #[serde(flatten)]
+    pub backend: SharedCacheBackendConfig,
+}
+
+fn default_max_upload_queue_size() -> usize {
+    100
+}
+
+fn default_max_concurrent_uploads() -> usize {
+    20
 }
 
 /// All known cache names.
@@ -1197,5 +1235,65 @@ mod tests {
         assert!(!symcaches_entry.is_file());
         assert!(!cficaches_entry.is_file());
         assert!(!diagnostics_entry.is_file());
+    }
+
+    #[test]
+    fn test_shared_cache_config_filesystem_common_defaults() {
+        let yaml = r#"
+            filesystem:
+              path: "/path/to/somewhere"
+        "#;
+        let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
+
+        assert_eq!(cfg.max_upload_queue_size, 100);
+        assert_eq!(cfg.max_concurrent_uploads, 20);
+        match cfg.backend {
+            SharedCacheBackendConfig::Gcs(_) => panic!("wrong backend"),
+            SharedCacheBackendConfig::Filesystem(cfg) => {
+                assert_eq!(cfg.path, Path::new("/path/to/somewhere"))
+            }
+        }
+    }
+
+    #[test]
+    fn test_shared_cache_config_common_settings() {
+        let yaml = r#"
+            max_upload_queue_size: 50
+            max_concurrent_uploads: 50
+            filesystem:
+              path: "/path/to/somewhere"
+        "#;
+        let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
+
+        assert_eq!(cfg.max_upload_queue_size, 50);
+        assert_eq!(cfg.max_concurrent_uploads, 50);
+        assert!(matches!(
+            cfg.backend,
+            SharedCacheBackendConfig::Filesystem(_)
+        ));
+    }
+
+    #[test]
+    fn test_shared_cache_config_gcs() {
+        let yaml = r#"
+            gcs:
+              bucket: "some-bucket"
+              client_email: "me@example.com"
+              private_key: "-----BEGIN PRIVATE KEY----\n..."
+
+        "#;
+        let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
+
+        match cfg.backend {
+            SharedCacheBackendConfig::Gcs(gcs) => {
+                assert_eq!(gcs.bucket, "some-bucket");
+                assert_eq!(gcs.source_key.client_email, "me@example.com");
+                assert_eq!(
+                    gcs.source_key.private_key,
+                    "-----BEGIN PRIVATE KEY----\n..."
+                );
+            }
+            SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
+        }
     }
 }
