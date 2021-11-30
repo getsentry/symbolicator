@@ -6,6 +6,9 @@
 
 - Very basic shared-cache support, allowing multiple symbolicators to share one global cache and have faster warmup times. ([#581](https://github.com/getsentry/symbolicator/pull/581))
 
+### Fixes
+- Truncate Malformed and Cache-Specific entries in the cache to match the length of their contents, in case they overwrote some longer, existing entry. ([#586](https://github.com/getsentry/symbolicator/pull/586))
+
 ## 0.4.0
 
 ### Features
