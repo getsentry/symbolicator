@@ -131,9 +131,14 @@ pub struct GcsSharedCacheConfig {
     /// Name of the GCS bucket.
     pub bucket: String,
 
-    /// Authorization information for this bucket. Needs read access.
-    #[serde(flatten)]
-    pub source_key: Arc<GcsSourceKey>,
+    /// Optional name of a JSON file containing the service account credentials.
+    ///
+    /// If this is not provided the JSON will be looked up in the
+    /// `GOOGLE_APPLICATION_CREDENTIALS` variable.  Otherwise it is assumed the service is
+    /// running since GCP and will retrieve the correct user or service account from the
+    /// GCP services.
+    #[serde(default)]
+    pub service_account_path: Option<PathBuf>,
 }
 
 /// The backend to use for the shared cache.
