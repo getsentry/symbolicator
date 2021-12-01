@@ -388,6 +388,9 @@ pub struct TestGcsCredentials {
 /// Looks for a file named `gcs-service-account.json` in the git root which is expected to
 /// contain GCP credentials to be used with [`gcp_auth::from_credentials_file`].
 ///
+/// If the environment variable `GOOGLE_APPLICATION_CREDENTIALS_JSON` exists it is written
+/// into this file first, this is used to support secrets in our CI.
+///
 /// If the file is not found, returns `None`.
 ///
 /// Sentry employees can find this file under the `symbolicator-gcs-test-key` entry in
@@ -401,7 +404,16 @@ pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
     let path = match path.canonicalize() {
         Ok(path) => path,
         Err(err) => match err.kind() {
-            std::io::ErrorKind::NotFound => return Ok(None),
+            std::io::ErrorKind::NotFound => {
+                // Special case, see if we can create it from a env var, our CI sets this.
+                match std::env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON") {
+                    Ok(data) => {
+                        std::fs::write(&path, data).unwrap();
+                        path
+                    }
+                    Err(_) => return Ok(None),
+                }
+            }
             _ => return Err(err),
         },
     };
@@ -414,9 +426,12 @@ pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
 
 /// Returns GCS credentials for testing GCS support.
 ///
-/// If the credentials are neither found by [`gcs_credentials_file`] or in the
-/// `GOOGLE_APPLICATION_CREDENTIALS` environment variable the macro will return, as a poor
-/// substitute for skipping tests.
+/// This first uses [`gcs_credentials_file`] to find credentials, if not it checks if the
+/// `GOOGLE_APPLICATION_CREDENTIALS` environment is set which is directly interpreted by the
+/// `gcp_auth` crate.
+///
+/// Finally if nothing can be found this macro will return, as a poor substitute for
+/// skipping tests.
 macro_rules! gcs_credentials {
     () => {
         match $crate::test::gcs_credentials_file() {
