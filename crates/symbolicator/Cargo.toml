@@ -6,14 +6,14 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-axum = { version = "0.2.1", features = ["multipart"] }
+axum = { version = "0.3.4", features = ["multipart"] }
 anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
 backtrace = "0.3.55"
 base64 = "0.13.0"
 cadence = "0.26.0"
 chrono = { version = "0.4.19", features = ["serde"] }
-console = "0.14.0"
+console = "0.15.0"
 env_logger = "0.7.1"
 filetime = "0.2.14"
 flate2 = "1.0.0"
@@ -27,7 +27,7 @@ lazy_static = "1.4.0"
 log = { version = "0.4.13", features = ["serde"] }
 lru = "0.7.0"
 num_cpus = "1.13.0"
-minidump = "0.3"
+minidump = "0.9.4"
 parking_lot = "0.11.1"
 pretty_env_logger = "0.4.0"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
@@ -48,6 +48,7 @@ tempfile = "3.2.0"
 thiserror = "1.0.26"
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-util = "0.6"
+tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
 url = { version = "2.2.0", features = ["serde"] }
