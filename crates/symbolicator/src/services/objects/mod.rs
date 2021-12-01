@@ -249,10 +249,8 @@ impl ObjectsActor {
         filetypes: &'static [FileType],
         identifier: &'a ObjectId,
     ) -> Vec<RemoteDif> {
-        let mut queries = Vec::with_capacity(sources.len());
-
-        for source in sources.iter() {
-            let query = async move {
+        let queries = sources.iter().map(|source| {
+            async move {
                 let type_name = source.type_name();
                 self.download_svc
                     .list_files(source.clone(), filetypes, identifier.clone())
@@ -270,10 +268,8 @@ impl ObjectsActor {
                         Vec::new()
                     })
             }
-            .bind_hub(Hub::new_from_top(Hub::current()));
-
-            queries.push(query);
-        }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         future::join_all(queries)
             .await
@@ -294,16 +290,14 @@ impl ObjectsActor {
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
-        let mut queries = Vec::with_capacity(file_sources.len());
-
-        for file_source in file_sources {
+        let queries = file_sources.into_iter().map(|file_source| {
             let object_id = identifier.clone();
             let scope = scope.clone();
             let data_cache = self.data_cache.clone();
             let download_svc = self.download_svc.clone();
             let meta_cache = self.meta_cache.clone();
 
-            let query = async move {
+            async move {
                 let scope = if file_source.is_public() {
                     Scope::Global
                 } else {
@@ -318,12 +312,11 @@ impl ObjectsActor {
                 };
                 meta_cache
                     .compute_memoized(request)
-                    .bind_hub(sentry::Hub::new_from_top(sentry::Hub::current()))
                     .await
                     .map_err(|error| CacheLookupError { file_source, error })
-            };
-            queries.push(query);
-        }
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         future::join_all(queries).await
     }
@@ -413,9 +406,9 @@ fn create_candidates(
     sources: &[SourceConfig],
     lookups: &[Result<Arc<ObjectMetaHandle>, CacheLookupError>],
 ) -> AllObjectCandidates {
-    let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len());
     let mut source_ids: BTreeSet<SourceId> =
         sources.iter().map(|source| source.id()).cloned().collect();
+    let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len() + source_ids.len());
 
     for meta_lookup in lookups.iter() {
         if let Ok(meta_handle) = meta_lookup {
