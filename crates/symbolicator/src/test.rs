@@ -427,7 +427,7 @@ macro_rules! gcs_credentials {
                 }
             },
             Ok(None) => {
-                match std::env::var("") {
+                match std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
                     Ok(_) => $crate::test::TestGcsCredentials {
                         bucket: "sentryio-symbolicator-cache-test".to_string(),
                         credentials_file: None
