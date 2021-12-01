@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use backtrace::Backtrace;
 use futures::future;
+use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 
 use crate::cache::{Cache, CacheStatus};
@@ -260,6 +261,7 @@ impl ObjectsActor {
                         Vec::new()
                     })
             }
+            .bind_hub(Hub::new_from_top(Hub::current()))
         });
 
         future::join_all(queries)
@@ -306,6 +308,7 @@ impl ObjectsActor {
                     .await
                     .map_err(|error| CacheLookupError { file_source, error })
             }
+            .bind_hub(Hub::new_from_top(Hub::current()))
         });
 
         future::join_all(queries).await
@@ -396,9 +399,9 @@ fn create_candidates(
     sources: &[SourceConfig],
     lookups: &[Result<Arc<ObjectMetaHandle>, CacheLookupError>],
 ) -> AllObjectCandidates {
-    let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len());
     let mut source_ids: BTreeSet<SourceId> =
         sources.iter().map(|source| source.id()).cloned().collect();
+    let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len() + source_ids.len());
 
     for meta_lookup in lookups.iter() {
         if let Ok(meta_handle) = meta_lookup {

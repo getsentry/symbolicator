@@ -15,7 +15,7 @@ use futures::{channel::oneshot, future, FutureExt as _};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
-use sentry::SentryFutureExt;
+use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{
@@ -620,15 +620,13 @@ impl SourceLookup {
             }
         }
 
-        let mut futures = Vec::new();
-
-        for mut entry in self.inner.into_iter() {
+        let futures = self.inner.into_iter().map(|mut entry| {
             let is_used = referenced_objects.contains(&entry.module_index);
             let objects = objects.clone();
             let scope = scope.clone();
             let sources = sources.clone();
 
-            futures.push(async move {
+            async move {
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     entry.source_object = None;
@@ -663,8 +661,9 @@ impl SourceLookup {
                 }
 
                 entry
-            });
-        }
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         Ok(SourceLookup {
             inner: future::join_all(futures).await,
@@ -840,7 +839,12 @@ impl SymCacheLookup {
         request: SymbolicateStacktraces,
     ) -> Self {
         let mut referenced_objects = BTreeSet::new();
-        let stacktraces = request.stacktraces;
+        let SymbolicateStacktraces {
+            stacktraces,
+            sources,
+            scope,
+            ..
+        } = request;
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
@@ -852,15 +856,13 @@ impl SymCacheLookup {
             }
         }
 
-        let mut futures = Vec::new();
-
-        for mut entry in self.inner.into_iter() {
+        let futures = self.inner.into_iter().map(|mut entry| {
             let is_used = referenced_objects.contains(&entry.module_index);
-            let sources = request.sources.clone();
-            let scope = request.scope.clone();
+            let sources = sources.clone();
+            let scope = scope.clone();
             let symcache_actor = symcache_actor.clone();
 
-            futures.push(async move {
+            async move {
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     return entry;
@@ -894,8 +896,9 @@ impl SymCacheLookup {
                 entry.symcache = symcache;
                 entry.object_info.debug_status = status;
                 entry
-            });
-        }
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         SymCacheLookup {
             inner: future::join_all(futures).await,
@@ -1817,6 +1820,7 @@ impl SymbolicationActor {
                     .await;
                 ((*module_id).to_owned(), result)
             }
+            .bind_hub(Hub::new_from_top(Hub::current()))
         });
 
         future::join_all(futures).await
