@@ -427,8 +427,8 @@ macro_rules! gcs_credentials {
                     },
                     Err(_) => {
                         panic!("TEMP: GCS test credentials missing");
-                        println!("Skipping due to missing GOOGLE_APPLICATION_CREDENTIALS or gcs-service-account.json");
-                        return;
+                        // println!("Skipping due to missing GOOGLE_APPLICATION_CREDENTIALS or gcs-service-account.json");
+                        // return;
                     }
                 }
             }
