@@ -441,20 +441,21 @@ macro_rules! gcs_credentials {
                     credentials_file: Some(path),
                 }
             },
-            Ok(None) => {
-                match std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
-                    Ok(_) => $crate::test::TestGcsCredentials {
-                        bucket: "sentryio-symbolicator-cache-test".to_string(),
-                        credentials_file: None
-                    },
-                    Err(_) => {
-                        panic!("TEMP: GCS test credentials missing");
-                        // println!("Skipping due to missing GOOGLE_APPLICATION_CREDENTIALS or gcs-service-account.json");
-                        // return;
-                    }
-                }
-            }
-            Err(err) => panic!("{}", err),
+            _ => panic!("boom"),
+            // Ok(None) => {
+            //     match std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+            //         Ok(path) => $crate::test::TestGcsCredentials {
+            //             bucket: "sentryio-symbolicator-cache-test".to_string(),
+            //             credentials_file: Some(path.into()),
+            //         },
+            //         Err(_) => {
+            //             panic!("TEMP: GCS test credentials missing");
+            //             // println!("Skipping due to missing GOOGLE_APPLICATION_CREDENTIALS or gcs-service-account.json");
+            //             // return;
+            //         }
+            //     }
+            // }
+            // Err(err) => panic!("{}", err),
         }
     }
 }
