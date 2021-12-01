@@ -536,7 +536,7 @@ mod tests {
     #[tokio::test]
     async fn test_noop_fetch() {
         test::setup();
-        let svc = SharedCacheService::new(None);
+        let svc = SharedCacheService::try_new(None).await.unwrap();
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -554,7 +554,7 @@ mod tests {
     #[tokio::test]
     async fn test_noop_store() {
         test::setup();
-        let svc = SharedCacheService::new(None);
+        let svc = SharedCacheService::try_new(None).await.unwrap();
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -595,7 +595,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -632,7 +632,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         let mut writer = Vec::new();
 
@@ -664,7 +664,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -710,7 +710,7 @@ mod tests {
                 bucket: credentials.bucket,
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         let mut writer = Vec::new();
 
@@ -734,10 +734,12 @@ mod tests {
             },
         };
 
-        let state = GcsState::new(GcsSharedCacheConfig {
+        let state = GcsState::try_new(GcsSharedCacheConfig {
             source_key: credentials.source_key(),
             bucket: credentials.bucket,
-        });
+        })
+        .await
+        .unwrap();
 
         let mut writer = Vec::new();
 
@@ -770,7 +772,7 @@ mod tests {
                 bucket: credentials.bucket.clone(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -809,10 +811,12 @@ mod tests {
             },
         };
 
-        let state = GcsState::new(GcsSharedCacheConfig {
+        let state = GcsState::try_new(GcsSharedCacheConfig {
             source_key: credentials.source_key(),
             bucket: credentials.bucket,
-        });
+        })
+        .await
+        .unwrap();
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new().unwrap();
