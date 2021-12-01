@@ -264,7 +264,7 @@ impl BitcodeService {
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
         let jobs = sources.iter().map(|source| {
             self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone())
-            .bind_hub(Hub::new_from_top(Hub::current()))
+                .bind_hub(Hub::new_from_top(Hub::current()))
         });
         let results = future::join_all(jobs).await;
         let mut ret = None;
@@ -319,7 +319,9 @@ impl BitcodeService {
                 download_svc: self.download_svc.clone(),
                 cache: self.cache.clone(),
             };
-            self.cache.compute_memoized(request).bind_hub(Hub::new_from_top(Hub::current()))
+            self.cache
+                .compute_memoized(request)
+                .bind_hub(Hub::new_from_top(Hub::current()))
         });
 
         let all_results = future::join_all(fetch_jobs).await;
