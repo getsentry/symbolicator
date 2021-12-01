@@ -16,13 +16,11 @@
 //!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
 //!    HTTP connections.
 
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use anyhow::Context;
 use log::LevelFilter;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -53,9 +51,11 @@ pub(crate) fn setup() {
 }
 
 /// Create a default [`Service`] running with the current Runtime.
-pub(crate) fn default_service() -> Service {
+pub(crate) async fn default_service() -> Service {
     let handle = tokio::runtime::Handle::current();
-    Service::create(Config::default(), handle.clone(), handle).unwrap()
+    Service::create(Config::default(), handle.clone(), handle.clone())
+        .await
+        .unwrap()
 }
 
 /// Creates a temporary directory.
@@ -114,6 +114,7 @@ pub(crate) fn local_source() -> SourceConfig {
 }
 
 /// Get bucket configuration for the microsoft symbol server.
+#[allow(dead_code)]
 pub(crate) fn microsoft_symsrv() -> SourceConfig {
     SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("microsoft"),
@@ -379,75 +380,56 @@ pub(crate) use gcs_source_key;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestGcsCredentials {
     pub bucket: String,
-    pub client_email: String,
-    pub private_key: String,
+    pub credentials_file: Option<PathBuf>,
 }
 
-impl TestGcsCredentials {
-    pub fn source_key(&self) -> Arc<GcsSourceKey> {
-        Arc::new(GcsSourceKey {
-            client_email: self.client_email.clone(),
-            private_key: self.private_key.clone(),
-        })
-    }
-}
-
-/// Retrieve the symbolicator GCS test credentials from a JSON file.
+/// Return path to service account credentials.
 ///
-/// Reads a file named `symbolicator-gcs-test-key.json` in the git root.  Use the
-/// [`gcs_credentials!`] macro instead.
+/// Looks for a file named `gcs-service-account.json` in the git root which is expected to
+/// contain GCP credentials to be used with [`gcp_auth::from_credentials_file`].
+///
+/// If the file is not found, returns `None`.
 ///
 /// Sentry employees can find this file under the `symbolicator-gcs-test-key` entry in
 /// 1Password.
-pub fn gcs_credentials_from_json() -> anyhow::Result<Option<TestGcsCredentials>> {
+pub fn gcs_credentials_file() -> anyhow::Result<Option<PathBuf>> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.pop(); // to /crates/
     path.pop(); // to /
-    path.push("symbolicator-gcs-test-key.json");
+    path.push("gcs-service-account.json");
+    let path = path.canonicalize()?;
 
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(data) => Ok(data),
-        Err(err) => match err.kind() {
-            ErrorKind::NotFound => return Ok(None),
-            _ => Err(err).context("Failed to read symbolicator-gcs-test-key.json"),
-        },
-    }?;
-
-    serde_json::from_str(&raw)
-        .context("Failed to parse symbolicator-gcs-test-key.json")
-        .map(Some)
-}
-
-/// Retrieve the symbolicator GCS test credentials from the environment.
-///
-/// This is used in our CI setup to get hold of the test credentials.
-pub fn gcs_credentials_from_env() -> anyhow::Result<Option<TestGcsCredentials>> {
-    let raw = match std::env::var("SENTRY_SYMBOLICATOR_GCS_TEST_KEY") {
-        Ok(s) => s,
-        Err(_) => return Ok(None),
-    };
-
-    serde_json::from_str(&raw)
-        .context("Failed to parse symbolicator-gcs-test-key.json")
-        .map(Some)
+    match path.exists() {
+        true => Ok(Some(path)),
+        false => Ok(None),
+    }
 }
 
 /// Returns GCS credentials for testing GCS support.
 ///
-/// If the credentials are not available this will exit the test early, as a poor substitute
-/// for skipping tests.
+/// If the credentials are neither found by [`gcs_credentials_file`] or in the
+/// `GOOGLE_APPLICATION_CREDENTIALS` environment variable the macro will return, as a poor
+/// substitute for skipping tests.
 macro_rules! gcs_credentials {
     () => {
-        match $crate::test::gcs_credentials_from_env() {
-            Ok(Some(creds)) => creds,
+        match $crate::test::gcs_credentials_file() {
+            Ok(Some(path)) => {
+                $crate::test::TestGcsCredentials {
+                    bucket: "sentryio-symbolicator-cache-test".to_string(),
+                    credentials_file: Some(path),
+                }
+            },
             Ok(None) => {
-                match $crate::test::gcs_credentials_from_json() {
-                    Ok(Some(creds)) => creds,
-                    Ok(None) => {
-                        println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_TEST_KEY or symbolicator-gcs-test-key.json");
+                match std::env::var("") {
+                    Ok(_) => $crate::test::TestGcsCredentials {
+                        bucket: "sentryio-symbolicator-cache-test".to_string(),
+                        credentials_file: None
+                    },
+                    Err(_) => {
+                        panic!("TEMP: GCS test credentials missing");
+                        println!("Skipping due to missing GOOGLE_APPLICATION_CREDENTIALS or gcs-service-account.json");
                         return;
                     }
-                    Err(err) => panic!("{}", err),
                 }
             }
             Err(err) => panic!("{}", err),

@@ -18,7 +18,6 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -1500,20 +1499,13 @@ mod tests {
         let yaml = r#"
             gcs:
               bucket: "some-bucket"
-              client_email: "me@example.com"
-              private_key: "-----BEGIN PRIVATE KEY----\n..."
-
         "#;
         let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
 
         match cfg.backend {
             SharedCacheBackendConfig::Gcs(gcs) => {
                 assert_eq!(gcs.bucket, "some-bucket");
-                assert_eq!(gcs.source_key.client_email, "me@example.com");
-                assert_eq!(
-                    gcs.source_key.private_key,
-                    "-----BEGIN PRIVATE KEY----\n..."
-                );
+                assert!(gcs.service_account_path.is_none());
             }
             SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
         }

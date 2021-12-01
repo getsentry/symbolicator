@@ -28,12 +28,13 @@ pub fn run(config: Config) -> Result<()> {
 
     let socket = config.bind.parse::<SocketAddr>()?;
 
-    let service = Service::create(
-        config,
-        io_pool.handle().to_owned(),
-        cpu_pool.handle().to_owned(),
-    )
-    .context("failed to create service state")?;
+    let service = io_pool
+        .block_on(Service::create(
+            config,
+            io_pool.handle().to_owned(),
+            cpu_pool.handle().to_owned(),
+        ))
+        .context("failed to create service state")?;
 
     let _guard = io_pool.enter();
     let server =

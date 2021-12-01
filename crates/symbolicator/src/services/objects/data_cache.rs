@@ -395,7 +395,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir).await.await;
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -431,7 +431,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir).await.await;
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
