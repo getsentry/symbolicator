@@ -392,12 +392,19 @@ pub struct TestGcsCredentials {
 ///
 /// Sentry employees can find this file under the `symbolicator-gcs-test-key` entry in
 /// 1Password.
-pub fn gcs_credentials_file() -> anyhow::Result<Option<PathBuf>> {
+pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.pop(); // to /crates/
     path.pop(); // to /
     path.push("gcs-service-account.json");
-    let path = path.canonicalize()?;
+
+    let path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(err) => match err.kind() {
+            std::io::ErrorKind::NotFound => return Ok(None),
+            _ => return Err(err),
+        },
+    };
 
     match path.exists() {
         true => Ok(Some(path)),
