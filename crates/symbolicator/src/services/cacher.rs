@@ -308,25 +308,38 @@ impl<T: CacheItemRequest> Cacher<T> {
         let dup_file = temp_file.reopen()?;
         let mut temp_fd = tokio::fs::File::from_std(dup_file);
 
-        // TODO: consider cache expiry!
         let shared_cache_hit = self
             .shared_cache_service
             .fetch(&shared_cache_key, &mut temp_fd)
             .await;
 
-        let status = if !shared_cache_hit {
-            let status = request.compute(temp_file.path()).await?;
-            status.write(&mut temp_fd).await?;
-            Some(status)
-        } else {
-            None
+        let status = match shared_cache_hit {
+            true => {
+                // Waste an mmap call on a cold path, oh well.
+                let bv = ByteView::map_file_ref(temp_file.as_file())?;
+                request
+                    .should_load(&bv)
+                    .then(|| CacheStatus::from_content(&bv))
+            }
+            false => None,
+        };
+        if shared_cache_hit && status.is_none() {
+            log::trace!("Discarding item from shared cache {}", key);
+            metric!(counter("shared_cache.file.discarded") += 1);
+        }
+
+        let status = match status {
+            Some(status) => status,
+            None => {
+                let status = request.compute(temp_file.path()).await?;
+                status.write(&mut temp_fd).await?;
+                status
+            }
         };
 
         // Now we have written the data to the tempfile we can mmap it, persisting it later
         // is fine as it does not move filesystem boundaries there.
         let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
-
-        let status = status.unwrap_or_else(|| CacheStatus::from_content(&byte_view));
 
         let path = match self.config.cache_dir() {
             Some(cache_dir) => {
@@ -370,8 +383,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
-        // figure out negative caches.  Maybe also put them in the GCS bucket but make
-        // them expire?
+        // figure out negative caches.  Maybe put them in redis with a TTL?
         // NOTE: temp_fd is still a valid filedescriptor to the file's data, even after we
         // persisted the file.
         if !shared_cache_hit && status == CacheStatus::Positive {
