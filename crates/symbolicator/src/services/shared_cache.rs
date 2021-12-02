@@ -44,7 +44,7 @@ impl fmt::Debug for GcsState {
         f.debug_struct("GcsState")
             .field("config", &self.config)
             .field("client", &self.client)
-            .field("auth_manager", &"<AuthenticationManager")
+            .field("auth_manager", &"<AuthenticationManager>")
             .finish()
     }
 }
