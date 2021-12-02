@@ -1,6 +1,6 @@
 # Shared Cache
 
-When running multiple symbolicators each instance has their own local
+When running multiple symbolicators each instance has its own local
 cache.  Starting up a new symbolicator instance in such an environment
 means it will have a cold cache and take a long time before it can
 process events at the same rate.  To remedy this symbolicators can be
@@ -8,7 +8,7 @@ configured to share their caches.
 
 When configured like this all caches will be shared, both original
 files and derived caches, thus a new symbolicator will not need to do
-all the computation to create missing common derrived caches.  However
+all the computation to create missing common derived caches.  However
 cache-computation is not coordinated, so if new caches are needed the
 shared cache works on a first-write-wins principle as all caches are
 identical for a given cache key.
