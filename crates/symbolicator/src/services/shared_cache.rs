@@ -312,6 +312,7 @@ impl SharedCacheKey {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum SharedCacheBackend {
     Gcs(GcsState),
     Fs(FilesystemSharedCacheConfig),
