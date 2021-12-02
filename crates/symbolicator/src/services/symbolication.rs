@@ -2456,7 +2456,7 @@ mod tests {
     ///
     /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
     /// symbol server to test object file downloads.
-    fn setup_service() -> (Service, test::TempDir) {
+    async fn setup_service() -> (Service, test::TempDir) {
         test::setup();
 
         let cache_dir = test::tempdir();
@@ -2467,7 +2467,9 @@ mod tests {
             ..Default::default()
         };
         let handle = tokio::runtime::Handle::current();
-        let service = Service::create(config, handle.clone(), handle).unwrap();
+        let service = Service::create(config, handle.clone(), handle)
+            .await
+            .unwrap();
 
         (service, cache_dir)
     }
@@ -2528,7 +2530,7 @@ mod tests {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
@@ -2554,7 +2556,7 @@ mod tests {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
@@ -2577,7 +2579,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_response_multi() {
         // Make sure we can repeatedly poll for the response
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -2624,7 +2626,7 @@ mod tests {
     }
 
     async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = test::read_fixture(path);
@@ -2671,7 +2673,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apple_crash_report() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
@@ -2695,7 +2697,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wasm_payload() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let modules: Vec<RawObjectInfo> = serde_json::from_str(
@@ -2896,7 +2898,9 @@ mod tests {
         };
 
         let handle = tokio::runtime::Handle::current();
-        let service = Service::create(config, handle.clone(), handle).unwrap();
+        let service = Service::create(config, handle.clone(), handle)
+            .await
+            .unwrap();
 
         let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();

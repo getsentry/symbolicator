@@ -66,7 +66,7 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn create(
+    pub async fn create(
         config: Config,
         io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
@@ -77,7 +77,8 @@ impl Service {
             .context("failed to create process pool")?;
 
         let downloader = DownloadService::new(config.clone());
-        let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()));
+        let shared_cache =
+            Arc::new(SharedCacheService::try_new(config.shared_cache.clone()).await?);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)

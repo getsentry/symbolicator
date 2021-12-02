@@ -18,7 +18,6 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -131,9 +130,14 @@ pub struct GcsSharedCacheConfig {
     /// Name of the GCS bucket.
     pub bucket: String,
 
-    /// Authorization information for this bucket. Needs read access.
-    #[serde(flatten)]
-    pub source_key: Arc<GcsSourceKey>,
+    /// Optional name of a JSON file containing the service account credentials.
+    ///
+    /// If this is not provided the JSON will be looked up in the
+    /// `GOOGLE_APPLICATION_CREDENTIALS` variable.  Otherwise it is assumed the service is
+    /// running since GCP and will retrieve the correct user or service account from the
+    /// GCP services.
+    #[serde(default)]
+    pub service_account_path: Option<PathBuf>,
 }
 
 /// The backend to use for the shared cache.
@@ -243,13 +247,6 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
-
-    /// A cache that may be shared between symbolicator instances.
-    ///
-    /// If it is present any missing cache item will first be looked up here before being
-    /// computed.  If it is still missing it will be computed and then uploaded to the
-    /// shared cache.
-    shared_cache: Option<SharedCacheConfig>,
 }
 
 impl Cache {
@@ -259,7 +256,6 @@ impl Cache {
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
-        shared_cache: Option<SharedCacheConfig>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -271,7 +267,6 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
-            shared_cache,
         })
     }
 
@@ -527,7 +522,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
-                    config.shared_cache.clone(),
                 )?
             },
             object_meta: {
@@ -538,7 +532,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
-                    config.shared_cache.clone(),
                 )?
             },
             auxdifs: {
@@ -549,7 +542,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads,
-                    config.shared_cache.clone(),
                 )?
             },
             symcaches: {
@@ -560,7 +552,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
-                    config.shared_cache.clone(),
                 )?
             },
             cficaches: {
@@ -571,7 +562,6 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations,
-                    config.shared_cache.clone(),
                 )?
             },
             diagnostics: {
@@ -582,7 +572,6 @@ impl Caches {
                     tmp_dir,
                     config.caches.diagnostics.into(),
                     Default::default(),
-                    config.shared_cache.clone(),
                 )?
             },
         })
@@ -675,7 +664,6 @@ mod tests {
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
-            None,
         );
         let fsinfo = fs::metadata(cachedir).unwrap();
         assert!(fsinfo.is_dir());
@@ -735,7 +723,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -774,7 +761,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -825,7 +811,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         cache.cleanup()?;
@@ -872,7 +857,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -919,7 +903,6 @@ mod tests {
                 ..Default::default()
             }),
             Default::default(),
-            None,
         )?;
 
         sleep(Duration::from_millis(30));
@@ -1156,7 +1139,6 @@ mod tests {
             None,
             CacheConfig::Downloaded(Default::default()),
             Default::default(),
-            None,
         )?;
 
         // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched
@@ -1495,20 +1477,13 @@ mod tests {
         let yaml = r#"
             gcs:
               bucket: "some-bucket"
-              client_email: "me@example.com"
-              private_key: "-----BEGIN PRIVATE KEY----\n..."
-
         "#;
         let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
 
         match cfg.backend {
             SharedCacheBackendConfig::Gcs(gcs) => {
                 assert_eq!(gcs.bucket, "some-bucket");
-                assert_eq!(gcs.source_key.client_email, "me@example.com");
-                assert_eq!(
-                    gcs.source_key.private_key,
-                    "-----BEGIN PRIVATE KEY----\n..."
-                );
+                assert!(gcs.service_account_path.is_none());
             }
             SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
         }

@@ -18,7 +18,7 @@ use reqwest::{Body, Client, StatusCode};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
@@ -28,50 +28,40 @@ use crate::cache::{
 };
 use crate::logging::LogError;
 use crate::services::download::measure_download_time;
-use crate::utils::gcs::{request_new_token, GcsError, GcsToken};
+use crate::utils::gcs::GcsError;
 
 use super::cacher::CacheKey;
 
 // TODO: get timeouts from global config?
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug)]
 struct GcsState {
     config: GcsSharedCacheConfig,
-    token: RwLock<Option<Arc<GcsToken>>>,
     client: Client,
+    auth_manager: gcp_auth::AuthenticationManager,
+}
+
+impl fmt::Debug for GcsState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GcsState")
+            .field("config", &self.config)
+            .field("client", &self.client)
+            .field("auth_manager", &"<AuthenticationManager>")
+            .finish()
+    }
 }
 
 impl GcsState {
-    pub fn new(config: GcsSharedCacheConfig) -> Self {
-        Self {
+    pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
+        let auth_manager = match config.service_account_path {
+            Some(ref path) => gcp_auth::from_credentials_file(&path).await?,
+            None => gcp_auth::init().await?,
+        };
+        Ok(Self {
             config,
-            token: RwLock::new(None),
             client: Client::new(),
-        }
-    }
-    /// Resolves a valid GCS OAuth token.
-    ///
-    /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
-    /// requested from GCS and stored in the cache.
-    async fn get_token(&self) -> Result<Arc<GcsToken>, GcsError> {
-        {
-            let guard = self.token.read().await;
-            if let Some(ref token) = *guard {
-                if !token.is_expired() {
-                    metric!(counter("shared_cache.gcs.token") += 1, "cache" => "true");
-                    return Ok(token.clone());
-                }
-            }
-        }
-
-        // Make sure only 1 token is requested at a time.
-        let mut guard = self.token.write().await;
-        let token = request_new_token(&self.client, &self.config.source_key).await?;
-        metric!(counter("shared_cache.gcs.token") += 1, "cache" => "false");
-        let token = Arc::new(token);
-        *guard = Some(token.clone());
-        Ok(token)
+            auth_manager,
+        })
     }
 
     /// Fetches item from shared cache if available and copies them to the writer.
@@ -83,7 +73,10 @@ impl GcsState {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
-        let token = self.get_token().await?;
+        let token = self
+            .auth_manager
+            .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
+            .await?;
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
             .map_err(|_| GcsError::InvalidUrl)?;
@@ -92,11 +85,7 @@ impl GcsState {
             .map_err(|_| GcsError::InvalidUrl)?
             .extend(&[&self.config.bucket, "o", key.gcs_bucket_key().as_ref()]);
 
-        let request = self
-            .client
-            .get(url)
-            .header("authorization", token.bearer_token())
-            .send();
+        let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
         let request = measure_download_time("shared_cache.gcs.download", request);
 
@@ -143,7 +132,10 @@ impl GcsState {
     async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
         let total_bytes = src.seek(SeekFrom::End(0)).await?;
         src.rewind().await?;
-        let token = self.get_token().await?;
+        let token = self
+            .auth_manager
+            .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
+            .await?;
         let mut url =
             Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
                 .map_err(|_| GcsError::InvalidUrl)?;
@@ -161,7 +153,7 @@ impl GcsState {
         let request = self
             .client
             .post(url.clone())
-            .header("authorization", token.bearer_token())
+            .bearer_auth(token.as_str())
             .body(body)
             .send();
 
@@ -320,6 +312,7 @@ impl SharedCacheKey {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum SharedCacheBackend {
     Gcs(GcsState),
     Fs(FilesystemSharedCacheConfig),
@@ -356,13 +349,13 @@ pub struct SharedCacheService {
 }
 
 impl SharedCacheService {
-    pub fn new(config: Option<SharedCacheConfig>) -> Self {
+    pub async fn try_new(config: Option<SharedCacheConfig>) -> Result<Self> {
         match config {
             Some(cfg) => {
                 let (tx, rx) = mpsc::channel(cfg.max_upload_queue_size);
                 let backend = match cfg.backend {
                     SharedCacheBackendConfig::Gcs(cfg) => {
-                        SharedCacheBackend::Gcs(GcsState::new(cfg))
+                        SharedCacheBackend::Gcs(GcsState::try_new(cfg).await?)
                     }
                     SharedCacheBackendConfig::Filesystem(cfg) => SharedCacheBackend::Fs(cfg),
                 };
@@ -372,15 +365,15 @@ impl SharedCacheService {
                     backend.clone(),
                     cfg.max_concurrent_uploads,
                 ));
-                Self {
+                Ok(Self {
                     backend: Some(backend),
                     upload_queue_tx: Some(tx),
-                }
+                })
             }
-            None => Self {
+            None => Ok(Self {
                 backend: None,
                 upload_queue_tx: None,
-            },
+            }),
         }
     }
 
@@ -565,15 +558,24 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use uuid::Uuid;
 
-    use crate::test;
+    use crate::test::{self, TestGcsCredentials};
     use crate::types::Scope;
 
     use super::*;
 
+    impl From<TestGcsCredentials> for GcsSharedCacheConfig {
+        fn from(source: TestGcsCredentials) -> Self {
+            Self {
+                bucket: source.bucket,
+                service_account_path: source.credentials_file,
+            }
+        }
+    }
+
     #[tokio::test]
     async fn test_noop_fetch() {
         test::setup();
-        let svc = SharedCacheService::new(None);
+        let svc = SharedCacheService::try_new(None).await.unwrap();
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -591,7 +593,7 @@ mod tests {
     #[tokio::test]
     async fn test_noop_store() {
         test::setup();
-        let svc = SharedCacheService::new(None);
+        let svc = SharedCacheService::try_new(None).await.unwrap();
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -632,7 +634,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -669,7 +671,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         let mut writer = Vec::new();
 
@@ -701,7 +703,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -742,12 +744,9 @@ mod tests {
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
             max_upload_queue_size: 10,
-            backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig {
-                source_key: credentials.source_key(),
-                bucket: credentials.bucket,
-            }),
+            backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         let mut writer = Vec::new();
 
@@ -771,10 +770,9 @@ mod tests {
             },
         };
 
-        let state = GcsState::new(GcsSharedCacheConfig {
-            source_key: credentials.source_key(),
-            bucket: credentials.bucket,
-        });
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+            .await
+            .unwrap();
 
         let mut writer = Vec::new();
 
@@ -802,12 +800,9 @@ mod tests {
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
             max_upload_queue_size: 10,
-            backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig {
-                source_key: credentials.source_key(),
-                bucket: credentials.bucket.clone(),
-            }),
+            backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg));
+        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -846,10 +841,9 @@ mod tests {
             },
         };
 
-        let state = GcsState::new(GcsSharedCacheConfig {
-            source_key: credentials.source_key(),
-            bucket: credentials.bucket,
-        });
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+            .await
+            .unwrap();
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new().unwrap();

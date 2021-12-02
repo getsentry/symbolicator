@@ -184,6 +184,47 @@ impl S3Downloader {
                     RusotoError::Unknown(response) if response.status.is_client_error() => {
                         return Ok(DownloadStatus::NotFound)
                     }
+                    RusotoError::Unknown(response) => {
+                        // Parse some stuff out of this giant error collection.
+                        let start = response.body_as_str().find("<Code>");
+                        let end = response.body_as_str().find("</Code>");
+                        let code = match (start, end) {
+                            (Some(start), Some(end)) => {
+                                let start = start + "<Code>".len();
+                                response.body_as_str().get(start..end)
+                            }
+                            _ => None,
+                        };
+                        let start = response.body_as_str().find("<Message>");
+                        let end = response.body_as_str().find("</Message>");
+                        let message = match (start, end) {
+                            (Some(start), Some(end)) => {
+                                let start = start + "<Message>".len();
+                                response.body_as_str().get(start..end)
+                            }
+                            _ => None,
+                        };
+                        sentry::configure_scope(|scope| {
+                            scope.set_extra("AWS body:", response.body_as_str().into());
+                            if let Some(message) = message {
+                                scope.set_extra("AWS message", message.into());
+                            }
+                            if let Some(code) = code {
+                                scope.set_extra("AWS code", code.into());
+                            }
+                        });
+                        if let Some(code) = code {
+                            sentry::configure_scope(|scope| {
+                                scope.set_extra("AWS code", code.into());
+                            });
+                            return Err(DownloadError::S3WithCode(
+                                response.status,
+                                code.to_string(),
+                            ));
+                        } else {
+                            return Err(DownloadError::S3(err));
+                        }
+                    }
                     _ => return Err(err.into()),
                 }
             }
