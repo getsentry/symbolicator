@@ -624,7 +624,6 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
-            None,
         )
         .unwrap();
         let shared_cache = Arc::new(SharedCacheService::try_new(None).await.unwrap());
@@ -668,7 +667,6 @@ mod tests {
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
-            None,
         )
         .unwrap();
         let shared_cache = Arc::new(SharedCacheService::try_new(None).await.unwrap());
