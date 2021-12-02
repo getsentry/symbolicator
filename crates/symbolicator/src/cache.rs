@@ -18,7 +18,6 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
-use crate::sources::GcsSourceKey;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -131,9 +130,14 @@ pub struct GcsSharedCacheConfig {
     /// Name of the GCS bucket.
     pub bucket: String,
 
-    /// Authorization information for this bucket. Needs read access.
-    #[serde(flatten)]
-    pub source_key: Arc<GcsSourceKey>,
+    /// Optional name of a JSON file containing the service account credentials.
+    ///
+    /// If this is not provided the JSON will be looked up in the
+    /// `GOOGLE_APPLICATION_CREDENTIALS` variable.  Otherwise it is assumed the service is
+    /// running since GCP and will retrieve the correct user or service account from the
+    /// GCP services.
+    #[serde(default)]
+    pub service_account_path: Option<PathBuf>,
 }
 
 /// The backend to use for the shared cache.
@@ -1495,20 +1499,13 @@ mod tests {
         let yaml = r#"
             gcs:
               bucket: "some-bucket"
-              client_email: "me@example.com"
-              private_key: "-----BEGIN PRIVATE KEY----\n..."
-
         "#;
         let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
 
         match cfg.backend {
             SharedCacheBackendConfig::Gcs(gcs) => {
                 assert_eq!(gcs.bucket, "some-bucket");
-                assert_eq!(gcs.source_key.client_email, "me@example.com");
-                assert_eq!(
-                    gcs.source_key.private_key,
-                    "-----BEGIN PRIVATE KEY----\n..."
-                );
+                assert!(gcs.service_account_path.is_none());
             }
             SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
         }

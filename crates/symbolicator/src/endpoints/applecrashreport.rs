@@ -66,7 +66,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let service = test::default_service();
+        let service = test::default_service().await;
         let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
@@ -94,7 +94,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let service = test::default_service();
+        let service = test::default_service().await;
         let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("apple_crash_report.txt");

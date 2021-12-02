@@ -74,7 +74,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let service = test::default_service();
+        let service = test::default_service().await;
         let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("windows.dmp");
@@ -99,43 +99,43 @@ mod tests {
     }
 
     // This test is disabled because it locks up on CI. We have not found a way to reproduce this.
-    #[allow(dead_code)]
+    // #[allow(dead_code)]
     // #[tokio::test]
-    async fn test_integration_microsoft() {
-        // TODO: Move this test to E2E tests
-        test::setup();
+    // async fn disabled_test_integration_microsoft() {
+    //     // TODO: Move this test to E2E tests
+    //     test::setup();
 
-        let service = test::default_service();
-        let server = test::Server::with_service(service);
-        let source = test::microsoft_symsrv();
+    //     let service = test::default_service().await;
+    //     let server = test::Server::with_service(service);
+    //     let source = test::microsoft_symsrv();
 
-        let file_contents = test::read_fixture("windows.dmp");
-        let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
+    //     let file_contents = test::read_fixture("windows.dmp");
+    //     let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
 
-        let form = multipart::Form::new()
-            .part("upload_file_minidump", file_part)
-            .text("sources", serde_json::to_string(&vec![source]).unwrap())
-            .text("options", r#"{"dif_candidates":true}"#);
+    //     let form = multipart::Form::new()
+    //         .part("upload_file_minidump", file_part)
+    //         .text("sources", serde_json::to_string(&vec![source]).unwrap())
+    //         .text("options", r#"{"dif_candidates":true}"#);
 
-        let response = Client::new()
-            .post(server.url("/minidump"))
-            .multipart(form)
-            .send()
-            .await
-            .unwrap();
+    //     let response = Client::new()
+    //         .post(server.url("/minidump"))
+    //         .multipart(form)
+    //         .send()
+    //         .await
+    //         .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+    //     assert_eq!(response.status(), StatusCode::OK);
 
-        let body = response.text().await.unwrap();
-        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
-        insta::assert_yaml_snapshot!(response);
-    }
+    //     let body = response.text().await.unwrap();
+    //     let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+    //     insta::assert_yaml_snapshot!(response);
+    // }
 
     #[tokio::test]
     async fn test_unknown_field() {
         test::setup();
 
-        let service = test::default_service();
+        let service = test::default_service().await;
         let server = test::Server::with_service(service);
 
         let file_contents = test::read_fixture("windows.dmp");

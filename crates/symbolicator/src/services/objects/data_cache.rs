@@ -311,7 +311,7 @@ mod tests {
     use symbolic::common::DebugId;
     use tempfile::TempDir;
 
-    fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
+    async fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let meta_cache = Cache::from_config(
             CacheName::ObjectMeta,
             Some(tempdir.path().join("meta")),
@@ -339,7 +339,7 @@ mod tests {
         });
 
         let download_svc = DownloadService::new(config);
-        let shared_cache_svc = Arc::new(SharedCacheService::new(None));
+        let shared_cache_svc = Arc::new(SharedCacheService::try_new(None).await.unwrap());
         ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
     }
 
@@ -349,7 +349,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -395,7 +395,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -431,7 +431,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -473,7 +473,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.

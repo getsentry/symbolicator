@@ -425,7 +425,7 @@ mod tests {
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.
-    fn symcache_actor(cache_dir: PathBuf, timeout: Duration) -> SymCacheActor {
+    async fn symcache_actor(cache_dir: PathBuf, timeout: Duration) -> SymCacheActor {
         let mut cache_config = CacheConfigs::default();
         cache_config.downloaded.retry_misses_after = Some(timeout);
 
@@ -440,7 +440,7 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(config);
-        let shared_cache = Arc::new(SharedCacheService::new(None));
+        let shared_cache = Arc::new(SharedCacheService::try_new(None).await.unwrap());
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
@@ -507,7 +507,7 @@ mod tests {
             scope: Scope::Global,
         };
 
-        let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT);
+        let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT).await;
 
         // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
         // symcache will be obfuscated.
