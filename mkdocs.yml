@@ -16,6 +16,7 @@ nav:
     - advanced/background-and-principles.md
     - advanced/system-architecture.md
     - advanced/caching.md
+    - advanced/shared-cache.md
     - advanced/symbol-lookup.md
     - advanced/symbol-server-compatibility.md
     - advanced/source-bundles.md
