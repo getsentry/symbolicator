@@ -1029,6 +1029,12 @@ fn symbolicate_frame(
 
     let mut rv = vec![];
 
+    // The symbol addr only makes sense for the outermost top-level function, and not its inlinees.
+    // We keep track of it while iterating and only set it for the last frame,
+    // which is the top-level function.
+    let mut sym_addr = None;
+    let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
+
     for line_info in line_infos {
         let line_info = match line_info {
             Ok(x) => x,
@@ -1077,15 +1083,16 @@ fn symbolicate_frame(
             );
         }
 
+        sym_addr = Some(HexValue(
+            lookup_result.expose_preferred_addr(line_info.function_address()),
+        ));
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
             raw: RawFrame {
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
-                instruction_addr: HexValue(
-                    lookup_result.expose_preferred_addr(line_info.instruction_address()),
-                ),
+                instruction_addr,
                 symbol: Some(line_info.symbol().to_string()),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
@@ -1105,9 +1112,7 @@ fn symbolicate_frame(
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
-                sym_addr: Some(HexValue(
-                    lookup_result.expose_preferred_addr(line_info.function_address()),
-                )),
+                sym_addr: None,
                 lang: match line_info.language() {
                     Language::Unknown => None,
                     language => Some(language),
@@ -1115,6 +1120,10 @@ fn symbolicate_frame(
                 trust: frame.trust,
             },
         });
+    }
+
+    if let Some(last_frame) = rv.last_mut() {
+        last_frame.raw.sym_addr = sym_addr;
     }
 
     if rv.is_empty() {

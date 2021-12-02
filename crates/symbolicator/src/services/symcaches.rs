@@ -47,10 +47,10 @@ const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 /// In case a symbolic update increased its own internal format version, bump the
 /// symcache file version as described above, and update the static assertion.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 0,
-    fallbacks: &[],
+    current: 1,
+    fallbacks: &[0],
 };
-static_assert!(symbolic::symcache::format::SYMCACHE_VERSION == 6);
+static_assert!(symbolic::symcache::SYMCACHE_VERSION == 7);
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
