@@ -409,23 +409,8 @@ impl<T: CacheItemRequest> Cacher<T> {
         F: std::future::Future<Output = Result<T::Item, T::Error>> + Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
+
         let max_lazy_refreshes = self.config.max_lazy_refreshes();
-
-        // we count down towards zero, and if we reach or surpass it, we will short circuit here.
-        if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
-            max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-
-            let result = Err(Arc::new(
-                Error::new(
-                    ErrorKind::Other,
-                    "maximum number of lazy recomputations reached; aborting cache computation",
-                )
-                .into(),
-            ));
-            sender.send(result).ok();
-            return receiver.shared();
-        }
-
         let current_computations = self.current_computations.clone();
         let remove_computation_token = CallOnDrop::new(move || {
             if is_refresh {
@@ -477,6 +462,29 @@ impl<T: CacheItemRequest> Cacher<T> {
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+
+                // We count down towards zero, and if we reach or surpass it, we will short circuit here.
+                // Doing the short-circuiting here means we don't create a channel at all, and don't
+                // put it into `current_computations`.
+                // Previously, that could have potentially returned the error to a non-lazy
+                // computation requests based on the `key`.
+                let max_lazy_refreshes = self.config.max_lazy_refreshes();
+                if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
+                    max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+
+                    metric!(counter(&format!("caches.{}.lazy_limit_hit", name)) += 1);
+                    // This error is purely here to satisfy the return type, it should not show
+                    // up anywhere, as lazy computation will not unwrap the error.
+                    let result = Err(Arc::new(
+                        Error::new(
+                            ErrorKind::Other,
+                            "maximum number of lazy recomputations reached; aborting cache computation",
+                        )
+                        .into(),
+                    ));
+                    return Box::pin(async { result });
+                }
+
                 let computation = self.clone().compute(request, key.clone(), is_refresh);
                 let channel = self.create_channel(key.clone(), computation, is_refresh);
                 let evicted = current_computations.insert(key, channel.clone());
@@ -529,7 +537,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     log::trace!(
                         "Spawning deduplicated {} computation for path {:?}",
                         name,
-                        key.cache_path(cache_dir, *version).display()
+                        key.cache_path(cache_dir, T::VERSIONS.current).display()
                     );
                     metric!(
                         counter(&format!("caches.{}.file.fallback", name)) += 1,
