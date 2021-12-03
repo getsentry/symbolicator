@@ -466,13 +466,11 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // We count down towards zero, and if we reach or surpass it, we will short circuit here.
                 // Doing the short-circuiting here means we don't create a channel at all, and don't
                 // put it into `current_computations`.
-                // Previously, that could have potentially returned the error to a non-lazy
-                // computation requests based on the `key`.
                 let max_lazy_refreshes = self.config.max_lazy_refreshes();
                 if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
                     max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
 
-                    metric!(counter(&format!("caches.{}.lazy_limit_hit", name)) += 1);
+                    metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
                     // This error is purely here to satisfy the return type, it should not show
                     // up anywhere, as lazy computation will not unwrap the error.
                     let result = Err(Arc::new(
