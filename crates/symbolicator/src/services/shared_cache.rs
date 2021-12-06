@@ -426,6 +426,7 @@ impl SharedCacheService {
                     counter("services.shared_cache.store") += 1,
                     "cache" => cache_name.as_ref(),
                     "write" => op.as_ref(),
+                    "status" => "ok",
                 );
                 if let SharedCacheStoreResult::Written(bytes) = op {
                     let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
@@ -440,6 +441,11 @@ impl SharedCacheService {
                     "Error storing file on {} shared cache: {}",
                     backend.name(),
                     LogError(&*err),
+                );
+                metric!(
+                    counter("services.shared_cache.store") += 1,
+                    "cache" => cache_name.as_ref(),
+                    "status" => "error",
                 );
             }
         }
@@ -490,6 +496,7 @@ impl SharedCacheService {
                     counter("services.shared_cache.fetch") += 1,
                     "cache" => key.name.as_ref(),
                     "hit" => "true",
+                    "status" => "ok",
                 );
                 let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
                 metric!(
@@ -503,6 +510,7 @@ impl SharedCacheService {
                     counter("services.shared_cache.fetch") += 1,
                     "cache" => key.name.as_ref(),
                     "hit" => "false",
+                    "status" => "ok",
                 );
                 false
             }
@@ -511,6 +519,11 @@ impl SharedCacheService {
                     "Error fetching from {} shared cache: {}",
                     self.backend_name(),
                     LogError(&*err)
+                );
+                metric!(
+                    counter("services.shared_cache.fetch") += 1,
+                    "cache" => key.name.as_ref(),
+                    "status" => "error",
                 );
                 false
             }
