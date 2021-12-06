@@ -178,7 +178,7 @@ pub struct SharedCacheConfig {
 }
 
 fn default_max_upload_queue_size() -> usize {
-    100
+    400
 }
 
 fn default_max_concurrent_uploads() -> usize {
