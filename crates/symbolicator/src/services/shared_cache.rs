@@ -173,9 +173,7 @@ impl GcsState {
                         self.config.bucket
                     )),
                     _ => Err(anyhow!(
-                        "Error response from GCS for bucket={}, key={}: {} {}",
-                        self.config.bucket,
-                        key.gcs_bucket_key(),
+                        "Error response from GCS: {} {}",
                         status,
                         status.canonical_reason().unwrap_or("")
                     )),
