@@ -1444,7 +1444,7 @@ mod tests {
         "#;
         let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
 
-        assert_eq!(cfg.max_upload_queue_size, 100);
+        assert_eq!(cfg.max_upload_queue_size, 400);
         assert_eq!(cfg.max_concurrent_uploads, 20);
         match cfg.backend {
             SharedCacheBackendConfig::Gcs(_) => panic!("wrong backend"),
