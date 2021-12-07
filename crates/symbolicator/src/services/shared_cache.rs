@@ -189,13 +189,7 @@ impl GcsState {
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
                     )),
-                    _ => Err(anyhow!(
-                        "Error response from GCS for bucket={}, key={}: {} {}",
-                        self.config.bucket,
-                        key.gcs_bucket_key(),
-                        status,
-                        status.canonical_reason().unwrap_or("")
-                    )),
+                    _ => Err(anyhow!("Error response from GCS: {}", status)),
                 }
             }
             Ok(Err(err)) => {
