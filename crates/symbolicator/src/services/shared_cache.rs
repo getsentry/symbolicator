@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Error, Result};
-use futures::TryStreamExt;
+use futures::{Future, TryStreamExt};
 use reqwest::{Body, Client, StatusCode};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
@@ -27,13 +27,14 @@ use crate::cache::{
     SharedCacheConfig,
 };
 use crate::logging::LogError;
-use crate::services::download::measure_download_time;
+use crate::services::download::MeasureSourceDownloadGuard;
 use crate::utils::gcs::GcsError;
 
 use super::cacher::CacheKey;
 
 // TODO: get timeouts from global config?
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const STORE_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct GcsState {
     config: GcsSharedCacheConfig,
@@ -48,6 +49,22 @@ impl fmt::Debug for GcsState {
             .field("client", &self.client)
             .field("auth_manager", &"<AuthenticationManager>")
             .finish()
+    }
+}
+
+pub fn measure_download_time<'a, F, T, E>(
+    metric_prefix: &'a str,
+    source_name: &'a str,
+    f: F,
+) -> impl Future<Output = F::Output> + 'a
+where
+    F: 'a + Future<Output = Result<T, E>>,
+{
+    let guard = MeasureSourceDownloadGuard::new(metric_prefix, source_name);
+    async move {
+        let output = f.await;
+        guard.done(&output);
+        output
     }
 }
 
@@ -87,7 +104,7 @@ impl GcsState {
 
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
-        let request = measure_download_time("shared_cache.gcs.download", request);
+        let request = measure_download_time("services.shared_cache.fetch.connect", "gcs", request);
 
         match request.await {
             Ok(Ok(response)) => {
@@ -156,8 +173,8 @@ impl GcsState {
             .bearer_auth(token.as_str())
             .body(body)
             .send();
-
-        let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
+        let request = tokio::time::timeout(STORE_TIMEOUT, request);
+        let request = measure_download_time("services.shared_cache.store.upload", "gcs", request);
 
         match request.await {
             Ok(Ok(response)) => {

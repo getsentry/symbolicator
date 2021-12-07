@@ -315,7 +315,7 @@ enum MeasureState {
 ///
 /// If `bytes_transferred` is not set, then only the first metric (amount of time taken) is
 /// recorded.
-struct MeasureSourceDownloadGuard<'a> {
+pub struct MeasureSourceDownloadGuard<'a> {
     state: MeasureState,
     task_name: &'a str,
     source_name: &'a str,
