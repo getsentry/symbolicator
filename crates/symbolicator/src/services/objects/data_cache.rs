@@ -20,7 +20,6 @@ use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 
 use crate::cache::CacheStatus;
-use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
 use crate::services::download::{DownloadError, DownloadStatus};
 use crate::types::{ObjectId, Scope};
@@ -185,9 +184,9 @@ impl CacheItemRequest for FetchFileDataRequest {
                     // hit `CachedError`, but listing it for completeness is not a bad idea either.
                     match e {
                         DownloadError::Permissions | DownloadError::CachedError(_) => {
-                            log::debug!("Error while downloading file: {}", LogError(&e))
+                            log::debug!("Error while downloading file: {:?}", e)
                         }
-                        _ => log::error!("Error while downloading file: {}", LogError(&e)),
+                        _ => log::error!("Error while downloading file: {:?}", e),
                     }
 
                     return Ok(CacheStatus::CacheSpecificError(e.for_cache()));

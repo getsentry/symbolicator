@@ -18,7 +18,6 @@ use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
@@ -106,7 +105,7 @@ impl FetchFileRequest {
                 return Ok(CacheStatus::Negative);
             }
             Err(e) => {
-                log::debug!("Error while downloading file: {}", LogError(&e));
+                log::debug!("Error while downloading file: {:?}", e);
                 return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
             }
             Ok(DownloadStatus::Completed) => {

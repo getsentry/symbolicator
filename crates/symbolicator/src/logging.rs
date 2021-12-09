@@ -1,5 +1,4 @@
 use std::env;
-use std::fmt;
 use std::io::{self, Write};
 
 use chrono::{DateTime, Utc};
@@ -154,22 +153,6 @@ pub fn init_logging(config: &Config) {
 
     let breadcrumb_logger = Box::new(BreadcrumbLogger::new(logger));
     log::set_boxed_logger(breadcrumb_logger).unwrap();
-}
-
-/// A wrapper around an [`Error`](std::error::Error) that prints its causes.
-pub struct LogError<'a>(pub &'a dyn std::error::Error);
-
-impl<'a> fmt::Display for LogError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut error = self.0;
-        write!(f, "{}", error)?;
-        while let Some(cause) = error.source() {
-            write!(f, "\n  caused by: {}", cause)?;
-            error = cause;
-        }
-
-        Ok(())
-    }
 }
 
 /// Logs an error to the configured logger or `stderr` if not yet configured.

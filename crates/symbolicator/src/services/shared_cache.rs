@@ -449,9 +449,9 @@ impl SharedCacheService {
             }
             Err(err) => {
                 log::error!(
-                    "Error storing file on {} shared cache: {}",
+                    "Error storing file on {} shared cache: {:?}",
                     backend.name(),
-                    LogError(&*err),
+                    err,
                 );
                 metric!(
                     counter("services.shared_cache.store") += 1,
@@ -464,8 +464,8 @@ impl SharedCacheService {
         // Tell the work coordinator we're done.
         done_tx.send(()).await.unwrap_or_else(|err| {
             log::error!(
-                "Shared cache single_uploader failed to send done message: {}",
-                LogError(&err)
+                "Shared cache single_uploader failed to send done message: {:?}",
+                err
             );
         });
 
@@ -527,9 +527,9 @@ impl SharedCacheService {
             }
             Err(err) => {
                 log::error!(
-                    "Error fetching from {} shared cache: {}",
+                    "Error fetching from {} shared cache: {:?}",
                     self.backend_name(),
-                    LogError(&*err)
+                    err,
                 );
                 metric!(
                     counter("services.shared_cache.fetch") += 1,

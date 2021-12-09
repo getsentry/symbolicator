@@ -31,7 +31,6 @@ use tempfile::TempPath;
 use thiserror::Error;
 
 use crate::cache::CacheStatus;
-use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
@@ -183,11 +182,7 @@ impl CfiCacheModules {
                         CacheStatus::Negative => ObjectFileStatus::Missing,
                         CacheStatus::Malformed(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            log::warn!(
-                                "Error while parsing cficache: {} ({})",
-                                LogError(&err),
-                                details
-                            );
+                            log::warn!("Error while parsing cficache: {:?} ({})", err, details);
                             ObjectFileStatus::from(&err)
                         }
                         // If the cache entry is for a cache specific error, it must be
@@ -211,7 +206,7 @@ impl CfiCacheModules {
                     }
                 }
                 Err(err) => {
-                    log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    log::debug!("Error while fetching cficache: {:?}", err);
                     CfiModule {
                         cfi_status: ObjectFileStatus::from(err.as_ref()),
                         ..Default::default()
@@ -1745,7 +1740,7 @@ fn load_cfi_for_processor(
         .filter_map(|(code_id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
-                    log::error!("Error while reading cficache: {}", LogError(&err));
+                    log::error!("Error while reading cficache: {:?}", err);
                     err
                 })
                 .ok()?;
@@ -1754,7 +1749,7 @@ fn load_cfi_for_processor(
                     // This mostly never happens since we already checked the files
                     // after downloading and they would have been tagged with
                     // CacheStatus::Malformed.
-                    log::error!("Error while loading cficache: {}", LogError(&err));
+                    log::error!("Error while loading cficache: {:?}", err);
                     err
                 })
                 .ok()?;
