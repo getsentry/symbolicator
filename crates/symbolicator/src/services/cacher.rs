@@ -644,7 +644,7 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let shared_cache = Arc::new(SharedCacheService::try_new(None).await.unwrap());
+        let shared_cache = Arc::new(SharedCacheService::new(None).await);
         let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("some_cache_key");
@@ -687,7 +687,7 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let shared_cache = Arc::new(SharedCacheService::try_new(None).await.unwrap());
+        let shared_cache = Arc::new(SharedCacheService::new(None).await);
         let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("0");

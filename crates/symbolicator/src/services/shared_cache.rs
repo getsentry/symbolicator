@@ -152,7 +152,8 @@ impl GcsState {
         let token = self
             .auth_manager
             .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
-            .await?;
+            .await
+            .context("gcp_auth failed to get token")?;
         let mut url =
             Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
                 .map_err(|_| GcsError::InvalidUrl)?;
@@ -330,6 +331,29 @@ enum SharedCacheBackend {
 }
 
 impl SharedCacheBackend {
+    /// Creates the backend.
+    ///
+    /// If the backend can not be created the error will already be reported.
+    async fn try_new(cfg: SharedCacheBackendConfig) -> Option<Self> {
+        match cfg {
+            SharedCacheBackendConfig::Gcs(cfg) => {
+                match GcsState::try_new(cfg)
+                    .await
+                    .context("Failed to initialise GCS backend for shared cache")
+                {
+                    Ok(state) => Some(SharedCacheBackend::Gcs(state)),
+                    Err(err) => {
+                        sentry::capture_error(&*err);
+                        None
+                    }
+                }
+            }
+            // TODO: We could check if we can write in the configured directory here, but
+            // this is only test backend so not very important.
+            SharedCacheBackendConfig::Filesystem(cfg) => Some(SharedCacheBackend::Fs(cfg)),
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             Self::Gcs(_) => "GCS",
@@ -360,31 +384,33 @@ pub struct SharedCacheService {
 }
 
 impl SharedCacheService {
-    pub async fn try_new(config: Option<SharedCacheConfig>) -> Result<Self> {
+    pub async fn new(config: Option<SharedCacheConfig>) -> Self {
         match config {
             Some(cfg) => {
                 let (tx, rx) = mpsc::channel(cfg.max_upload_queue_size);
-                let backend = match cfg.backend {
-                    SharedCacheBackendConfig::Gcs(cfg) => {
-                        SharedCacheBackend::Gcs(GcsState::try_new(cfg).await?)
+                let backend = match SharedCacheBackend::try_new(cfg.backend).await {
+                    Some(backend) => Arc::new(backend),
+                    None => {
+                        return Self {
+                            backend: None,
+                            upload_queue_tx: None,
+                        }
                     }
-                    SharedCacheBackendConfig::Filesystem(cfg) => SharedCacheBackend::Fs(cfg),
                 };
-                let backend = Arc::new(backend);
                 tokio::spawn(Self::upload_worker(
                     rx,
                     backend.clone(),
                     cfg.max_concurrent_uploads,
                 ));
-                Ok(Self {
+                Self {
                     backend: Some(backend),
                     upload_queue_tx: Some(tx),
-                })
+                }
             }
-            None => Ok(Self {
+            None => Self {
                 backend: None,
                 upload_queue_tx: None,
-            }),
+            },
         }
     }
 
@@ -599,7 +625,7 @@ mod tests {
     #[tokio::test]
     async fn test_noop_fetch() {
         test::setup();
-        let svc = SharedCacheService::try_new(None).await.unwrap();
+        let svc = SharedCacheService::new(None).await;
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -617,7 +643,7 @@ mod tests {
     #[tokio::test]
     async fn test_noop_store() {
         test::setup();
-        let svc = SharedCacheService::try_new(None).await.unwrap();
+        let svc = SharedCacheService::new(None).await;
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -658,7 +684,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
+        let svc = SharedCacheService::new(Some(cfg)).await;
 
         // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -695,7 +721,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
+        let svc = SharedCacheService::new(Some(cfg)).await;
 
         let mut writer = Vec::new();
 
@@ -727,7 +753,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
+        let svc = SharedCacheService::new(Some(cfg)).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -770,7 +796,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
+        let svc = SharedCacheService::new(Some(cfg)).await;
 
         let mut writer = Vec::new();
 
@@ -826,7 +852,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::try_new(Some(cfg)).await.unwrap();
+        let svc = SharedCacheService::new(Some(cfg)).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
