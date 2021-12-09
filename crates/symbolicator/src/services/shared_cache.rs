@@ -26,7 +26,6 @@ use crate::cache::{
     CacheName, FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheBackendConfig,
     SharedCacheConfig,
 };
-use crate::logging::LogError;
 use crate::services::download::MeasureSourceDownloadGuard;
 use crate::utils::gcs::GcsError;
 
