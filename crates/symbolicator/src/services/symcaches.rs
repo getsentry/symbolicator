@@ -440,7 +440,7 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(config);
-        let shared_cache = Arc::new(SharedCacheService::try_new(None).await.unwrap());
+        let shared_cache = Arc::new(SharedCacheService::new(None).await);
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,

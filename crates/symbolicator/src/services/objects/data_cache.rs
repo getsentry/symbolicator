@@ -337,7 +337,7 @@ mod tests {
         });
 
         let download_svc = DownloadService::new(config);
-        let shared_cache_svc = Arc::new(SharedCacheService::try_new(None).await.unwrap());
+        let shared_cache_svc = Arc::new(SharedCacheService::new(None).await);
         ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
     }
 
