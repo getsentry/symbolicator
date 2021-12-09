@@ -93,7 +93,8 @@ impl GcsState {
         let token = self
             .auth_manager
             .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
-            .await?;
+            .await
+            .context("Failed to get authentication token")?;
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
             .map_err(|_| GcsError::InvalidUrl)?;
