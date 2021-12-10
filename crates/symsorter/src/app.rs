@@ -174,8 +174,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
 
     paths
         .into_iter()
-        .map(WalkDir::new)
-        .flatten()
+        .flat_map(WalkDir::new)
         .filter_map(Result::ok)
         .filter(|entry| entry.metadata().ok().map_or(false, |x| x.is_file()))
         .par_bridge()

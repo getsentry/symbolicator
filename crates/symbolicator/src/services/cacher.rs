@@ -169,9 +169,9 @@ impl AsRef<Path> for CachePath {
 }
 
 fn safe_path_segment(s: &str) -> String {
-    s.replace(".", "_") // protect against ".."
-        .replace("/", "_") // protect against absolute paths
-        .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
+    s.replace('.', "_") // protect against ".."
+        .replace('/', "_") // protect against absolute paths
+        .replace(':', "_") // not a threat on POSIX filesystems, but confuses OS X Finder
 }
 
 pub trait CacheItemRequest: 'static + Send + Sync + Clone {
