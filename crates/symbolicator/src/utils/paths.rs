@@ -525,7 +525,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
 
 pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
     fn canonicalize_path(s: &str) -> String {
-        s.replace(r"\", "/")
+        s.replace('\\', "/")
     }
 
     if patterns.is_empty() {
