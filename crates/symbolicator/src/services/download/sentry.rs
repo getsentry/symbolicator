@@ -22,7 +22,7 @@ use super::{
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m, measure};
+use crate::utils::futures::{self as future_utils};
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -234,9 +234,8 @@ impl SentryDownloader {
             token: source.token.clone(),
         };
 
-        let search = self.cached_sentry_search(query, config);
-        let entries = measure("downloads.sentry.index", m::result, None, search).await?;
-        let file_ids = entries
+        let search = self.cached_sentry_search(query, config).await?;
+        let file_ids = search
             .into_iter()
             .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
             .collect();
