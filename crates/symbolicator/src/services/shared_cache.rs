@@ -72,7 +72,18 @@ impl GcsState {
     pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
         let auth_manager = match config.service_account_path {
             Some(ref path) => gcp_auth::from_credentials_file(&path).await?,
-            None => gcp_auth::init().await?,
+            None => {
+                let future = async move {
+                    gcp_auth::init()
+                        .await
+                        .context("Failed to initialise authentication token")
+                };
+                tokio::time::timeout(Duration::from_millis(300), future)
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(Error::msg("Timeout initialising GCS authentication token"))
+                    })?
+            }
         };
         Ok(Self {
             config,
@@ -90,11 +101,15 @@ impl GcsState {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
-        let token = self
-            .auth_manager
-            .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
+        let future = async {
+            self.auth_manager
+                .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
+                .await
+                .context("Failed to get authentication token")
+        };
+        let token = tokio::time::timeout(Duration::from_millis(300), future)
             .await
-            .context("Failed to get authentication token")?;
+            .unwrap_or_else(|_| Err(Error::msg("Timeout refreshing GCS authentication token")))?;
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
             .map_err(|_| GcsError::InvalidUrl)?;
