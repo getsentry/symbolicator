@@ -2118,12 +2118,6 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        // check if the minidump starts with multipart form data and discard it if so
-        let minidump_path = minidump_file.to_path_buf();
-        let minidump = ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
-        if minidump.starts_with(b"--") {
-            return Err(anyhow::anyhow!("Minidump contains multipart form data").into());
-        }
         let (request, state) = self
             .clone()
             .do_stackwalk_minidump(scope, minidump_file, sources, options)
