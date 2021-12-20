@@ -226,7 +226,7 @@ impl SentryDownloader {
         if let Some(ref code_id) = object_id.code_id {
             index_url
                 .query_pairs_mut()
-                .append_pair("code_id", &code_id.to_string());
+                .append_pair("code_id", code_id.as_str());
         }
 
         let query = SearchQuery {
