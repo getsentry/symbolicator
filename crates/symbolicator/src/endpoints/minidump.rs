@@ -1,6 +1,7 @@
 use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
+use symbolic::common::ByteView;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -53,6 +54,17 @@ pub async fn handle_minidump_request(
 
     let minidump_file = minidump.ok_or((StatusCode::BAD_REQUEST, "missing minidump"))?;
 
+    // check if the minidump starts with multipart form data and discard it if so
+    let minidump_path = minidump_file.to_path_buf();
+    let minidump = ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
+    if minidump.starts_with(b"--") {
+        metric!(counter("symbolication.minidump.multipart_form_data") += 1);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "minidump contains multipart form data",
+        )
+            .into());
+    }
     let symbolication = state.symbolication();
     let request_id =
         symbolication.process_minidump(params.scope, minidump_file, sources, options)?;
