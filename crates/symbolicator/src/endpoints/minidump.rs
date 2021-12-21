@@ -59,9 +59,11 @@ pub async fn handle_minidump_request(
     let minidump = ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
     if minidump.starts_with(b"--") {
         metric!(counter("symbolication.minidump.multipart_form_data") += 1);
-        return Ok(Json(SymbolicationResponse::Failed {
-            message: "minidump file contains multipart form data".to_string(),
-        }));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "minidump contains multipart form data",
+        )
+            .into());
     }
     let symbolication = state.symbolication();
     let request_id =
