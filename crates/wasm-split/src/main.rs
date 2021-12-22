@@ -152,7 +152,7 @@ fn main() -> Result<(), anyhow::Error> {
         .as_ref()
         .and_then(|name| name.file_name())
         .and_then(|name| name.to_str())
-        .and_then(|name| Some(name.to_string()));
+        .map(|name| name.to_string());
 
     // Use the command line flag if set, but fallback to the debug file name if that is set.
     // This is a reasonable default, as the filename on its own will resolve as a path relative to the main wasm file.
@@ -165,7 +165,7 @@ fn main() -> Result<(), anyhow::Error> {
         // From the wasm spec, the URL is encoded as bytes, and prefixed with a varint encoding of a u32 size
         // https://github.com/WebAssembly/tool-conventions/blob/08bacbed/Debugging.md#external-dwarf
         // Emscripten: https://github.com/emscripten-core/emscripten/blob/4eefe273/tools/building.py#L1200
-        let contents_vec = external_dwarf_url.to_string().as_bytes().to_vec();
+        let contents_vec = external_dwarf_url.as_bytes().to_vec();
         let debug_url_len = external_dwarf_url.len() as u32;
         let mut encoded_byte_vec = debug_url_len.encode_var_vec();
         encoded_byte_vec.extend(contents_vec);
