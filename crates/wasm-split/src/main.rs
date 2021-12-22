@@ -11,12 +11,12 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
+use integer_encoding::VarInt;
 use structopt::StructOpt;
 use uuid::Uuid;
 use wasmbin::builtins::Blob;
 use wasmbin::sections::{CustomSection, RawCustomSection, Section};
 use wasmbin::Module;
-use integer_encoding::VarInt;
 
 /// Adds build IDs to wasm files.
 ///
@@ -147,12 +147,12 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     // If the debug file path is set, resolve the filename (ie. /some/path/to/foo.debug.wasm -> foo.debug.wasm)
-    let debug_file_name = cli.debug_out
+    let debug_file_name = cli
+        .debug_out
         .as_ref()
         .and_then(|name| name.file_name())
         .and_then(|name| name.to_str())
         .and_then(|name| Some(name.to_string()));
-
 
     // Use the command line flag if set, but fallback to the debug file name if that is set.
     // This is a reasonable default, as the filename on its own will resolve as a path relative to the main wasm file.
