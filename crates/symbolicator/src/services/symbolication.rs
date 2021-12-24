@@ -1,17 +1,21 @@
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
 use std::iter::FromIterator;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
+use minidump::MinidumpContext;
+use minidump::{system_info::Os, MinidumpModule, Module};
+use minidump_processor::{FrameTrust, ProcessState, SymbolFile, SymbolProvider, SymbolStats};
 use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
@@ -24,9 +28,9 @@ use symbolic::common::{
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::minidump::cfi::CfiCache;
-use symbolic::minidump::processor::{
-    CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
-};
+// use symbolic::minidump::processor::{
+//     CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
+// };
 use tempfile::TempPath;
 use thiserror::Error;
 
@@ -48,6 +52,8 @@ use crate::utils::addr::AddrMode;
 use crate::utils::futures::{m, measure, CallOnDrop, CancelOnDrop};
 use crate::utils::hex::HexValue;
 
+type Minidump = minidump::Minidump<'static, ByteView<'static>>;
+
 /// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
 
@@ -68,9 +74,9 @@ pub enum SymbolicationError {
     #[error(transparent)]
     Failed(#[from] anyhow::Error),
 
-    #[error("failed to process minidump")]
-    InvalidMinidump(#[from] ProcessMinidumpError),
-
+    // #[error("failed to process minidump")]
+    // InvalidMinidump(#[from] ProcessMinidumpError),
+    // TODO(ja): New error
     #[error("failed to parse apple crash report")]
     InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
 }
@@ -80,9 +86,9 @@ impl SymbolicationError {
         match self {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
             SymbolicationError::Failed(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
-                message: self.to_string(),
-            },
+            // SymbolicationError::InvalidMinidump(_) => SymbolicationResponse::Failed {
+            //     message: self.to_string(),
+            // },
             SymbolicationError::InvalidAppleCrashReport(_) => SymbolicationResponse::Failed {
                 message: self.to_string(),
             },
@@ -148,7 +154,7 @@ struct CfiCacheModules {
     /// We have to make sure to hold onto a reference to the CfiCacheFile,
     /// to make sure it will not be evicted in the middle of reading it in the procspawn
     cache_files: Vec<Arc<CfiCacheFile>>,
-    inner: BTreeMap<CodeModuleId, CfiModule>,
+    inner: BTreeMap<DebugId, CfiModule>,
 }
 
 impl CfiCacheModules {
@@ -161,7 +167,7 @@ impl CfiCacheModules {
     }
 
     /// Check if the Cache already contains the module with the given `id`.
-    fn has_module(&self, id: &CodeModuleId) -> bool {
+    fn has_module(&self, id: &DebugId) -> bool {
         self.inner.contains_key(id)
     }
 
@@ -224,7 +230,7 @@ impl CfiCacheModules {
     }
 
     /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> Vec<(CodeModuleId, PathBuf)> {
+    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
         self.inner
             .iter()
             .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
@@ -232,7 +238,7 @@ impl CfiCacheModules {
     }
 
     /// Returns the inner Map.
-    fn into_inner(self) -> BTreeMap<CodeModuleId, CfiModule> {
+    fn into_inner(self) -> BTreeMap<DebugId, CfiModule> {
         self.inner
     }
 }
@@ -269,30 +275,25 @@ struct ModuleListBuilder {
 }
 
 impl ModuleListBuilder {
-    fn new(
-        cfi_caches: CfiCacheModules,
-        modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
-    ) -> Self {
+    fn new(cfi_caches: CfiCacheModules, modules: Vec<(DebugId, RawObjectInfo)>) -> Self {
         // Now build the CompletedObjectInfo for all modules
         let cfi_caches = cfi_caches.into_inner();
 
         let mut inner: Vec<(CompleteObjectInfo, bool)> = modules
             .into_iter()
-            .map(|(id, raw_info)| {
+            .map(|(code_id, raw_info)| {
                 let mut obj_info: CompleteObjectInfo = raw_info.into();
 
                 // If we loaded this module into the CFI cache, update the info object with
                 // this status.
-                if let Some(code_id) = id {
-                    match cfi_caches.get(&code_id) {
-                        None => {
-                            obj_info.unwind_status = None;
-                        }
-                        Some(cfi_module) => {
-                            obj_info.unwind_status = Some(cfi_module.cfi_status);
-                            obj_info.features.merge(cfi_module.features);
-                            obj_info.candidates = cfi_module.cfi_candidates.clone();
-                        }
+                match cfi_caches.get(&code_id) {
+                    None => {
+                        obj_info.unwind_status = None;
+                    }
+                    Some(cfi_module) => {
+                        obj_info.unwind_status = Some(cfi_module.cfi_status);
+                        obj_info.features.merge(cfi_module.features);
+                        obj_info.candidates = cfi_module.cfi_candidates.clone();
                     }
                 }
 
@@ -338,7 +339,7 @@ impl ModuleListBuilder {
         for trace in stacktraces {
             for frame in &trace.frames {
                 let addr = frame.instruction_addr.0;
-                let is_prewalked = frame.trust == FrameTrust::Prewalked;
+                let is_prewalked = frame.trust == FrameTrust::PreWalked;
                 self.mark_referenced(addr, is_prewalked);
             }
         }
@@ -555,30 +556,39 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     }
 }
 
-fn normalize_minidump_os_name(minidump_os_name: &str) -> &str {
+fn normalize_minidump_os_name(os: Os) -> &'static str {
     // Be aware that MinidumpState::object_type matches on names produced here.
-    match minidump_os_name {
-        "Windows NT" => "Windows",
-        "Mac OS X" => "macOS",
-        _ => minidump_os_name,
+    match os {
+        Os::Windows => "Windows",
+        Os::MacOs => "macOS",
+        Os::Ios => "iOS",
+        Os::Linux => "Linux",
+        Os::Solaris => "Solaris",
+        Os::Android => "Android",
+        Os::Ps3 => "PS3",
+        Os::NaCl => "NaCl",
+        Os::Unknown(_) => "", // TODO(ja): What was the breakpad value?
     }
 }
 
-fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawObjectInfo {
-    let mut code_id = module.code_identifier();
+fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> RawObjectInfo {
+    let mut code_id = module.code_identifier().into_owned();
 
     // The processor reports an empty string as code id for MachO files
-    if ty == ObjectType::Macho && code_id.is_empty() {
-        code_id = module.debug_identifier();
-        code_id.truncate(code_id.len().max(1) - 1);
+    // TODO(ja): Fix MinidumpModule::code_identifier for MachO
+    if ty == ObjectType::Macho {
+        code_id = module.debug_identifier().unwrap_or_default().into_owned();
+        code_id.truncate(32); // MachO code_id is the debug_id without `0` age.
     }
 
     RawObjectInfo {
         ty,
         code_id: Some(code_id),
-        code_file: Some(module.code_file()),
-        debug_id: Some(module.debug_identifier()), // TODO: This should use module.id().map(_)
-        debug_file: Some(module.debug_file()),
+        code_file: Some(module.code_file().into_owned()),
+        // TODO(ja): Old TODO: This should use module.id().map(_)
+        // TODO(ja): This is optional now, wasn't before, check why
+        debug_id: module.debug_identifier().map(|c| c.into_owned()),
+        debug_file: module.debug_file().map(|c| c.into_owned()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
             0 => None,
@@ -1395,7 +1405,7 @@ fn symbolicate_stacktrace(
                         metrics.scanned_frames += 1;
                         metrics.unsymbolicated_scanned_frames += 1;
                     }
-                    FrameTrust::CFI => metrics.unsymbolicated_cfi_frames += 1,
+                    FrameTrust::CallFrameInfo => metrics.unsymbolicated_cfi_frames += 1,
                     FrameTrust::Context => metrics.unsymbolicated_context_frames += 1,
                     _ => {}
                 }
@@ -1650,7 +1660,7 @@ impl SymbolicationActor {
     }
 }
 
-type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
+type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 
 /// Contains some meta-data about a minidump.
 ///
@@ -1670,35 +1680,42 @@ struct MinidumpState {
 
 impl MinidumpState {
     /// Creates a new [`MinidumpState`] from a breakpad symbolication result.
-    fn new(process_state: &ProcessState<'_>) -> Self {
-        let minidump_system_info = process_state.system_info();
-        let os_name = minidump_system_info.os_name();
-        let os_version = minidump_system_info.os_version();
-        let os_build = minidump_system_info.os_build();
-        let cpu_family = minidump_system_info.cpu_family();
-        let cpu_arch = match cpu_family.parse() {
-            Ok(arch) => arch,
-            Err(_) => {
-                if !cpu_family.is_empty() {
-                    let msg = format!("Unknown minidump arch: {}", cpu_family);
-                    sentry::capture_message(&msg, sentry::Level::Error);
-                }
+    fn new(process_state: &ProcessState) -> Self {
+        let info = &process_state.system_info;
 
-                Default::default()
+        let cpu_arch = match info.cpu {
+            minidump::system_info::Cpu::X86 => Arch::X86,
+            minidump::system_info::Cpu::X86_64 => Arch::Amd64,
+            minidump::system_info::Cpu::Ppc => Arch::Ppc,
+            minidump::system_info::Cpu::Ppc64 => Arch::Ppc64,
+            minidump::system_info::Cpu::Arm => Arch::Arm,
+            minidump::system_info::Cpu::Arm64 => Arch::Arm64,
+            minidump::system_info::Cpu::Unknown(val) => {
+                let msg = format!("Unknown minidump arch: {}", val);
+                sentry::capture_message(&msg, sentry::Level::Error);
+                Arch::Unknown
+            }
+            minidump::system_info::Cpu::Sparc => {
+                sentry::capture_message("Unknown minidump arch: sparc", sentry::Level::Error);
+                Arch::Unknown
             }
         };
+
         MinidumpState {
-            timestamp: Utc.timestamp(process_state.timestamp().try_into().unwrap_or_default(), 0),
+            timestamp: process_state.time,
             system_info: SystemInfo {
-                os_name: normalize_minidump_os_name(&os_name).to_owned(),
-                os_version,
-                os_build,
+                os_name: normalize_minidump_os_name(info.os).to_owned(),
+                os_version: info.os_version.clone().unwrap_or_default(),
+                os_build: info.os_build.clone().unwrap_or_default(),
                 cpu_arch,
                 device_model: String::default(),
             },
             crashed: process_state.crashed(),
-            crash_reason: process_state.crash_reason(),
-            assertion: process_state.assertion(),
+            crash_reason: process_state
+                .crash_reason
+                .map(|r| r.to_string())
+                .unwrap_or_default(),
+            assertion: process_state.assertion.clone().unwrap_or_default(),
         }
     }
 
@@ -1734,39 +1751,143 @@ impl MinidumpState {
     }
 }
 
-/// Load the CFI information from the cache.
-///
-/// This reads the CFI caches from disk and returns them in a format suitable for the
-/// breakpad processor to stackwalk.
-fn load_cfi_for_processor(
-    cfi: Vec<(CodeModuleId, PathBuf)>,
-) -> BTreeMap<CodeModuleId, CfiCache<'static>> {
-    cfi.into_iter()
-        .filter_map(|(code_id, cfi_path)| {
-            let bytes = ByteView::open(cfi_path)
-                .map_err(|err| {
-                    log::error!("Error while reading cficache: {}", LogError(&err));
-                    err
-                })
-                .ok()?;
-            let cfi_cache = CfiCache::from_bytes(bytes)
-                .map_err(|err| {
-                    // This mostly never happens since we already checked the files
-                    // after downloading and they would have been tagged with
-                    // CacheStatus::Malformed.
-                    log::error!("Error while loading cficache: {}", LogError(&err));
-                    err
-                })
-                .ok()?;
-            Some((code_id, cfi_cache))
-        })
-        .collect()
+struct TempSymbolProvider {
+    files: BTreeMap<DebugId, SymbolFile>,
+    missing_ids: RefCell<BTreeSet<DebugId>>,
 }
+
+impl TempSymbolProvider {
+    /// Load the CFI information from the cache.
+    ///
+    /// This reads the CFI caches from disk and returns them in a format suitable for the
+    /// breakpad processor to stackwalk.
+    pub fn new(modules: &[(DebugId, PathBuf)]) -> Self {
+        // TODO(ja): Make TempSymbolProvider the thing serialized to procspawn (prepares for moving in-process)
+        Self {
+            files: modules
+                .iter()
+                .filter_map(|(id, path)| Some((*id, Self::load(path)?)))
+                .collect(),
+
+            missing_ids: RefCell::new(BTreeSet::new()),
+        }
+    }
+
+    fn load(cfi_path: &Path) -> Option<SymbolFile> {
+        let bytes = ByteView::open(cfi_path)
+            .map_err(|err| log::error!("Error while reading cficache: {}", LogError(&err)))
+            .ok()?;
+
+        let cfi_cache = CfiCache::from_bytes(bytes)
+            // This mostly never happens since we already checked the files
+            // after downloading and they would have been tagged with
+            // CacheStatus::Malformed.
+            .map_err(|err| log::error!("Error while loading cficache: {}", LogError(&err)))
+            .ok()?;
+
+        SymbolFile::from_bytes(cfi_cache.as_slice())
+            .map_err(|err| log::error!("Error while processing cficache: {}", LogError(&err)))
+            .ok()
+    }
+
+    fn missing_ids(&self) -> BTreeSet<DebugId> {
+        std::mem::take(&mut *self.missing_ids.borrow_mut())
+    }
+}
+
+impl SymbolProvider for TempSymbolProvider {
+    fn fill_symbol(
+        &self,
+        module: &dyn Module,
+        _frame: &mut dyn minidump_processor::FrameSymbolizer,
+    ) -> Result<(), minidump_processor::FillSymbolError> {
+        // TODO(ja): Deduplicate this. Probably should use a different map key, ...
+        let debug_id = module
+            .debug_identifier()
+            .and_then(|id| DebugId::from_str(&id).ok())
+            .unwrap_or_default();
+
+        // Symbolicator's CFI caches never store symbolication information. However, we could hook
+        // up symbolic here to fill frame info right away. This requires a larger refactor of
+        // minidump processing and the types, however.
+        // TODO(ja): Check if this is OK. Shouldn't trigger skip heuristics
+        if self.files.contains_key(&debug_id) {
+            Ok(())
+        } else {
+            Err(minidump_processor::FillSymbolError {})
+        }
+    }
+
+    fn walk_frame(
+        &self,
+        module: &dyn Module,
+        walker: &mut dyn minidump_processor::FrameWalker,
+    ) -> Option<()> {
+        // TODO(ja): Deduplicate this. Probably should use a different map key, ...
+        let debug_id = DebugId::from_str(&module.debug_identifier()?).ok()?;
+        match self.files.get(&debug_id) {
+            Some(file) => file.walk_frame(module, walker),
+            None => {
+                self.missing_ids.borrow_mut().insert(debug_id);
+                None
+            }
+        }
+    }
+
+    fn stats(&self) -> HashMap<String, minidump_processor::SymbolStats> {
+        self.files
+            .iter()
+            .map(|(debug_id, sym)| {
+                let stats = SymbolStats {
+                    symbol_url: sym.url.clone(), // TODO(ja): We could put our candidate URI here
+                    loaded_symbols: true, // TODO(ja): Should we return `false` for not found?
+                    corrupt_symbols: false,
+                };
+
+                (debug_id.to_string(), stats)
+            })
+            .collect()
+    }
+}
+
+/// Generic error serialized over procspawn.
+#[derive(Debug, Serialize, Deserialize)]
+struct ProcError(String);
+
+impl ProcError {
+    pub fn new(d: impl std::fmt::Display) -> Self {
+        Self(d.to_string())
+    }
+}
+
+impl From<std::io::Error> for ProcError {
+    fn from(e: std::io::Error) -> Self {
+        Self::new(e)
+    }
+}
+impl From<minidump::Error> for ProcError {
+    fn from(e: minidump::Error) -> Self {
+        Self::new(e)
+    }
+}
+impl From<minidump_processor::ProcessError> for ProcError {
+    fn from(e: minidump_processor::ProcessError) -> Self {
+        Self::new(e)
+    }
+}
+
+impl std::fmt::Display for ProcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for ProcError {}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
-    all_modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
-    referenced_modules: Vec<(CodeModuleId, RawObjectInfo)>,
+    modules: Vec<(DebugId, RawObjectInfo)>,
+    missing_ids: BTreeSet<DebugId>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
 }
@@ -1810,7 +1931,7 @@ impl SymbolicationActor {
     async fn load_cfi_caches(
         &self,
         scope: Scope,
-        requests: &[(CodeModuleId, &RawObjectInfo)],
+        requests: &[(DebugId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
         let futures = requests.iter().map(|(module_id, object_info)| {
@@ -1852,14 +1973,15 @@ impl SymbolicationActor {
     /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
     /// similar which are mapped in the address space but do not actually contain executable
     /// modules.
-    async fn stackwalk_minidump_with_cfi(
+    async fn stackwalk_minidump(
         &self,
-        minidump_file: &TempPath,
+        path: &Path,
         cfi_caches: &CfiCacheModules,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
         let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
-        let minidump_path = minidump_file.to_path_buf();
+        let minidump_path = path.to_path_buf();
+
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
@@ -1868,7 +1990,7 @@ impl SymbolicationActor {
                     minidump_path,
                     spawn_time,
                 ),
-                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
 
                     if let Ok(duration) = spawn_time.elapsed() {
@@ -1876,48 +1998,35 @@ impl SymbolicationActor {
                     }
 
                     // Stackwalk the minidump.
-                    let cfi = load_cfi_for_processor(cfi_caches);
-                    // we cannot map an `io::Error` into `MinidumpNotFound` since there is no public
-                    // constructor on `ProcessResult`. Passing in an empty buffer should result in
-                    // the same error though.
-                    let minidump =
-                        ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
-                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+                    let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
+                    let provider = TempSymbolProvider::new(&cfi_caches);
+                    let process_state = minidump_processor::process_minidump(&minidump, &provider)?;
+
                     let minidump_state = MinidumpState::new(&process_state);
                     let object_type = minidump_state.object_type();
 
-                    let referenced_modules = process_state
-                        .referenced_modules()
-                        .into_iter()
-                        .filter_map(|code_module| {
-                            Some((
-                                code_module.id()?,
-                                object_info_from_minidump_module(object_type, code_module),
-                            ))
-                        })
-                        .collect();
-                    let all_modules = process_state
-                        .modules()
-                        .into_iter()
-                        .map(|code_module| {
+                    let modules = process_state
+                        .modules
+                        .iter()
+                        .map(|module| {
                             (
-                                code_module.id(),
-                                object_info_from_minidump_module(object_type, code_module),
+                                // TODO(ja): Check how this can be empty and how we shim.
+                                //           Probably needs explicit conversion from raw
+                                DebugId::from_str(&module.debug_identifier().unwrap_or_default())
+                                    .unwrap_or_default(),
+                                object_info_from_minidump_module(object_type, module),
                             )
                         })
                         .collect();
 
                     // Finally iterate through the threads and build the stacktraces to
                     // return, marking modules as used when they are referenced by a frame.
-                    let requesting_thread_index: Option<usize> =
-                        process_state.requesting_thread().try_into().ok();
-                    let threads = process_state.threads();
+                    let requesting_thread_index: Option<usize> = process_state.requesting_thread;
+                    let threads = process_state.threads;
                     let mut stacktraces = Vec::with_capacity(threads.len());
                     for (index, thread) in threads.iter().enumerate() {
-                        let registers = match thread.frames().get(0) {
-                            Some(frame) => map_symbolic_registers(
-                                frame.registers(minidump_state.system_info.cpu_arch),
-                            ),
+                        let registers = match thread.frames.get(0) {
+                            Some(frame) => map_symbolic_registers(&frame.context),
                             None => Registers::new(),
                         };
 
@@ -1925,33 +2034,30 @@ impl SymbolicationActor {
                         // correlate to minidump size. Every other kind of bloated
                         // input data we know is already trimmed/rejected by raw
                         // byte size alone.
-                        let frame_count = thread.frames().len().min(20000);
+                        let frame_count = thread.frames.len().min(20000);
                         let mut frames = Vec::with_capacity(frame_count);
-                        for frame in thread.frames().iter().take(frame_count) {
-                            let return_address =
-                                frame.return_address(minidump_state.system_info.cpu_arch);
-
+                        for frame in thread.frames.iter().take(frame_count) {
                             frames.push(RawFrame {
-                                instruction_addr: HexValue(return_address),
-                                package: frame.module().map(CodeModule::code_file),
-                                trust: frame.trust(),
+                                instruction_addr: HexValue(frame.return_address),
+                                package: frame.module.as_ref().map(|m| m.code_file().into_owned()),
+                                trust: frame.trust,
                                 ..RawFrame::default()
                             });
                         }
 
                         stacktraces.push(RawStacktrace {
                             is_requesting: requesting_thread_index.map(|r| r == index),
-                            thread_id: Some(thread.thread_id().into()),
+                            thread_id: Some(thread.thread_id.into()),
                             registers,
                             frames,
                         });
                     }
 
                     Ok(procspawn::serde::Json(StackWalkMinidumpResult {
-                        all_modules,
-                        referenced_modules,
+                        modules,
                         stacktraces,
                         minidump_state,
+                        missing_ids: provider.missing_ids(),
                     }))
                 },
             );
@@ -1993,10 +2099,10 @@ impl SymbolicationActor {
     }
 
     /// Iteratively stackwalks/processes the given `minidump_file` using breakpad.
-    async fn stackwalk_minidump_iteratively_with_breakpad(
+    async fn stackwalk_minidump_iteratively(
         &self,
         scope: Scope,
-        minidump_file: TempPath,
+        minidump_path: &Path,
         sources: Arc<[SourceConfig]>,
         cfi_caches: &mut CfiCacheModules,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
@@ -2005,25 +2111,13 @@ impl SymbolicationActor {
         let result = loop {
             iterations += 1;
 
-            let result = match self
-                .stackwalk_minidump_with_cfi(&minidump_file, cfi_caches)
-                .await
-            {
-                Ok(res) => res,
-                Err(err) => {
-                    self.maybe_persist_minidump(minidump_file);
+            let result = self.stackwalk_minidump(minidump_path, cfi_caches).await?;
 
-                    // we explicitly match and return here, otherwise the borrow checker will
-                    // complain that `minidump_file` is being moved into `save_minidump`
-                    return Err(err);
-                }
-            };
-
-            let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
-                .referenced_modules
+            let missing_modules: Vec<_> = result
+                .modules
                 .iter()
-                .filter(|(id, _)| !cfi_caches.has_module(id))
-                .map(|t| (t.0, &t.1))
+                .filter(|(id, _)| result.missing_ids.contains(id) && !cfi_caches.has_module(id))
+                .map(|(id, module)| (*id, module))
                 .collect();
 
             // We put a hard limit of 5 iterations here.
@@ -2032,6 +2126,7 @@ impl SymbolicationActor {
                 break result;
             }
 
+            // TODO(ja): Doesn't check that this actually resolves modules
             let loaded_caches = self
                 .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
                 .await;
@@ -2055,41 +2150,35 @@ impl SymbolicationActor {
             log::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
-            let client_stacktraces = ByteView::open(&minidump_file)
-                .map_or(Ok(None), |bv| parse_stacktraces_from_minidump(&bv));
-
             let mut cfi_caches = CfiCacheModules::new();
 
-            let result = self
-                .stackwalk_minidump_iteratively_with_breakpad(
-                    scope.clone(),
-                    minidump_file,
-                    sources.clone(),
-                    &mut cfi_caches,
-                )
-                .await?;
+            let future = self.stackwalk_minidump_iteratively(
+                scope.clone(),
+                &minidump_file,
+                sources.clone(),
+                &mut cfi_caches,
+            );
 
-            let StackWalkMinidumpResult {
-                all_modules,
-                mut stacktraces,
-                minidump_state,
-                ..
-            } = result;
+            let mut result = match future.await {
+                Ok(result) => result,
+                Err(err) => {
+                    self.maybe_persist_minidump(minidump_file);
+                    return Err(err);
+                }
+            };
 
-            match client_stacktraces {
+            match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
                 Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(
-                    &mut stacktraces,
+                    &mut result.stacktraces,
                     client_stacktraces,
                 ),
-                Err(e) => {
-                    log::error!("invalid minidump extension: {}", e);
-                }
-                _ => {}
+                Err(e) => log::error!("invalid minidump extension: {}", e),
+                _ => (),
             }
 
             // Start building the module list for the symbolication response.
-            let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
-            module_builder.process_stacktraces(&stacktraces);
+            let mut module_builder = ModuleListBuilder::new(cfi_caches, result.modules);
+            module_builder.process_stacktraces(&result.stacktraces);
 
             let request = SymbolicateStacktraces {
                 modules: module_builder.build(),
@@ -2097,10 +2186,10 @@ impl SymbolicationActor {
                 sources,
                 origin: StacktraceOrigin::Minidump,
                 signal: None,
-                stacktraces,
+                stacktraces: result.stacktraces,
                 options,
             };
-            Ok::<_, anyhow::Error>((request, minidump_state))
+            Ok::<_, anyhow::Error>((request, result.minidump_state))
         };
 
         let future = tokio::time::timeout(Duration::from_secs(3600), future);
@@ -2349,17 +2438,10 @@ impl SymbolicationActor {
     }
 }
 
-fn map_symbolic_registers(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<String, HexValue> {
-    x.into_iter()
-        .map(|(register, value)| {
-            (
-                register.to_owned(),
-                HexValue(match value {
-                    RegVal::U32(x) => x.into(),
-                    RegVal::U64(x) => x,
-                }),
-            )
-        })
+fn map_symbolic_registers(context: &MinidumpContext) -> BTreeMap<String, HexValue> {
+    context
+        .valid_registers()
+        .map(|(reg, val)| (reg.to_owned(), HexValue(val)))
         .collect()
 }
 

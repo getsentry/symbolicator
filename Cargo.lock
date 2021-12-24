@@ -227,6 +227,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "breakpad-symbols"
+version = "0.9.6"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+dependencies = [
+ "circular",
+ "failure",
+ "log",
+ "minidump-common",
+ "nom 1.2.4",
+ "range-map",
+ "reqwest 0.11.7",
+ "tempfile",
+]
+
+[[package]]
 name = "brownstone"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,6 +348,12 @@ dependencies = [
  "time 0.1.44",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "circular"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"
@@ -1573,9 +1594,8 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80fd8a11e45cdca77bcdfd11a967b402e844f09aa24bfee533ac9acfec2286bd"
+version = "0.9.6"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
 dependencies = [
  "chrono",
  "encoding",
@@ -1590,9 +1610,8 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a1dafe299400725fa4107e78794a24d65015b9101372ae73bf667840e34dc28"
+version = "0.9.6"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
 dependencies = [
  "bitflags",
  "enum-primitive-derive",
@@ -1601,6 +1620,24 @@ dependencies = [
  "range-map",
  "scroll",
  "smart-default",
+]
+
+[[package]]
+name = "minidump-processor"
+version = "0.9.6"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+dependencies = [
+ "breakpad-symbols",
+ "chrono",
+ "clap",
+ "failure",
+ "log",
+ "memmap",
+ "minidump",
+ "scroll",
+ "serde",
+ "serde_json",
+ "simplelog",
 ]
 
 [[package]]
@@ -1754,6 +1791,12 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "nom"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5b8c256fd9471521bcb84c3cdba98921497f1a331cbc15b8030fc63b82050ce"
+
+[[package]]
+name = "nom"
 version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b1d11e1ef389c76fe5b81bcaf2ea32cf88b62bc494e19f493d0b30e7a930109"
@@ -1773,7 +1816,7 @@ dependencies = [
  "indent_write",
  "joinery",
  "memchr",
- "nom",
+ "nom 7.1.0",
 ]
 
 [[package]]
@@ -2343,6 +2386,7 @@ version = "0.11.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07bea77bc708afa10e59905c3d4af7c8fd43c9214251673095ff8b14345fcbc5"
 dependencies = [
+ "async-compression",
  "base64 0.13.0",
  "bytes",
  "encoding_rs",
@@ -2366,6 +2410,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-util",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2874,6 +2919,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "simplelog"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecabc0118918611790b8615670ab79296272cbe09496b6884b02b1e929c20886"
+dependencies = [
+ "chrono",
+ "log",
+ "termcolor",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3028,7 +3084,7 @@ dependencies = [
  "goblin",
  "lazy_static",
  "lazycell",
- "nom",
+ "nom 7.1.0",
  "nom-supreme",
  "parking_lot",
  "pdb",
@@ -3110,6 +3166,7 @@ dependencies = [
  "log",
  "lru",
  "minidump",
+ "minidump-processor",
  "num_cpus",
  "parking_lot",
  "pretty_env_logger",
