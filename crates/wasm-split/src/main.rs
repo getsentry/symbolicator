@@ -12,10 +12,10 @@ use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use uuid::Uuid;
-use wasmbin::builtins::{Blob};
+use wasmbin::builtins::Blob;
+use wasmbin::io::Encode;
 use wasmbin::sections::{CustomSection, RawCustomSection, Section};
 use wasmbin::Module;
-use wasmbin::io::Encode;
 
 /// Adds build IDs to wasm files.
 ///
