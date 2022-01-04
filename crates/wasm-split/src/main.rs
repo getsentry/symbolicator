@@ -10,13 +10,12 @@
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-
-use integer_encoding::VarInt;
 use structopt::StructOpt;
 use uuid::Uuid;
-use wasmbin::builtins::Blob;
+use wasmbin::builtins::{Blob};
 use wasmbin::sections::{CustomSection, RawCustomSection, Section};
 use wasmbin::Module;
+use wasmbin::io::Encode;
 
 /// Adds build IDs to wasm files.
 ///
@@ -75,6 +74,8 @@ fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
         Some(match section.try_as()?.try_contents().ok()? {
             CustomSection::Name(_) => "name",
             CustomSection::Producers(_) => "producers",
+            CustomSection::ExternalDebugInfo(_) => "external_debug_info",
+            CustomSection::SourceMappingUrl(_) => "sourceMappingURL",
             CustomSection::Other(s) => &s.name,
         })
     }
@@ -162,20 +163,15 @@ fn main() -> Result<(), anyhow::Error> {
     if let Some(external_dwarf_url) = resolved_external_dwarf_url {
         should_write_main_module = true;
 
-        // From the wasm spec, the URL is encoded as bytes, and prefixed with a varint encoding of a u32 size
-        // https://github.com/WebAssembly/tool-conventions/blob/08bacbed/Debugging.md#external-dwarf
-        // Emscripten: https://github.com/emscripten-core/emscripten/blob/4eefe273/tools/building.py#L1200
-        let contents_vec = external_dwarf_url.as_bytes();
-        let debug_url_len = external_dwarf_url.len() as u32;
-        let mut encoded_byte_vec = debug_url_len.encode_var_vec();
-        encoded_byte_vec.extend(contents_vec);
+        let data_vec = &mut Vec::new();
+        external_dwarf_url.encode(data_vec).unwrap();
 
         module
             .sections
             .push(Section::Custom(Blob::from(CustomSection::Other(
                 RawCustomSection {
                     name: "external_debug_info".to_string(),
-                    data: encoded_byte_vec,
+                    data: data_vec.to_vec(),
                 },
             ))));
     }
