@@ -74,8 +74,6 @@ fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
         Some(match section.try_as()?.try_contents().ok()? {
             CustomSection::Name(_) => "name",
             CustomSection::Producers(_) => "producers",
-            CustomSection::ExternalDebugInfo(_) => "external_debug_info",
-            CustomSection::SourceMappingUrl(_) => "sourceMappingURL",
             CustomSection::Other(s) => &s.name,
         })
     }

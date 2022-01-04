@@ -11,4 +11,4 @@ anyhow = "1.0.38"
 structopt = "0.3.21"
 hex = "0.4.2"
 uuid = { version = "0.8.2", features = ["v4"] }
-wasmbin = { path = "../../../wasmbin" }
+wasmbin = "0.3.1"
