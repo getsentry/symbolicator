@@ -161,6 +161,11 @@ fn main() -> Result<(), anyhow::Error> {
     if let Some(external_dwarf_url) = resolved_external_dwarf_url {
         should_write_main_module = true;
 
+        // From the wasm spec, the URL is encoded as bytes, and prefixed with a varint encoding of a u32 size
+        // https://github.com/WebAssembly/tool-conventions/blob/08bacbed/Debugging.md#external-dwarf
+        // Emscripten: https://github.com/emscripten-core/emscripten/blob/4eefe273/tools/building.py#L1200
+        // We use the `wasmbin::io::Encode` trait, as it will handle serializing a string as a Vec<u8> with
+        // an LEB128 prefix.
         let data_vec = &mut Vec::new();
         external_dwarf_url.encode(data_vec).unwrap();
 
