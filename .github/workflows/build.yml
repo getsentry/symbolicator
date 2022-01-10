@@ -154,7 +154,6 @@ jobs:
 
       - name: Rename Binaries
         run: |
-          Install-Module 7Zip4PowerShell -Force -Verbose
           cd target/release
           mv symsorter.exe symsorter-Windows-x86_64.exe
           mv wasm-split.exe wasm-split-Windows-x86_64.exe
