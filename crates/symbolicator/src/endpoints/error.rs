@@ -1,6 +1,6 @@
 use axum::extract::multipart::MultipartError;
-use axum::http::{Error as HttpError, Response, StatusCode};
-use axum::response::IntoResponse;
+use axum::http::{Error as HttpError, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use sentry::integrations::anyhow::capture_anyhow;
 use serde::{Deserialize, Serialize};
@@ -92,10 +92,7 @@ impl From<HttpError> for ResponseError {
 }
 
 impl IntoResponse for ResponseError {
-    type Body = <Json<ApiErrorResponse> as IntoResponse>::Body;
-    type BodyError = <Self::Body as axum::body::HttpBody>::Error;
-
-    fn into_response(self) -> Response<Self::Body> {
+    fn into_response(self) -> Response {
         if self.status.is_server_error() {
             capture_anyhow(&self.err);
         }
