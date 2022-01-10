@@ -36,7 +36,7 @@ requireNames:
   - /^symbolicator-x86_64-apple-darwin-debug.zip$/
   - /^symsorter-Darwin-universal$/
   - /^symsorter-Linux-x86_64$/
-  - /^symsorter-Windows-x86_64$/
+  - /^symsorter-Windows-x86_64\.exe$/
   - /^wasm-split-Darwin-universal$/
   - /^wasm-split-Linux-x86_64$/
-  - /^wasm-split-Windows-x86_64$/
+  - /^wasm-split-Windows-x86_64\.exe$/
