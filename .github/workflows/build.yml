@@ -38,6 +38,10 @@ jobs:
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
           zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
 
+          # Strip debug info for tools
+          objcopy --strip-debug --strip-unneeded target/release/wasm-split
+          objcopy --strip-debug --strip-unneeded target/release/symsorter
+
           # Move all binaries
           mv target/release/symbolicator build/symbolicator-Linux-x86_64
           mv target/release/wasm-split build/wasm-split-Linux-x86_64
