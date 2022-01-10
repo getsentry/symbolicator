@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use structopt::StructOpt;
+use tracing_subscriber::prelude::*;
 
 use crate::cache;
 use crate::config::Config;
@@ -66,10 +67,15 @@ pub fn execute() -> Result<()> {
     let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
+        traces_sample_rate: 1.0, // TODO: dont merge this ;-)
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
         ..Default::default()
     });
+
+    tracing_subscriber::Registry::default()
+        .with(sentry::integrations::tracing::layer())
+        .init();
 
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {

@@ -37,7 +37,8 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.47.0"
 rusoto_credential = "0.47.0"
 rusoto_s3 = "0.47.0"
-sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tower"] }
+sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tracing"] }
+sentry-tower = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["http"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
@@ -47,6 +48,8 @@ symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demang
 # symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
 thiserror = "1.0.26"
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.5", default-features = false, features = ["std", "registry"] }
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-util = "0.6"
 tower = "0.4"

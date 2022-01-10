@@ -600,6 +600,7 @@ struct SourceLookup {
 }
 
 impl SourceLookup {
+    #[tracing::instrument(skip_all)]
     pub async fn fetch_sources(
         self,
         objects: ObjectsActor,
@@ -833,6 +834,7 @@ impl SymCacheLookup {
         });
     }
 
+    #[tracing::instrument(skip_all)]
     async fn fetch_symcaches(
         self,
         symcache_actor: SymCacheActor,
@@ -1493,6 +1495,7 @@ pub struct SymbolicateStacktraces {
 }
 
 impl SymbolicationActor {
+    #[tracing::instrument(skip_all)]
     async fn do_symbolicate(
         self,
         request: SymbolicateStacktraces,
@@ -1616,7 +1619,20 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
-        self.create_symbolication_request(self.clone().do_symbolicate(request))
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "symbolicate_stacktraces",
+            "symbolicate_stacktraces",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf.do_symbolicate(request).await;
+            transaction.finish();
+            res
+        })
     }
 
     /// Polls the status for a started symbolication task.
@@ -1807,6 +1823,7 @@ impl SymbolicationActor {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn load_cfi_caches(
         &self,
         scope: Scope,
@@ -1852,6 +1869,7 @@ impl SymbolicationActor {
     /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
     /// similar which are mapped in the address space but do not actually contain executable
     /// modules.
+    #[tracing::instrument(skip_all)]
     async fn stackwalk_minidump_with_cfi(
         &self,
         minidump_file: &TempPath,
@@ -2042,6 +2060,7 @@ impl SymbolicationActor {
         Ok(result)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
@@ -2139,12 +2158,22 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
-        self.create_symbolication_request(self.clone().do_process_minidump(
-            scope,
-            minidump_file,
-            sources,
-            options,
-        ))
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "process_minidump",
+            "process_minidump",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf
+                .do_process_minidump(scope, minidump_file, sources, options)
+                .await;
+            transaction.finish();
+            res
+        })
     }
 }
 
@@ -2339,12 +2368,22 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
-        self.create_symbolication_request(self.clone().do_process_apple_crash_report(
-            scope,
-            apple_crash_report,
-            sources,
-            options,
-        ))
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "process_apple_crash_report",
+            "process_apple_crash_report",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf
+                .do_process_apple_crash_report(scope, apple_crash_report, sources, options)
+                .await;
+            transaction.finish();
+            res
+        })
     }
 }
 

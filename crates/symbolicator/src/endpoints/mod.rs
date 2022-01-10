@@ -1,11 +1,10 @@
 use axum::routing::{get, post};
 use axum::Router;
-use sentry::integrations::tower::NewSentryLayer;
+use sentry_tower::{NewSentryLayer, SentryHttpLayer};
 use tower::ServiceBuilder;
 
 use crate::metrics::MetricsLayer;
 use crate::services::Service;
-use crate::utils::sentry::SentryRequestLayer;
 
 mod applecrashreport;
 mod error;
@@ -31,7 +30,7 @@ pub async fn healthcheck() -> &'static str {
 pub fn create_app(service: Service) -> Router {
     let layer = ServiceBuilder::new()
         .layer(axum::AddExtensionLayer::new(service))
-        .layer(SentryRequestLayer)
+        .layer(SentryHttpLayer::with_transaction())
         .layer(NewSentryLayer::new_from_top())
         .layer(MetricsLayer);
     Router::new()

@@ -147,6 +147,7 @@ impl fmt::Display for ObjectHandle {
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
 /// code.
+#[tracing::instrument(skip_all)]
 async fn fetch_file(
     path: PathBuf,
     cache_key: CacheKey,

@@ -421,6 +421,21 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = async move {
+            // only start an independent transaction if this is a "background" task,
+            // otherwise it will not "outlive" its parent span, so attach it to the parent transaction.
+            let transaction = if is_refresh {
+                let span = sentry::configure_scope(|scope| scope.get_span());
+                let ctx = sentry::TransactionContext::continue_from_span(
+                    "Lazy Cache Computation",
+                    "spawn_computation",
+                    span,
+                );
+                let transaction = sentry::start_transaction(ctx);
+                sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+                Some(transaction)
+            } else {
+                None
+            };
             let result = match computation.await {
                 Ok(ok) => Ok(Arc::new(ok)),
                 Err(err) => Err(Arc::new(err)),
@@ -428,6 +443,9 @@ impl<T: CacheItemRequest> Cacher<T> {
             // Drop the token first to evict from the map.  This ensures that callers either
             // get a channel that will receive data, or they create a new channel.
             drop(remove_computation_token);
+            if let Some(transaction) = transaction {
+                transaction.finish();
+            }
             sender.send(result).ok();
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
