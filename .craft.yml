@@ -29,12 +29,14 @@ targets:
     targetFormat: '{{{target}}}:latest'
 requireNames:
   - /^gh-pages.zip$/
+  - /^symbolicator-Darwin-universal$/
   - /^symbolicator-Linux-x86_64$/
   - /^symbolicator-Linux-x86_64-debug.zip$/
-  - /^symsorter-Linux-x86_64$/
-  - /^wasm-split-Linux-x86_64$/
-  - /^symbolicator-Darwin-universal$/
-  - /^wasm-split-Darwin-universal$/
-  - /^symsorter-Darwin-universal$/
-  - /^symbolicator-x86_64-apple-darwin-debug.zip$/
   - /^symbolicator-aarch64-apple-darwin-debug.zip$/
+  - /^symbolicator-x86_64-apple-darwin-debug.zip$/
+  - /^symsorter-Darwin-universal$/
+  - /^symsorter-Linux-x86_64$/
+  - /^symsorter-Windows-x86_64$/
+  - /^wasm-split-Darwin-universal$/
+  - /^wasm-split-Linux-x86_64$/
+  - /^wasm-split-Windows-x86_64$/

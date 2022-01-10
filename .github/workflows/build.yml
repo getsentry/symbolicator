@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release/**
+      - feature/windows-binaries
 
 jobs:
   linux:
@@ -119,6 +120,45 @@ jobs:
         with:
           name: ${{ github.sha }}
           path: build/*
+
+  windows:
+    name: Build Tools on Windows
+    runs-on: windows-2019
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run Cargo Build (symsorter)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p symsorter --release --locked
+
+      - name: Run Cargo Build (wasm-split)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p wasm-split --release --locked
+
+      - name: Rename Binaries
+        run: |
+          Install-Module 7Zip4PowerShell -Force -Verbose
+          cd target/release
+          mv symsorter.exe symsorter-Windows-x86_64.exe
+          mv wasm-split.exe wasm-split-Windows-x86_64.exe
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          path: target/release/*-Windows-x86_64.exe
 
   docs:
     name: Build Docs
