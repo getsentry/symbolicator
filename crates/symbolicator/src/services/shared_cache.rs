@@ -92,7 +92,14 @@ impl GcsState {
                         }) {
                         Ok(auth_manager) => break auth_manager,
                         Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
-                        _ => tokio::time::sleep(RETRY_INTERVAL).await,
+                        _ => {
+                            let remaining = MAX_DELAY - start.elapsed();
+                            log::info!(
+                                "Waiting for GKE metadata server, {}s remaining",
+                                remaining.as_secs(),
+                            );
+                            tokio::time::sleep(RETRY_INTERVAL).await;
+                        }
                     }
                 }
             }
