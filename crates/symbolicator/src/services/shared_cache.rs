@@ -76,7 +76,7 @@ impl GcsState {
             None => {
                 // For fresh k8s pods the GKE metadata server may not accept connections
                 // yet, we we need to retry this for a bit.
-                const MAX_DELAY: Duration = Duration::from_secs(11);
+                const MAX_DELAY: Duration = Duration::from_secs(60);
                 const RETRY_INTERVAL: Duration = Duration::from_millis(500);
                 let start = Instant::now();
                 loop {
