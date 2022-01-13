@@ -1963,11 +1963,10 @@ impl SymbolicationActor {
             )
         };
 
-        Ok(self
-            .cpu_pool
+        self.cpu_pool
             .spawn(lazy.bind_hub(sentry::Hub::current()))
             .await?
-            .context("Minidump stackwalk future cancelled")?)
+            .context("Minidump stackwalk future cancelled")
     }
 
     /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
