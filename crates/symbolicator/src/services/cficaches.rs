@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -137,6 +137,43 @@ struct FetchCfiCacheInternal {
     threadpool: tokio::runtime::Handle,
 }
 
+async fn compute_cficache(
+    threadpool: tokio::runtime::Handle,
+    objects_actor: ObjectsActor,
+    meta_handle: Arc<ObjectMetaHandle>,
+    path: PathBuf,
+) -> Result<CacheStatus, CfiCacheError> {
+    let object = objects_actor
+        .fetch(meta_handle)
+        .await
+        .map_err(CfiCacheError::Fetching)?;
+
+    let future = async move {
+        // The original has a download error so the cfi cache entry should just be negative.
+        if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
+            return Ok(CacheStatus::Negative);
+        }
+        if object.status() != &CacheStatus::Positive {
+            return Ok(object.status().clone());
+        }
+
+        let status = if let Err(e) = write_cficache(&path, &*object) {
+            log::warn!("Could not write cficache: {}", e);
+            sentry::capture_error(&e);
+
+            CacheStatus::Malformed(e.to_string())
+        } else {
+            CacheStatus::Positive
+        };
+
+        Ok(status)
+    };
+
+    CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
+        .await
+        .unwrap_or(Err(CfiCacheError::Canceled))
+}
+
 impl CacheItemRequest for FetchCfiCacheInternal {
     type Item = CfiCacheFile;
     type Error = CfiCacheError;
@@ -152,46 +189,16 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     /// The extracted CFI is written to `path` in symbolic's
     /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
     fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
-        let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
-        let objects_actor = self.objects_actor.clone();
-        let meta_handle = self.meta_handle.clone();
-
-        let result = async move {
-            let object = objects_actor
-                .fetch(meta_handle)
-                .await
-                .map_err(CfiCacheError::Fetching)?;
-
-            let future = async move {
-                // The original has a download error so the cfi cache entry should just be negative.
-                if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
-                    return Ok(CacheStatus::Negative);
-                }
-                if object.status() != &CacheStatus::Positive {
-                    return Ok(object.status().clone());
-                }
-
-                let status = if let Err(e) = write_cficache(&path, &*object) {
-                    log::warn!("Could not write cficache: {}", e);
-                    sentry::capture_error(&e);
-
-                    CacheStatus::Malformed(e.to_string())
-                } else {
-                    CacheStatus::Positive
-                };
-
-                Ok(status)
-            };
-
-            CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
-                .await
-                .unwrap_or(Err(CfiCacheError::Canceled))
-        };
+        let future = compute_cficache(
+            self.threadpool.clone(),
+            self.objects_actor.clone(),
+            self.meta_handle.clone(),
+            path.to_owned(),
+        );
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), result);
+        let future = tokio::time::timeout(Duration::from_secs(1200), future);
         let future = measure(
             "cficaches",
             m::timed_result,
