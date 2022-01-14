@@ -94,7 +94,22 @@ impl GcsState {
                         Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
                         Err(err) => {
                             let remaining = MAX_DELAY - start.elapsed();
-                            log::warn!("Error initialising GCS authentication token: {}", err);
+                            log::warn!("Error initialising GCS authentication token: {}", &err);
+                            match err.downcast_ref::<gcp_auth::Error>() {
+                                Some(gcp_auth::Error::NoAuthMethod(custom, gcloud, svc, user)) => {
+                                    log::error!(
+                                        "No GCP auth: custom: {}, gcloud: {}, svc: {}, user: {}",
+                                        custom,
+                                        gcloud,
+                                        svc,
+                                        user,
+                                    );
+                                }
+                                _ => log::warn!(
+                                    "Error initialising GCS authentication token: {}",
+                                    &err
+                                ),
+                            }
                             log::info!(
                                 "Waiting for GKE metadata server, {}s remaining",
                                 remaining.as_secs(),
