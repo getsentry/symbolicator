@@ -92,8 +92,9 @@ impl GcsState {
                         }) {
                         Ok(auth_manager) => break auth_manager,
                         Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
-                        _ => {
+                        Err(err) => {
                             let remaining = MAX_DELAY - start.elapsed();
+                            log::warn!("Error initialising GCS authentication token: {}", err);
                             log::info!(
                                 "Waiting for GKE metadata server, {}s remaining",
                                 remaining.as_secs(),
