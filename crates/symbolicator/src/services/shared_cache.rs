@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context, Error, Result};
 use futures::{Future, TryStreamExt};
 use gcp_auth::Token;
+use parking_lot::RwLock;
 use reqwest::{Body, Client, StatusCode};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
@@ -372,7 +373,7 @@ impl SharedCacheBackend {
     /// Creates the backend.
     ///
     /// If the backend can not be created the error will already be reported.
-    async fn try_new(cfg: SharedCacheBackendConfig) -> Option<Self> {
+    async fn maybe_new(cfg: SharedCacheBackendConfig) -> Option<Self> {
         match cfg {
             SharedCacheBackendConfig::Gcs(cfg) => {
                 match GcsState::try_new(cfg)
@@ -415,40 +416,47 @@ struct UploadMessage {
 /// For simplicity in the rest of the application this service always exists, regardless of
 /// whether it is configured or not.  If it is not configured calls to it's methods become a
 /// no-op.
-#[derive(Debug)]
+///
+/// Initialising is asynchronous since it may take some time.
+#[derive(Debug, Clone)]
 pub struct SharedCacheService {
-    backend: Option<Arc<SharedCacheBackend>>,
-    upload_queue_tx: Option<mpsc::Sender<UploadMessage>>,
+    inner: Arc<RwLock<Option<Arc<InnerSharedCacheService>>>>,
+}
+
+#[derive(Debug)]
+struct InnerSharedCacheService {
+    backend: Arc<SharedCacheBackend>,
+    upload_queue_tx: mpsc::Sender<UploadMessage>,
 }
 
 impl SharedCacheService {
     pub async fn new(config: Option<SharedCacheConfig>) -> Self {
-        match config {
-            Some(cfg) => {
-                let (tx, rx) = mpsc::channel(cfg.max_upload_queue_size);
-                let backend = match SharedCacheBackend::try_new(cfg.backend).await {
-                    Some(backend) => Arc::new(backend),
-                    None => {
-                        return Self {
-                            backend: None,
-                            upload_queue_tx: None,
-                        }
-                    }
-                };
-                tokio::spawn(Self::upload_worker(
-                    rx,
-                    backend.clone(),
-                    cfg.max_concurrent_uploads,
-                ));
-                Self {
-                    backend: Some(backend),
-                    upload_queue_tx: Some(tx),
-                }
-            }
-            None => Self {
-                backend: None,
-                upload_queue_tx: None,
-            },
+        let inner = Arc::new(RwLock::new(None));
+        let slf = Self {
+            inner: inner.clone(),
+        };
+        if let Some(cfg) = config {
+            tokio::spawn(Self::init(inner, cfg));
+        }
+        slf
+    }
+
+    async fn init(
+        inner: Arc<RwLock<Option<Arc<InnerSharedCacheService>>>>,
+        config: SharedCacheConfig,
+    ) {
+        let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
+        if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
+            let backend = Arc::new(backend);
+            tokio::spawn(Self::upload_worker(
+                rx,
+                backend.clone(),
+                config.max_concurrent_uploads,
+            ));
+            *inner.write() = Some(Arc::new(InnerSharedCacheService {
+                backend,
+                upload_queue_tx: tx,
+            }));
         }
     }
 
@@ -539,8 +547,8 @@ impl SharedCacheService {
 
     /// Returns the name of the backend configured.
     fn backend_name(&self) -> &'static str {
-        match self.backend {
-            Some(ref backend) => backend.name(),
+        match self.inner.read().as_ref() {
+            Some(inner) => inner.backend.name(),
             None => "<not-configured>",
         }
     }
@@ -558,12 +566,15 @@ impl SharedCacheService {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
-        let res = match self.backend.as_deref() {
-            Some(backend) => match backend {
-                SharedCacheBackend::Gcs(ref state) => state.fetch(key, writer).await,
-                SharedCacheBackend::Fs(ref cfg) => cfg.fetch(key, writer).await,
-            },
-            None => return false,
+        let inner = {
+            match self.inner.read().as_ref() {
+                Some(inner) => inner.clone(),
+                None => return false,
+            }
+        };
+        let res = match inner.backend.as_ref() {
+            SharedCacheBackend::Gcs(state) => state.fetch(key, writer).await,
+            SharedCacheBackend::Fs(cfg) => cfg.fetch(key, writer).await,
         };
         match res {
             Ok(Some(bytes)) => {
@@ -620,14 +631,16 @@ impl SharedCacheService {
     /// This [`oneshot::Receiver`] can also be safely ignored if you do not need to know
     /// when the file is stored.  This mostly exists to enable testing.
     pub async fn store(&self, key: SharedCacheKey, src: File) -> Option<oneshot::Receiver<()>> {
-        match self.upload_queue_tx {
-            Some(ref work_tx) => {
+        let inner_guard = self.inner.read();
+        match inner_guard.as_ref() {
+            Some(inner) => {
                 metric!(
                     gauge("services.shared_cache.uploads_queue_capacity") =
-                        work_tx.capacity() as u64
+                        inner.upload_queue_tx.capacity() as u64
                 );
                 let (done_tx, done_rx) = oneshot::channel::<()>();
-                work_tx
+                inner
+                    .upload_queue_tx
                     .try_send(UploadMessage { key, src, done_tx })
                     .unwrap_or_else(|_| {
                         metric!(counter("services.shared_cache.store.dropped") += 1);
