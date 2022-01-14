@@ -15,12 +15,11 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context, Error, Result};
 use futures::{Future, TryStreamExt};
 use gcp_auth::Token;
-use parking_lot::RwLock;
 use reqwest::{Body, Client, StatusCode};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
@@ -420,7 +419,7 @@ struct UploadMessage {
 /// Initialising is asynchronous since it may take some time.
 #[derive(Debug, Clone)]
 pub struct SharedCacheService {
-    inner: Arc<RwLock<Option<Arc<InnerSharedCacheService>>>>,
+    inner: Arc<RwLock<Option<InnerSharedCacheService>>>,
 }
 
 #[derive(Debug)]
@@ -441,10 +440,7 @@ impl SharedCacheService {
         slf
     }
 
-    async fn init(
-        inner: Arc<RwLock<Option<Arc<InnerSharedCacheService>>>>,
-        config: SharedCacheConfig,
-    ) {
+    async fn init(inner: Arc<RwLock<Option<InnerSharedCacheService>>>, config: SharedCacheConfig) {
         let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
         if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
             let backend = Arc::new(backend);
@@ -453,10 +449,10 @@ impl SharedCacheService {
                 backend.clone(),
                 config.max_concurrent_uploads,
             ));
-            *inner.write() = Some(Arc::new(InnerSharedCacheService {
+            *inner.write().await = Some(InnerSharedCacheService {
                 backend,
                 upload_queue_tx: tx,
-            }));
+            });
         }
     }
 
@@ -546,8 +542,8 @@ impl SharedCacheService {
     }
 
     /// Returns the name of the backend configured.
-    fn backend_name(&self) -> &'static str {
-        match self.inner.read().as_ref() {
+    async fn backend_name(&self) -> &'static str {
+        match self.inner.read().await.as_ref() {
             Some(inner) => inner.backend.name(),
             None => "<not-configured>",
         }
@@ -566,15 +562,12 @@ impl SharedCacheService {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
-        let inner = {
-            match self.inner.read().as_ref() {
-                Some(inner) => inner.clone(),
-                None => return false,
-            }
-        };
-        let res = match inner.backend.as_ref() {
-            SharedCacheBackend::Gcs(state) => state.fetch(key, writer).await,
-            SharedCacheBackend::Fs(cfg) => cfg.fetch(key, writer).await,
+        let res = match self.inner.read().await.as_ref() {
+            Some(inner) => match inner.backend.as_ref() {
+                SharedCacheBackend::Gcs(state) => state.fetch(key, writer).await,
+                SharedCacheBackend::Fs(cfg) => cfg.fetch(key, writer).await,
+            },
+            None => return false,
         };
         match res {
             Ok(Some(bytes)) => {
@@ -603,7 +596,7 @@ impl SharedCacheService {
             Err(err) => {
                 log::error!(
                     "Error fetching from {} shared cache: {}",
-                    self.backend_name(),
+                    self.backend_name().await,
                     LogError(&*err)
                 );
                 metric!(
@@ -631,7 +624,7 @@ impl SharedCacheService {
     /// This [`oneshot::Receiver`] can also be safely ignored if you do not need to know
     /// when the file is stored.  This mostly exists to enable testing.
     pub async fn store(&self, key: SharedCacheKey, src: File) -> Option<oneshot::Receiver<()>> {
-        let inner_guard = self.inner.read();
+        let inner_guard = self.inner.read().await;
         match inner_guard.as_ref() {
             Some(inner) => {
                 metric!(
@@ -670,6 +663,20 @@ mod tests {
                 bucket: source.bucket,
                 service_account_path: source.credentials_file,
             }
+        }
+    }
+
+    async fn wait_init(service: &SharedCacheService) {
+        const MAX_DELAY: Duration = Duration::from_secs(3);
+        let start = Instant::now();
+        loop {
+            if start.elapsed() > MAX_DELAY {
+                break;
+            }
+            if service.inner.read().await.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
 
@@ -736,6 +743,7 @@ mod tests {
             }),
         };
         let svc = SharedCacheService::new(Some(cfg)).await;
+        wait_init(&svc).await;
 
         // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -773,6 +781,7 @@ mod tests {
             }),
         };
         let svc = SharedCacheService::new(Some(cfg)).await;
+        wait_init(&svc).await;
 
         let mut writer = Vec::new();
 
@@ -805,6 +814,7 @@ mod tests {
             }),
         };
         let svc = SharedCacheService::new(Some(cfg)).await;
+        wait_init(&svc).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -848,6 +858,7 @@ mod tests {
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
         let svc = SharedCacheService::new(Some(cfg)).await;
+        wait_init(&svc).await;
 
         let mut writer = Vec::new();
 
@@ -904,6 +915,7 @@ mod tests {
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
         let svc = SharedCacheService::new(Some(cfg)).await;
+        wait_init(&svc).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
