@@ -124,14 +124,19 @@ impl SentryDownloader {
         &self,
         query: &SearchQuery,
     ) -> Result<Vec<SearchResult>, SentryError> {
-        let response = self
+        let mut request = self
             .client
             .get(query.index_url.clone())
-            .header("Accept-Encoding", "identity")
-            .header("User-Agent", USER_AGENT)
             .bearer_auth(&query.token)
-            .send()
-            .await?;
+            .header("Accept-Encoding", "identity")
+            .header("User-Agent", USER_AGENT);
+        if let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
+            for (k, v) in span.iter_headers() {
+                request = request.header(k, v);
+            }
+        }
+
+        let response = request.send().await?;
 
         if response.status().is_success() {
             log::trace!("Success fetching index from Sentry");

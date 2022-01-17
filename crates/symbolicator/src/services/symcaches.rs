@@ -180,6 +180,7 @@ struct FetchSymCacheInternal {
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
 /// code.
+#[tracing::instrument(name = "compute_symcache", skip_all)]
 async fn fetch_difs_and_compute_symcache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
@@ -358,6 +359,7 @@ impl SymCacheActor {
 ///
 /// It is assumed both the `object_handle` contains a positive cache.  The
 /// `bcsymbolmap_handle` can only exist for a positive cache so does not have this issue.
+#[tracing::instrument(skip_all)]
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,

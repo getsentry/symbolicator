@@ -137,6 +137,11 @@ struct FetchCfiCacheInternal {
     threadpool: tokio::runtime::Handle,
 }
 
+/// Extracts the Call Frame Information (CFI) from an object file.
+///
+/// The extracted CFI is written to `path` in symbolic's
+/// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
+#[tracing::instrument(skip_all)]
 async fn compute_cficache(
     threadpool: tokio::runtime::Handle,
     objects_actor: ObjectsActor,
@@ -184,10 +189,6 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    /// Extracts the Call Frame Information (CFI) from an object file.
-    ///
-    /// The extracted CFI is written to `path` in symbolic's
-    /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
     fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let future = compute_cficache(
             self.threadpool.clone(),
@@ -295,6 +296,7 @@ impl CfiCacheActor {
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [symbolic::minidump::cfi::CfiCache].
+#[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));
