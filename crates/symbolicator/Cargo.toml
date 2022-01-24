@@ -37,8 +37,8 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.47.0"
 rusoto_credential = "0.47.0"
 rusoto_s3 = "0.47.0"
-sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tracing"] }
-sentry-tower = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["http"] }
+sentry = { version = "0.24.1", features = ["anyhow", "debug-images", "log", "tracing"] }
+sentry-tower = { version = "0.24.1", features = ["http"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
@@ -57,7 +57,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
-zstd = "0.9.0"
+zstd = "0.10.0"
 
 [dev-dependencies]
 insta = { version = "1.5.2", features = ["redactions"] }
