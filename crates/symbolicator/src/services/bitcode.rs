@@ -241,10 +241,10 @@ impl BitcodeService {
 
         let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)
             .context("Failed to parse plist")
-            .or_else(|err| {
+            .map_err(|err| {
                 log::warn!("{}: {:?}", err, err.source());
                 sentry::capture_error(&*err);
-                Err(())
+                err
             })
             .ok()?;
 
