@@ -169,7 +169,10 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     _ if status.is_success() => {
-                        tracing::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                        tracing::trace!(
+                            "Success hitting shared_cache GCS {}",
+                            key.gcs_bucket_key()
+                        );
                         let stream = response
                             .bytes_stream()
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
@@ -236,7 +239,10 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     successful if successful.is_success() => {
-                        tracing::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                        tracing::trace!(
+                            "Success hitting shared_cache GCS {}",
+                            key.gcs_bucket_key()
+                        );
                         Ok(SharedCacheStoreResult::Written(total_bytes))
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),

@@ -69,6 +69,8 @@ pub fn init_logging(config: &Config) {
             .flatten_event(true)
             .with_current_span(true)
             .with_span_list(true)
+            .with_file(true)
+            .with_line_number(true)
             .finish()
             .with(sentry::integrations::tracing::layer())
             .init(),

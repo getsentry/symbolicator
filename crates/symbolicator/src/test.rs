@@ -22,9 +22,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
-use serde::{Deserialize, Serialize};
 use warp::filters::fs::File;
 use warp::reject::{Reject, Rejection};
 use warp::Filter;
