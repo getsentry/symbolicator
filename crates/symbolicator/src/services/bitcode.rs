@@ -320,13 +320,6 @@ impl BitcodeService {
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
-        let _guard = Hub::current().push_scope();
-        sentry::configure_scope(|scope| {
-            scope.set_tag("auxdif.debugid", uuid);
-            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
-            scope.set_extra("auxdif.source", source.type_name().into());
-        });
-
         let file_type = match dif_kind {
             AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
             AuxDifKind::UuidMap => &[FileType::UuidMap],
