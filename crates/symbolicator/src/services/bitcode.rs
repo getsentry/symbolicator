@@ -229,17 +229,24 @@ impl BitcodeService {
         uuid: DebugId,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<Option<BcSymbolMapHandle>, Error> {
+    ) -> Option<BcSymbolMapHandle> {
         // First find the PList.
         let find_plist = self
             .fetch_file_from_all_sources(uuid, AuxDifKind::UuidMap, scope.clone(), sources.clone())
-            .await?;
+            .await;
         let plist_handle = match find_plist {
             Some(handle) => handle,
-            None => return Ok(None),
+            None => return None,
         };
 
-        let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)?;
+        let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)
+            .context("Failed to parse plist")
+            .or_else(|err| {
+                log::warn!("{}: {:?}", err, err.source());
+                sentry::capture_error(&*err);
+                Err(())
+            })
+            .ok()?;
 
         // Next find the BCSymbolMap.
         let find_symbolmap = self
@@ -249,16 +256,16 @@ impl BitcodeService {
                 scope,
                 sources,
             )
-            .await?;
+            .await;
         let symbolmap_handle = match find_symbolmap {
             Some(handle) => handle,
-            None => return Ok(None),
+            None => return None,
         };
 
-        Ok(Some(BcSymbolMapHandle {
+        Some(BcSymbolMapHandle {
             uuid: symbolmap_handle.uuid,
             data: symbolmap_handle.data.clone(),
-        }))
+        })
     }
 
     async fn fetch_file_from_all_sources(
@@ -267,21 +274,47 @@ impl BitcodeService {
         dif_kind: AuxDifKind,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<Option<Arc<CacheHandle>>, Error> {
+    ) -> Option<Arc<CacheHandle>> {
         let jobs = sources.iter().map(|source| {
-            self.fetch_file_from_source(uuid, dif_kind, scope.clone(), source.clone())
+            self.fetch_file_from_source_with_error(uuid, dif_kind, scope.clone(), source.clone())
                 .bind_hub(Hub::new_from_top(Hub::current()))
         });
         let results = future::join_all(jobs).await;
         let mut ret = None;
         for result in results {
-            match result {
-                Ok(Some(handle)) => ret = Some(handle),
-                Ok(None) => (),
-                Err(err) => return Err(err),
+            if result.is_some() {
+                ret = result;
             }
         }
-        Ok(ret)
+        ret
+    }
+
+    /// Wraps `fetch_file_from_source` in sentry error handling.
+    async fn fetch_file_from_source_with_error(
+        &self,
+        uuid: DebugId,
+        dif_kind: AuxDifKind,
+        scope: Scope,
+        source: SourceConfig,
+    ) -> Option<Arc<CacheHandle>> {
+        let _guard = Hub::current().push_scope();
+        sentry::configure_scope(|scope| {
+            scope.set_tag("auxdif.debugid", uuid);
+            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
+            scope.set_extra("auxdif.source", source.type_name().into());
+        });
+        match self
+            .fetch_file_from_source(uuid, dif_kind, scope, source)
+            .await
+            .context("Bitcode svc failed for single source")
+        {
+            Ok(res) => res,
+            Err(err) => {
+                log::warn!("{}: {:?}", err, err.source());
+                sentry::capture_error(&*err);
+                None
+            }
+        }
     }
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
