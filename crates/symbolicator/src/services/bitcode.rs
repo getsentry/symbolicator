@@ -231,13 +231,9 @@ impl BitcodeService {
         sources: Arc<[SourceConfig]>,
     ) -> Option<BcSymbolMapHandle> {
         // First find the PList.
-        let find_plist = self
+        let plist_handle = self
             .fetch_file_from_all_sources(uuid, AuxDifKind::UuidMap, scope.clone(), sources.clone())
-            .await;
-        let plist_handle = match find_plist {
-            Some(handle) => handle,
-            None => return None,
-        };
+            .await?;
 
         let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)
             .context("Failed to parse plist")
@@ -249,18 +245,14 @@ impl BitcodeService {
             .ok()?;
 
         // Next find the BCSymbolMap.
-        let find_symbolmap = self
+        let symbolmap_handle = self
             .fetch_file_from_all_sources(
                 uuid_mapping.original_uuid(),
                 AuxDifKind::BcSymbolMap,
                 scope,
                 sources,
             )
-            .await;
-        let symbolmap_handle = match find_symbolmap {
-            Some(handle) => handle,
-            None => return None,
-        };
+            .await?;
 
         Some(BcSymbolMapHandle {
             uuid: symbolmap_handle.uuid,
