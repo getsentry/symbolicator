@@ -11,6 +11,7 @@ use sentry::types::Dsn;
 use serde::{de, Deserialize, Deserializer};
 use tracing::level_filters::LevelFilter;
 
+use crate::cache::SharedCacheConfig;
 use crate::sources::SourceConfig;
 
 /// Controls the log format
@@ -294,6 +295,16 @@ pub struct Config {
     ///
     /// A value of `None` indicates no limit.
     pub max_concurrent_requests: Option<usize>,
+
+    /// An optional shared cache between multiple symbolicators.
+    ///
+    /// If configured this cache location is queried whenever a cache item is not found in
+    /// the corresponding local cache.  Only if the shared cache does not have the item will
+    /// it be locally recreated after which it will be submitted to the shared cache.
+    ///
+    /// The aim is to make it easy to start up a new symbolicator which will quickly fill up
+    /// caches from already running symbolicators.
+    pub shared_cache: Option<SharedCacheConfig>,
 }
 
 impl Config {
@@ -363,6 +374,7 @@ impl Default for Config {
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
             max_concurrent_requests: Some(120),
+            shared_cache: None,
         }
     }
 }

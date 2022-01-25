@@ -26,6 +26,8 @@ use crate::types::{
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
+use super::shared_cache::SharedCacheService;
+
 /// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
 const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 
@@ -45,10 +47,10 @@ const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
 /// In case a symbolic update increased its own internal format version, bump the
 /// symcache file version as described above, and update the static assertion.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 0,
-    fallbacks: &[],
+    current: 1,
+    fallbacks: &[0],
 };
-static_assert!(symbolic::symcache::format::SYMCACHE_VERSION == 6);
+static_assert!(symbolic::symcache::SYMCACHE_VERSION == 7);
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -92,12 +94,13 @@ pub struct SymCacheActor {
 impl SymCacheActor {
     pub fn new(
         cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             bitcode_svc,
             threadpool,
@@ -177,6 +180,7 @@ struct FetchSymCacheInternal {
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
 /// code.
+#[tracing::instrument(name = "compute_symcache", skip_all)]
 async fn fetch_difs_and_compute_symcache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
@@ -355,6 +359,7 @@ impl SymCacheActor {
 ///
 /// It is assumed both the `object_handle` contains a positive cache.  The
 /// `bcsymbolmap_handle` can only exist for a positive cache so does not have this issue.
+#[tracing::instrument(skip_all)]
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,
@@ -422,7 +427,7 @@ mod tests {
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.
-    fn symcache_actor(cache_dir: PathBuf, timeout: Duration) -> SymCacheActor {
+    async fn symcache_actor(cache_dir: PathBuf, timeout: Duration) -> SymCacheActor {
         let mut cache_config = CacheConfigs::default();
         cache_config.downloaded.retry_misses_after = Some(timeout);
 
@@ -437,10 +442,16 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(config);
-        let objects = ObjectsActor::new(caches.object_meta, caches.objects, downloader.clone());
-        let bitcode = BitcodeService::new(caches.auxdifs, downloader);
+        let shared_cache = Arc::new(SharedCacheService::new(None).await);
+        let objects = ObjectsActor::new(
+            caches.object_meta,
+            caches.objects,
+            shared_cache.clone(),
+            downloader.clone(),
+        );
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader);
 
-        SymCacheActor::new(caches.symcaches, objects, bitcode, cpu_pool)
+        SymCacheActor::new(caches.symcaches, shared_cache, objects, bitcode, cpu_pool)
     }
 
     /// Tests that a symcache is regenerated when it was created without a BcSymbolMap
@@ -498,7 +509,7 @@ mod tests {
             scope: Scope::Global,
         };
 
-        let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT);
+        let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT).await;
 
         // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
         // symcache will be obfuscated.

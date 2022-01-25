@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::io;
-use std::io::Error;
-use std::io::ErrorKind;
+use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -13,8 +11,10 @@ use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use tokio::fs;
 
 use crate::cache::{Cache, CacheStatus};
+use crate::services::shared_cache::{SharedCacheKey, SharedCacheService};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
@@ -44,6 +44,9 @@ pub struct Cacher<T: CacheItemRequest> {
 
     /// Used for deduplicating cache lookups.
     current_computations: ComputationMap<T::Item, T::Error>,
+
+    /// A service used to communicate with the shared cache.
+    shared_cache_service: Arc<SharedCacheService>,
 }
 
 impl<T: CacheItemRequest> Clone for Cacher<T> {
@@ -52,19 +55,21 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         Cacher {
             config: self.config.clone(),
             current_computations: self.current_computations.clone(),
+            shared_cache_service: Arc::clone(&self.shared_cache_service),
         }
     }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache) -> Self {
+    pub fn new(config: Cache, shared_cache_service: Arc<SharedCacheService>) -> Self {
         Cacher {
             config,
+            shared_cache_service,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
-    pub fn tempfile(&self) -> io::Result<NamedTempFile> {
+    pub fn tempfile(&self) -> std::io::Result<NamedTempFile> {
         self.config.tempfile()
     }
 }
@@ -78,6 +83,26 @@ pub struct CacheKey {
 impl fmt::Display for CacheKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} (scope {})", self.cache_key, self.scope)
+    }
+}
+
+impl CacheKey {
+    /// Returns the relative path inside the cache for this cache key.
+    pub fn relative_path(&self) -> PathBuf {
+        let mut path = PathBuf::new();
+        path.push(safe_path_segment(self.scope.as_ref()));
+        path.push(safe_path_segment(&self.cache_key));
+        path
+    }
+
+    /// Returns the full cache path for this key inside the provided cache directory.
+    pub fn cache_path(&self, cache_dir: &Path, version: u32) -> PathBuf {
+        let mut path = PathBuf::from(cache_dir);
+        if version != 0 {
+            path.push(version.to_string());
+        }
+        path.push(self.relative_path());
+        path
     }
 }
 
@@ -144,9 +169,9 @@ impl AsRef<Path> for CachePath {
 }
 
 fn safe_path_segment(s: &str) -> String {
-    s.replace(".", "_") // protect against ".."
-        .replace("/", "_") // protect against absolute paths
-        .replace(":", "_") // not a threat on POSIX filesystems, but confuses OS X Finder
+    s.replace('.', "_") // protect against ".."
+        .replace('/', "_") // protect against absolute paths
+        .replace(':', "_") // not a threat on POSIX filesystems, but confuses OS X Finder
 }
 
 pub trait CacheItemRequest: 'static + Send + Sync + Clone {
@@ -154,7 +179,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     // XXX: Probably should have our own concrete error type for cacheactor instead of forcing our
     // ioerrors into other errors
-    type Error: 'static + From<io::Error> + Send + Sync;
+    type Error: 'static + From<std::io::Error> + Send + Sync;
 
     /// The cache versioning scheme that is used for this type of request.
     ///
@@ -190,74 +215,67 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    /// Constructs the path corresponding to the given [`CacheKey`].
-    ///
-    /// Returns [`None`] if caching is disabled.
-    fn get_cache_path(&self, key: &CacheKey, version: u32) -> Option<PathBuf> {
-        let mut cache_dir = self.config.cache_dir()?.to_path_buf();
-
-        if version != 0 {
-            cache_dir.push(version.to_string());
-        }
-
-        cache_dir.push(safe_path_segment(key.scope.as_ref()));
-        cache_dir.push(safe_path_segment(&key.cache_key));
-
-        Some(cache_dir)
-    }
-
     /// Look up an item in the file system cache and load it if available.
     ///
     /// Returns `Ok(None)` if the cache item needs to be re-computed, otherwise reads the
     /// cached data from disk and returns the cached item as returned by
     /// [`CacheItemRequest::load`].
     ///
+    /// Calling this function when the cache is not enabled will simply return `Ok(None)`.
+    ///
     /// # Errors
     ///
     /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
-    fn lookup_cache(
+    fn lookup_local_cache(
         &self,
         request: &T,
         key: &CacheKey,
-        path: &Path,
+        version: u32,
     ) -> Result<Option<T::Item>, T::Error> {
-        let name = self.config.name();
-        tracing::trace!("Trying {} cache at path {:?}", name, path);
-        sentry::with_scope(
-            |scope| {
-                scope.set_extra(
-                    &format!("cache.{}.cache_path", name),
-                    format!("{:?}", path).into(),
-                );
-            },
-            || {
-                let byteview = match self.config.open_cachefile(path)? {
-                    Some(x) => x,
-                    None => return Ok(None),
-                };
+        match self.config.cache_dir() {
+            Some(cache_dir) => {
+                let name = self.config.name();
+                let item_path = key.cache_path(cache_dir, version);
+                tracing::trace!("Trying {} cache at path {}", name, item_path.display());
+                sentry::with_scope(
+                    |scope| {
+                        scope.set_extra(
+                            &format!("cache.{}.cache_path", name),
+                            item_path.to_string_lossy().into(),
+                        );
+                    },
+                    || {
+                        let byteview = match self.config.open_cachefile(&item_path)? {
+                            Some(bv) => bv,
+                            None => return Ok(None),
+                        };
+                        let status = CacheStatus::from_content(&byteview);
+                        if status == CacheStatus::Positive && !request.should_load(&byteview) {
+                            tracing::trace!("Discarding {} at path {}", name, item_path.display());
+                            metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+                            return Ok(None);
+                        }
+                        // This is also reported for "negative cache hits": When we cached
+                        // the 404 response from a server as empty file.
+                        metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+                        metric!(
+                            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+                            "hit" => "true"
+                        );
 
-                let status = CacheStatus::from_content(&byteview);
-                if status == CacheStatus::Positive && !request.should_load(&byteview) {
-                    tracing::trace!("Discarding {} at path {:?}", name, path);
-                    metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
-                    return Ok(None);
-                }
-
-                // This is also reported for "negative cache hits": When we cached the 404 response from a
-                // server as empty file.
-                metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                    "hit" => "true"
-                );
-
-                let path = path.to_path_buf();
-                tracing::trace!("Loading {} at path {:?}", name, path);
-                let item =
-                    request.load(key.scope.clone(), status, byteview, CachePath::Cached(path));
-                Ok(Some(item))
-            },
-        )
+                        tracing::trace!("Loading {} at path {}", name, item_path.display());
+                        let item = request.load(
+                            key.scope.clone(),
+                            status,
+                            byteview,
+                            CachePath::Cached(item_path.clone()),
+                        );
+                        Ok(Some(item))
+                    },
+                )
+            }
+            None => Ok(None),
+        }
     }
 
     /// Compute an item.
@@ -277,51 +295,104 @@ impl<T: CacheItemRequest> Cacher<T> {
         // lookup without going through the deduplication/channel creation logic. This creates a
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
-        let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
-        if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
-                return Ok(item);
-            }
+        if let Some(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current)? {
+            return Ok(item);
         }
 
-        let name = self.config.name();
         let temp_file = self.tempfile()?;
+        let shared_cache_key = SharedCacheKey {
+            name: self.config.name(),
+            version: T::VERSIONS.current,
+            local_key: key.clone(),
+        };
+        let dup_file = temp_file.reopen()?;
+        let mut temp_fd = tokio::fs::File::from_std(dup_file);
 
-        let status = request.compute(temp_file.path()).await?;
+        let shared_cache_hit = self
+            .shared_cache_service
+            .fetch(&shared_cache_key, &mut temp_fd)
+            .await;
 
-        if let Some(ref cache_path) = cache_path {
-            sentry::configure_scope(|scope| {
-                scope.set_extra(
-                    &format!("cache.{}.cache_path", name),
-                    cache_path.to_string_lossy().into(),
-                );
-            });
-
-            tracing::trace!("Creating {} at path {:?}", name, cache_path);
+        let status = match shared_cache_hit {
+            true => {
+                // Waste an mmap call on a cold path, oh well.
+                let bv = ByteView::map_file_ref(temp_file.as_file())?;
+                request
+                    .should_load(&bv)
+                    .then(|| CacheStatus::from_content(&bv))
+            }
+            false => None,
+        };
+        if shared_cache_hit && status.is_none() {
+            tracing::trace!("Discarding item from shared cache {}", key);
+            metric!(counter("shared_cache.file.discarded") += 1);
         }
 
-        let byteview = ByteView::open(temp_file.path())?;
+        let status = match status {
+            Some(status) => status,
+            None => {
+                let status = request.compute(temp_file.path()).await?;
+                status.write(&mut temp_fd).await?;
+                status
+            }
+        };
 
-        metric!(
-            counter(&format!("caches.{}.file.write", name)) += 1,
-            "status" => status.as_ref(),
-            "is_refresh" => &is_refresh.to_string(),
-        );
-        metric!(
-            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-            "hit" => "false",
-            "is_refresh" => &is_refresh.to_string(),
-        );
+        // Now we have written the data to the tempfile we can mmap it, persisting it later
+        // is fine as it does not move filesystem boundaries there.
+        let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
 
-        let path = match cache_path {
-            Some(ref cache_path) => {
-                status.persist_item(cache_path, temp_file)?;
-                CachePath::Cached(cache_path.to_path_buf())
+        let path = match self.config.cache_dir() {
+            Some(cache_dir) => {
+                // Cache is enabled, write it!
+                let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
+
+                tracing::trace!(
+                    "Creating {} at path {:?}",
+                    self.config.name(),
+                    cache_path.display()
+                );
+                let parent = cache_path.parent().ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "no parent directory to persist item",
+                    )
+                })?;
+                fs::create_dir_all(parent).await?;
+                temp_file.persist(&cache_path).map_err(|x| x.error)?;
+
+                metric!(
+                    counter(&format!("caches.{}.file.write", self.config.name())) += 1,
+                    "status" => status.as_ref(),
+                    "is_refresh" => &is_refresh.to_string(),
+                );
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                    "hit" => "false",
+                    "is_refresh" => &is_refresh.to_string(),
+                );
+                sentry::configure_scope(|scope| {
+                    scope.set_extra(
+                        &format!("cache.{}.cache_path", self.config.name()),
+                        cache_path.to_string_lossy().into(),
+                    );
+                });
+
+                CachePath::Cached(cache_path)
             }
             None => CachePath::Temp(temp_file.into_temp_path()),
         };
 
-        Ok(request.load(key.scope.clone(), status, byteview, path))
+        // TODO: Not handling negative caches probably has a huge perf impact.  Need to
+        // figure out negative caches.  Maybe put them in redis with a TTL?
+        // NOTE: temp_fd is still a valid filedescriptor to the file's data, even after we
+        // persisted the file.
+        if !shared_cache_hit && status == CacheStatus::Positive {
+            self.shared_cache_service
+                .store(shared_cache_key, temp_fd)
+                .await;
+        }
+
+        Ok(request.load(key.scope.clone(), status, byte_view, path))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -338,23 +409,8 @@ impl<T: CacheItemRequest> Cacher<T> {
         F: std::future::Future<Output = Result<T::Item, T::Error>> + Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
+
         let max_lazy_refreshes = self.config.max_lazy_refreshes();
-
-        // we count down towards zero, and if we reach or surpass it, we will short circuit here.
-        if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
-            max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-
-            let result = Err(Arc::new(
-                Error::new(
-                    ErrorKind::Other,
-                    "maximum number of lazy recomputations reached; aborting cache computation",
-                )
-                .into(),
-            ));
-            sender.send(result).ok();
-            return receiver.shared();
-        }
-
         let current_computations = self.current_computations.clone();
         let remove_computation_token = CallOnDrop::new(move || {
             if is_refresh {
@@ -365,6 +421,21 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // Run the computation and wrap the result in Arcs to make them clonable.
         let channel = async move {
+            // only start an independent transaction if this is a "background" task,
+            // otherwise it will not "outlive" its parent span, so attach it to the parent transaction.
+            let transaction = if is_refresh {
+                let span = sentry::configure_scope(|scope| scope.get_span());
+                let ctx = sentry::TransactionContext::continue_from_span(
+                    "Lazy Cache Computation",
+                    "spawn_computation",
+                    span,
+                );
+                let transaction = sentry::start_transaction(ctx);
+                sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+                Some(transaction)
+            } else {
+                None
+            };
             let result = match computation.await {
                 Ok(ok) => Ok(Arc::new(ok)),
                 Err(err) => Err(Arc::new(err)),
@@ -372,6 +443,9 @@ impl<T: CacheItemRequest> Cacher<T> {
             // Drop the token first to evict from the map.  This ensures that callers either
             // get a channel that will receive data, or they create a new channel.
             drop(remove_computation_token);
+            if let Some(transaction) = transaction {
+                transaction.finish();
+            }
             sender.send(result).ok();
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
@@ -406,6 +480,27 @@ impl<T: CacheItemRequest> Cacher<T> {
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+
+                // We count down towards zero, and if we reach or surpass it, we will short circuit here.
+                // Doing the short-circuiting here means we don't create a channel at all, and don't
+                // put it into `current_computations`.
+                let max_lazy_refreshes = self.config.max_lazy_refreshes();
+                if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
+                    max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+
+                    metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
+                    // This error is purely here to satisfy the return type, it should not show
+                    // up anywhere, as lazy computation will not unwrap the error.
+                    let result = Err(Arc::new(
+                        Error::new(
+                            ErrorKind::Other,
+                            "maximum number of lazy recomputations reached; aborting cache computation",
+                        )
+                        .into(),
+                    ));
+                    return Box::pin(async { result });
+                }
+
                 let computation = self.clone().compute(request, key.clone(), is_refresh);
                 let channel = self.create_channel(key.clone(), computation, is_refresh);
                 let evicted = current_computations.insert(key, channel.clone());
@@ -417,7 +512,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let future = channel.unwrap_or_else(move |_cancelled_error| {
             let message = format!("{} computation channel dropped", name);
             Err(Arc::new(
-                io::Error::new(io::ErrorKind::Interrupted, message).into(),
+                std::io::Error::new(std::io::ErrorKind::Interrupted, message).into(),
             ))
         });
 
@@ -444,25 +539,21 @@ impl<T: CacheItemRequest> Cacher<T> {
         let key = request.get_cache_key();
 
         // cache_path is None when caching is disabled.
-        let cache_path = self.get_cache_path(&key, T::VERSIONS.current);
-        if let Some(ref path) = cache_path {
-            if let Some(item) = self.lookup_cache(&request, &key, path)? {
+        if let Some(cache_dir) = self.config.cache_dir() {
+            if let Some(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current)? {
                 return Ok(Arc::new(item));
             }
 
             // try fallback cache paths next
-            for (version, fallback_path) in T::VERSIONS.fallbacks.iter().flat_map(|version| {
-                self.get_cache_path(&key, *version)
-                    .map(|path| (*version, path))
-            }) {
-                if let Ok(Some(item)) = self.lookup_cache(&request, &key, &fallback_path) {
+            for version in T::VERSIONS.fallbacks.iter() {
+                if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, *version) {
                     // we have found an outdated cache that we will use right away,
                     // and we will kick off a recomputation for the `current` cache version
                     // in a deduplicated background task, which we will not await
                     tracing::trace!(
                         "Spawning deduplicated {} computation for path {:?}",
                         name,
-                        path
+                        key.cache_path(cache_dir, T::VERSIONS.current).display()
                     );
                     metric!(
                         counter(&format!("caches.{}.file.fallback", name)) += 1,
@@ -488,6 +579,7 @@ mod tests {
     use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
     use std::time::Duration;
 
+    use crate::cache::CacheName;
     use crate::config::{CacheConfig, CacheConfigs};
     use crate::test;
 
@@ -563,14 +655,15 @@ mod tests {
         .unwrap();
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cache_dir),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let cacher = Cacher::new(cache);
+        let shared_cache = Arc::new(SharedCacheService::new(None).await);
+        let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -605,14 +698,15 @@ mod tests {
         }
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cache_dir),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let cacher = Cacher::new(cache);
+        let shared_cache = Arc::new(SharedCacheService::new(None).await);
+        let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("0");
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- Support for `external_debug_info` section in wasm-split for external dwarf files. ([#619](https://github.com/getsentry/symbolicator/pull/619))
+- Added windows binaries for `wasm-split` and `symsorter` to releases ([#624](https://github.com/getsentry/symbolicator/pull/624))
+
+## 0.4.1
+
+### Features
+
+- Very basic shared-cache support, allowing multiple symbolicators to share one global cache and have faster warmup times. ([#581](https://github.com/getsentry/symbolicator/pull/581))
+- Support concurrency control and backpressure on uploading to shared cache. ([#584](https://github.com/getsentry/symbolicator/pull/584))
+- Use Google Application Credentials to authenticate to GCS in the shared cache. ([#591](https://github.com/getsentry/symbolicator/pull/591))
+
+### Fixes
+- Truncate Malformed and Cache-Specific entries in the cache to match the length of their contents, in case they overwrote some longer, existing entry. ([#586](https://github.com/getsentry/symbolicator/pull/586))
+
 ## 0.4.0
 
 ### Features

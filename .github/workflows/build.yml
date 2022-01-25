@@ -37,6 +37,10 @@ jobs:
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
           zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
 
+          # Strip debug info for tools
+          objcopy --strip-debug --strip-unneeded target/release/wasm-split
+          objcopy --strip-debug --strip-unneeded target/release/symsorter
+
           # Move all binaries
           mv target/release/symbolicator build/symbolicator-Linux-x86_64
           mv target/release/wasm-split build/wasm-split-Linux-x86_64
@@ -119,6 +123,44 @@ jobs:
         with:
           name: ${{ github.sha }}
           path: build/*
+
+  windows:
+    name: Build Tools on Windows
+    runs-on: windows-2019
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run Cargo Build (symsorter)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p symsorter --release --locked
+
+      - name: Run Cargo Build (wasm-split)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p wasm-split --release --locked
+
+      - name: Rename Binaries
+        run: |
+          cd target/release
+          mv symsorter.exe symsorter-Windows-x86_64.exe
+          mv wasm-split.exe wasm-split-Windows-x86_64.exe
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          path: target/release/*-Windows-x86_64.exe
 
   docs:
     name: Build Docs

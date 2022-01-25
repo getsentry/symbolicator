@@ -1,22 +1,23 @@
 [package]
 name = "symbolicator"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Sentry <hello@getsentry.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 
 [dependencies]
-axum = { version = "0.2.1", features = ["multipart"] }
+axum = { version = "0.4.3", features = ["multipart"] }
 anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
 backtrace = "0.3.55"
 base64 = "0.13.0"
-cadence = "0.26.0"
+cadence = "0.27.0"
 chrono = { version = "0.4.19", features = ["serde"] }
-console = "0.14.0"
+console = "0.15.0"
 filetime = "0.2.14"
 flate2 = "1.0.0"
 futures = "0.3.12"
+gcp_auth = { git = "https://github.com/getsentry/gcp_auth", branch = "sentry-main" }
 glob = "0.3.0"
 hostname = "0.3.1"
 humantime-serde = "1.0.1"
@@ -25,7 +26,7 @@ jsonwebtoken = "7.2.0"
 lazy_static = "1.4.0"
 lru = "0.7.0"
 num_cpus = "1.13.0"
-minidump = "0.3"
+minidump = "0.9.4"
 parking_lot = "0.11.1"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
@@ -33,20 +34,24 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.47.0"
 rusoto_credential = "0.47.0"
 rusoto_s3 = "0.47.0"
-sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tower", "tracing"] }
+sentry = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["anyhow", "debug-images", "log", "tracing"] }
+sentry-tower = { git = "https://github.com/getsentry/sentry-rust", version = "0.23.0", features = ["http"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", version = "8.3.0", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", version = "8.5.0", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
+# Uncomment the line below for local development
+# symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
 thiserror = "1.0.26"
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-util = "0.6"
+tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
-tracing = "0.1.26"
-tracing-subscriber = { version = "0.2.20", features = ["chrono", "tracing-log"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.9.0"
@@ -55,6 +60,6 @@ zstd = "0.9.0"
 insta = { version = "1.5.2", features = ["redactions"] }
 procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
-sha-1 = "0.9.2"
+sha-1 = "0.10.0"
 warp = "0.3.0"
 test-assembler = "0.1.5"

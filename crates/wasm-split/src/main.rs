@@ -10,10 +10,10 @@
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-
 use structopt::StructOpt;
 use uuid::Uuid;
 use wasmbin::builtins::Blob;
+use wasmbin::io::Encode;
 use wasmbin::sections::{CustomSection, RawCustomSection, Section};
 use wasmbin::Module;
 
@@ -53,6 +53,9 @@ pub struct Cli {
     /// explicit build id to provide
     #[structopt(long)]
     build_id: Option<Uuid>,
+    /// URL for browsers to fetch the separate dwarf debug symbol file
+    #[structopt(long)]
+    external_dwarf_url: Option<String>,
 }
 
 fn load_custom_section(section: &Section) -> Option<(&str, &[u8])> {
@@ -121,7 +124,7 @@ fn main() -> Result<(), anyhow::Error> {
     });
 
     // split dwarf data out if needed into a separate file.
-    if let Some(debug_output) = cli.debug_out {
+    if let Some(debug_output) = cli.debug_out.as_ref() {
         // note that this actually copies the entire original file over after
         // adding the build ID.  The reason for this is that we can only deal
         // with WASM files if the code section offset can be calculated.  This
@@ -140,6 +143,40 @@ fn main() -> Result<(), anyhow::Error> {
             .sections
             .retain(|section| !is_strippable_section(section, strip_names));
         should_write_main_module = true;
+    }
+
+    // If the debug file path is set, resolve the filename (ie. /some/path/to/foo.debug.wasm -> foo.debug.wasm)
+    let debug_file_name = cli
+        .debug_out
+        .as_ref()
+        .and_then(|name| name.file_name())
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string());
+
+    // Use the command line flag if set, but fallback to the debug file name if that is set.
+    // This is a reasonable default, as the filename on its own will resolve as a path relative to the main wasm file.
+    // Emscripten falls back in the same way: https://github.com/emscripten-core/emscripten/pull/12549
+    let resolved_external_dwarf_url = cli.external_dwarf_url.or(debug_file_name);
+
+    if let Some(external_dwarf_url) = resolved_external_dwarf_url {
+        should_write_main_module = true;
+
+        // From the wasm spec, the URL is encoded as bytes, and prefixed with a varint encoding of a u32 size
+        // https://github.com/WebAssembly/tool-conventions/blob/08bacbed/Debugging.md#external-dwarf
+        // Emscripten: https://github.com/emscripten-core/emscripten/blob/4eefe273/tools/building.py#L1200
+        // We use the `wasmbin::io::Encode` trait, as it will handle serializing a string as a Vec<u8> with
+        // an LEB128 prefix.
+        let data_vec = &mut Vec::new();
+        external_dwarf_url.encode(data_vec).unwrap();
+
+        module
+            .sections
+            .push(Section::Custom(Blob::from(CustomSection::Other(
+                RawCustomSection {
+                    name: "external_debug_info".to_string(),
+                    data: data_vec.to_vec(),
+                },
+            ))));
     }
 
     // main module

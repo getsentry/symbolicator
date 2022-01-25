@@ -1,7 +1,8 @@
 //! Core logic for cache files. Used by `crate::services::common::cache`.
 
-use std::fs::{self, read_dir, remove_file, File};
-use std::io::{self, Read, Write};
+use core::fmt;
+use std::fs::{read_dir, remove_file};
+use std::io::{self, Read, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -9,8 +10,11 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use filetime::FileTime;
+use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use tokio::fs::File;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::logging::LogError;
@@ -84,44 +88,142 @@ impl CacheStatus {
         }
     }
 
-    /// Persist the operation in the cache.
+    /// Writes the status marker to the file, leaving the cursor at the end.
     ///
-    /// If the status was [`CacheStatus::Positive`] this copies the data from the temporary
-    /// file to the final cache location.  Otherwise it writes corresponding marker in the
-    /// cache location.
-    pub fn persist_item(&self, path: &Path, file: NamedTempFile) -> Result<(), io::Error> {
-        let dir = path.parent().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "no parent directory to persist item")
-        })?;
-        fs::create_dir_all(dir)?;
+    /// For a positive status this only seeks to the end.  For the other cases this seeks
+    /// to the beginning, writes the appropriate marker and truncates the file.
+    pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
         match self {
             CacheStatus::Positive => {
-                file.persist(path).map_err(|x| x.error)?;
+                file.seek(SeekFrom::End(0)).await?;
             }
             CacheStatus::Negative => {
-                File::create(path)?;
+                file.rewind().await?;
+                file.set_len(0).await?;
             }
             CacheStatus::Malformed(details) => {
-                let mut f = File::create(path)?;
-                f.write_all(MALFORMED_MARKER)?;
-                f.write_all(details.as_bytes())?;
+                file.rewind().await?;
+                file.write_all(MALFORMED_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
             CacheStatus::CacheSpecificError(details) => {
-                let mut f = File::create(path)?;
-                f.write_all(CACHE_SPECIFIC_ERROR_MARKER)?;
-                f.write_all(details.as_bytes())?;
+                file.rewind().await?;
+                file.write_all(CACHE_SPECIFIC_ERROR_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
         }
-
         Ok(())
     }
 }
 
-/// Utilities for a sym/cfi or object cache.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilesystemSharedCacheConfig {
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GcsSharedCacheConfig {
+    /// Name of the GCS bucket.
+    pub bucket: String,
+
+    /// Optional name of a JSON file containing the service account credentials.
+    ///
+    /// If this is not provided the JSON will be looked up in the
+    /// `GOOGLE_APPLICATION_CREDENTIALS` variable.  Otherwise it is assumed the service is
+    /// running since GCP and will retrieve the correct user or service account from the
+    /// GCP services.
+    #[serde(default)]
+    pub service_account_path: Option<PathBuf>,
+}
+
+/// The backend to use for the shared cache.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SharedCacheBackendConfig {
+    Gcs(GcsSharedCacheConfig),
+    Filesystem(FilesystemSharedCacheConfig),
+}
+
+/// A remote cache that can be shared between symbolicator instances.
+///
+/// Any files not in the local cache will be looked up from here before being looked up in
+/// their original source.  Additionally derived caches are also stored in here to save
+/// computations if another symbolicator has already done the computation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SharedCacheConfig {
+    /// The number of allowed concurrent uploads to the shared cache.
+    ///
+    /// Uploading to the shared cache is not critical for symbolicator's operation and
+    /// should not disrupt any normal work it does.  This limits the number of concurrent
+    /// uploads so that associated resources are kept in check.
+    #[serde(default = "default_max_concurrent_uploads")]
+    pub max_concurrent_uploads: usize,
+
+    /// The number of queued up uploads to the cache.
+    ///
+    /// If more items need to be uploaded to the shared cache than there are allowed
+    /// concurrently the uploads will be queued.  If the queue is full the uploads are
+    /// simply dropped as they are not critical to symbolicator's operation and not
+    /// disrupting symbolicator is more important than uploading to the shared cache.
+    #[serde(default = "default_max_upload_queue_size")]
+    pub max_upload_queue_size: usize,
+
+    /// The backend to use for the shared cache.
+    #[serde(flatten)]
+    pub backend: SharedCacheBackendConfig,
+}
+
+fn default_max_upload_queue_size() -> usize {
+    400
+}
+
+fn default_max_concurrent_uploads() -> usize {
+    20
+}
+
+/// All known cache names.
+#[derive(Debug, Clone, Copy)]
+pub enum CacheName {
+    Objects,
+    ObjectMeta,
+    Auxdifs,
+    Symcaches,
+    Cficaches,
+    Diagnostics,
+}
+
+impl AsRef<str> for CacheName {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Objects => "objects",
+            Self::ObjectMeta => "object_meta",
+            Self::Auxdifs => "auxdifs",
+            Self::Symcaches => "symcaches",
+            Self::Cficaches => "cficaches",
+            Self::Diagnostics => "diagnostics",
+        }
+    }
+}
+
+impl fmt::Display for CacheName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_ref())
+    }
+}
+
+/// Common cache configuration.
+///
+/// Many parts of symbolicator use a cache to save having to re-download data or reprocess
+/// downloaded data.  All caches behave similarly and their behaviour is determined by this
+/// struct.
 #[derive(Debug, Clone)]
 pub struct Cache {
     /// Cache identifier used for metric names.
-    name: &'static str,
+    name: CacheName,
 
     /// Directory to use for storing cache items. Will be created if it does not exist.
     ///
@@ -149,7 +251,7 @@ pub struct Cache {
 
 impl Cache {
     pub fn from_config(
-        name: &'static str,
+        name: CacheName,
         cache_dir: Option<PathBuf>,
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
@@ -168,7 +270,7 @@ impl Cache {
         })
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> CacheName {
         self.name
     }
 
@@ -345,7 +447,7 @@ fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<Ex
         .len()
         .max(CACHE_SPECIFIC_ERROR_MARKER.len());
     let readable_amount = largest_sentinel.min(metadata.len() as usize);
-    let mut file = File::open(path)?;
+    let mut file = std::fs::File::open(path)?;
     let mut buf = vec![0; readable_amount];
 
     file.read_exact(&mut buf)?;
@@ -415,7 +517,7 @@ impl Caches {
             objects: {
                 let path = config.cache_dir("objects");
                 Cache::from_config(
-                    "objects",
+                    CacheName::Objects,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
@@ -425,7 +527,7 @@ impl Caches {
             object_meta: {
                 let path = config.cache_dir("object_meta");
                 Cache::from_config(
-                    "object_meta",
+                    CacheName::ObjectMeta,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
@@ -435,7 +537,7 @@ impl Caches {
             auxdifs: {
                 let path = config.cache_dir("auxdifs");
                 Cache::from_config(
-                    "auxdifs",
+                    CacheName::Auxdifs,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
@@ -445,7 +547,7 @@ impl Caches {
             symcaches: {
                 let path = config.cache_dir("symcaches");
                 Cache::from_config(
-                    "symcaches",
+                    CacheName::Symcaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
@@ -455,7 +557,7 @@ impl Caches {
             cficaches: {
                 let path = config.cache_dir("cficaches");
                 Cache::from_config(
-                    "cficaches",
+                    CacheName::Cficaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
@@ -465,7 +567,7 @@ impl Caches {
             diagnostics: {
                 let path = config.cache_dir("diagnostics");
                 Cache::from_config(
-                    "diagnostics",
+                    CacheName::Diagnostics,
                     path,
                     tmp_dir,
                     config.caches.diagnostics.into(),
@@ -540,7 +642,7 @@ mod tests {
     use super::*;
 
     use std::convert::TryInto;
-    use std::fs::{self, create_dir_all};
+    use std::fs::{self, create_dir_all, File};
     use std::io::Write;
     use std::thread::sleep;
 
@@ -557,7 +659,7 @@ mod tests {
         let basedir = tempdir().unwrap();
         let cachedir = basedir.path().join("cache");
         let _cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(cachedir.clone()),
             None,
             CacheConfig::Downloaded(Default::default()),
@@ -613,7 +715,7 @@ mod tests {
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -651,7 +753,7 @@ mod tests {
         create_dir_all(tempdir.path().join("foo"))?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -701,7 +803,7 @@ mod tests {
         // Creation of this struct == "process startup", this tests that all malformed files created
         // before startup are cleaned
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -747,7 +849,7 @@ mod tests {
         // Creation of this struct == "process startup", this tests that all cache-specific error files created
         // before startup are cleaned
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Derived(DerivedCacheConfig {
@@ -793,7 +895,7 @@ mod tests {
             .write_all(b"malformedcachespecificerror")?;
 
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(DownloadedCacheConfig {
@@ -1032,7 +1134,7 @@ mod tests {
         // Assert that opening a cache touches the mtime but does not invalidate it.
         let tempdir = tempdir()?;
         let cache = Cache::from_config(
-            "test",
+            CacheName::Objects,
             Some(tempdir.path().to_path_buf()),
             None,
             CacheConfig::Downloaded(Default::default()),
@@ -1120,5 +1222,270 @@ mod tests {
         assert!(!symcaches_entry.is_file());
         assert!(!cficaches_entry.is_file());
         assert!(!diagnostics_entry.is_file());
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_positive() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        async_file.write_all(b"beep").await?;
+        // moving the cursor back to the beginning so the cursor behaviour
+        // is checked
+        async_file.rewind().await?;
+
+        let status = CacheStatus::Positive;
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(current_pos, 4);
+
+        let contents = fs::read(&path)?;
+        assert_eq!(contents, b"beep");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_negative() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+        let status = CacheStatus::Negative;
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(current_pos, 0);
+
+        let contents = fs::read(&path)?;
+        assert_eq!(contents, b"");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_negative_with_garbage() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+        async_file.write_all(b"beep").await?;
+        let status = CacheStatus::Negative;
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(current_pos, 0);
+
+        let contents = fs::read(&path)?;
+        assert_eq!(contents, b"");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_malformed() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        let error_message = "unsupported object file format";
+        let status = CacheStatus::Malformed(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            MALFORMED_MARKER.len() + error_message.len()
+        );
+
+        let contents = fs::read(&path)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(MALFORMED_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_malformed_truncates() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        async_file
+            .write_all(
+                b"i'm a little teapot short and stout here is my handle and here is my spout",
+            )
+            .await?;
+
+        let error_message = "unsupported object file format";
+        let status = CacheStatus::Malformed(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            MALFORMED_MARKER.len() + error_message.len()
+        );
+
+        let contents = fs::read(&path)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(MALFORMED_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_cache_error() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        let error_message = "missing permissions for file";
+        let status = CacheStatus::CacheSpecificError(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
+        );
+
+        let contents = fs::read(&path)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cache_status_write_cache_error_truncates() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("honk");
+
+        // copying what compute does here instead of just using
+        // tokio::fs::File::create() directly
+        let sync_file = File::create(&path)?;
+        let mut async_file = tokio::fs::File::from_std(sync_file);
+
+        async_file
+            .write_all(
+                b"i'm a little teapot short and stout here is my handle and here is my spout",
+            )
+            .await?;
+
+        let error_message = "missing permissions for file";
+        let status = CacheStatus::CacheSpecificError(error_message.to_owned());
+        status.write(&mut async_file).await?;
+
+        // make sure write leaves the cursor at the end
+        let current_pos = async_file.stream_position().await?;
+        assert_eq!(
+            current_pos as usize,
+            CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
+        );
+
+        let contents = fs::read(&path)?;
+
+        let mut expected: Vec<u8> = Vec::new();
+        expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
+        expected.extend(error_message.as_bytes());
+
+        assert_eq!(contents, expected);
+
+        Ok(())
+    }
+    #[test]
+    fn test_shared_cache_config_filesystem_common_defaults() {
+        let yaml = r#"
+            filesystem:
+              path: "/path/to/somewhere"
+        "#;
+        let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
+
+        assert_eq!(cfg.max_upload_queue_size, 400);
+        assert_eq!(cfg.max_concurrent_uploads, 20);
+        match cfg.backend {
+            SharedCacheBackendConfig::Gcs(_) => panic!("wrong backend"),
+            SharedCacheBackendConfig::Filesystem(cfg) => {
+                assert_eq!(cfg.path, Path::new("/path/to/somewhere"))
+            }
+        }
+    }
+
+    #[test]
+    fn test_shared_cache_config_common_settings() {
+        let yaml = r#"
+            max_upload_queue_size: 50
+            max_concurrent_uploads: 50
+            filesystem:
+              path: "/path/to/somewhere"
+        "#;
+        let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
+
+        assert_eq!(cfg.max_upload_queue_size, 50);
+        assert_eq!(cfg.max_concurrent_uploads, 50);
+        assert!(matches!(
+            cfg.backend,
+            SharedCacheBackendConfig::Filesystem(_)
+        ));
+    }
+
+    #[test]
+    fn test_shared_cache_config_gcs() {
+        let yaml = r#"
+            gcs:
+              bucket: "some-bucket"
+        "#;
+        let cfg: SharedCacheConfig = serde_yaml::from_reader(yaml.as_bytes()).unwrap();
+
+        match cfg.backend {
+            SharedCacheBackendConfig::Gcs(gcs) => {
+                assert_eq!(gcs.bucket, "some-bucket");
+                assert!(gcs.service_account_path.is_none());
+            }
+            SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
+        }
     }
 }

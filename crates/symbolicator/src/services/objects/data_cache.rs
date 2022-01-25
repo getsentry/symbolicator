@@ -11,6 +11,8 @@ use std::fmt;
 use std::fs;
 use std::io::{self, Seek, SeekFrom};
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
@@ -18,10 +20,13 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
+use tempfile::NamedTempFile;
 
 use crate::cache::CacheStatus;
 use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
+use crate::services::download::DownloadService;
+use crate::services::download::RemoteDif;
 use crate::services::download::{DownloadError, DownloadStatus};
 use crate::types::{ObjectId, Scope};
 use crate::utils::compression::decompress_object_file;
@@ -119,6 +124,131 @@ impl fmt::Display for ObjectHandle {
     }
 }
 
+/// Downloads the object file, processes it and returns whether the file is in the cache.
+///
+/// If the object file was successfully downloaded it is first decompressed.  If it is
+/// an archive containing multiple objects, then next the object matching the code or
+/// debug ID of our request is extracted first.  Finally the object is parsed with
+/// symbolic to ensure it is not malformed.
+///
+/// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
+/// parsing the final object file failed, or there is an error downloading the file an `Ok` with
+/// [`CacheStatus::Malformed`] is returned.
+///
+/// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
+/// returned.
+///
+/// If there was an error downloading the object file, an `Ok` with
+/// [`CacheStatus::CacheSpecificError`] is returned.
+///
+/// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
+/// be returned.
+///
+/// This is the actual implementation of [`CacheItemRequest::compute`] for
+/// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
+/// code.
+#[tracing::instrument(skip_all)]
+async fn fetch_file(
+    path: PathBuf,
+    cache_key: CacheKey,
+    object_id: ObjectId,
+    file_id: RemoteDif,
+    downloader: Arc<DownloadService>,
+    tempfile: std::io::Result<NamedTempFile>,
+) -> Result<CacheStatus, ObjectError> {
+    tracing::trace!("Fetching file data for {}", cache_key);
+    sentry::configure_scope(|scope| {
+        scope.set_transaction(Some("download_file"));
+        file_id.to_scope(scope);
+        object_id.to_scope(scope);
+    });
+
+    let download_file = tempfile?;
+    let download_dir = download_file
+        .path()
+        .parent()
+        .ok_or(ObjectError::NoTempDir)?;
+
+    let status = downloader.download(file_id, download_file.path()).await;
+
+    match status {
+        Ok(DownloadStatus::NotFound) => {
+            tracing::debug!("No debug file found for {}", cache_key);
+            return Ok(CacheStatus::Negative);
+        }
+
+        Err(e) => {
+            // We want to error-log "interesting" download errors so we can look them up
+            // in our internal sentry. We downgrade to debug-log for unactionable
+            // permissions errors. Since this function does a fresh download, it will never
+            // hit `CachedError`, but listing it for completeness is not a bad idea either.
+            match e {
+                DownloadError::Permissions | DownloadError::CachedError(_) => {
+                    tracing::debug!("Error while downloading file: {}", LogError(&e))
+                }
+                _ => tracing::error!("Error while downloading file: {}", LogError(&e)),
+            }
+
+            return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+        }
+
+        Ok(DownloadStatus::Completed) => {
+            // fall-through
+        }
+    }
+
+    tracing::trace!("Finished download of {}", cache_key);
+    let decompress_result = decompress_object_file(&download_file, tempfile_in(download_dir)?);
+
+    // Treat decompression errors as malformed files. It is more likely that
+    // the error comes from a corrupt file than a local file system error.
+    let mut decompressed = match decompress_result {
+        Ok(decompressed) => decompressed,
+        Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
+    };
+
+    // Seek back to the start and parse this object so we can deal with it.
+    // Since objects in Sentry (and potentially also other sources) might be
+    // multi-arch files (e.g. FatMach), we parse as Archive and try to
+    // extract the wanted file.
+    decompressed.seek(SeekFrom::Start(0))?;
+    let view = ByteView::map_file(decompressed)?;
+    let archive = match Archive::parse(&view) {
+        Ok(archive) => archive,
+        Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
+    };
+    let mut persist_file = fs::File::create(&path)?;
+    if archive.is_multi() {
+        let object_opt = archive
+            .objects()
+            .filter_map(Result::ok)
+            .find(|object| object_id.match_object(object));
+
+        let object = match object_opt {
+            Some(object) => object,
+            None => {
+                if let Some(Err(err)) = archive.objects().find(|r| r.is_err()) {
+                    return Ok(CacheStatus::Malformed(err.to_string()));
+                } else {
+                    return Ok(CacheStatus::Negative);
+                }
+            }
+        };
+
+        io::copy(&mut object.data(), &mut persist_file)?;
+    } else {
+        // Attempt to parse the object to capture errors. The result can be
+        // discarded as the object's data is the entire ByteView.
+        if let Err(err) = archive.object_by_index(0) {
+            return Ok(CacheStatus::Malformed(err.to_string()));
+        }
+
+        io::copy(&mut view.as_ref(), &mut persist_file)?;
+    }
+
+    Ok(CacheStatus::Positive)
+}
+
 impl CacheItemRequest for FetchFileDataRequest {
     type Item = ObjectHandle;
     type Error = ObjectError;
@@ -127,131 +257,15 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    /// Downloads the object file, processes it and returns whether the file is in the cache.
-    ///
-    /// If the object file was successfully downloaded it is first decompressed.  If it is
-    /// an archive containing multiple objects, then next the object matching the code or
-    /// debug ID of our request is extracted first.  Finally the object is parsed with
-    /// symbolic to ensure it is not malformed.
-    ///
-    /// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
-    /// parsing the final object file failed, or there is an error downloading the file an `Ok` with
-    /// [`CacheStatus::Malformed`] is returned.
-    ///
-    /// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
-    /// returned.
-    ///
-    /// If there was an error downloading the object file, an `Ok` with
-    /// [`CacheStatus::CacheSpecificError`] is returned.
-    ///
-    /// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
-    /// be returned.
     fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
-        let cache_key = self.get_cache_key();
-        tracing::trace!("Fetching file data for {}", cache_key);
-
-        let path = path.to_owned();
-        let object_id = self.0.object_id.clone();
-
-        sentry::configure_scope(|scope| {
-            scope.set_transaction(Some("download_file"));
-            self.0.file_source.to_scope(scope);
-            self.0.object_id.to_scope(scope);
-        });
-
-        let file_id = self.0.file_source.clone();
-        let downloader = self.0.download_svc.clone();
-        let tempfile = self.0.data_cache.tempfile();
-
-        let future = async move {
-            let download_file = tempfile?;
-            let download_dir = download_file
-                .path()
-                .parent()
-                .ok_or(ObjectError::NoTempDir)?;
-
-            let status = downloader
-                .download(file_id, download_file.path().to_owned())
-                .await;
-
-            match status {
-                Ok(DownloadStatus::NotFound) => {
-                    tracing::debug!("No debug file found for {}", cache_key);
-                    return Ok(CacheStatus::Negative);
-                }
-
-                Err(e) => {
-                    // We want to error-log "interesting" download errors so we can look them up
-                    // in our internal sentry. We downgrade to debug-log for unactionable
-                    // permissions errors. Since this function does a fresh download, it will never
-                    // hit `CachedError`, but listing it for completeness is not a bad idea either.
-                    match e {
-                        DownloadError::Permissions | DownloadError::CachedError(_) => {
-                            tracing::debug!("Error while downloading file: {}", LogError(&e));
-                        }
-                        _ => tracing::error!("Error while downloading file: {}", LogError(&e)),
-                    }
-
-                    return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
-                }
-
-                Ok(DownloadStatus::Completed) => {
-                    // fall-through
-                }
-            }
-
-            tracing::trace!("Finished download of {}", cache_key);
-            let decompress_result =
-                decompress_object_file(&download_file, tempfile_in(download_dir)?);
-
-            // Treat decompression errors as malformed files. It is more likely that
-            // the error comes from a corrupt file than a local file system error.
-            let mut decompressed = match decompress_result {
-                Ok(decompressed) => decompressed,
-                Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
-            };
-
-            // Seek back to the start and parse this object so we can deal with it.
-            // Since objects in Sentry (and potentially also other sources) might be
-            // multi-arch files (e.g. FatMach), we parse as Archive and try to
-            // extract the wanted file.
-            decompressed.seek(SeekFrom::Start(0))?;
-            let view = ByteView::map_file(decompressed)?;
-            let archive = match Archive::parse(&view) {
-                Ok(archive) => archive,
-                Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
-            };
-            let mut persist_file = fs::File::create(&path)?;
-            if archive.is_multi() {
-                let object_opt = archive
-                    .objects()
-                    .filter_map(Result::ok)
-                    .find(|object| object_id.match_object(object));
-
-                let object = match object_opt {
-                    Some(object) => object,
-                    None => {
-                        if let Some(Err(err)) = archive.objects().find(|r| r.is_err()) {
-                            return Ok(CacheStatus::Malformed(err.to_string()));
-                        } else {
-                            return Ok(CacheStatus::Negative);
-                        }
-                    }
-                };
-
-                io::copy(&mut object.data(), &mut persist_file)?;
-            } else {
-                // Attempt to parse the object to capture errors. The result can be
-                // discarded as the object's data is the entire ByteView.
-                if let Err(err) = archive.object_by_index(0) {
-                    return Ok(CacheStatus::Malformed(err.to_string()));
-                }
-
-                io::copy(&mut view.as_ref(), &mut persist_file)?;
-            }
-
-            Ok(CacheStatus::Positive)
-        };
+        let future = fetch_file(
+            path.to_owned(),
+            self.get_cache_key(),
+            self.0.object_id.clone(),
+            self.0.file_source.clone(),
+            self.0.download_svc.clone(),
+            self.0.data_cache.tempfile(),
+        );
 
         let future = async move {
             future.await.map_err(|e| {
@@ -301,20 +315,21 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::cache::{Cache, CacheStatus};
+    use crate::cache::{Cache, CacheName, CacheStatus};
     use crate::config::{CacheConfig, CacheConfigs, Config};
     use crate::services::download::{DownloadError, DownloadService};
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
+    use crate::services::shared_cache::SharedCacheService;
     use crate::sources::FileType;
     use crate::test::{self, tempdir};
 
     use symbolic::common::DebugId;
     use tempfile::TempDir;
 
-    fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
+    async fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let meta_cache = Cache::from_config(
-            "meta",
+            CacheName::ObjectMeta,
             Some(tempdir.path().join("meta")),
             None,
             CacheConfig::from(CacheConfigs::default().derived),
@@ -323,7 +338,7 @@ mod tests {
         .unwrap();
 
         let data_cache = Cache::from_config(
-            "data",
+            CacheName::Objects,
             Some(tempdir.path().join("data")),
             None,
             CacheConfig::from(CacheConfigs::default().downloaded),
@@ -338,7 +353,8 @@ mod tests {
         });
 
         let download_svc = DownloadService::new(config);
-        ObjectsActor::new(meta_cache, data_cache, download_svc)
+        let shared_cache_svc = Arc::new(SharedCacheService::new(None).await);
+        ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
     }
 
     #[tokio::test]
@@ -347,7 +363,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -393,7 +409,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -429,7 +445,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.
@@ -471,7 +487,7 @@ mod tests {
 
         let server = test::FailingSymbolServer::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir);
+        let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             // A request for a bcsymbolmap will expand to only one file that is being looked up.

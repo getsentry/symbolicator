@@ -83,6 +83,7 @@ jobs:
           SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY }}
           SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_ACCESS_KEY_ID }}
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
   integration-test:
     name: Integration Tests
@@ -161,7 +162,7 @@ jobs:
           kafka: true
           snuba: true
           cache-files-hash: ${{ hashFiles('sentry/requirements**.txt') }}
-          python-version: 3.6
+          python-version: 3.8
 
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
@@ -210,3 +211,32 @@ jobs:
 
       - name: Build Docs
         run: mkdocs build
+
+  # Code coverage instrumentation is current broken in recent Rust nightlies,
+  # as they fail processing with the following error:
+  # `Failed to load coverage: Truncated coverage data`
+  # https://github.com/taiki-e/cargo-llvm-cov/issues/128
+  codecov:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    continue-on-error: true # well, its nightly and highly experimental
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly-2022-01-14
+          components: llvm-tools-preview
+          override: true
+
+      - uses: Swatinem/rust-cache@v1
+
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - run: cargo llvm-cov --all-features --workspace --doctests --lcov --output-path lcov.info
+
+      - uses: codecov/codecov-action@e156083f13aff6830c92fc5faa23505779fbf649
+        with:
+          files: lcov.info

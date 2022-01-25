@@ -8,9 +8,10 @@
 //! consistency.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use anyhow::Context;
 use futures::future::BoxFuture;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
@@ -21,7 +22,7 @@ use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::sources::SourceId;
 use crate::types::{ObjectFeatures, ObjectId, Scope};
 
-use super::{FetchFileDataRequest, ObjectError, ObjectHandle};
+use super::{FetchFileDataRequest, ObjectError};
 
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]
@@ -83,14 +84,7 @@ impl ObjectMetaHandle {
     }
 }
 
-impl CacheItemRequest for FetchFileMetaRequest {
-    type Item = ObjectMetaHandle;
-    type Error = ObjectError;
-
-    fn get_cache_key(&self) -> CacheKey {
-        self.file_source.cache_key(self.scope.clone())
-    }
-
+impl FetchFileMetaRequest {
     /// Fetches object file and derives metadata from it, storing this in the cache.
     ///
     /// This uses the data cache to fetch the requested file before parsing it and writing
@@ -102,47 +96,57 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// This returns [`CacheStatus::CacheSpecificError`] if the download failed.  If the
     /// data cache is [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] then the same
     /// status is returned.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    ///
+    /// This is the actual implementation of [`CacheItemRequest::compute`] for
+    /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
+    /// code.
+    async fn compute_file_meta(self, path: PathBuf) -> Result<CacheStatus, ObjectError> {
         let cache_key = self.get_cache_key();
         tracing::trace!("Fetching file meta for {}", cache_key);
 
-        let path = path.to_owned();
         let data_cache = self.data_cache.clone();
-        let slf = self.clone();
-        let result = async move {
-            data_cache
-                .compute_memoized(FetchFileDataRequest(slf))
-                .await
-                .map_err(ObjectError::Caching)
-                .and_then(move |object_handle: Arc<ObjectHandle>| {
-                    if object_handle.status == CacheStatus::Positive {
-                        if let Ok(object) = Object::parse(&object_handle.data) {
-                            let mut new_cache = fs::File::create(path)?;
+        let object_handle = data_cache
+            .compute_memoized(FetchFileDataRequest(self))
+            .await
+            .map_err(ObjectError::Caching)?;
+        if object_handle.status == CacheStatus::Positive {
+            if let Ok(object) = Object::parse(&object_handle.data) {
+                let mut new_cache = fs::File::create(path)?;
 
-                            let meta = ObjectFeatures {
-                                has_debug_info: object.has_debug_info(),
-                                has_unwind_info: object.has_unwind_info(),
-                                has_symbols: object.has_symbols(),
-                                has_sources: object.has_sources(),
-                            };
+                let meta = ObjectFeatures {
+                    has_debug_info: object.has_debug_info(),
+                    has_unwind_info: object.has_unwind_info(),
+                    has_symbols: object.has_symbols(),
+                    has_sources: object.has_sources(),
+                };
 
-                            tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                            serde_json::to_writer(&mut new_cache, &meta)?;
-                        }
-                    }
+                tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
+                serde_json::to_writer(&mut new_cache, &meta)?;
+            }
+        }
 
-                    // Unlike compute for other caches, this does not convert `CacheSpecificError`s
-                    // into `Negative` entries. This is because `create_candidate_info` populates
-                    // info about the original cache entry using the meta cache's data. If this
-                    // were to be converted to `Negative` when the original cache is a
-                    // `CacheSpecificError` then the user would never see what caused a download
-                    // failure, as what's visible to them is sourced from the output of
-                    //  `create_candidate_info`.
-                    Ok(object_handle.status.clone())
-                })
-        };
+        // Unlike compute for other caches, this does not convert `CacheSpecificError`s
+        // into `Negative` entries. This is because `create_candidate_info` populates
+        // info about the original cache entry using the meta cache's data. If this
+        // were to be converted to `Negative` when the original cache is a
+        // `CacheSpecificError` then the user would never see what caused a download
+        // failure, as what's visible to them is sourced from the output of
+        //  `create_candidate_info`.
+        Ok(object_handle.status.clone())
+    }
+}
 
-        Box::pin(result)
+impl CacheItemRequest for FetchFileMetaRequest {
+    type Item = ObjectMetaHandle;
+    type Error = ObjectError;
+
+    fn get_cache_key(&self) -> CacheKey {
+        self.file_source.cache_key(self.scope.clone())
+    }
+
+    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+        let future = self.clone().compute_file_meta(path.to_owned());
+        Box::pin(future)
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
@@ -163,14 +167,15 @@ impl CacheItemRequest for FetchFileMetaRequest {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
         let features = match status {
-            CacheStatus::Positive => serde_json::from_slice(&data).unwrap_or_else(|err| {
-                tracing::error!(
-                    "Failed to load positive ObjectFileMeta cache for {:?}: {:?}",
-                    self.get_cache_key(),
-                    err
-                );
-                Default::default()
-            }),
+            CacheStatus::Positive => serde_json::from_slice(&data)
+                .context("Failed to load positive ObjectFileMeta cache")
+                .unwrap_or_else(|err| {
+                    sentry::configure_scope(|scope| {
+                        scope.set_extra("cache_key", self.get_cache_key().to_string().into());
+                    });
+                    sentry::capture_error(&*err);
+                    Default::default()
+                }),
             _ => Default::default(),
         };
 

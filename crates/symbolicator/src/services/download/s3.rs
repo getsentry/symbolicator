@@ -5,7 +5,7 @@
 use std::any::type_name;
 use std::convert::TryFrom;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -149,7 +149,7 @@ impl S3Downloader {
     pub async fn download_source(
         &self,
         file_source: S3RemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.bucket();
@@ -184,6 +184,47 @@ impl S3Downloader {
                     RusotoError::Unknown(response) if response.status.is_client_error() => {
                         return Ok(DownloadStatus::NotFound)
                     }
+                    RusotoError::Unknown(response) => {
+                        // Parse some stuff out of this giant error collection.
+                        let start = response.body_as_str().find("<Code>");
+                        let end = response.body_as_str().find("</Code>");
+                        let code = match (start, end) {
+                            (Some(start), Some(end)) => {
+                                let start = start + "<Code>".len();
+                                response.body_as_str().get(start..end)
+                            }
+                            _ => None,
+                        };
+                        let start = response.body_as_str().find("<Message>");
+                        let end = response.body_as_str().find("</Message>");
+                        let message = match (start, end) {
+                            (Some(start), Some(end)) => {
+                                let start = start + "<Message>".len();
+                                response.body_as_str().get(start..end)
+                            }
+                            _ => None,
+                        };
+                        sentry::configure_scope(|scope| {
+                            scope.set_extra("AWS body:", response.body_as_str().into());
+                            if let Some(message) = message {
+                                scope.set_extra("AWS message", message.into());
+                            }
+                            if let Some(code) = code {
+                                scope.set_extra("AWS code", code.into());
+                            }
+                        });
+                        if let Some(code) = code {
+                            sentry::configure_scope(|scope| {
+                                scope.set_extra("AWS code", code.into());
+                            });
+                            return Err(DownloadError::S3WithCode(
+                                response.status,
+                                code.to_string(),
+                            ));
+                        } else {
+                            return Err(DownloadError::S3(err));
+                        }
+                    }
                     _ => return Err(err.into()),
                 }
             }
@@ -206,7 +247,7 @@ impl S3Downloader {
             .and_then(|cl| u32::try_from(cl).ok());
         let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
 
-        super::download_stream(source, stream, destination, timeout).await
+        super::download_stream(&source, stream, destination, timeout).await
     }
 
     pub fn list_files(
@@ -410,7 +451,7 @@ mod tests {
         let file_source = S3RemoteDif::new(source, source_location);
 
         let download_status = downloader
-            .download_source(file_source, target_path.clone())
+            .download_source(file_source, &target_path)
             .await
             .unwrap();
 
@@ -439,7 +480,7 @@ mod tests {
         let file_source = S3RemoteDif::new(source, source_location);
 
         let download_status = downloader
-            .download_source(file_source, target_path.clone())
+            .download_source(file_source, &target_path)
             .await
             .unwrap();
 
@@ -467,7 +508,7 @@ mod tests {
         let file_source = S3RemoteDif::new(source, source_location);
 
         downloader
-            .download_source(file_source, target_path.clone())
+            .download_source(file_source, &target_path)
             .await
             .expect_err("authentication should fail");
 

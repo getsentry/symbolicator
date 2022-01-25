@@ -601,6 +601,7 @@ struct SourceLookup {
 }
 
 impl SourceLookup {
+    #[tracing::instrument(skip_all)]
     pub async fn fetch_sources(
         self,
         objects: ObjectsActor,
@@ -621,15 +622,13 @@ impl SourceLookup {
             }
         }
 
-        let mut futures = Vec::new();
-
-        for mut entry in self.inner.into_iter() {
+        let futures = self.inner.into_iter().map(|mut entry| {
             let is_used = referenced_objects.contains(&entry.module_index);
             let objects = objects.clone();
             let scope = scope.clone();
             let sources = sources.clone();
 
-            futures.push(async move {
+            async move {
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     entry.source_object = None;
@@ -664,8 +663,9 @@ impl SourceLookup {
                 }
 
                 entry
-            });
-        }
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         Ok(SourceLookup {
             inner: future::join_all(futures).await,
@@ -835,13 +835,19 @@ impl SymCacheLookup {
         });
     }
 
+    #[tracing::instrument(skip_all)]
     async fn fetch_symcaches(
         self,
         symcache_actor: SymCacheActor,
         request: SymbolicateStacktraces,
     ) -> Self {
         let mut referenced_objects = BTreeSet::new();
-        let stacktraces = request.stacktraces;
+        let SymbolicateStacktraces {
+            stacktraces,
+            sources,
+            scope,
+            ..
+        } = request;
 
         for stacktrace in stacktraces {
             for frame in stacktrace.frames {
@@ -853,15 +859,13 @@ impl SymCacheLookup {
             }
         }
 
-        let mut futures = Vec::new();
-
-        for mut entry in self.inner.into_iter() {
+        let futures = self.inner.into_iter().map(|mut entry| {
             let is_used = referenced_objects.contains(&entry.module_index);
-            let sources = request.sources.clone();
-            let scope = request.scope.clone();
+            let sources = sources.clone();
+            let scope = scope.clone();
             let symcache_actor = symcache_actor.clone();
 
-            futures.push(async move {
+            async move {
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     return entry;
@@ -895,8 +899,9 @@ impl SymCacheLookup {
                 entry.symcache = symcache;
                 entry.object_info.debug_status = status;
                 entry
-            });
-        }
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         SymCacheLookup {
             inner: future::join_all(futures).await,
@@ -1027,6 +1032,12 @@ fn symbolicate_frame(
 
     let mut rv = vec![];
 
+    // The symbol addr only makes sense for the outermost top-level function, and not its inlinees.
+    // We keep track of it while iterating and only set it for the last frame,
+    // which is the top-level function.
+    let mut sym_addr = None;
+    let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
+
     for line_info in line_infos {
         let line_info = match line_info {
             Ok(x) => x,
@@ -1075,15 +1086,16 @@ fn symbolicate_frame(
             );
         }
 
+        sym_addr = Some(HexValue(
+            lookup_result.expose_preferred_addr(line_info.function_address()),
+        ));
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
             raw: RawFrame {
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
-                instruction_addr: HexValue(
-                    lookup_result.expose_preferred_addr(line_info.instruction_address()),
-                ),
+                instruction_addr,
                 symbol: Some(line_info.symbol().to_string()),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
@@ -1103,9 +1115,7 @@ fn symbolicate_frame(
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
-                sym_addr: Some(HexValue(
-                    lookup_result.expose_preferred_addr(line_info.function_address()),
-                )),
+                sym_addr: None,
                 lang: match line_info.language() {
                     Language::Unknown => None,
                     language => Some(language),
@@ -1113,6 +1123,10 @@ fn symbolicate_frame(
                 trust: frame.trust,
             },
         });
+    }
+
+    if let Some(last_frame) = rv.last_mut() {
+        last_frame.raw.sym_addr = sym_addr;
     }
 
     if rv.is_empty() {
@@ -1482,6 +1496,7 @@ pub struct SymbolicateStacktraces {
 }
 
 impl SymbolicationActor {
+    #[tracing::instrument(skip_all)]
     async fn do_symbolicate(
         self,
         request: SymbolicateStacktraces,
@@ -1605,7 +1620,20 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
-        self.create_symbolication_request(self.clone().do_symbolicate(request))
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "symbolicate_stacktraces",
+            "symbolicate_stacktraces",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf.do_symbolicate(request).await;
+            transaction.finish();
+            res
+        })
     }
 
     /// Polls the status for a started symbolication task.
@@ -1796,19 +1824,18 @@ impl SymbolicationActor {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn load_cfi_caches(
         &self,
         scope: Scope,
         requests: &[(CodeModuleId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
-        let mut futures = Vec::with_capacity(requests.len());
-
-        for (module_id, object_info) in requests {
+        let futures = requests.iter().map(|(module_id, object_info)| {
             let sources = sources.clone();
             let scope = scope.clone();
 
-            let fut = async move {
+            async move {
                 let result = self
                     .cficaches
                     .fetch(FetchCfiCache {
@@ -1819,11 +1846,9 @@ impl SymbolicationActor {
                     })
                     .await;
                 ((*module_id).to_owned(), result)
-            };
-
-            // Clone hub because of join_all concurrency.
-            futures.push(fut.bind_hub(Hub::new_from_top(Hub::current())));
-        }
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
 
         future::join_all(futures).await
     }
@@ -1845,6 +1870,7 @@ impl SymbolicationActor {
     /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
     /// similar which are mapped in the address space but do not actually contain executable
     /// modules.
+    #[tracing::instrument(skip_all)]
     async fn stackwalk_minidump_with_cfi(
         &self,
         minidump_file: &TempPath,
@@ -1956,11 +1982,10 @@ impl SymbolicationActor {
             )
         };
 
-        Ok(self
-            .cpu_pool
+        self.cpu_pool
             .spawn(lazy.bind_hub(sentry::Hub::current()))
             .await?
-            .context("Minidump stackwalk future cancelled")?)
+            .context("Minidump stackwalk future cancelled")
     }
 
     /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
@@ -2036,6 +2061,7 @@ impl SymbolicationActor {
         Ok(result)
     }
 
+    #[tracing::instrument(skip_all)]
     async fn do_stackwalk_minidump(
         self,
         scope: Scope,
@@ -2133,12 +2159,22 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
-        self.create_symbolication_request(self.clone().do_process_minidump(
-            scope,
-            minidump_file,
-            sources,
-            options,
-        ))
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "process_minidump",
+            "process_minidump",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf
+                .do_process_minidump(scope, minidump_file, sources, options)
+                .await;
+            transaction.finish();
+            res
+        })
     }
 }
 
@@ -2333,12 +2369,22 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
-        self.create_symbolication_request(self.clone().do_process_apple_crash_report(
-            scope,
-            apple_crash_report,
-            sources,
-            options,
-        ))
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "process_apple_crash_report",
+            "process_apple_crash_report",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf
+                .do_process_apple_crash_report(scope, apple_crash_report, sources, options)
+                .await;
+            transaction.finish();
+            res
+        })
     }
 }
 
@@ -2449,7 +2495,7 @@ mod tests {
     ///
     /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
     /// symbol server to test object file downloads.
-    fn setup_service() -> (Service, test::TempDir) {
+    async fn setup_service() -> (Service, test::TempDir) {
         test::setup();
 
         let cache_dir = test::tempdir();
@@ -2460,7 +2506,9 @@ mod tests {
             ..Default::default()
         };
         let handle = tokio::runtime::Handle::current();
-        let service = Service::create(config, handle.clone(), handle).unwrap();
+        let service = Service::create(config, handle.clone(), handle)
+            .await
+            .unwrap();
 
         (service, cache_dir)
     }
@@ -2521,7 +2569,7 @@ mod tests {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
@@ -2547,7 +2595,7 @@ mod tests {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let symbolication = service.symbolication();
@@ -2570,7 +2618,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_response_multi() {
         // Make sure we can repeatedly poll for the response
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -2617,7 +2665,7 @@ mod tests {
     }
 
     async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let minidump = test::read_fixture(path);
@@ -2664,7 +2712,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apple_crash_report() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
@@ -2688,7 +2736,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wasm_payload() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service();
+        let (service, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let modules: Vec<RawObjectInfo> = serde_json::from_str(
@@ -2889,7 +2937,9 @@ mod tests {
         };
 
         let handle = tokio::runtime::Handle::current();
-        let service = Service::create(config, handle.clone(), handle).unwrap();
+        let service = Service::create(config, handle.clone(), handle)
+            .await
+            .unwrap();
 
         let symbolication = service.symbolication();
         let symbol_server = test::FailingSymbolServer::new();

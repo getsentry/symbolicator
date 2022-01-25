@@ -1,10 +1,10 @@
-use axum::handler::{get, post};
+use axum::routing::{get, post};
 use axum::Router;
-use sentry::integrations::tower::NewSentryLayer;
+use sentry_tower::{NewSentryLayer, SentryHttpLayer};
+use tower::ServiceBuilder;
 
 use crate::metrics::MetricsLayer;
 use crate::services::Service;
-use crate::utils::sentry::SentryRequestLayer;
 
 mod applecrashreport;
 mod error;
@@ -27,20 +27,19 @@ pub async fn healthcheck() -> &'static str {
     "ok"
 }
 
-pub type App = Router<axum::routing::BoxRoute>;
-
-pub fn create_app(service: Service) -> App {
+pub fn create_app(service: Service) -> Router {
+    let layer = ServiceBuilder::new()
+        .layer(axum::AddExtensionLayer::new(service))
+        .layer(SentryHttpLayer::with_transaction())
+        .layer(NewSentryLayer::new_from_top())
+        .layer(MetricsLayer);
     Router::new()
         .route("/proxy/:path", get(proxy).head(proxy))
         .route("/requests/:request_id", get(requests))
         .route("/symbolicate", post(symbolicate))
         .route("/minidump", post(minidump))
         .route("/applecrashreport", post(applecrashreport))
-        .layer(axum::AddExtensionLayer::new(service))
-        .layer(SentryRequestLayer)
-        .layer(NewSentryLayer::new_from_top())
-        .layer(MetricsLayer)
+        .layer(layer)
         // the healthcheck is last, as it will bypass all the middlewares
         .route("/healthcheck", get(healthcheck))
-        .boxed()
 }

@@ -3,7 +3,7 @@ use std::fmt;
 
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::fmt;
-use tracing_subscriber::fmt::time::ChronoUtc;
+use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -49,7 +49,7 @@ pub fn init_logging(config: &Config) {
         env::var("RUST_LOG").unwrap_or_else(|_| get_rust_log(config.logging.level).to_string());
 
     let subscriber = fmt()
-        .with_timer(ChronoUtc::rfc3339())
+        .with_timer(UtcTime::rfc_3339())
         .with_target(true)
         .with_env_filter(rust_log);
 

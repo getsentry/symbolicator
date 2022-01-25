@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,6 +24,8 @@ use crate::types::{
 };
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
+
+use super::shared_cache::SharedCacheService;
 
 /// The supported cficache versions.
 ///
@@ -76,9 +78,14 @@ pub struct CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, objects: ObjectsActor, threadpool: tokio::runtime::Handle) -> Self {
+    pub fn new(
+        cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
+        objects: ObjectsActor,
+        threadpool: tokio::runtime::Handle,
+    ) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             threadpool,
         }
@@ -130,6 +137,48 @@ struct FetchCfiCacheInternal {
     threadpool: tokio::runtime::Handle,
 }
 
+/// Extracts the Call Frame Information (CFI) from an object file.
+///
+/// The extracted CFI is written to `path` in symbolic's
+/// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
+#[tracing::instrument(skip_all)]
+async fn compute_cficache(
+    threadpool: tokio::runtime::Handle,
+    objects_actor: ObjectsActor,
+    meta_handle: Arc<ObjectMetaHandle>,
+    path: PathBuf,
+) -> Result<CacheStatus, CfiCacheError> {
+    let object = objects_actor
+        .fetch(meta_handle)
+        .await
+        .map_err(CfiCacheError::Fetching)?;
+
+    let future = async move {
+        // The original has a download error so the cfi cache entry should just be negative.
+        if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
+            return Ok(CacheStatus::Negative);
+        }
+        if object.status() != &CacheStatus::Positive {
+            return Ok(object.status().clone());
+        }
+
+        let status = if let Err(e) = write_cficache(&path, &*object) {
+            tracing::warn!("Could not write cficache: {}", e);
+            sentry::capture_error(&e);
+
+            CacheStatus::Malformed(e.to_string())
+        } else {
+            CacheStatus::Positive
+        };
+
+        Ok(status)
+    };
+
+    CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
+        .await
+        .unwrap_or(Err(CfiCacheError::Canceled))
+}
+
 impl CacheItemRequest for FetchCfiCacheInternal {
     type Item = CfiCacheFile;
     type Error = CfiCacheError;
@@ -140,51 +189,17 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    /// Extracts the Call Frame Information (CFI) from an object file.
-    ///
-    /// The extracted CFI is written to `path` in symbolic's
-    /// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
     fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
-        let path = path.to_owned();
-        let threadpool = self.threadpool.clone();
-        let objects_actor = self.objects_actor.clone();
-        let meta_handle = self.meta_handle.clone();
-
-        let result = async move {
-            let object = objects_actor
-                .fetch(meta_handle)
-                .await
-                .map_err(CfiCacheError::Fetching)?;
-
-            let future = async move {
-                // The original has a download error so the cfi cache entry should just be negative.
-                if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
-                    return Ok(CacheStatus::Negative);
-                }
-                if object.status() != &CacheStatus::Positive {
-                    return Ok(object.status().clone());
-                }
-
-                let status = if let Err(e) = write_cficache(&path, &*object) {
-                    tracing::warn!("Could not write cficache: {}", e);
-                    sentry::capture_error(&e);
-
-                    CacheStatus::Malformed(e.to_string())
-                } else {
-                    CacheStatus::Positive
-                };
-
-                Ok(status)
-            };
-
-            CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
-                .await
-                .unwrap_or(Err(CfiCacheError::Canceled))
-        };
+        let future = compute_cficache(
+            self.threadpool.clone(),
+            self.objects_actor.clone(),
+            self.meta_handle.clone(),
+            path.to_owned(),
+        );
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), result);
+        let future = tokio::time::timeout(Duration::from_secs(1200), future);
         let future = measure(
             "cficaches",
             m::timed_result,
@@ -281,6 +296,7 @@ impl CfiCacheActor {
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [symbolic::minidump::cfi::CfiCache].
+#[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
         scope.set_transaction(Some("compute_cficache"));

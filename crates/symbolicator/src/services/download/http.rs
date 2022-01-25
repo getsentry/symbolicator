@@ -2,7 +2,7 @@
 //!
 //! Specifically this supports the [`HttpSourceConfig`] source.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -75,7 +75,7 @@ impl HttpDownloader {
     pub async fn download_source(
         &self,
         file_source: HttpRemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let download_url = match file_source.url() {
             Ok(x) => x,
@@ -111,7 +111,7 @@ impl HttpDownloader {
 
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination, timeout).await
+                    super::download_stream(&source, stream, destination, timeout).await
                 } else if matches!(
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
@@ -177,7 +177,7 @@ mod tests {
         test::setup();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path().to_owned();
+        let dest = tmpfile.path();
 
         let (_srv, source) = test::symbol_server();
         let http_source = match source {
@@ -192,10 +192,7 @@ mod tests {
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader
-            .download_source(file_source, dest.clone())
-            .await
-            .unwrap();
+        let download_status = downloader.download_source(file_source, dest).await.unwrap();
 
         assert_eq!(download_status, DownloadStatus::Completed);
 
@@ -208,7 +205,7 @@ mod tests {
         test::setup();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path().to_owned();
+        let dest = tmpfile.path();
 
         let (_srv, source) = test::symbol_server();
         let http_source = match source {

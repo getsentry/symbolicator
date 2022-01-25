@@ -4,7 +4,7 @@
 //! to fetch files which were directly uploaded to Sentry itself.
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -22,7 +22,7 @@ use super::{
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils, m, measure};
+use crate::utils::futures::{self as future_utils};
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -124,14 +124,19 @@ impl SentryDownloader {
         &self,
         query: &SearchQuery,
     ) -> Result<Vec<SearchResult>, SentryError> {
-        let response = self
+        let mut request = self
             .client
             .get(query.index_url.clone())
-            .header("Accept-Encoding", "identity")
-            .header("User-Agent", USER_AGENT)
             .bearer_auth(&query.token)
-            .send()
-            .await?;
+            .header("Accept-Encoding", "identity")
+            .header("User-Agent", USER_AGENT);
+        if let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
+            for (k, v) in span.iter_headers() {
+                request = request.header(k, v);
+            }
+        }
+
+        let response = request.send().await?;
 
         if response.status().is_success() {
             tracing::trace!("Success fetching index from Sentry");
@@ -226,7 +231,7 @@ impl SentryDownloader {
         if let Some(ref code_id) = object_id.code_id {
             index_url
                 .query_pairs_mut()
-                .append_pair("code_id", &code_id.to_string());
+                .append_pair("code_id", code_id.as_str());
         }
 
         let query = SearchQuery {
@@ -234,9 +239,8 @@ impl SentryDownloader {
             token: source.token.clone(),
         };
 
-        let search = self.cached_sentry_search(query, config);
-        let entries = measure("downloads.sentry.index", m::result, None, search).await?;
-        let file_ids = entries
+        let search = self.cached_sentry_search(query, config).await?;
+        let file_ids = search
             .into_iter()
             .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
             .collect();
@@ -253,7 +257,7 @@ impl SentryDownloader {
     pub async fn download_source(
         &self,
         file_source: SentryRemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let request = self
             .client
@@ -282,7 +286,7 @@ impl SentryDownloader {
                         content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
                     let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
 
-                    super::download_stream(source, stream, destination, timeout).await
+                    super::download_stream(&source, stream, destination, timeout).await
                 } else if matches!(
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED

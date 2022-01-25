@@ -9,7 +9,11 @@ symbolicator.  It does the following operations:
 
 ## Compiling
 
-wasm-split is not distributed precompiled so you need to compile it yourself:
+wasm-split is compiled for some platforms with each symbolicator release and
+can be found on the [GitHub release list](https://github.com/getsentry/symbolicator/releases/).
+
+For other platforms or for the development version, wasm-split can be compiled
+with a recent rust compiler:
 
 ```
 cargo build --release

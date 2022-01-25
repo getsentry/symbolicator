@@ -4,7 +4,7 @@
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::convert::TryInto;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -47,11 +47,13 @@ pub enum DownloadError {
     #[error("download was cancelled")]
     Canceled,
     #[error("failed to fetch data from GCS")]
-    Gcs(#[from] gcs::GcsError),
+    Gcs(#[from] crate::utils::gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
     Sentry(#[from] sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
+    #[error("S3 error code: {1} (http status: {0})")]
+    S3WithCode(StatusCode, String),
     #[error("missing permissions for file")]
     Permissions,
     /// Typically means the initial HEAD request received a non-200, non-400 response.
@@ -150,10 +152,9 @@ impl DownloadService {
     async fn dispatch_download(
         &self,
         source: &RemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let result = future_utils::retry(|| async {
-            let destination = destination.clone();
             match source {
                 RemoteDif::Sentry(inner) => {
                     self.sentry
@@ -200,7 +201,7 @@ impl DownloadService {
     pub async fn download(
         &self,
         source: RemoteDif,
-        destination: PathBuf,
+        destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
         let job = self.dispatch_download(&source, destination);
         let job = tokio::time::timeout(self.config.max_download_timeout, job);
@@ -256,17 +257,15 @@ impl DownloadService {
 /// - [`DownloadError::Write`]
 /// - [`DownloadError::Canceled`]
 async fn download_stream(
-    source: impl Into<RemoteDif>,
+    source: &RemoteDif,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
-    destination: PathBuf,
+    destination: &Path,
     timeout: Option<Duration>,
 ) -> Result<DownloadStatus, DownloadError> {
-    let source = source.into();
-
     // All file I/O in this function is blocking!
     tracing::trace!("Downloading from {}", source);
     let future = async {
-        let mut file = File::create(&destination)
+        let mut file = File::create(destination)
             .await
             .map_err(DownloadError::BadDestination)?;
         futures::pin_mut!(stream);
@@ -316,7 +315,7 @@ enum MeasureState {
 ///
 /// If `bytes_transferred` is not set, then only the first metric (amount of time taken) is
 /// recorded.
-struct MeasureSourceDownloadGuard<'a> {
+pub struct MeasureSourceDownloadGuard<'a> {
     state: MeasureState,
     task_name: &'a str,
     source_name: &'a str,
@@ -391,7 +390,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
 ///
 /// A tag with the source name is also added to the metric, in addition to a tag recording the
 /// status of the future.
-fn measure_download_time<'a, F, T, E>(
+pub fn measure_download_time<'a, F, T, E>(
     source_name: &'a str,
     f: F,
 ) -> impl Future<Output = F::Output> + 'a
@@ -471,7 +470,7 @@ mod tests {
         test::setup();
 
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path().to_owned();
+        let dest = tmpfile.path();
 
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
@@ -487,10 +486,9 @@ mod tests {
         });
 
         let service = DownloadService::new(config);
-        let dest2 = dest.clone();
 
         // Jump through some hoops here, to prove that we can .await the service.
-        let download_status = service.download(file_source, dest2).await.unwrap();
+        let download_status = service.download(file_source, dest).await.unwrap();
         assert_eq!(download_status, DownloadStatus::Completed);
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n")

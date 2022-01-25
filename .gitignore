@@ -11,6 +11,9 @@ __pycache__
 /local.yml
 /cache/
 /symbols/
+/shared_cache/
+/symbolicator-gcs-test-key.json
+/gcs-service-account.json
 
 # mkdocs
 site
