@@ -2663,50 +2663,54 @@ mod tests {
         }
     }
 
-    async fn stackwalk_minidump(path: &str) -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service().await;
-        let (_symsrv, source) = test::symbol_server();
+    macro_rules! stackwalk_minidump {
+        ($path:expr) => {{
+            async {
+                let (service, _cache_dir) = setup_service().await;
+                let (_symsrv, source) = test::symbol_server();
 
-        let minidump = test::read_fixture(path);
-        let mut minidump_file = NamedTempFile::new()?;
-        minidump_file.write_all(&minidump)?;
-        let symbolication = service.symbolication();
-        let request_id = symbolication.process_minidump(
-            Scope::Global,
-            minidump_file.into_temp_path(),
-            Arc::new([source]),
-            RequestOptions {
-                dif_candidates: true,
-            },
-        );
-        let response = symbolication.get_response(request_id.unwrap(), None).await;
+                let minidump = test::read_fixture($path);
+                let mut minidump_file = NamedTempFile::new()?;
+                minidump_file.write_all(&minidump)?;
+                let symbolication = service.symbolication();
+                let request_id = symbolication.process_minidump(
+                    Scope::Global,
+                    minidump_file.into_temp_path(),
+                    Arc::new([source]),
+                    RequestOptions {
+                        dif_candidates: true,
+                    },
+                );
+                let response = symbolication.get_response(request_id.unwrap(), None).await;
 
-        assert_snapshot!(response.unwrap());
+                assert_snapshot!(response.unwrap());
 
-        let global_dir = service.config().cache_dir("object_meta/global").unwrap();
-        let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
-            .map(|x| x.unwrap().file_name().into_string().unwrap())
-            .collect();
+                let global_dir = service.config().cache_dir("object_meta/global").unwrap();
+                let mut cache_entries: Vec<_> = fs::read_dir(global_dir)?
+                    .map(|x| x.unwrap().file_name().into_string().unwrap())
+                    .collect();
 
-        cache_entries.sort();
-        assert_snapshot!(cache_entries);
+                cache_entries.sort();
+                assert_snapshot!(cache_entries);
 
-        Ok(())
+                Ok(())
+            }
+        }};
     }
 
     #[tokio::test]
     async fn test_minidump_windows() -> anyhow::Result<()> {
-        stackwalk_minidump("windows.dmp").await
+        stackwalk_minidump!("windows.dmp").await
     }
 
     #[tokio::test]
     async fn test_minidump_macos() -> anyhow::Result<()> {
-        stackwalk_minidump("macos.dmp").await
+        stackwalk_minidump!("macos.dmp").await
     }
 
     #[tokio::test]
     async fn test_minidump_linux() -> anyhow::Result<()> {
-        stackwalk_minidump("linux.dmp").await
+        stackwalk_minidump!("linux.dmp").await
     }
 
     #[tokio::test]
