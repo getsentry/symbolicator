@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://getsentry.github.io/symbolicator/api/symbolication/">
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.2.3, mkdocs-material-8.1.3">
+      <meta name="generator" content="mkdocs-1.2.3, mkdocs-material-8.1.8">
     
     
       
@@ -21,7 +21,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.edf004c2.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.6e60f8b8.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.e6a45f82.min.css">
@@ -587,43 +587,43 @@
 <div class="codehilite"><pre><span></span><code><span class="nf">POST</span> <span class="nn">/symbolicate?timeout=123&amp;scope=123</span> <span class="kr">HTTP</span><span class="o">/</span><span class="m">1.1</span>
 <span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
 
-<span class="p">{</span>
-  <span class="nt">&quot;signal&quot;</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span>
-  <span class="nt">&quot;sources&quot;</span><span class="p">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="nt">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;&lt;uuid&gt;&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span>
-      <span class="err">...</span>
-    <span class="p">},</span>
-    <span class="err">...</span>
-  <span class="p">],</span>
-  <span class="nt">&quot;threads&quot;</span><span class="p">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="nt">&quot;frames&quot;</span><span class="p">:</span> <span class="p">[</span>
-        <span class="p">{</span>
-          <span class="nt">&quot;instruction_addr&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>
-          <span class="nt">&quot;addr_mode&quot;</span><span class="p">:</span> <span class="s2">&quot;rel:0&quot;</span>
-        <span class="p">},</span>
-        <span class="err">...</span>
-      <span class="p">],</span>
-      <span class="nt">&quot;registers&quot;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="nt">&quot;rip&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>
-        <span class="nt">&quot;rsp&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedface&quot;</span>
-      <span class="p">}</span>
-    <span class="p">}</span>
-  <span class="p">],</span>
-  <span class="nt">&quot;modules&quot;</span><span class="p">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;macho&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;debug_id&quot;</span><span class="p">:</span> <span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;code_id&quot;</span><span class="p">:</span> <span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;debug_file&quot;</span><span class="p">:</span> <span class="s2">&quot;/path/to/image.so&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;image_addr&quot;</span><span class="p">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>
-      <span class="nt">&quot;image_size&quot;</span><span class="p">:</span> <span class="s2">&quot;0xbeef&quot;</span>
-    <span class="p">},</span>
-    <span class="err">...</span>
-  <span class="p">]</span>
-<span class="p">}</span>
+<span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="nt">&quot;signal&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span><span class="w"></span>
+<span class="w">  </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">    </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;uuid&gt;&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="err">...</span><span class="w"></span>
+<span class="w">    </span><span class="p">},</span><span class="w"></span>
+<span class="w">    </span><span class="err">...</span><span class="w"></span>
+<span class="w">  </span><span class="p">],</span><span class="w"></span>
+<span class="w">  </span><span class="nt">&quot;threads&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">    </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;frames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">        </span><span class="p">{</span><span class="w"></span>
+<span class="w">          </span><span class="nt">&quot;instruction_addr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">          </span><span class="nt">&quot;addr_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rel:0&quot;</span><span class="w"></span>
+<span class="w">        </span><span class="p">},</span><span class="w"></span>
+<span class="w">        </span><span class="err">...</span><span class="w"></span>
+<span class="w">      </span><span class="p">],</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;registers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="nt">&quot;rip&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">        </span><span class="nt">&quot;rsp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0xfeedface&quot;</span><span class="w"></span>
+<span class="w">      </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">],</span><span class="w"></span>
+<span class="w">  </span><span class="nt">&quot;modules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">    </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;macho&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;debug_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;code_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;debug_file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/path/to/image.so&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;image_addr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="nt">&quot;image_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0xbeef&quot;</span><span class="w"></span>
+<span class="w">    </span><span class="p">},</span><span class="w"></span>
+<span class="w">    </span><span class="err">...</span><span class="w"></span>
+<span class="w">  </span><span class="p">]</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
 </code></pre></div>
 
 <h2 id="query-parameters">Query Parameters</h2>
@@ -720,10 +720,10 @@ as well as external sources to pull symbols from:</p>
     <div class="md-dialog" data-md-component="dialog">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
-    <script id="__config" type="application/json">{"base": "../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../../assets/javascripts/workers/search.0bbba5b5.min.js"}</script>
+    <script id="__config" type="application/json">{"base": "../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "search": "../../assets/javascripts/workers/search.22074ed6.min.js"}</script>
     
     
-      <script src="../../assets/javascripts/bundle.e1a181d9.min.js"></script>
+      <script src="../../assets/javascripts/bundle.960e086b.min.js"></script>
       
     
   </body>
