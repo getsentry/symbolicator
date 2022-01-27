@@ -321,15 +321,15 @@ impl SymCacheActor {
                 // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
                 // fetch request is not cached
                 let bcsymbolmap_handle = match handle.object_id().debug_id {
-                    Some(debug_id) => self
-                        .bitcode_svc
-                        .fetch_bcsymbolmap(
-                            debug_id,
-                            handle.scope().clone(),
-                            request.sources.clone(),
-                        )
-                        .await
-                        .map_err(SymCacheError::BcSymbolMapError)?,
+                    Some(debug_id) => {
+                        self.bitcode_svc
+                            .fetch_bcsymbolmap(
+                                debug_id,
+                                handle.scope().clone(),
+                                request.sources.clone(),
+                            )
+                            .await
+                    }
                     None => None,
                 };
 

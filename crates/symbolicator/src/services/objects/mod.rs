@@ -243,11 +243,11 @@ impl ObjectsActor {
     // TODO(flub): this function should inline already fetch the meta (what
     // `fetch_file_metas()` does now) for each file.  Currently we synchronise all the
     // futures at the end of the listing for no good reason.
-    async fn list_files<'a>(
-        &'a self,
-        sources: &'a [SourceConfig],
-        filetypes: &'static [FileType],
-        identifier: &'a ObjectId,
+    async fn list_files(
+        &self,
+        sources: &[SourceConfig],
+        filetypes: &[FileType],
+        identifier: &ObjectId,
     ) -> Vec<RemoteDif> {
         let queries = sources.iter().map(|source| {
             async move {

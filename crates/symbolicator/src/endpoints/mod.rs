@@ -28,10 +28,11 @@ pub async fn healthcheck() -> &'static str {
 }
 
 pub fn create_app(service: Service) -> Router {
+    // The layers here go "top to bottom" according to the reading order here.
     let layer = ServiceBuilder::new()
         .layer(axum::AddExtensionLayer::new(service))
-        .layer(SentryHttpLayer::with_transaction())
         .layer(NewSentryLayer::new_from_top())
+        .layer(SentryHttpLayer::with_transaction())
         .layer(MetricsLayer);
     Router::new()
         .route("/proxy/:path", get(proxy).head(proxy))
