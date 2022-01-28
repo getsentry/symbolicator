@@ -417,6 +417,7 @@ impl SharedCacheBackend {
 }
 
 /// Message to send upload tasks across the [`InnerSharedCacheService::upload_queue_tx`].
+#[derive(Debug)]
 struct UploadMessage {
     /// The cache key to store the data at.
     key: SharedCacheKey,
@@ -424,6 +425,28 @@ struct UploadMessage {
     src: File,
     /// A channel to notify completion of storage.
     done_tx: oneshot::Sender<()>,
+    /// The reason to store this item.
+    reason: CacheStoreReason,
+}
+
+/// Reasons to store items in the shared cache.
+///
+/// This is used for reporting metrics only.
+#[derive(Debug, Clone, Copy)]
+pub enum CacheStoreReason {
+    /// The item was newly fetched and never encountered before.
+    New,
+    /// The item was already found in the local cache, but we extended its lifetime.
+    Refresh,
+}
+
+impl AsRef<str> for CacheStoreReason {
+    fn as_ref(&self) -> &str {
+        match self {
+            CacheStoreReason::New => "new",
+            CacheStoreReason::Refresh => "refresh",
+        }
+    }
 }
 
 /// A shared cache service.
@@ -509,6 +532,7 @@ impl SharedCacheService {
             key,
             src,
             done_tx: complete_tx,
+            reason,
         } = message;
         let cache_name = key.name;
         let res = match *backend {
@@ -522,6 +546,7 @@ impl SharedCacheService {
                     "cache" => cache_name.as_ref(),
                     "write" => op.as_ref(),
                     "status" => "ok",
+                    "reason" => reason.as_ref(),
                 );
                 if let SharedCacheStoreResult::Written(bytes) = op {
                     let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
@@ -541,6 +566,7 @@ impl SharedCacheService {
                     counter("services.shared_cache.store") += 1,
                     "cache" => cache_name.as_ref(),
                     "status" => "error",
+                    "reason" => reason.as_ref(),
                 );
             }
         }
@@ -639,7 +665,12 @@ impl SharedCacheService {
     ///
     /// This [`oneshot::Receiver`] can also be safely ignored if you do not need to know
     /// when the file is stored.  This mostly exists to enable testing.
-    pub async fn store(&self, key: SharedCacheKey, src: File) -> Option<oneshot::Receiver<()>> {
+    pub async fn store(
+        &self,
+        key: SharedCacheKey,
+        src: File,
+        reason: CacheStoreReason,
+    ) -> Option<oneshot::Receiver<()>> {
         let inner_guard = self.inner.read().await;
         match inner_guard.as_ref() {
             Some(inner) => {
@@ -650,7 +681,12 @@ impl SharedCacheService {
                 let (done_tx, done_rx) = oneshot::channel::<()>();
                 inner
                     .upload_queue_tx
-                    .try_send(UploadMessage { key, src, done_tx })
+                    .try_send(UploadMessage {
+                        key,
+                        src,
+                        done_tx,
+                        reason,
+                    })
                     .unwrap_or_else(|_| {
                         metric!(counter("services.shared_cache.store.dropped") += 1);
                         log::error!("Shared cache upload queue full");
@@ -729,7 +765,7 @@ mod tests {
         let stdfile = tempfile::tempfile().unwrap();
         let file = File::from_std(stdfile);
 
-        svc.store(key, file).await;
+        svc.store(key, file, CacheStoreReason::New).await;
     }
 
     #[tokio::test]
@@ -842,7 +878,7 @@ mod tests {
             file.flush().await.unwrap();
         }
 
-        if let Some(recv) = svc.store(key, temp_fd).await {
+        if let Some(recv) = svc.store(key, temp_fd, CacheStoreReason::New).await {
             // Wait for storing to complete.
             recv.await.unwrap();
         }
@@ -943,7 +979,7 @@ mod tests {
             file.flush().await.unwrap();
         }
 
-        if let Some(recv) = svc.store(key.clone(), temp_fd).await {
+        if let Some(recv) = svc.store(key.clone(), temp_fd, CacheStoreReason::New).await {
             // Wait for storing to complete.
             recv.await.unwrap();
         }
