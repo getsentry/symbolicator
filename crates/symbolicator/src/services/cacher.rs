@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use anyhow::Context;
 use futures::channel::oneshot;
 use futures::future::{BoxFuture, FutureExt, Shared, TryFutureExt};
 use parking_lot::Mutex;
@@ -249,22 +250,30 @@ impl<T: CacheItemRequest> Cacher<T> {
                     None => return Ok(None),
                 };
                 let status = CacheStatus::from_content(&byteview);
+                if status == CacheStatus::Positive && !request.should_load(&byteview) {
+                    log::trace!("Discarding {} at path {}", name, item_path.display());
+                    metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+                    return Ok(None);
+                }
                 if status == CacheStatus::Positive && mtime_bumped {
                     let shared_cache_key = SharedCacheKey {
                         name: self.config.name(),
                         version: T::VERSIONS.current,
                         local_key: key.clone(),
                     };
-                    if let Ok(fd) = fs::File::open(&item_path).await {
-                        self.shared_cache_service
-                            .store(shared_cache_key, fd, CacheStoreReason::Refresh)
-                            .await;
+                    match fs::File::open(&item_path)
+                        .await
+                        .context("Local cache path not available for shared cache")
+                    {
+                        Ok(fd) => {
+                            self.shared_cache_service
+                                .store(shared_cache_key, fd, CacheStoreReason::Refresh)
+                                .await;
+                        }
+                        Err(err) => {
+                            sentry::capture_error(&*err);
+                        }
                     }
-                }
-                if status == CacheStatus::Positive && !request.should_load(&byteview) {
-                    log::trace!("Discarding {} at path {}", name, item_path.display());
-                    metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
-                    return Ok(None);
                 }
                 // This is also reported for "negative cache hits": When we cached
                 // the 404 response from a server as empty file.
