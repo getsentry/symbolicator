@@ -398,7 +398,10 @@ impl Cache {
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
     ///
     /// Takes care of bumping `mtime`.
-    pub fn open_cachefile(&self, path: &Path) -> io::Result<Option<ByteView<'static>>> {
+    ///
+    /// If an open [`ByteView`] is returned it also returns whether the mtime has been
+    /// bumped.
+    pub fn open_cachefile(&self, path: &Path) -> io::Result<Option<(ByteView<'static>, bool)>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
@@ -409,7 +412,7 @@ impl Cache {
                 filetime::set_file_mtime(path, FileTime::now())?;
             }
 
-            ByteView::open(path)
+            Ok((ByteView::open(path)?, should_touch))
         })
     }
 
@@ -1154,7 +1157,7 @@ mod tests {
         let old_mtime = fs::metadata(&path)?.modified()?;
 
         // Open it with the cache, check contents and new mtime.
-        let view = cache.open_cachefile(&path)?.expect("No file found");
+        let (view, _) = cache.open_cachefile(&path)?.expect("No file found");
         assert_eq!(view.as_slice(), b"world");
 
         let new_mtime = fs::metadata(&path)?.modified()?;
