@@ -110,7 +110,7 @@ impl S3Downloader {
             metric!(counter("source.s3.client.create") += 1);
 
             let region = key.region.clone();
-            log::debug!(
+            tracing::debug!(
                 "Using AWS credentials provider: {:?}",
                 key.aws_credentials_provider
             );
@@ -153,7 +153,7 @@ impl S3Downloader {
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.bucket();
-        log::debug!("Fetching from s3: {} (from {})", &key, &bucket);
+        tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
         let client = self.get_s3_client(source_key);
@@ -170,7 +170,7 @@ impl S3Downloader {
         let response = match request.await {
             Ok(Ok(response)) => response,
             Ok(Err(err)) => {
-                log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
+                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
 
                 // Do note that it's possible for Amazon to return different status codes when a
                 // file is missing. 403 is returned if the `ListBucket` permission isn't available,
@@ -237,7 +237,7 @@ impl S3Downloader {
         let stream = match response.body {
             Some(body) => body.map_err(DownloadError::Io),
             None => {
-                log::debug!("Empty response from s3:{}{}", bucket, &key);
+                tracing::debug!("Empty response from s3:{}{}", bucket, &key);
                 return Ok(DownloadStatus::NotFound);
             }
         };

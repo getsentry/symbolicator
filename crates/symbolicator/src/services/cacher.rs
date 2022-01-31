@@ -237,7 +237,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             Some(cache_dir) => {
                 let name = self.config.name();
                 let item_path = key.cache_path(cache_dir, version);
-                log::trace!("Trying {} cache at path {}", name, item_path.display());
+                tracing::trace!("Trying {} cache at path {}", name, item_path.display());
                 let _scope = Hub::current().push_scope();
                 sentry::configure_scope(|scope| {
                     scope.set_extra(
@@ -251,7 +251,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 };
                 let status = CacheStatus::from_content(&byteview);
                 if status == CacheStatus::Positive && !request.should_load(&byteview) {
-                    log::trace!("Discarding {} at path {}", name, item_path.display());
+                    tracing::trace!("Discarding {} at path {}", name, item_path.display());
                     metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
                     return Ok(None);
                 }
@@ -283,7 +283,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     "hit" => "true"
                 );
 
-                log::trace!("Loading {} at path {}", name, item_path.display());
+                tracing::trace!("Loading {} at path {}", name, item_path.display());
                 let item = request.load(
                     key.scope.clone(),
                     status,
@@ -345,7 +345,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             false => None,
         };
         if shared_cache_hit && status.is_none() {
-            log::trace!("Discarding item from shared cache {}", key);
+            tracing::trace!("Discarding item from shared cache {}", key);
             metric!(counter("shared_cache.file.discarded") += 1);
         }
 
@@ -367,7 +367,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // Cache is enabled, write it!
                 let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
-                log::trace!(
+                tracing::trace!(
                     "Creating {} at path {:?}",
                     self.config.name(),
                     cache_path.display()
@@ -574,7 +574,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     // we have found an outdated cache that we will use right away,
                     // and we will kick off a recomputation for the `current` cache version
                     // in a deduplicated background task, which we will not await
-                    log::trace!(
+                    tracing::trace!(
                         "Spawning deduplicated {} computation for path {:?}",
                         name,
                         key.cache_path(cache_dir, T::VERSIONS.current).display()

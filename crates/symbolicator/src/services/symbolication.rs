@@ -183,7 +183,7 @@ impl CfiCacheModules {
                         CacheStatus::Negative => ObjectFileStatus::Missing,
                         CacheStatus::Malformed(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            log::warn!(
+                            tracing::warn!(
                                 "Error while parsing cficache: {} ({})",
                                 LogError(&err),
                                 details
@@ -194,7 +194,7 @@ impl CfiCacheModules {
                         // from a previous cficache conversion attempt.
                         CacheStatus::CacheSpecificError(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            log::warn!("Cached error from parsing cficache: {}", details);
+                            tracing::warn!("Cached error from parsing cficache: {}", details);
                             ObjectFileStatus::from(&err)
                         }
                     };
@@ -211,7 +211,7 @@ impl CfiCacheModules {
                     }
                 }
                 Err(err) => {
-                    log::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    tracing::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
                     CfiModule {
                         cfi_status: ObjectFileStatus::from(err.as_ref()),
                         ..Default::default()
@@ -480,7 +480,8 @@ impl SymbolicationActor {
                     sentry::end_session_with_status(status);
 
                     let response = error.to_symbolication_response();
-                    log::error!("Symbolication error: {:?}", anyhow::Error::new(error));
+                    let error = anyhow::Error::new(error);
+                    tracing::error!("Symbolication error: {:?}", error);
                     response
                 }
             };
@@ -970,7 +971,7 @@ fn symbolicate_frame(
         }
     }
 
-    log::trace!("Loading symcache");
+    tracing::trace!("Loading symcache");
     let symcache = match lookup_result
         .symcache
         .as_ref()
@@ -1008,7 +1009,7 @@ fn symbolicate_frame(
                 .object_info
                 .abs_to_rel_addr(absolute_caller_addr)
                 .ok_or_else(|| {
-                    log::warn!(
+                    tracing::warn!(
                             "Underflow when trying to subtract image start addr from caller address after heuristics"
                         );
                     metric!(counter("relative_addr.underflow") += 1);
@@ -1018,12 +1019,12 @@ fn symbolicate_frame(
             addr
         }
     } else {
-        log::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
+        tracing::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
         metric!(counter("relative_addr.underflow") += 1);
         return Err(FrameStatus::MissingSymbol);
     };
 
-    log::trace!("Symbolicating {:#x}", relative_addr);
+    tracing::trace!("Symbolicating {:#x}", relative_addr);
     let line_infos = match symcache.lookup(relative_addr) {
         Ok(x) => x,
         Err(_) => return Err(FrameStatus::Malformed),
@@ -1761,7 +1762,7 @@ fn load_cfi_for_processor(
         .filter_map(|(code_id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
-                    log::error!("Error while reading cficache: {}", LogError(&err));
+                    tracing::error!("Error while reading cficache: {}", LogError(&err));
                     err
                 })
                 .ok()?;
@@ -1770,7 +1771,7 @@ fn load_cfi_for_processor(
                     // This mostly never happens since we already checked the files
                     // after downloading and they would have been tagged with
                     // CacheStatus::Malformed.
-                    log::error!("Error while loading cficache: {}", LogError(&err));
+                    tracing::error!("Error while loading cficache: {}", LogError(&err));
                     err
                 })
                 .ok()?;
@@ -2001,11 +2002,11 @@ impl SymbolicationActor {
                             );
                         });
                     }
-                    Err(e) => log::error!("Failed to save minidump {:?}", &e),
+                    Err(e) => tracing::error!("Failed to save minidump {:?}", &e),
                 };
             }
         } else {
-            log::debug!("No diagnostics retention configured, not saving minidump");
+            tracing::debug!("No diagnostics retention configured, not saving minidump");
         }
     }
 
@@ -2070,7 +2071,7 @@ impl SymbolicationActor {
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
             let len = minidump_file.metadata()?.len();
-            log::debug!("Processing minidump ({} bytes)", len);
+            tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
             let client_stacktraces = ByteView::open(&minidump_file)
@@ -2100,7 +2101,7 @@ impl SymbolicationActor {
                     client_stacktraces,
                 ),
                 Err(e) => {
-                    log::error!("invalid minidump extension: {}", e);
+                    tracing::error!("invalid minidump extension: {}", e);
                 }
                 _ => {}
             }

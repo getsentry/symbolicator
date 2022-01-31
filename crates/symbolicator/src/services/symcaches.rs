@@ -206,7 +206,7 @@ async fn fetch_difs_and_compute_symcache(
         let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {
             Ok(_) => CacheStatus::Positive,
             Err(err) => {
-                log::warn!("Failed to write symcache: {}", err);
+                tracing::warn!("Failed to write symcache: {}", err);
                 sentry::capture_error(&err);
                 CacheStatus::Malformed(err.to_string())
             }
@@ -379,7 +379,7 @@ fn write_symcache(
             let bcsymbolmap = handle
                 .bc_symbol_map()
                 .map_err(SymCacheError::BcSymbolMapError)?;
-            log::debug!(
+            tracing::debug!(
                 "Adding BCSymbolMap {} to dSYM {}",
                 handle.uuid,
                 object_handle
@@ -391,7 +391,7 @@ fn write_symcache(
     let file = File::create(&path)?;
     let mut writer = BufWriter::new(file);
 
-    log::debug!("Converting symcache for {}", object_handle.cache_key());
+    tracing::debug!("Converting symcache for {}", object_handle.cache_key());
 
     SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
 

@@ -118,9 +118,9 @@ impl GcsDownloader {
     ) -> Result<DownloadStatus, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
-        log::debug!("Fetching from GCS: {} (from {})", &key, bucket);
+        tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
         let token = self.get_token(&file_source.source.source_key).await?;
-        log::debug!("Got valid GCS token");
+        tracing::debug!("Got valid GCS token");
 
         let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
             .map_err(|_| GcsError::InvalidUrl)?;
@@ -141,7 +141,7 @@ impl GcsDownloader {
         match request.await {
             Ok(Ok(response)) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting GCS {} (from {})", &key, bucket);
+                    tracing::trace!("Success hitting GCS {} (from {})", &key, bucket);
 
                     let content_length = response
                         .headers()
@@ -158,7 +158,7 @@ impl GcsDownloader {
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
                 ) {
-                    log::debug!(
+                    tracing::debug!(
                         "Insufficient permissions to download from GCS {} (from {})",
                         &key,
                         &bucket,
@@ -166,7 +166,7 @@ impl GcsDownloader {
                     Err(DownloadError::Permissions)
                 // If it's a client error, chances are either it's a 404 or it's permission-related.
                 } else if response.status().is_client_error() {
-                    log::debug!(
+                    tracing::debug!(
                         "Unexpected client error status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
@@ -174,7 +174,7 @@ impl GcsDownloader {
                     );
                     Ok(DownloadStatus::NotFound)
                 } else {
-                    log::debug!(
+                    tracing::debug!(
                         "Unexpected status code from GCS {} (from {}): {}",
                         &key,
                         &bucket,
@@ -184,7 +184,7 @@ impl GcsDownloader {
                 }
             }
             Ok(Err(e)) => {
-                log::debug!(
+                tracing::debug!(
                     "Skipping response from GCS {} (from {}): {}",
                     &key,
                     &bucket,

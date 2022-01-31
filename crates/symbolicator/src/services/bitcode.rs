@@ -102,11 +102,11 @@ impl FetchFileRequest {
 
         match result {
             Ok(DownloadStatus::NotFound) => {
-                log::debug!("No auxiliary DIF file found for {}", cache_key);
+                tracing::debug!("No auxiliary DIF file found for {}", cache_key);
                 return Ok(CacheStatus::Negative);
             }
             Err(e) => {
-                log::debug!("Error while downloading file: {}", LogError(&e));
+                tracing::debug!("Error while downloading file: {}", LogError(&e));
                 return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
             }
             Ok(DownloadStatus::Completed) => {
@@ -134,7 +134,7 @@ impl FetchFileRequest {
                 if let Err(err) = BcSymbolMap::parse(&view) {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    log::debug!("Failed to parse bcsymbolmap: {}", err);
+                    tracing::debug!("Failed to parse bcsymbolmap: {}", err);
                     return Ok(CacheStatus::Malformed(err.to_string()));
                 }
             }
@@ -142,7 +142,7 @@ impl FetchFileRequest {
                 if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    log::debug!("Failed to parse plist: {}", err);
+                    tracing::debug!("Failed to parse plist: {}", err);
                     return Ok(CacheStatus::Malformed(err.to_string()));
                 }
             }
@@ -238,7 +238,7 @@ impl BitcodeService {
         let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)
             .context("Failed to parse plist")
             .map_err(|err| {
-                log::warn!("{}: {:?}", err, err.source());
+                tracing::warn!("{}: {:?}", err, err.source());
                 sentry::capture_error(&*err);
                 err
             })
@@ -302,7 +302,7 @@ impl BitcodeService {
         {
             Ok(res) => res,
             Err(err) => {
-                log::warn!("{}: {:?}", err, err.source());
+                tracing::warn!("{}: {:?}", err, err.source());
                 sentry::capture_error(&*err);
                 None
             }

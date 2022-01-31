@@ -72,7 +72,7 @@ pub fn set_client(client: MetricsClient) {
 pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<String, String>) {
     let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
     if !addrs.is_empty() {
-        log::info!("Reporting metrics to statsd at {}", addrs[0]);
+        tracing::info!("Reporting metrics to statsd at {}", addrs[0]);
     }
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     socket.set_nonblocking(true).unwrap();

@@ -260,7 +260,7 @@ impl ObjectsActor {
                         // the search by debug/code id. We do not surface those errors to the
                         // user (instead we default to an empty search result) and only report
                         // them internally.
-                        log::error!(
+                        tracing::error!(
                             "Failed to fetch file list from {}: {}",
                             type_name,
                             LogError(&err)

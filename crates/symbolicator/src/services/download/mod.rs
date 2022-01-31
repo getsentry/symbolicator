@@ -176,16 +176,16 @@ impl DownloadService {
             Ok(status) => {
                 match status {
                     DownloadStatus::Completed => {
-                        log::debug!("Fetched debug file from {}", source);
+                        tracing::debug!("Fetched debug file from {}", source);
                     }
                     DownloadStatus::NotFound => {
-                        log::debug!("Debug file not found at {}", source);
+                        tracing::debug!("Debug file not found at {}", source);
                     }
                 };
                 Ok(status)
             }
             Err(err) => {
-                log::debug!("Failed to fetch debug file from {}: {}", source, err);
+                tracing::debug!("Failed to fetch debug file from {}: {}", source, err);
                 Err(err)
             }
         }
@@ -263,7 +263,7 @@ async fn download_stream(
     timeout: Option<Duration>,
 ) -> Result<DownloadStatus, DownloadError> {
     // All file I/O in this function is blocking!
-    log::trace!("Downloading from {}", source);
+    tracing::trace!("Downloading from {}", source);
     let future = async {
         let mut file = File::create(destination)
             .await

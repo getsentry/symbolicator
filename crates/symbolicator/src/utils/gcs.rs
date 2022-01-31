@@ -107,7 +107,7 @@ pub async fn request_new_token(
         });
 
     let response = request.send().await.map_err(|err| {
-        log::debug!("Failed to authenticate against gcs: {}", err);
+        tracing::debug!("Failed to authenticate against gcs: {}", err);
         GcsError::Auth(err)
     })?;
 

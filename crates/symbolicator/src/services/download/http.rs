@@ -82,7 +82,7 @@ impl HttpDownloader {
             Err(_) => return Ok(DownloadStatus::NotFound),
         };
 
-        log::debug!("Fetching debug file from {}", download_url);
+        tracing::debug!("Fetching debug file from {}", download_url);
         let mut builder = self.client.get(download_url.clone());
 
         for (key, value) in file_source.source.headers.iter() {
@@ -98,7 +98,7 @@ impl HttpDownloader {
         match request.await {
             Ok(Ok(response)) => {
                 if response.status().is_success() {
-                    log::trace!("Success hitting {}", download_url);
+                    tracing::trace!("Success hitting {}", download_url);
 
                     let content_length = response
                         .headers()
@@ -116,18 +116,18 @@ impl HttpDownloader {
                     response.status(),
                     StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
                 ) {
-                    log::debug!("Insufficient permissions to download from {}", download_url);
+                    tracing::debug!("Insufficient permissions to download from {}", download_url);
                     Err(DownloadError::Permissions)
                 // If it's a client error, chances are either it's a 404 or it's permission-related.
                 } else if response.status().is_client_error() {
-                    log::debug!(
+                    tracing::debug!(
                         "Unexpected client error status code from {}: {}",
                         download_url,
                         response.status()
                     );
                     Ok(DownloadStatus::NotFound)
                 } else {
-                    log::debug!(
+                    tracing::debug!(
                         "Unexpected status code from {}: {}",
                         download_url,
                         response.status()
@@ -136,7 +136,7 @@ impl HttpDownloader {
                 }
             }
             Ok(Err(e)) => {
-                log::debug!("Skipping response from {}: {}", download_url, e);
+                tracing::debug!("Skipping response from {}: {}", download_url, e);
                 Err(DownloadError::Reqwest(e)) // must be wrong type
             }
             Err(_) => {

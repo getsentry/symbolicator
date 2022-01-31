@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use structopt::StructOpt;
-use tracing_subscriber::prelude::*;
 
 use crate::cache;
 use crate::config::Config;
@@ -72,17 +71,13 @@ pub fn execute() -> Result<()> {
         ..Default::default()
     });
 
-    tracing_subscriber::Registry::default()
-        .with(sentry::integrations::tracing::layer())
-        .init();
-
     logging::init_logging(&config);
     if let Some(ref statsd) = config.metrics.statsd {
         let mut tags = config.metrics.custom_tags.clone();
 
         if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
             if tags.contains_key(&hostname_tag) {
-                log::warn!(
+                tracing::warn!(
                     "tag {} defined both as hostname tag and as a custom tag",
                     hostname_tag
                 );
@@ -90,12 +85,12 @@ pub fn execute() -> Result<()> {
             if let Some(hostname) = hostname::get().ok().and_then(|s| s.into_string().ok()) {
                 tags.insert(hostname_tag, hostname);
             } else {
-                log::error!("could not read host name");
+                tracing::error!("could not read host name");
             }
         };
         if let Some(environment_tag) = config.metrics.environment_tag.clone() {
             if tags.contains_key(&environment_tag) {
-                log::warn!(
+                tracing::warn!(
                     "tag {} defined both as environment tag and as a custom tag",
                     environment_tag
                 );
@@ -104,7 +99,7 @@ pub fn execute() -> Result<()> {
             {
                 tags.insert(environment_tag, environment);
             } else {
-                log::error!("environment name not available");
+                tracing::error!("environment name not available");
             }
         };
 
@@ -113,7 +108,7 @@ pub fn execute() -> Result<()> {
 
     procspawn::ProcConfig::new()
         .config_callback(|| {
-            log::trace!("[procspawn] initializing in sub process");
+            tracing::trace!("[procspawn] initializing in sub process");
             metric!(counter("procspawn.init") += 1);
         })
         .init();

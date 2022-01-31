@@ -163,7 +163,7 @@ async fn compute_cficache(
         }
 
         let status = if let Err(e) = write_cficache(&path, &*object) {
-            log::warn!("Could not write cficache: {}", e);
+            tracing::warn!("Could not write cficache: {}", e);
             sentry::capture_error(&e);
 
             CacheStatus::Malformed(e.to_string())
@@ -311,7 +311,7 @@ fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCa
     let file = File::create(&path)?;
     let writer = BufWriter::new(file);
 
-    log::debug!("Converting cficache for {}", object_handle.cache_key());
+    tracing::debug!("Converting cficache for {}", object_handle.cache_key());
 
     CfiCache::from_object(&object)?.write_to(writer)?;
 

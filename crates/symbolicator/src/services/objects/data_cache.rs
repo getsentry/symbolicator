@@ -156,7 +156,7 @@ async fn fetch_file(
     downloader: Arc<DownloadService>,
     tempfile: std::io::Result<NamedTempFile>,
 ) -> Result<CacheStatus, ObjectError> {
-    log::trace!("Fetching file data for {}", cache_key);
+    tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
         scope.set_transaction(Some("download_file"));
         file_id.to_scope(scope);
@@ -173,7 +173,7 @@ async fn fetch_file(
 
     match status {
         Ok(DownloadStatus::NotFound) => {
-            log::debug!("No debug file found for {}", cache_key);
+            tracing::debug!("No debug file found for {}", cache_key);
             return Ok(CacheStatus::Negative);
         }
 
@@ -184,9 +184,9 @@ async fn fetch_file(
             // hit `CachedError`, but listing it for completeness is not a bad idea either.
             match e {
                 DownloadError::Permissions | DownloadError::CachedError(_) => {
-                    log::debug!("Error while downloading file: {}", LogError(&e))
+                    tracing::debug!("Error while downloading file: {}", LogError(&e))
                 }
-                _ => log::error!("Error while downloading file: {}", LogError(&e)),
+                _ => tracing::error!("Error while downloading file: {}", LogError(&e)),
             }
 
             return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
@@ -197,7 +197,7 @@ async fn fetch_file(
         }
     }
 
-    log::trace!("Finished download of {}", cache_key);
+    tracing::trace!("Finished download of {}", cache_key);
     let decompress_result = decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
     // Treat decompression errors as malformed files. It is more likely that

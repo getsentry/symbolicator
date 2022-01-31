@@ -94,10 +94,10 @@ impl GcsState {
                         Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
                         Err(err) => {
                             let remaining = MAX_DELAY - start.elapsed();
-                            log::warn!("Error initialising GCS authentication token: {}", &err);
+                            tracing::warn!("Error initialising GCS authentication token: {}", &err);
                             match err.downcast_ref::<gcp_auth::Error>() {
                                 Some(gcp_auth::Error::NoAuthMethod(custom, gcloud, svc, user)) => {
-                                    log::error!(
+                                    tracing::error!(
                                         "No GCP auth: custom: {}, gcloud: {}, svc: {}, user: {}",
                                         custom,
                                         gcloud,
@@ -105,12 +105,12 @@ impl GcsState {
                                         user,
                                     );
                                 }
-                                _ => log::warn!(
+                                _ => tracing::warn!(
                                     "Error initialising GCS authentication token: {}",
                                     &err
                                 ),
                             }
-                            log::info!(
+                            tracing::info!(
                                 "Waiting for GKE metadata server, {}s remaining",
                                 remaining.as_secs(),
                             );
@@ -169,7 +169,10 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     _ if status.is_success() => {
-                        log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                        tracing::trace!(
+                            "Success hitting shared_cache GCS {}",
+                            key.gcs_bucket_key()
+                        );
                         let stream = response
                             .bytes_stream()
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
@@ -194,7 +197,7 @@ impl GcsState {
                 }
             }
             Ok(Err(e)) => {
-                log::trace!(
+                tracing::trace!(
                     "Error in shared_cache GCS response for {}",
                     key.gcs_bucket_key()
                 );
@@ -236,7 +239,10 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     successful if successful.is_success() => {
-                        log::trace!("Success hitting shared_cache GCS {}", key.gcs_bucket_key());
+                        tracing::trace!(
+                            "Success hitting shared_cache GCS {}",
+                            key.gcs_bucket_key()
+                        );
                         Ok(SharedCacheStoreResult::Written(total_bytes))
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
@@ -248,7 +254,7 @@ impl GcsState {
                 }
             }
             Ok(Err(err)) => {
-                log::trace!(
+                tracing::trace!(
                     "Error in shared_cache GCS response for {}",
                     key.gcs_bucket_key()
                 );
@@ -270,7 +276,7 @@ impl FilesystemSharedCacheConfig {
         W: AsyncWrite + Unpin,
     {
         let abspath = self.path.join(key.relative_path());
-        log::debug!("Fetching debug file from {}", abspath.display());
+        tracing::debug!("Fetching debug file from {}", abspath.display());
         let mut file = match File::open(abspath).await {
             Ok(file) => file,
             Err(err) => match err.kind() {
@@ -367,7 +373,7 @@ impl SharedCacheKey {
         match self.relative_path().to_str() {
             Some(s) => s.to_owned(),
             None => {
-                log::error!(
+                tracing::error!(
                     "Non UTF-8 path in SharedCacheKey: {}",
                     self.relative_path().display()
                 );
@@ -517,7 +523,7 @@ impl SharedCacheService {
                 else => break,
             }
         }
-        log::info!("Shared cache upload worker terminated");
+        tracing::info!("Shared cache upload worker terminated");
     }
 
     /// Does a single upload to the shared cache backend.
@@ -557,7 +563,7 @@ impl SharedCacheService {
                 }
             }
             Err(err) => {
-                log::error!(
+                tracing::error!(
                     "Error storing file on {} shared cache: {}",
                     backend.name(),
                     LogError(&*err),
@@ -573,7 +579,7 @@ impl SharedCacheService {
 
         // Tell the work coordinator we're done.
         done_tx.send(()).await.unwrap_or_else(|err| {
-            log::error!(
+            tracing::error!(
                 "Shared cache single_uploader failed to send done message: {}",
                 LogError(&err)
             );
@@ -636,9 +642,10 @@ impl SharedCacheService {
                 false
             }
             Err(err) => {
-                log::error!(
+                let backend_name = self.backend_name().await;
+                tracing::error!(
                     "Error fetching from {} shared cache: {}",
-                    self.backend_name().await,
+                    backend_name,
                     LogError(&*err)
                 );
                 metric!(
@@ -689,7 +696,7 @@ impl SharedCacheService {
                     })
                     .unwrap_or_else(|_| {
                         metric!(counter("services.shared_cache.store.dropped") += 1);
-                        log::error!("Shared cache upload queue full");
+                        tracing::error!("Shared cache upload queue full");
                     });
                 Some(done_rx)
             }

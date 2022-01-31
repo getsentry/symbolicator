@@ -40,11 +40,11 @@ pub fn run(config: Config) -> Result<()> {
     let server =
         axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
 
-    log::info!("Starting server on {}", server.local_addr());
+    tracing::info!("Starting server on {}", server.local_addr());
 
     io_pool.block_on(server)?;
 
-    log::info!("System shutdown complete");
+    tracing::info!("System shutdown complete");
 
     Ok(())
 }

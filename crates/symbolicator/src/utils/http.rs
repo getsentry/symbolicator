@@ -26,7 +26,7 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
     for network in &*RESERVED_IP_BLOCKS {
         if network.contains(addr) {
             metric!(counter("http.blocked_ip") += 1);
-            log::debug!(
+            tracing::debug!(
                 "Blocked attempt to connect to reserved IP address: {}",
                 addr
             );

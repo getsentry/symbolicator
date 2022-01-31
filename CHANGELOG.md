@@ -51,6 +51,7 @@
 - Remove actix-web in favor of axum. This changes the web framework and also completely switches to the tokio 1 Runtime. ([#544](https://github.com/getsentry/symbolicator/pull/544))
 - Search for all known types of debug companion files during symbolication, in case there exists for example an ELF debug companion for a PE. ([#555](https://github.com/getsentry/symbolicator/pull/555))
 - Introduced the `custom_tags` config setting for metrics ([#569](https://github.com/getsentry/symbolicator/pull/569))
+- Use the `tracing` crate for logging ([#534](https://github.com/getsentry/symbolicator/pull/534))
 
 ### Fixes
 

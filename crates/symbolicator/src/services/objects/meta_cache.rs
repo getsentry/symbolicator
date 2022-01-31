@@ -102,7 +102,7 @@ impl FetchFileMetaRequest {
     /// code.
     async fn compute_file_meta(self, path: PathBuf) -> Result<CacheStatus, ObjectError> {
         let cache_key = self.get_cache_key();
-        log::trace!("Fetching file meta for {}", cache_key);
+        tracing::trace!("Fetching file meta for {}", cache_key);
 
         let data_cache = self.data_cache.clone();
         let object_handle = data_cache
@@ -120,7 +120,7 @@ impl FetchFileMetaRequest {
                     has_sources: object.has_sources(),
                 };
 
-                log::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
+                tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
                 serde_json::to_writer(&mut new_cache, &meta)?;
             }
         }
