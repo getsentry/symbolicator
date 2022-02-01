@@ -220,7 +220,7 @@ impl GcsState {
     /// Stores a file on GCS.
     ///
     /// Because we use a very dump API to upload files we always upload the data over the
-    /// network even if the file already exists.  To reduce this when `reason` is given as
+    /// network even if the file already exists.  To reduce this, when `reason` is given as
     /// [`CacheStoreReason::Refresh`] this first fetches the metadata to check if the file
     /// exists.  This is racy, but reduces the number of times we spend sending data across
     /// for no reason.
