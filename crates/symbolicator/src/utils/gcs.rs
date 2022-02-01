@@ -1,10 +1,12 @@
 //! Access to Google Cloud Storeage
 
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::EncodingKey;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use url::Url;
 
 use crate::sources::GcsSourceKey;
 
@@ -74,6 +76,25 @@ fn key_from_string(key: &str) -> Result<EncodingKey, jsonwebtoken::errors::Error
     EncodingKey::from_rsa_pem(buffer.as_bytes())
 }
 
+/// Returns the URL for an object.
+///
+/// This can be used to e.g. fetch the objects's metadata.
+pub fn object_url(bucket: &str, object: &str) -> Result<Url> {
+    let mut url = Url::parse("https://storage.googleapis.com/storage/v1")
+        .map_err(|_| GcsError::InvalidUrl)?;
+    url.path_segments_mut()
+        .map_err(|_| GcsError::InvalidUrl)?
+        .extend(&["b", bucket, "o", object]);
+    Ok(url)
+}
+
+/// Returns the download URL for an object.
+pub fn download_url(bucket: &str, object: &str) -> Result<Url> {
+    let mut url = object_url(bucket, object)?;
+    url.query_pairs_mut().append_pair("alt", "media");
+    Ok(url)
+}
+
 /// Computes a JWT authentication assertion for the given GCS bucket.
 fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
@@ -140,5 +161,23 @@ mod tests {
 
         let key = key_from_string(json_like_key);
         assert!(key.is_ok());
+    }
+
+    #[test]
+    fn test_object_url() {
+        let url = object_url("bucket", "object/with/a/path").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://storage.googleapis.com/storage/v1/b/bucket/o/object%2Fwith%2Fa%2Fpath"
+        );
+    }
+
+    #[test]
+    fn test_download_url() {
+        let url = download_url("bucket", "object/with/a/path").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://storage.googleapis.com/storage/v1/b/bucket/o/object%2Fwith%2Fa%2Fpath?alt=media"
+        );
     }
 }
