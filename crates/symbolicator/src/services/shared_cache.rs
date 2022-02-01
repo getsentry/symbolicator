@@ -29,7 +29,7 @@ use crate::cache::{
 };
 use crate::logging::LogError;
 use crate::services::download::MeasureSourceDownloadGuard;
-use crate::utils::gcs::GcsError;
+use crate::utils::gcs::{self, GcsError};
 
 use super::cacher::CacheKey;
 
@@ -152,14 +152,7 @@ impl GcsState {
         W: tokio::io::AsyncWrite + Unpin,
     {
         let token = self.get_token().await?;
-
-        let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
-            .map_err(|_| GcsError::InvalidUrl)?;
-        // Append path segments manually for proper encoding
-        url.path_segments_mut()
-            .map_err(|_| GcsError::InvalidUrl)?
-            .extend(&[&self.config.bucket, "o", key.gcs_bucket_key().as_ref()]);
-
+        let url = gcs::download_url(&self.config.bucket, key.gcs_bucket_key().as_ref())?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
         let request = measure_download_time("services.shared_cache.fetch.connect", "gcs", request);
@@ -207,7 +200,56 @@ impl GcsState {
         }
     }
 
-    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
+    async fn exists(&self, key: &SharedCacheKey) -> Result<bool> {
+        let token = self.get_token().await?;
+        let url = gcs::object_url(&self.config.bucket, key.gcs_bucket_key().as_ref())?;
+        let request = self.client.get(url).bearer_auth(token.as_str()).send();
+        let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
+
+        match request.await {
+            Ok(Ok(response)) => {
+                // Consume the response body to be nice to the server, it is only a bit of JSON.
+                let status = response.status();
+                response.bytes().await.ok();
+
+                match status {
+                    StatusCode::OK => Ok(true),
+                    StatusCode::NOT_FOUND => Ok(false),
+                    status => Err(anyhow!("Unexpected status code from GCS: {}", status)),
+                }
+            }
+            Ok(Err(err)) => Err(err).context("Error connecting to GCS"),
+            Err(_) => Err(anyhow!("Timeout connecting to GCS")),
+        }
+    }
+
+    /// Stores a file on GCS.
+    ///
+    /// Because we use a very dumb API to upload files we always upload the data over the
+    /// network even if the file already exists.  To reduce this, when `reason` is given as
+    /// [`CacheStoreReason::Refresh`] this first fetches the metadata to check if the file
+    /// exists.  This is racy, but reduces the number of times we spend sending data across
+    /// for no reason.
+    async fn store(
+        &self,
+        key: SharedCacheKey,
+        mut src: File,
+        reason: CacheStoreReason,
+    ) -> Result<SharedCacheStoreResult> {
+        if reason == CacheStoreReason::Refresh {
+            match self
+                .exists(&key)
+                .await
+                .context("Failed fetching object metadata")
+            {
+                Ok(true) => return Ok(SharedCacheStoreResult::Skipped),
+                Ok(false) => (),
+                Err(err) => {
+                    sentry::capture_error(&*err);
+                }
+            }
+        }
+
         let total_bytes = src.seek(SeekFrom::End(0)).await?;
         src.rewind().await?;
         let token = self.get_token().await?;
@@ -438,7 +480,7 @@ struct UploadMessage {
 /// Reasons to store items in the shared cache.
 ///
 /// This is used for reporting metrics only.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheStoreReason {
     /// The item was newly fetched and never encountered before.
     New,
@@ -542,7 +584,7 @@ impl SharedCacheService {
         } = message;
         let cache_name = key.name;
         let res = match *backend {
-            SharedCacheBackend::Gcs(ref state) => state.store(key, src).await,
+            SharedCacheBackend::Gcs(ref state) => state.store(key, src, reason).await,
             SharedCacheBackend::Fs(ref cfg) => cfg.store(key, src).await,
         };
         match res {
@@ -672,6 +714,10 @@ impl SharedCacheService {
     ///
     /// This [`oneshot::Receiver`] can also be safely ignored if you do not need to know
     /// when the file is stored.  This mostly exists to enable testing.
+    ///
+    /// If [`CacheStoreReason::Refresh`] is used the implementation will trade off an extra
+    /// request to check if the file already exists before uploading.  This is racy but a
+    /// good tradeoff for refreshed stores.
     pub async fn store(
         &self,
         key: SharedCacheKey,
@@ -1027,15 +1073,52 @@ mod tests {
             file.flush().await.unwrap();
         }
 
-        let ret = state.store(key.clone(), temp_fd).await.unwrap();
+        let ret = state
+            .store(key.clone(), temp_fd, CacheStoreReason::New)
+            .await
+            .unwrap();
 
         assert!(matches!(ret, SharedCacheStoreResult::Written(_)));
 
         let dup_file = temp_file.reopen().unwrap();
         let temp_fd = File::from_std(dup_file);
 
-        let ret = state.store(key, temp_fd).await.unwrap();
+        let ret = state
+            .store(key, temp_fd, CacheStoreReason::New)
+            .await
+            .unwrap();
 
         assert!(matches!(ret, SharedCacheStoreResult::Skipped));
+    }
+
+    #[tokio::test]
+    async fn test_gcs_exists() {
+        test::setup();
+        let credentials = test::gcs_credentials!();
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+            .await
+            .unwrap();
+
+        let key = SharedCacheKey {
+            name: CacheName::Objects,
+            version: 0,
+            local_key: CacheKey {
+                cache_key: "some_item".to_string(),
+                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+            },
+        };
+
+        assert!(!state.exists(&key).await.unwrap());
+
+        let fd = tempfile::tempfile().unwrap();
+        let mut fd = File::from_std(fd);
+        fd.write_all(b"cache data").await.unwrap();
+        fd.flush().await.unwrap();
+        state
+            .store(key.clone(), fd, CacheStoreReason::New)
+            .await
+            .unwrap();
+
+        assert!(state.exists(&key).await.unwrap());
     }
 }

@@ -8,11 +8,10 @@ use std::sync::Arc;
 use futures::prelude::*;
 use parking_lot::Mutex;
 use reqwest::{header, Client, StatusCode};
-use url::Url;
 
 use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
 use crate::types::ObjectId;
-use crate::utils::gcs::{request_new_token, GcsError, GcsToken};
+use crate::utils::gcs::{self, request_new_token, GcsError, GcsToken};
 
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
@@ -122,12 +121,7 @@ impl GcsDownloader {
         let token = self.get_token(&file_source.source.source_key).await?;
         tracing::debug!("Got valid GCS token");
 
-        let mut url = Url::parse("https://www.googleapis.com/download/storage/v1/b?alt=media")
-            .map_err(|_| GcsError::InvalidUrl)?;
-        // Append path segments manually for proper encoding
-        url.path_segments_mut()
-            .map_err(|_| GcsError::InvalidUrl)?
-            .extend(&[&bucket, "o", &key]);
+        let url = gcs::download_url(&bucket, &key)?;
 
         let source = RemoteDif::from(file_source);
         let request = self
