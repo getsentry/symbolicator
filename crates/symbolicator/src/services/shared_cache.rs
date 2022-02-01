@@ -207,11 +207,17 @@ impl GcsState {
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
 
         match request.await {
-            Ok(Ok(response)) => match response.status() {
-                StatusCode::OK => Ok(true),
-                StatusCode::NOT_FOUND => Ok(false),
-                status => Err(anyhow!("Unexpected status code from GCS: {}", status)),
-            },
+            Ok(Ok(response)) => {
+                // Consume the response body to be nice to the server, it is only a bit of JSON.
+                let status = response.status();
+                response.bytes().await.ok();
+
+                match status {
+                    StatusCode::OK => Ok(true),
+                    StatusCode::NOT_FOUND => Ok(false),
+                    status => Err(anyhow!("Unexpected status code from GCS: {}", status)),
+                }
+            }
             Ok(Err(err)) => Err(err).context("Error connecting to GCS"),
             Err(_) => Err(anyhow!("Timeout connecting to GCS")),
         }
