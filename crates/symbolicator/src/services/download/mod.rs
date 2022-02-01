@@ -61,8 +61,6 @@ pub enum DownloadError {
     Rejected(StatusCode),
     #[error("failed to fetch object: {0}")]
     CachedError(String),
-    #[error("Other error (probably URL)")]
-    Other(#[from] anyhow::Error),
 }
 
 impl DownloadError {
