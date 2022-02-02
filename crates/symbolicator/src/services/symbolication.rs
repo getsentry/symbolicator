@@ -25,7 +25,7 @@ use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
-    CodeModule, CodeModuleId, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
+    CodeModule, FrameTrust, ProcessMinidumpError, ProcessState, RegVal,
 };
 use tempfile::TempPath;
 use thiserror::Error;
@@ -148,7 +148,7 @@ struct CfiCacheModules {
     /// We have to make sure to hold onto a reference to the CfiCacheFile,
     /// to make sure it will not be evicted in the middle of reading it in the procspawn
     cache_files: Vec<Arc<CfiCacheFile>>,
-    inner: BTreeMap<CodeModuleId, CfiModule>,
+    inner: BTreeMap<DebugId, CfiModule>,
 }
 
 impl CfiCacheModules {
@@ -161,7 +161,7 @@ impl CfiCacheModules {
     }
 
     /// Check if the Cache already contains the module with the given `id`.
-    fn has_module(&self, id: &CodeModuleId) -> bool {
+    fn has_module(&self, id: &DebugId) -> bool {
         self.inner.contains_key(id)
     }
 
@@ -224,7 +224,7 @@ impl CfiCacheModules {
     }
 
     /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> Vec<(CodeModuleId, PathBuf)> {
+    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
         self.inner
             .iter()
             .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
@@ -232,7 +232,7 @@ impl CfiCacheModules {
     }
 
     /// Returns the inner Map.
-    fn into_inner(self) -> BTreeMap<CodeModuleId, CfiModule> {
+    fn into_inner(self) -> BTreeMap<DebugId, CfiModule> {
         self.inner
     }
 }
@@ -269,21 +269,18 @@ struct ModuleListBuilder {
 }
 
 impl ModuleListBuilder {
-    fn new(
-        cfi_caches: CfiCacheModules,
-        modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
-    ) -> Self {
+    fn new(cfi_caches: CfiCacheModules, modules: Vec<(Option<DebugId>, RawObjectInfo)>) -> Self {
         // Now build the CompletedObjectInfo for all modules
         let cfi_caches = cfi_caches.into_inner();
 
         let mut inner: Vec<(CompleteObjectInfo, bool)> = modules
             .into_iter()
-            .map(|(id, raw_info)| {
+            .map(|(code_id, raw_info)| {
                 let mut obj_info: CompleteObjectInfo = raw_info.into();
 
                 // If we loaded this module into the CFI cache, update the info object with
                 // this status.
-                if let Some(code_id) = id {
+                if let Some(code_id) = code_id {
                     match cfi_caches.get(&code_id) {
                         None => {
                             obj_info.unwind_status = None;
@@ -295,7 +292,6 @@ impl ModuleListBuilder {
                         }
                     }
                 }
-
                 (obj_info, false)
             })
             .collect();
@@ -1667,7 +1663,7 @@ impl SymbolicationActor {
     }
 }
 
-type CfiCacheResult = (CodeModuleId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
+type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 
 /// Contains some meta-data about a minidump.
 ///
@@ -1755,9 +1751,7 @@ impl MinidumpState {
 ///
 /// This reads the CFI caches from disk and returns them in a format suitable for the
 /// breakpad processor to stackwalk.
-fn load_cfi_for_processor(
-    cfi: Vec<(CodeModuleId, PathBuf)>,
-) -> BTreeMap<CodeModuleId, CfiCache<'static>> {
+fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, CfiCache<'static>> {
     cfi.into_iter()
         .filter_map(|(code_id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
@@ -1782,8 +1776,8 @@ fn load_cfi_for_processor(
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
-    all_modules: Vec<(Option<CodeModuleId>, RawObjectInfo)>,
-    referenced_modules: Vec<(CodeModuleId, RawObjectInfo)>,
+    all_modules: Vec<(Option<DebugId>, RawObjectInfo)>,
+    referenced_modules: Vec<(DebugId, RawObjectInfo)>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
 }
@@ -1828,7 +1822,7 @@ impl SymbolicationActor {
     async fn load_cfi_caches(
         &self,
         scope: Scope,
-        requests: &[(CodeModuleId, &RawObjectInfo)],
+        requests: &[(DebugId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
         let futures = requests.iter().map(|(module_id, object_info)| {
@@ -1896,6 +1890,10 @@ impl SymbolicationActor {
 
                     // Stackwalk the minidump.
                     let cfi = load_cfi_for_processor(cfi_caches);
+                    let cfi = cfi
+                        .into_iter()
+                        .map(|(id, cache)| (id.into(), cache))
+                        .collect();
                     // we cannot map an `io::Error` into `MinidumpNotFound` since there is no public
                     // constructor on `ProcessResult`. Passing in an empty buffer should result in
                     // the same error though.
@@ -1910,7 +1908,7 @@ impl SymbolicationActor {
                         .into_iter()
                         .filter_map(|code_module| {
                             Some((
-                                code_module.id()?,
+                                code_module.id().map(|cmid| cmid.into())?,
                                 object_info_from_minidump_module(object_type, code_module),
                             ))
                         })
@@ -1920,7 +1918,7 @@ impl SymbolicationActor {
                         .into_iter()
                         .map(|code_module| {
                             (
-                                code_module.id(),
+                                code_module.id().map(|cmid| cmid.into()),
                                 object_info_from_minidump_module(object_type, code_module),
                             )
                         })
@@ -2037,7 +2035,7 @@ impl SymbolicationActor {
                 }
             };
 
-            let missing_modules: Vec<(CodeModuleId, &RawObjectInfo)> = result
+            let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result
                 .referenced_modules
                 .iter()
                 .filter(|(id, _)| !cfi_caches.has_module(id))
