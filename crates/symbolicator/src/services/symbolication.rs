@@ -2566,6 +2566,7 @@ mod tests {
             })],
             options: RequestOptions {
                 dif_candidates: true,
+                ..Default::default()
             },
         }
     }
@@ -2709,6 +2710,7 @@ mod tests {
                     Arc::new([source]),
                     RequestOptions {
                         dif_candidates: true,
+                        ..Default::default()
                     },
                 );
                 let response = symbolication.get_response(request_id.unwrap(), None).await;
@@ -2757,6 +2759,7 @@ mod tests {
                 Arc::new([source]),
                 RequestOptions {
                     dif_candidates: true,
+                    ..Default::default()
                 },
             )
             .unwrap();

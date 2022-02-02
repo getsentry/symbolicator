@@ -23,6 +23,10 @@ struct Cli {
     /// Whether to include DIF candidate information.
     #[structopt(short, long)]
     dif_candidates: bool,
+
+    /// Whether to compare the old and new stackwalking methods.
+    #[structopt(short, long)]
+    compare_stackwalking_methods: bool,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -30,6 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
         input,
         symbolicator,
         dif_candidates,
+        compare_stackwalking_methods,
     } = Cli::from_args();
 
     let client = reqwest::Client::new();
@@ -48,6 +53,11 @@ fn main() -> Result<(), anyhow::Error> {
         if dif_candidates {
             form = form.text("options", r#"{"dif_candidates":true}"#);
         }
+
+        if compare_stackwalking_methods {
+            form = form.text("options", r#"{"compare_stackwalking_methods":true}"#);
+        }
+
         form = form.file("upload_file_minidump", input)?;
 
         req.multipart(form).send()

@@ -155,6 +155,10 @@ pub struct RequestOptions {
     /// [`ObjectCandidate`] struct for which extra information is returned for DIF objects.
     #[serde(default)]
     pub dif_candidates: bool,
+
+    /// Whether to run the new stackwalking method in addition to the old one and compare their results.
+    #[serde(default)]
+    pub compare_stackwalking_methods: bool,
 }
 
 /// A map of register values.
