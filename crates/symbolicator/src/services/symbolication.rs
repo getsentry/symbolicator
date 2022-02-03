@@ -1883,31 +1883,27 @@ impl SymbolicationActor {
                     }
 
                     // Stackwalk the minidump.
+                    let available_module_ids: BTreeSet<DebugId> =
+                        cfi_caches.keys().cloned().collect();
+                    let cfi = load_cfi_for_processor(cfi_caches)
+                        .into_iter()
+                        .map(|(id, cache)| (id.into(), cache))
+                        .collect();
                     // we cannot map an `io::Error` into `MinidumpNotFound` since there is no public
                     // constructor on `ProcessResult`. Passing in an empty buffer should result in
                     // the same error though.
                     let minidump =
                         ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
-                    let process_state = {
-                        let cfi = load_cfi_for_processor(cfi_caches.clone())
-                            .into_iter()
-                            .map(|(id, cache)| (id.into(), cache))
-                            .collect();
-                        ProcessState::from_minidump(&minidump, Some(&cfi))?
-                    };
+                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
                     let minidump_state = MinidumpState::new(&process_state);
                     let object_type = minidump_state.object_type();
 
-                    let missing_ids = process_state
+                    let mut missing_ids: BTreeSet<DebugId> = process_state
                         .referenced_modules()
                         .into_iter()
-                        .filter_map(|code_module| {
-                            code_module.id().and_then(|id| {
-                                let id = id.into();
-                                (!cfi_caches.contains_key(&id)).then(|| id)
-                            })
-                        })
+                        .filter_map(|code_module| code_module.id().map(|id| id.into()))
                         .collect();
+                    missing_ids.retain(|id| !available_module_ids.contains(id));
                     let modules = process_state
                         .modules()
                         .iter()
