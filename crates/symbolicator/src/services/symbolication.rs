@@ -275,13 +275,13 @@ impl ModuleListBuilder {
 
         let mut inner: Vec<(CompleteObjectInfo, bool)> = modules
             .into_iter()
-            .map(|(code_id, raw_info)| {
+            .map(|(id, raw_info)| {
                 let mut obj_info: CompleteObjectInfo = raw_info.into();
 
                 // If we loaded this module into the CFI cache, update the info object with
                 // this status.
-                if let Some(code_id) = code_id {
-                    match cfi_caches.get(&code_id) {
+                if let Some(id) = id {
+                    match cfi_caches.get(&id) {
                         None => {
                             obj_info.unwind_status = None;
                         }
@@ -1753,7 +1753,7 @@ impl MinidumpState {
 /// breakpad processor to stackwalk.
 fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, CfiCache<'static>> {
     cfi.into_iter()
-        .filter_map(|(code_id, cfi_path)| {
+        .filter_map(|(id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
                     tracing::error!("Error while reading cficache: {}", LogError(&err));
@@ -1769,7 +1769,7 @@ fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, Cfi
                     err
                 })
                 .ok()?;
-            Some((code_id, cfi_cache))
+            Some((id, cfi_cache))
         })
         .collect()
 }
@@ -1825,7 +1825,7 @@ impl SymbolicationActor {
         requests: &[(DebugId, &RawObjectInfo)],
         sources: Arc<[SourceConfig]>,
     ) -> Vec<CfiCacheResult> {
-        let futures = requests.iter().map(|(module_id, object_info)| {
+        let futures = requests.iter().map(|(id, object_info)| {
             let sources = sources.clone();
             let scope = scope.clone();
 
@@ -1839,7 +1839,7 @@ impl SymbolicationActor {
                         scope,
                     })
                     .await;
-                ((*module_id).to_owned(), result)
+                ((*id).to_owned(), result)
             }
             .bind_hub(Hub::new_from_top(Hub::current()))
         });
