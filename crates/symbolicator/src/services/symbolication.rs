@@ -1771,7 +1771,7 @@ fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     modules: BTreeMap<DebugId, RawObjectInfo>,
-    missing_ids: BTreeSet<DebugId>,
+    missing_modules: BTreeMap<DebugId, RawObjectInfo>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
 }
@@ -1898,12 +1898,19 @@ impl SymbolicationActor {
                     let minidump_state = MinidumpState::new(&process_state);
                     let object_type = minidump_state.object_type();
 
-                    let mut missing_ids: BTreeSet<DebugId> = process_state
+                    let mut missing_modules: BTreeMap<DebugId, RawObjectInfo> = process_state
                         .referenced_modules()
-                        .into_iter()
-                        .filter_map(|code_module| code_module.id().map(|id| id.into()))
+                        .iter()
+                        .map(|module| {
+                            (
+                                // TODO(ja): Check how this can be empty and how we shim.
+                                //           Probably needs explicit conversion from raw
+                                DebugId::from_str(&module.debug_identifier()).unwrap_or_default(),
+                                object_info_from_minidump_module(object_type, module),
+                            )
+                        })
                         .collect();
-                    missing_ids.retain(|id| !available_module_ids.contains(id));
+                    missing_modules.retain(|id, _| !available_module_ids.contains(id));
                     let modules = process_state
                         .modules()
                         .iter()
@@ -1959,7 +1966,7 @@ impl SymbolicationActor {
 
                     Ok(procspawn::serde::Json(StackWalkMinidumpResult {
                         modules,
-                        missing_ids,
+                        missing_modules,
                         stacktraces,
                         minidump_state,
                     }))
@@ -2028,12 +2035,8 @@ impl SymbolicationActor {
                 }
             };
 
-            let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result
-                .modules
-                .iter()
-                .filter(|(id, _)| result.missing_ids.contains(id))
-                .map(|t| (*t.0, t.1))
-                .collect();
+            let missing_modules: Vec<(DebugId, &RawObjectInfo)> =
+                result.missing_modules.iter().map(|t| (*t.0, t.1)).collect();
 
             // We put a hard limit of 5 iterations here.
             // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
