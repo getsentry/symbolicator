@@ -4,6 +4,7 @@ use std::fs::File;
 use std::future::Future;
 use std::iter::FromIterator;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -160,11 +161,6 @@ impl CfiCacheModules {
         }
     }
 
-    /// Check if the Cache already contains the module with the given `id`.
-    fn has_module(&self, id: &DebugId) -> bool {
-        self.inner.contains_key(id)
-    }
-
     /// Extend the CacheModules with the fetched caches represented by
     /// [`CfiCacheResult`].
     fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
@@ -224,7 +220,7 @@ impl CfiCacheModules {
     }
 
     /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
+    fn for_processing(&self) -> BTreeMap<DebugId, PathBuf> {
         self.inner
             .iter()
             .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
@@ -269,7 +265,7 @@ struct ModuleListBuilder {
 }
 
 impl ModuleListBuilder {
-    fn new(cfi_caches: CfiCacheModules, modules: Vec<(Option<DebugId>, RawObjectInfo)>) -> Self {
+    fn new(cfi_caches: CfiCacheModules, modules: BTreeMap<DebugId, RawObjectInfo>) -> Self {
         // Now build the CompletedObjectInfo for all modules
         let cfi_caches = cfi_caches.into_inner();
 
@@ -280,16 +276,14 @@ impl ModuleListBuilder {
 
                 // If we loaded this module into the CFI cache, update the info object with
                 // this status.
-                if let Some(id) = id {
-                    match cfi_caches.get(&id) {
-                        None => {
-                            obj_info.unwind_status = None;
-                        }
-                        Some(cfi_module) => {
-                            obj_info.unwind_status = Some(cfi_module.cfi_status);
-                            obj_info.features.merge(cfi_module.features);
-                            obj_info.candidates = cfi_module.cfi_candidates.clone();
-                        }
+                match cfi_caches.get(&id) {
+                    None => {
+                        obj_info.unwind_status = None;
+                    }
+                    Some(cfi_module) => {
+                        obj_info.unwind_status = Some(cfi_module.cfi_status);
+                        obj_info.features.merge(cfi_module.features);
+                        obj_info.candidates = cfi_module.cfi_candidates.clone();
                     }
                 }
                 (obj_info, false)
@@ -1751,7 +1745,7 @@ impl MinidumpState {
 ///
 /// This reads the CFI caches from disk and returns them in a format suitable for the
 /// breakpad processor to stackwalk.
-fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, CfiCache<'static>> {
+fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, CfiCache<'static>> {
     cfi.into_iter()
         .filter_map(|(id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
@@ -1776,8 +1770,8 @@ fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, Cfi
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
-    all_modules: Vec<(Option<DebugId>, RawObjectInfo)>,
-    referenced_modules: Vec<(DebugId, RawObjectInfo)>,
+    modules: BTreeMap<DebugId, RawObjectInfo>,
+    missing_ids: BTreeSet<DebugId>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
 }
@@ -1889,37 +1883,40 @@ impl SymbolicationActor {
                     }
 
                     // Stackwalk the minidump.
-                    let cfi = load_cfi_for_processor(cfi_caches);
-                    let cfi = cfi
-                        .into_iter()
-                        .map(|(id, cache)| (id.into(), cache))
-                        .collect();
                     // we cannot map an `io::Error` into `MinidumpNotFound` since there is no public
                     // constructor on `ProcessResult`. Passing in an empty buffer should result in
                     // the same error though.
                     let minidump =
                         ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
-                    let process_state = ProcessState::from_minidump(&minidump, Some(&cfi))?;
+                    let process_state = {
+                        let cfi = load_cfi_for_processor(cfi_caches.clone())
+                            .into_iter()
+                            .map(|(id, cache)| (id.into(), cache))
+                            .collect();
+                        ProcessState::from_minidump(&minidump, Some(&cfi))?
+                    };
                     let minidump_state = MinidumpState::new(&process_state);
                     let object_type = minidump_state.object_type();
 
-                    let referenced_modules = process_state
+                    let missing_ids = process_state
                         .referenced_modules()
                         .into_iter()
                         .filter_map(|code_module| {
-                            Some((
-                                code_module.id().map(|cmid| cmid.into())?,
-                                object_info_from_minidump_module(object_type, code_module),
-                            ))
+                            code_module.id().and_then(|id| {
+                                let id = id.into();
+                                (!cfi_caches.contains_key(&id)).then(|| id)
+                            })
                         })
                         .collect();
-                    let all_modules = process_state
+                    let modules = process_state
                         .modules()
-                        .into_iter()
-                        .map(|code_module| {
+                        .iter()
+                        .map(|module| {
                             (
-                                code_module.id().map(|cmid| cmid.into()),
-                                object_info_from_minidump_module(object_type, code_module),
+                                // TODO(ja): Check how this can be empty and how we shim.
+                                //           Probably needs explicit conversion from raw
+                                DebugId::from_str(&module.debug_identifier()).unwrap_or_default(),
+                                object_info_from_minidump_module(object_type, module),
                             )
                         })
                         .collect();
@@ -1965,8 +1962,8 @@ impl SymbolicationActor {
                     }
 
                     Ok(procspawn::serde::Json(StackWalkMinidumpResult {
-                        all_modules,
-                        referenced_modules,
+                        modules,
+                        missing_ids,
                         stacktraces,
                         minidump_state,
                     }))
@@ -2036,10 +2033,10 @@ impl SymbolicationActor {
             };
 
             let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result
-                .referenced_modules
+                .modules
                 .iter()
-                .filter(|(id, _)| !cfi_caches.has_module(id))
-                .map(|t| (t.0, &t.1))
+                .filter(|(id, _)| result.missing_ids.contains(id))
+                .map(|t| (*t.0, t.1))
                 .collect();
 
             // We put a hard limit of 5 iterations here.
@@ -2087,7 +2084,7 @@ impl SymbolicationActor {
                 .await?;
 
             let StackWalkMinidumpResult {
-                all_modules,
+                modules,
                 mut stacktraces,
                 minidump_state,
                 ..
@@ -2105,7 +2102,7 @@ impl SymbolicationActor {
             }
 
             // Start building the module list for the symbolication response.
-            let mut module_builder = ModuleListBuilder::new(cfi_caches, all_modules);
+            let mut module_builder = ModuleListBuilder::new(cfi_caches, modules);
             module_builder.process_stacktraces(&stacktraces);
 
             let request = SymbolicateStacktraces {
