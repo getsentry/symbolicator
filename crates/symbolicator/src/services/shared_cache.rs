@@ -240,7 +240,7 @@ impl GcsState {
             match self
                 .exists(&key)
                 .await
-                .context("Failed fetching object metadata")
+                .context("Failed fetching object metadata from shared cache")
             {
                 Ok(true) => return Ok(SharedCacheStoreResult::Skipped),
                 Ok(false) => (),
