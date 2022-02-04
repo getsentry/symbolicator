@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
 use std::iter::FromIterator;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -1894,14 +1894,15 @@ impl SymbolicationActor {
     /// similar which are mapped in the address space but do not actually contain executable
     /// modules.
     #[tracing::instrument(skip_all)]
-    async fn stackwalk_minidump_with_cfi(
+    async fn stackwalk_minidump(
         &self,
-        minidump_file: &TempPath,
+        path: &Path,
         cfi_caches: &CfiCacheModules,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
         let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
-        let minidump_path = minidump_file.to_path_buf();
+        let minidump_path = path.to_path_buf();
+
         let lazy = async move {
             let spawn_time = std::time::SystemTime::now();
             let spawn_result = pool.spawn(
@@ -2044,10 +2045,10 @@ impl SymbolicationActor {
     }
 
     /// Iteratively stackwalks/processes the given `minidump_file` using breakpad.
-    async fn stackwalk_minidump_iteratively_with_breakpad(
+    async fn stackwalk_minidump_iteratively(
         &self,
         scope: Scope,
-        minidump_file: TempPath,
+        minidump_path: &Path,
         sources: Arc<[SourceConfig]>,
         cfi_caches: &mut CfiCacheModules,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
@@ -2056,20 +2057,7 @@ impl SymbolicationActor {
         let result = loop {
             iterations += 1;
 
-            let result = match self
-                .stackwalk_minidump_with_cfi(&minidump_file, cfi_caches)
-                .await
-            {
-                Ok(res) => res,
-                Err(err) => {
-                    self.maybe_persist_minidump(minidump_file);
-
-                    // we explicitly match and return here, otherwise the borrow checker will
-                    // complain that `minidump_file` is being moved into `save_minidump`
-                    return Err(err);
-                }
-            };
-
+            let result = self.stackwalk_minidump(minidump_path, cfi_caches).await?;
             let missing_modules: Vec<(DebugId, &RawObjectInfo)> =
                 result.missing_modules.iter().map(|t| (*t.0, t.1)).collect();
 
@@ -2103,36 +2091,35 @@ impl SymbolicationActor {
             tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
-            let client_stacktraces = ByteView::open(&minidump_file)
-                .map_or(Ok(None), |bv| parse_stacktraces_from_minidump(&bv));
-
             let mut cfi_caches = CfiCacheModules::new();
 
-            let result = self
-                .stackwalk_minidump_iteratively_with_breakpad(
-                    scope.clone(),
-                    minidump_file,
-                    sources.clone(),
-                    &mut cfi_caches,
-                )
-                .await?;
+            let future = self.stackwalk_minidump_iteratively(
+                scope.clone(),
+                &minidump_file,
+                sources.clone(),
+                &mut cfi_caches,
+            );
 
             let StackWalkMinidumpResult {
-                modules,
-                mut stacktraces,
                 minidump_state,
+                mut stacktraces,
+                modules,
                 ..
-            } = result;
+            } = match future.await {
+                Ok(result) => result,
+                Err(err) => {
+                    self.maybe_persist_minidump(minidump_file);
+                    return Err(err);
+                }
+            };
 
-            match client_stacktraces {
+            match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
                 Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(
                     &mut stacktraces,
                     client_stacktraces,
                 ),
-                Err(e) => {
-                    tracing::error!("invalid minidump extension: {}", e);
-                }
-                _ => {}
+                Err(e) => tracing::error!("invalid minidump extension: {}", e),
+                _ => (),
             }
 
             // Start building the module list for the symbolication response.
