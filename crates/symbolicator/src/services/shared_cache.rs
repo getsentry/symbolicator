@@ -5,6 +5,7 @@
 //! lives closer to symbolicator. Expensive computations related to the computation of derived
 //! caches may also be saved via this shared cache.
 
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fmt;
 use std::io::SeekFrom;
@@ -12,10 +13,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context as _, Error, Result};
 use futures::{Future, TryStreamExt};
 use gcp_auth::Token;
 use reqwest::{Body, Client, StatusCode};
+use sentry::protocol::Context;
+use sentry::{Hub, SentryFutureExt};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
@@ -27,7 +30,6 @@ use crate::cache::{
     CacheName, FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheBackendConfig,
     SharedCacheConfig,
 };
-use crate::logging::LogError;
 use crate::services::download::MeasureSourceDownloadGuard;
 use crate::utils::gcs::{self, GcsError};
 
@@ -151,6 +153,12 @@ impl GcsState {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
+        sentry::configure_scope(|scope| {
+            let mut map = BTreeMap::new();
+            map.insert("bucket".to_string(), self.config.bucket.clone().into());
+            map.insert("key".to_string(), key.gcs_bucket_key().into());
+            scope.set_context("GCS Shared Cache", Context::Other(map));
+        });
         let token = self.get_token().await?;
         let url = gcs::download_url(&self.config.bucket, key.gcs_bucket_key().as_ref())?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
@@ -180,13 +188,7 @@ impl GcsState {
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
                     )),
-                    _ => Err(anyhow!(
-                        "Error response from GCS for bucket={}, key={}: {} {}",
-                        self.config.bucket,
-                        key.gcs_bucket_key(),
-                        status,
-                        status.canonical_reason().unwrap_or("")
-                    )),
+                    _ => Err(anyhow!("Error response from GCS: {}", status)),
                 }
             }
             Ok(Err(e)) => {
@@ -236,6 +238,12 @@ impl GcsState {
         mut src: File,
         reason: CacheStoreReason,
     ) -> Result<SharedCacheStoreResult> {
+        sentry::configure_scope(|scope| {
+            let mut map = BTreeMap::new();
+            map.insert("bucket".to_string(), self.config.bucket.clone().into());
+            map.insert("key".to_string(), key.gcs_bucket_key().into());
+            scope.set_context("GCS Shared Cache", Context::Other(map));
+        });
         if reason == CacheStoreReason::Refresh {
             match self
                 .exists(&key)
@@ -531,11 +539,10 @@ impl SharedCacheService {
         let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
         if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
             let backend = Arc::new(backend);
-            tokio::spawn(Self::upload_worker(
-                rx,
-                backend.clone(),
-                config.max_concurrent_uploads,
-            ));
+            tokio::spawn(
+                Self::upload_worker(rx, backend.clone(), config.max_concurrent_uploads)
+                    .bind_hub(Hub::new_from_top(Hub::current())),
+            );
             *inner.write().await = Some(InnerSharedCacheService {
                 backend,
                 upload_queue_tx: tx,
@@ -555,7 +562,10 @@ impl SharedCacheService {
             tokio::select! {
                 Some(message) = work_rx.recv(), if uploads_counter > 0 => {
                     uploads_counter -= 1;
-                    tokio::spawn(Self::single_uploader(done_tx.clone(), backend.clone(), message));
+                    tokio::spawn(
+                        Self::single_uploader(done_tx.clone(), backend.clone(), message)
+                            .bind_hub(Hub::new_from_top(Hub::current()))
+                    );
                     let uploads_in_flight: u64 = (max_concurrent_uploads - uploads_counter) as u64;
                     metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight);
                 }
@@ -582,6 +592,19 @@ impl SharedCacheService {
             done_tx: complete_tx,
             reason,
         } = message;
+
+        let _guard = Hub::current().push_scope();
+        sentry::configure_scope(|scope| {
+            let mut map = BTreeMap::new();
+            map.insert("backend".to_string(), backend.name().into());
+            map.insert("cache".to_string(), key.name.as_ref().into());
+            map.insert(
+                "path".to_string(),
+                key.relative_path().to_string_lossy().into(),
+            );
+            scope.set_context("Shared Cache", Context::Other(map));
+        });
+
         let cache_name = key.name;
         let res = match *backend {
             SharedCacheBackend::Gcs(ref state) => state.store(key, src, reason).await,
@@ -605,10 +628,11 @@ impl SharedCacheService {
                 }
             }
             Err(err) => {
+                let stderr: &dyn std::error::Error = &*err;
                 tracing::error!(
-                    "Error storing file on {} shared cache: {}",
+                    stderr,
+                    "Error storing file on {} shared cache",
                     backend.name(),
-                    LogError(&*err),
                 );
                 metric!(
                     counter("services.shared_cache.store") += 1,
@@ -621,9 +645,10 @@ impl SharedCacheService {
 
         // Tell the work coordinator we're done.
         done_tx.send(()).await.unwrap_or_else(|err| {
+            let stderr: &dyn std::error::Error = &err;
             tracing::error!(
-                "Shared cache single_uploader failed to send done message: {}",
-                LogError(&err)
+                stderr,
+                "Shared cache single_uploader failed to send done message",
             );
         });
 
@@ -652,6 +677,18 @@ impl SharedCacheService {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
+        let _guard = Hub::current().push_scope();
+        let backend_name = self.backend_name().await;
+        sentry::configure_scope(|scope| {
+            let mut map = BTreeMap::new();
+            map.insert("backend".to_string(), backend_name.into());
+            map.insert("cache".to_string(), key.name.as_ref().into());
+            map.insert(
+                "path".to_string(),
+                key.relative_path().to_string_lossy().into(),
+            );
+            scope.set_context("Shared Cache", Context::Other(map));
+        });
         let res = match self.inner.read().await.as_ref() {
             Some(inner) => match inner.backend.as_ref() {
                 SharedCacheBackend::Gcs(state) => state.fetch(key, writer).await,
@@ -685,11 +722,8 @@ impl SharedCacheService {
             }
             Err(err) => {
                 let backend_name = self.backend_name().await;
-                tracing::error!(
-                    "Error fetching from {} shared cache: {}",
-                    backend_name,
-                    LogError(&*err)
-                );
+                let stderr: &dyn std::error::Error = &*err;
+                tracing::error!(stderr, "Error fetching from {} shared cache", backend_name);
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
                     "cache" => key.name.as_ref(),
