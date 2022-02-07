@@ -1931,6 +1931,12 @@ impl PartialEq for StackWalkMinidumpResult {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+enum NewStackwalkingProblem {
+    Diff(String),
+    Slow,
+}
+
 impl SymbolicationActor {
     /// Join a procspawn handle with a timeout.
     ///
@@ -2019,7 +2025,7 @@ impl SymbolicationActor {
         path: &Path,
         cfi_caches: &CfiCacheModules,
         compare_stackwalking_methods: bool,
-    ) -> anyhow::Result<(StackWalkMinidumpResult, Option<StackWalkMinidumpResult>)> {
+    ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
         let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
         let minidump_path = path.to_path_buf();
@@ -2071,7 +2077,45 @@ impl SymbolicationActor {
                 None
             };
 
-            Ok::<_, anyhow::Error>((result_old, result_new))
+            // Determine if there was a stackwalking difference or the new method performed poorly.
+            // If so, the minidump will be saved further down after some more processing.
+            let problem = result_new.and_then(|result_new| {
+                    metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "new");
+
+                    if result_new != result_old {
+                        let diff = serde_json::to_string_pretty(&result_old)
+                            .map_err(|e| {
+                                tracing::error!("Failed to convert result_old to json: {}", e)
+                            })
+                            .ok()
+                            .and_then(|old| {
+                                serde_json::to_string_pretty(&result_new)
+                                    .map_err(|e| {
+                                        tracing::error!(
+                                            "Failed to convert result_new to json: {}",
+                                            e
+                                        )
+                                    })
+                                    .ok()
+                                    .map(|new| {
+                                        unified_diff(
+                                            Algorithm::Myers,
+                                            &old,
+                                            &new,
+                                            3,
+                                            Some(("old", "new")),
+                                        )
+                                    })
+                            }).unwrap_or_else(|| String::from("diff unrecoverable"));
+                            Some(NewStackwalkingProblem::Diff(diff))
+                    } else if 2 * result_new.duration >= 3 * result_old.duration {
+                        Some(NewStackwalkingProblem::Slow)
+                    } else {
+                        None
+                    }
+            });
+
+            Ok::<_, anyhow::Error>((result_old, problem))
         };
 
         self.cpu_pool
@@ -2109,14 +2153,16 @@ impl SymbolicationActor {
         minidump_path: &Path,
         sources: Arc<[SourceConfig]>,
         cfi_caches: &mut CfiCacheModules,
-        compare_stackwalking_methods: bool,
-    ) -> anyhow::Result<(StackWalkMinidumpResult, Option<StackWalkMinidumpResult>)> {
+        mut compare_stackwalking_methods: bool,
+    ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
         let mut iterations = 0;
+
+        let mut new_stackwalking_problem = None;
 
         let result = loop {
             iterations += 1;
 
-            let (result_old, result_new) = self
+            let (result_old, problem) = self
                 .stackwalk_minidump(minidump_path, cfi_caches, compare_stackwalking_methods)
                 .await?;
             let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result_old
@@ -2125,10 +2171,15 @@ impl SymbolicationActor {
                 .map(|t| (*t.0, t.1))
                 .collect();
 
+            if problem.is_some() {
+                new_stackwalking_problem = problem;
+                compare_stackwalking_methods = false;
+            }
+
             // We put a hard limit of 5 iterations here.
             // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
             if missing_modules.is_empty() || iterations >= 5 {
-                break (result_old, result_new);
+                break result_old;
             }
 
             let loaded_caches = self
@@ -2138,7 +2189,7 @@ impl SymbolicationActor {
         };
 
         metric!(time_raw("minidump.stackwalk.iterations") = iterations);
-        Ok(result)
+        Ok((result, new_stackwalking_problem))
     }
 
     #[tracing::instrument(skip_all)]
@@ -2164,7 +2215,7 @@ impl SymbolicationActor {
                 options.compare_stackwalking_methods,
             );
 
-            let (result_old, result_new) = match future.await {
+            let (result_old, new_stackwalking_problem) = match future.await {
                 Ok(result) => result,
                 Err(err) => {
                     self.maybe_persist_minidump(minidump_file);
@@ -2173,47 +2224,6 @@ impl SymbolicationActor {
             };
 
             metric!(timer("minidump.stackwalk.duration") = result_old.duration, "method" => "old");
-            // Determine if there was a stackwalking difference or the new method performed poorly.
-            // If so, the minidump will be saved further down after some more processing.
-            let (diff, slow) = match result_new {
-                None => (None, false),
-                Some(result_new) => {
-                    metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "new");
-
-                    let diff = if result_new != result_old {
-                        serde_json::to_string_pretty(&result_old)
-                            .map_err(|e| {
-                                tracing::error!("Failed to convert result_old to json: {}", e)
-                            })
-                            .ok()
-                            .and_then(|old| {
-                                serde_json::to_string_pretty(&result_new)
-                                    .map_err(|e| {
-                                        tracing::error!(
-                                            "Failed to convert result_new to json: {}",
-                                            e
-                                        )
-                                    })
-                                    .ok()
-                                    .map(|new| {
-                                        unified_diff(
-                                            Algorithm::Myers,
-                                            &old,
-                                            &new,
-                                            3,
-                                            Some(("old", "new")),
-                                        )
-                                    })
-                            })
-                    } else {
-                        None
-                    };
-
-                    let slow = 2 * result_new.duration >= 3 * result_old.duration;
-                    (diff, slow)
-                }
-            };
-
             let StackWalkMinidumpResult {
                 modules,
                 mut stacktraces,
@@ -2245,15 +2255,14 @@ impl SymbolicationActor {
             };
 
             // Save the minidump if there was a stackwalking difference or the new stackwalking method performed poorly.
-            if diff.is_some() || slow {
-                let msg = if diff.is_some() {
-                    "Different stackwalking results"
-                } else {
-                    "Slow stackwalking run"
+            if let Some(problem) = new_stackwalking_problem {
+                let msg = match problem {
+                    NewStackwalkingProblem::Diff(_) => "Different stackwalking results",
+                    NewStackwalkingProblem::Slow => "Slow stackwalking run",
                 };
                 sentry::with_scope(
                     |scope| {
-                        if let Some(diff) = diff {
+                        if let NewStackwalkingProblem::Diff(diff) = problem {
                             scope.set_extra("diff", sentry::protocol::Value::String(diff));
                         }
                     },
