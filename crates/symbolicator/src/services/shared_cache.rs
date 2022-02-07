@@ -36,7 +36,7 @@ use crate::utils::gcs::{self, GcsError};
 use super::cacher::CacheKey;
 
 // TODO: get timeouts from global config?
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const STORE_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct GcsState {
