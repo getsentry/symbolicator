@@ -824,6 +824,15 @@ impl SymCacheLookup {
         });
     }
 
+    /// Returns the original `CompleteObjectInfo` list in its original sorting order.
+    fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
+        self.inner.sort_by_key(|entry| entry.module_index);
+        self.inner
+            .into_iter()
+            .map(|entry| entry.object_info)
+            .collect()
+    }
+
     #[tracing::instrument(skip_all)]
     async fn fetch_symcaches(
         self,
@@ -1233,19 +1242,26 @@ fn record_symbolication_metrics(
         .to_string();
 
     // Unusable modules that don’t have any kind of ID to look them up with
-    let unusable_modules = modules
-        .iter()
-        .filter(|m| {
-            let id = object_id_from_object_info(&m.raw);
-            id.debug_id.is_none() && id.code_id.is_none()
-        })
-        .count() as u64;
-
+    let mut unusable_modules = 0;
     // Modules that failed parsing
-    let unparsable_modules = modules
-        .iter()
-        .filter(|m| m.debug_status == ObjectFileStatus::Malformed)
-        .count() as u64;
+    let mut unparsable_modules = 0;
+
+    for m in modules {
+        metric!(
+            counter("symbolication.debug_status") += 1,
+            "status" => m.debug_status.name()
+        );
+
+        // FIXME: `object_id_from_object_info` allocates and is kind-of expensive
+        let id = object_id_from_object_info(&m.raw);
+        if id.debug_id.is_none() && id.code_id.is_none() {
+            unusable_modules += 1;
+        }
+
+        if m.debug_status == ObjectFileStatus::Malformed {
+            unparsable_modules += 1;
+        }
+    }
 
     metric!(
         time_raw("symbolication.num_modules") = modules.len() as u64,
@@ -1531,22 +1547,8 @@ impl SymbolicationActor {
                 .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
                 .collect();
 
-            let mut modules: Vec<_> = symcache_lookup
-                .inner
-                .into_iter()
-                .map(|entry| {
-                    metric!(
-                        counter("symbolication.debug_status") += 1,
-                        "status" => entry.object_info.debug_status.name()
-                    );
-
-                    (entry.module_index, entry.object_info)
-                })
-                .collect();
-
             // bring modules back into the original order
-            modules.sort_by_key(|&(index, _)| index);
-            let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
+            let modules = symcache_lookup.into_inner();
 
             record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
 
