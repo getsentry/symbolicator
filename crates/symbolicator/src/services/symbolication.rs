@@ -1807,7 +1807,7 @@ fn stackwalk_with_breakpad(
     cfi_caches: BTreeMap<DebugId, PathBuf>,
     minidump_path: PathBuf,
     spawn_time: SystemTime,
-) -> Result<procspawn::serde::Json<StackWalkMinidumpResult>, ProcError> {
+) -> Result<StackWalkMinidumpResult, ProcError> {
     if let Ok(duration) = spawn_time.elapsed() {
         metric!(timer("minidump.stackwalk.spawn.duration") = duration);
     }
@@ -1892,20 +1892,20 @@ fn stackwalk_with_breakpad(
         });
     }
 
-    Ok(procspawn::serde::Json(StackWalkMinidumpResult {
+    Ok(StackWalkMinidumpResult {
         modules,
         missing_modules,
         stacktraces,
         minidump_state,
         duration,
-    }))
+    })
 }
 
 fn stackwalk_with_rust_minidump(
     _cfi_caches: BTreeMap<DebugId, PathBuf>,
     _minidump_path: PathBuf,
     _spawn_time: SystemTime,
-) -> Result<procspawn::serde::Json<StackWalkMinidumpResult>, ProcError> {
+) -> Result<StackWalkMinidumpResult, ProcError> {
     unimplemented!()
 }
 
@@ -2037,6 +2037,7 @@ impl SymbolicationActor {
                 |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
                     stackwalk_with_breakpad(cfi_caches, minidump_path, spawn_time)
+                        .map(procspawn::serde::Json)
                 },
             );
 
@@ -2057,6 +2058,7 @@ impl SymbolicationActor {
                     |(cfi_caches, minidump_path, spawn_time)| {
                         let procspawn::serde::Json(cfi_caches) = cfi_caches;
                         stackwalk_with_rust_minidump(cfi_caches, minidump_path, spawn_time)
+                            .map(procspawn::serde::Json)
                     },
                 );
 
