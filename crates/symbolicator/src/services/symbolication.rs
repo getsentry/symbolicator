@@ -582,7 +582,7 @@ pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 struct SourceObjectEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
-    source_object: Option<Arc<SourceObject>>,
+    source_object: Option<SourceObject>,
 }
 
 struct SourceLookup {
@@ -640,7 +640,7 @@ impl SourceLookup {
                             Some(object_file_meta) => {
                                 objects.fetch(object_file_meta).await.ok().and_then(|x| {
                                     SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
-                                        .map(|x| Arc::new(SourceObject(x)))
+                                        .map(SourceObject)
                                         .ok()
                                 })
                             }
@@ -663,7 +663,7 @@ impl SourceLookup {
         }
     }
 
-    pub fn prepare_debug_sessions(&self) -> BTreeMap<usize, Option<ObjectDebugSession<'_>>> {
+    pub fn prepare_debug_sessions(&self) -> HashMap<usize, Option<ObjectDebugSession<'_>>> {
         self.inner
             .iter()
             .map(|entry| {
@@ -680,7 +680,7 @@ impl SourceLookup {
 
     pub fn get_context_lines(
         &self,
-        debug_sessions: &BTreeMap<usize, Option<ObjectDebugSession<'_>>>,
+        debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
         addr: u64,
         addr_mode: AddrMode,
         abs_path: &str,
@@ -688,7 +688,7 @@ impl SourceLookup {
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
         let index = self.get_module_index_by_addr(addr, addr_mode)?;
-        let session = debug_sessions[&index].as_ref()?;
+        let session = debug_sessions.get(&index)?.as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
         let lineno = lineno as usize;
