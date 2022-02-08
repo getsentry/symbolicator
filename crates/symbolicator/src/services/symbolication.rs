@@ -592,14 +592,13 @@ struct SourceLookup {
 impl SourceLookup {
     #[tracing::instrument(skip_all)]
     pub async fn fetch_sources(
-        self,
+        &mut self,
         objects: ObjectsActor,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
         stacktraces: &[CompleteStacktrace],
-    ) -> Result<Self, SymbolicationError> {
+    ) {
         let mut referenced_objects = HashSet::new();
-
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
                 if let Some(i) =
@@ -610,54 +609,58 @@ impl SourceLookup {
             }
         }
 
-        let futures = self.inner.into_iter().map(|mut entry| {
-            let is_used = referenced_objects.contains(&entry.module_index);
-            let objects = objects.clone();
-            let scope = scope.clone();
-            let sources = sources.clone();
-
-            async move {
+        let futures = self
+            .inner
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                let is_used = referenced_objects.contains(&entry.module_index);
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     entry.source_object = None;
-                    return entry;
+                    return None;
                 }
 
-                let opt_object_file_meta = objects
-                    .find(FindObject {
-                        filetypes: FileType::sources(),
-                        purpose: ObjectPurpose::Source,
-                        scope: scope.clone(),
-                        identifier: object_id_from_object_info(&entry.object_info.raw),
-                        sources,
-                    })
-                    .await
-                    .unwrap_or_default()
-                    .meta;
-
-                entry.source_object = match opt_object_file_meta {
-                    None => None,
-                    Some(object_file_meta) => {
-                        objects.fetch(object_file_meta).await.ok().and_then(|x| {
-                            SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
-                                .map(|x| Arc::new(SourceObject(x)))
-                                .ok()
-                        })
-                    }
+                let objects = objects.clone();
+                let find_request = FindObject {
+                    filetypes: FileType::sources(),
+                    purpose: ObjectPurpose::Source,
+                    scope: scope.clone(),
+                    identifier: object_id_from_object_info(&entry.object_info.raw),
+                    sources: sources.clone(),
                 };
+
+                Some(
+                    async move {
+                        let opt_object_file_meta =
+                            objects.find(find_request).await.unwrap_or_default().meta;
+
+                        let source_object = match opt_object_file_meta {
+                            None => None,
+                            Some(object_file_meta) => {
+                                objects.fetch(object_file_meta).await.ok().and_then(|x| {
+                                    SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
+                                        .map(|x| Arc::new(SourceObject(x)))
+                                        .ok()
+                                })
+                            }
+                        };
+
+                        (idx, source_object)
+                    }
+                    .bind_hub(Hub::new_from_top(Hub::current())),
+                )
+            });
+
+        for (idx, source_object) in future::join_all(futures).await {
+            if let Some(entry) = self.inner.get_mut(idx) {
+                entry.source_object = source_object;
 
                 if entry.source_object.is_some() {
                     entry.object_info.features.has_sources = true;
                 }
-
-                entry
             }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        Ok(SourceLookup {
-            inner: future::join_all(futures).await,
-        })
+        }
     }
 
     pub fn prepare_debug_sessions(&self) -> BTreeMap<usize, Option<ObjectDebugSession<'_>>> {
@@ -1537,7 +1540,6 @@ impl SymbolicationActor {
         } = request;
 
         let mut symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
-
         symcache_lookup
             .fetch_symcaches(self.symcaches, scope.clone(), sources.clone(), &stacktraces)
             .await;
@@ -1567,10 +1569,10 @@ impl SymbolicationActor {
                 .await
                 .context("Symbolication future cancelled")?;
 
-        let source_lookup: SourceLookup = modules.into_iter().collect();
-        let source_lookup = source_lookup
+        let mut source_lookup: SourceLookup = modules.into_iter().collect();
+        source_lookup
             .fetch_sources(self.objects, scope, sources, &response.stacktraces)
-            .await?;
+            .await;
 
         let future = async move {
             let debug_sessions = source_lookup.prepare_debug_sessions();
