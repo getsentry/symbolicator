@@ -2541,7 +2541,7 @@ impl SymbolicationActor {
                 };
 
                 if let NewStackwalkingProblem::Diff(ref diff) = problem {
-                    tracing::debug!("{}", diff);
+                    tracing::debug!("Stackwalking difference: {}", diff);
                 }
 
                 sentry::with_scope(
