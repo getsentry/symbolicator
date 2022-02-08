@@ -219,7 +219,7 @@ impl CfiCacheModules {
     }
 
     /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> BTreeMap<DebugId, PathBuf> {
+    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
         self.inner
             .iter()
             .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
@@ -1743,7 +1743,7 @@ impl MinidumpState {
 ///
 /// This reads the CFI caches from disk and returns them in a format suitable for the
 /// breakpad processor to stackwalk.
-fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, CfiCache<'static>> {
+fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, CfiCache<'static>> {
     cfi.into_iter()
         .filter_map(|(id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
@@ -1804,7 +1804,7 @@ impl std::fmt::Display for ProcError {
 impl std::error::Error for ProcError {}
 
 fn stackwalk_with_breakpad(
-    cfi_caches: BTreeMap<DebugId, PathBuf>,
+    cfi_caches: Vec<(DebugId, PathBuf)>,
     minidump_path: PathBuf,
     spawn_time: SystemTime,
 ) -> Result<StackWalkMinidumpResult, ProcError> {
@@ -1813,7 +1813,7 @@ fn stackwalk_with_breakpad(
     }
 
     // Stackwalk the minidump.
-    let available_module_ids: BTreeSet<DebugId> = cfi_caches.keys().cloned().collect();
+    let available_module_ids: BTreeSet<DebugId> = cfi_caches.iter().map(|c| c.0).collect();
     let cfi = load_cfi_for_processor(cfi_caches)
         .into_iter()
         .map(|(id, cache)| (id.into(), cache))
@@ -1902,7 +1902,7 @@ fn stackwalk_with_breakpad(
 }
 
 fn stackwalk_with_rust_minidump(
-    _cfi_caches: BTreeMap<DebugId, PathBuf>,
+    _cfi_caches: Vec<(DebugId, PathBuf)>,
     _minidump_path: PathBuf,
     _spawn_time: SystemTime,
 ) -> Result<StackWalkMinidumpResult, ProcError> {
