@@ -1837,7 +1837,7 @@ fn stackwalk_with_breakpad(
             if available_module_ids.contains(&id) {
                 return None;
             }
-            Some((id, object_info_from_minidump_module(object_type, module)))
+            Some(id)
         })
         .collect();
     let modules = return_modules.then(|| {
@@ -1913,7 +1913,7 @@ fn stackwalk_with_rust_minidump(
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     modules: Option<Vec<(DebugId, RawObjectInfo)>>,
-    missing_modules: Vec<(DebugId, RawObjectInfo)>,
+    missing_modules: Vec<DebugId>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: Duration,
@@ -2168,7 +2168,7 @@ impl SymbolicationActor {
                 )
                 .await?;
 
-            let _modules = match &modules {
+            let modules = match &modules {
                 Some(modules) => modules,
                 None => {
                     let received_modules = std::mem::take(&mut result_old.modules);
@@ -2179,21 +2179,21 @@ impl SymbolicationActor {
                 }
             };
 
-            let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result_old
-                .missing_modules
-                .iter()
-                .map(|t| (t.0, &t.1))
-                .collect();
+            // We put a hard limit of 5 iterations here.
+            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+            if result_old.missing_modules.is_empty() || iterations >= 5 {
+                break result_old;
+            }
+
+            let missing_modules: Vec<(DebugId, &RawObjectInfo)> =
+                std::mem::take(&mut result_old.missing_modules)
+                    .into_iter()
+                    .filter_map(|id| modules.get(&id).map(|info| (id, info)))
+                    .collect();
 
             if problem.is_some() {
                 new_stackwalking_problem = problem;
                 compare_stackwalking_methods = false;
-            }
-
-            // We put a hard limit of 5 iterations here.
-            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-            if missing_modules.is_empty() || iterations >= 5 {
-                break result_old;
             }
 
             let loaded_caches = self
