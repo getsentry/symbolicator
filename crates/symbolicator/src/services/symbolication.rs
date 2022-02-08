@@ -2077,10 +2077,12 @@ impl SymbolicationActor {
                 None
             };
 
+            metric!(timer("minidump.stackwalk.duration") = result_old.duration, "method" => "breakpad");
+
             // Determine if there was a stackwalking difference or the new method performed poorly.
             // If so, the minidump will be saved further down after some more processing.
             let problem = result_new.and_then(|result_new| {
-                    metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "new");
+                    metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
 
                     if result_new != result_old {
                         let diff = serde_json::to_string_pretty(&result_old)
@@ -2103,7 +2105,7 @@ impl SymbolicationActor {
                                             &old,
                                             &new,
                                             3,
-                                            Some(("old", "new")),
+                                            Some(("breakpad", "rust-minidump")),
                                         )
                                     })
                             }).unwrap_or_else(|| String::from("diff unrecoverable"));
@@ -2223,7 +2225,6 @@ impl SymbolicationActor {
                 }
             };
 
-            metric!(timer("minidump.stackwalk.duration") = result_old.duration, "method" => "old");
             let StackWalkMinidumpResult {
                 modules,
                 mut stacktraces,
