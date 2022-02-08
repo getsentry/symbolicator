@@ -17,7 +17,6 @@ use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
-use crate::logging::LogError;
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -620,7 +619,7 @@ impl Caches {
         for result in results {
             if let Err(err) = result {
                 let stderr: &dyn std::error::Error = &*err;
-                tracing::error!("Failed to cleanup cache: {}", LogError(stderr));
+                tracing::error!(stderr, "Failed to cleanup cache");
                 if first_error.is_none() {
                     first_error = Some(err);
                 }

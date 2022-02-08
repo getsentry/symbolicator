@@ -34,7 +34,6 @@ use tempfile::TempPath;
 use thiserror::Error;
 
 use crate::cache::CacheStatus;
-use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
@@ -181,11 +180,8 @@ impl CfiCacheModules {
                         CacheStatus::Negative => ObjectFileStatus::Missing,
                         CacheStatus::Malformed(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            tracing::warn!(
-                                "Error while parsing cficache: {} ({})",
-                                LogError(&err),
-                                details
-                            );
+                            let stderr: &dyn std::error::Error = &err;
+                            tracing::warn!(stderr, "Error while parsing cficache: {}", details);
                             ObjectFileStatus::from(&err)
                         }
                         // If the cache entry is for a cache specific error, it must be
@@ -209,7 +205,8 @@ impl CfiCacheModules {
                     }
                 }
                 Err(err) => {
-                    tracing::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::debug!(stderr, "Error while fetching cficache");
                     CfiModule {
                         cfi_status: ObjectFileStatus::from(err.as_ref()),
                         ..Default::default()
@@ -1752,7 +1749,8 @@ fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, 
         .filter_map(|(id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
-                    tracing::error!("Error while reading cficache: {}", LogError(&err));
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::error!(stderr, "Error while reading cficache");
                     err
                 })
                 .ok()?;
@@ -1761,7 +1759,8 @@ fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, 
                     // This mostly never happens since we already checked the files
                     // after downloading and they would have been tagged with
                     // CacheStatus::Malformed.
-                    tracing::error!("Error while loading cficache: {}", LogError(&err));
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::error!(stderr, "Error while loading cficache");
                     err
                 })
                 .ok()?;

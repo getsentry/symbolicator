@@ -23,7 +23,6 @@ use tempfile::tempfile_in;
 use tempfile::NamedTempFile;
 
 use crate::cache::CacheStatus;
-use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
 use crate::services::download::DownloadService;
 use crate::services::download::RemoteDif;
@@ -182,11 +181,12 @@ async fn fetch_file(
             // in our internal sentry. We downgrade to debug-log for unactionable
             // permissions errors. Since this function does a fresh download, it will never
             // hit `CachedError`, but listing it for completeness is not a bad idea either.
+            let stderr: &dyn std::error::Error = &e;
             match e {
                 DownloadError::Permissions | DownloadError::CachedError(_) => {
-                    tracing::debug!("Error while downloading file: {}", LogError(&e))
+                    tracing::debug!(stderr, "Error while downloading file")
                 }
-                _ => tracing::error!("Error while downloading file: {}", LogError(&e)),
+                _ => tracing::error!(stderr, "Error while downloading file"),
             }
 
             return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
