@@ -264,7 +264,7 @@ struct ModuleListBuilder {
 }
 
 impl ModuleListBuilder {
-    fn new(cfi_caches: CfiCacheModules, modules: BTreeMap<DebugId, RawObjectInfo>) -> Self {
+    fn new(cfi_caches: CfiCacheModules, modules: Vec<(DebugId, RawObjectInfo)>) -> Self {
         // Now build the CompletedObjectInfo for all modules
         let cfi_caches = cfi_caches.into_inner();
 
@@ -1909,20 +1909,11 @@ fn stackwalk_with_rust_minidump(
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
-    modules: BTreeMap<DebugId, RawObjectInfo>,
+    modules: Vec<(DebugId, RawObjectInfo)>,
     missing_modules: Vec<(DebugId, RawObjectInfo)>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: Duration,
-}
-
-impl PartialEq for StackWalkMinidumpResult {
-    fn eq(&self, other: &Self) -> bool {
-        self.modules == other.modules
-            && self.missing_modules == other.missing_modules
-            && self.stacktraces == other.stacktraces
-            && self.minidump_state == other.minidump_state
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2082,7 +2073,7 @@ impl SymbolicationActor {
             let problem = result_new.and_then(|result_new| {
                     metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
 
-                    if result_new != result_old {
+                    if result_new.stacktraces != result_old.stacktraces {
                         let diff = serde_json::to_string_pretty(&result_old)
                             .map_err(|e| {
                                 tracing::error!("Failed to convert result_old to json: {}", e)
