@@ -1629,22 +1629,14 @@ impl SymbolicationActor {
     ///
     /// If the timeout is set and no result is ready within the given time,
     /// [`SymbolicationResponse::Pending`] is returned.
-    // TODO(flub): once the callers are updated to be `async fn` this can take `&self` again.
     pub async fn get_response(
-        self,
+        &self,
         request_id: RequestId,
         timeout: Option<u64>,
     ) -> Option<SymbolicationResponse> {
         let channel_opt = self.requests.lock().get(&request_id).cloned();
         match channel_opt {
-            Some(channel) => {
-                // `wrap_response_channel` internally creates a `tokio::time::timeout`, which
-                // requires an active runtime to be present, otherwise it panics.
-                // This function however is called directly from the actix/tokio01 runtime.
-                let _guard = self.io_pool.enter();
-
-                Some(wrap_response_channel(request_id, timeout, channel).await)
-            }
+            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
@@ -2725,9 +2717,8 @@ mod tests {
         // cached debug files to requests that no longer specify a source.
 
         let (service, _cache_dir) = setup_service().await;
-        let (_symsrv, source) = test::symbol_server();
-
         let symbolication = service.symbolication();
+        let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![source]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
@@ -2735,7 +2726,6 @@ mod tests {
 
         assert_snapshot!(response.unwrap());
 
-        let symbolication = service.symbolication();
         let request = get_symbolication_request(vec![]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
@@ -2751,16 +2741,15 @@ mod tests {
         // to requests immediately.
 
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
         let (_symsrv, source) = test::symbol_server();
 
-        let symbolication = service.symbolication();
         let request = get_symbolication_request(vec![]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
 
-        let symbolication = service.symbolication();
         let request = get_symbolication_request(vec![source]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
@@ -2774,6 +2763,7 @@ mod tests {
     async fn test_get_response_multi() {
         // Make sure we can repeatedly poll for the response
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -2799,17 +2789,10 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request)
-            .unwrap();
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
 
         for _ in 0..2 {
-            let response = service
-                .symbolication()
-                .get_response(request_id, None)
-                .await
-                .unwrap();
+            let response = symbolication.get_response(request_id, None).await.unwrap();
 
             assert!(
                 matches!(&response, SymbolicationResponse::Completed(_)),
@@ -2823,12 +2806,12 @@ mod tests {
         ($path:expr) => {{
             async {
                 let (service, _cache_dir) = setup_service().await;
+                let symbolication = service.symbolication();
                 let (_symsrv, source) = test::symbol_server();
 
                 let minidump = test::read_fixture($path);
                 let mut minidump_file = NamedTempFile::new()?;
                 minidump_file.write_all(&minidump)?;
-                let symbolication = service.symbolication();
                 let request_id = symbolication.process_minidump(
                     Scope::Global,
                     minidump_file.into_temp_path(),
@@ -2873,11 +2856,11 @@ mod tests {
     #[tokio::test]
     async fn test_apple_crash_report() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let request_id = service
-            .symbolication()
+        let request_id = symbolication
             .process_apple_crash_report(
                 Scope::Global,
                 report_file,
@@ -2889,7 +2872,7 @@ mod tests {
             )
             .unwrap();
 
-        let response = service.symbolication().get_response(request_id, None).await;
+        let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
         Ok(())
@@ -2898,6 +2881,7 @@ mod tests {
     #[tokio::test]
     async fn test_wasm_payload() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
         let (_symsrv, source) = test::symbol_server();
 
         let modules: Vec<RawObjectInfo> = serde_json::from_str(
@@ -2934,11 +2918,8 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request)
-            .unwrap();
-        let response = service.symbolication().get_response(request_id, None).await;
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
         insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())
