@@ -834,12 +834,12 @@ impl SymCacheLookup {
 
     #[tracing::instrument(skip_all)]
     async fn fetch_symcaches(
-        self,
+        &mut self,
         symcache_actor: SymCacheActor,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
         stacktraces: &[RawStacktrace],
-    ) -> Self {
+    ) {
         let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
@@ -851,26 +851,36 @@ impl SymCacheLookup {
             }
         }
 
-        let futures = self.inner.into_iter().map(|mut entry| {
-            let is_used = referenced_objects.contains(&entry.module_index);
-            let sources = sources.clone();
-            let scope = scope.clone();
-            let symcache_actor = symcache_actor.clone();
-
-            async move {
+        let futures = self
+            .inner
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                let is_used = referenced_objects.contains(&entry.module_index);
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
-                    return entry;
+                    return None;
                 }
-                let symcache_result = symcache_actor
-                    .fetch(FetchSymCache {
-                        object_type: entry.object_info.raw.ty,
-                        identifier: object_id_from_object_info(&entry.object_info.raw),
-                        sources,
-                        scope,
-                    })
-                    .await;
 
+                let symcache_actor = symcache_actor.clone();
+                let request = FetchSymCache {
+                    object_type: entry.object_info.raw.ty,
+                    identifier: object_id_from_object_info(&entry.object_info.raw),
+                    sources: sources.clone(),
+                    scope: scope.clone(),
+                };
+
+                Some(
+                    async move {
+                        let symcache_result = symcache_actor.fetch(request).await;
+                        (idx, symcache_result)
+                    }
+                    .bind_hub(Hub::new_from_top(Hub::current())),
+                )
+            });
+
+        for (idx, symcache_result) in future::join_all(futures).await {
+            if let Some(entry) = self.inner.get_mut(idx) {
                 let (symcache, status) = match symcache_result {
                     Ok(symcache) => match symcache.parse() {
                         Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
@@ -890,13 +900,7 @@ impl SymCacheLookup {
 
                 entry.symcache = symcache;
                 entry.object_info.debug_status = status;
-                entry
             }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        SymCacheLookup {
-            inner: future::join_all(futures).await,
         }
     }
 
@@ -1532,9 +1536,9 @@ impl SymbolicationActor {
             ..
         } = request;
 
-        let symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
+        let mut symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
 
-        let symcache_lookup = symcache_lookup
+        symcache_lookup
             .fetch_symcaches(self.symcaches, scope.clone(), sources.clone(), &stacktraces)
             .await;
 
