@@ -1806,12 +1806,10 @@ impl std::fmt::Display for ProcError {
 impl std::error::Error for ProcError {}
 
 fn stackwalk_with_breakpad(
-    cfi_caches: procspawn::serde::Json<BTreeMap<DebugId, PathBuf>>,
+    cfi_caches: BTreeMap<DebugId, PathBuf>,
     minidump_path: PathBuf,
     spawn_time: SystemTime,
 ) -> Result<procspawn::serde::Json<StackWalkMinidumpResult>, ProcError> {
-    let procspawn::serde::Json(cfi_caches) = cfi_caches;
-
     if let Ok(duration) = spawn_time.elapsed() {
         metric!(timer("minidump.stackwalk.spawn.duration") = duration);
     }
@@ -1906,7 +1904,7 @@ fn stackwalk_with_breakpad(
 }
 
 fn stackwalk_with_rust_minidump(
-    _cfi_caches: procspawn::serde::Json<BTreeMap<DebugId, PathBuf>>,
+    _cfi_caches: BTreeMap<DebugId, PathBuf>,
     _minidump_path: PathBuf,
     _spawn_time: SystemTime,
 ) -> Result<procspawn::serde::Json<StackWalkMinidumpResult>, ProcError> {
@@ -2039,6 +2037,7 @@ impl SymbolicationActor {
                     spawn_time,
                 ),
                 |(cfi_caches, minidump_path, spawn_time)| {
+                    let procspawn::serde::Json(cfi_caches) = cfi_caches;
                     stackwalk_with_breakpad(cfi_caches, minidump_path, spawn_time)
                 },
             );
@@ -2058,6 +2057,7 @@ impl SymbolicationActor {
                         spawn_time,
                     ),
                     |(cfi_caches, minidump_path, spawn_time)| {
+                        let procspawn::serde::Json(cfi_caches) = cfi_caches;
                         stackwalk_with_rust_minidump(cfi_caches, minidump_path, spawn_time)
                     },
                 );
@@ -2266,9 +2266,11 @@ impl SymbolicationActor {
                             scope.set_extra("diff", sentry::protocol::Value::String(diff));
                         }
                     },
-                    || self.maybe_persist_minidump(minidump_file),
+                    || {
+                        self.maybe_persist_minidump(minidump_file);
+                        sentry::capture_message(msg, sentry::Level::Error);
+                    },
                 );
-                sentry::capture_message(msg, sentry::Level::Error);
             }
 
             Ok::<_, anyhow::Error>((request, minidump_state))

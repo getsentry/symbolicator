@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use ::reqwest::blocking::multipart;
 use reqwest::blocking as reqwest;
+use serde_json::{to_string, Map, Value};
 use structopt::StructOpt;
 
 /// Runs Minidumps or Sentry Events through Symbolicator.
@@ -48,17 +49,17 @@ fn main() -> Result<(), anyhow::Error> {
 
     let req = if &magic == b"MDMP" {
         let req = client.post(&format!("{}/minidump", symbolicator));
+
+        let mut options = Map::new();
+        options.insert("dif_candidates".into(), Value::Bool(dif_candidates));
+        options.insert(
+            "compare_stackwalking_methods".into(),
+            Value::Bool(compare_stackwalking_methods),
+        );
+
         let mut form = multipart::Form::new();
-
-        if dif_candidates {
-            form = form.text("options", r#"{"dif_candidates":true}"#);
-        }
-
-        if compare_stackwalking_methods {
-            form = form.text("options", r#"{"compare_stackwalking_methods":true}"#);
-        }
-
         form = form.file("upload_file_minidump", input)?;
+        form = form.text("options", to_string(&options).unwrap());
 
         req.multipart(form).send()
     } else {
