@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
@@ -596,10 +596,9 @@ impl SourceLookup {
         objects: ObjectsActor,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-        response: &CompletedSymbolicationResponse,
+        stacktraces: &[CompleteStacktrace],
     ) -> Result<Self, SymbolicationError> {
-        let mut referenced_objects = BTreeSet::new();
-        let stacktraces = &response.stacktraces;
+        let mut referenced_objects = HashSet::new();
 
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
@@ -837,18 +836,13 @@ impl SymCacheLookup {
     async fn fetch_symcaches(
         self,
         symcache_actor: SymCacheActor,
-        request: SymbolicateStacktraces,
+        scope: Scope,
+        sources: Arc<[SourceConfig]>,
+        stacktraces: &[RawStacktrace],
     ) -> Self {
-        let mut referenced_objects = BTreeSet::new();
-        let SymbolicateStacktraces {
-            stacktraces,
-            sources,
-            scope,
-            ..
-        } = request;
-
+        let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
-            for frame in stacktrace.frames {
+            for frame in &stacktrace.frames {
                 if let Some(SymCacheLookupResult { module_index, .. }) =
                     self.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
                 {
@@ -1528,16 +1522,20 @@ impl SymbolicationActor {
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
-        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
-        let stacktraces = request.stacktraces.clone();
-        let sources = request.sources.clone();
-        let scope = request.scope.clone();
-        let signal = request.signal;
-        let origin = request.origin;
+        let SymbolicateStacktraces {
+            stacktraces,
+            sources,
+            scope,
+            signal,
+            origin,
+            modules,
+            ..
+        } = request;
+
+        let symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
 
         let symcache_lookup = symcache_lookup
-            .fetch_symcaches(self.symcaches, request)
+            .fetch_symcaches(self.symcaches, scope.clone(), sources.clone(), &stacktraces)
             .await;
 
         let future = async move {
@@ -1565,8 +1563,9 @@ impl SymbolicationActor {
                 .await
                 .context("Symbolication future cancelled")?;
 
+        let source_lookup: SourceLookup = modules.into_iter().collect();
         let source_lookup = source_lookup
-            .fetch_sources(self.objects, scope, sources, &response)
+            .fetch_sources(self.objects, scope, sources, &response.stacktraces)
             .await?;
 
         let future = async move {
