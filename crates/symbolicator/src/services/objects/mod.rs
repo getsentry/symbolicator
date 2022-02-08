@@ -10,7 +10,6 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::logging::LogError;
 use crate::services::cacher::Cacher;
 use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
 use crate::sources::{FileType, SourceConfig, SourceId};
@@ -260,11 +259,8 @@ impl ObjectsActor {
                         // the search by debug/code id. We do not surface those errors to the
                         // user (instead we default to an empty search result) and only report
                         // them internally.
-                        tracing::error!(
-                            "Failed to fetch file list from {}: {}",
-                            type_name,
-                            LogError(&err)
-                        );
+                        let stderr: &dyn std::error::Error = &err;
+                        tracing::error!(stderr, "Failed to fetch file list from {}", type_name);
                         Vec::new()
                     })
             }

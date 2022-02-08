@@ -1,5 +1,4 @@
 use std::env;
-use std::fmt;
 
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::fmt;
@@ -74,22 +73,6 @@ pub fn init_logging(config: &Config) {
             .finish()
             .with(sentry::integrations::tracing::layer())
             .init(),
-    }
-}
-
-/// A wrapper around an [`Error`](std::error::Error) that prints its causes.
-pub struct LogError<'a>(pub &'a dyn std::error::Error);
-
-impl<'a> fmt::Display for LogError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut error = self.0;
-        write!(f, "{}", error)?;
-        while let Some(cause) = error.source() {
-            write!(f, "\n  caused by: {}", cause)?;
-            error = cause;
-        }
-
-        Ok(())
     }
 }
 
