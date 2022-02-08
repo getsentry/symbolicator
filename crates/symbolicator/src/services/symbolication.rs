@@ -1768,6 +1768,41 @@ fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, 
         .collect()
 }
 
+/// Generic error serialized over procspawn.
+#[derive(Debug, Serialize, Deserialize)]
+struct ProcError(String);
+
+impl ProcError {
+    pub fn new(d: impl std::fmt::Display) -> Self {
+        Self(d.to_string())
+    }
+}
+
+impl From<std::io::Error> for ProcError {
+    fn from(e: std::io::Error) -> Self {
+        Self::new(e)
+    }
+}
+impl From<minidump::Error> for ProcError {
+    fn from(e: minidump::Error) -> Self {
+        Self::new(e)
+    }
+}
+
+impl From<ProcessMinidumpError> for ProcError {
+    fn from(e: ProcessMinidumpError) -> Self {
+        Self::new(e)
+    }
+}
+
+impl std::fmt::Display for ProcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for ProcError {}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     modules: BTreeMap<DebugId, RawObjectInfo>,
@@ -1875,7 +1910,7 @@ impl SymbolicationActor {
                     minidump_path,
                     spawn_time,
                 ),
-                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcessMinidumpError> {
+                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
 
                     if let Ok(duration) = spawn_time.elapsed() {
