@@ -1813,7 +1813,7 @@ fn stackwalk_with_breakpad(
     }
 
     // Stackwalk the minidump.
-    let available_module_ids: BTreeSet<DebugId> = cfi_caches.iter().map(|c| c.0).collect();
+    let available_module_ids: HashSet<DebugId> = cfi_caches.iter().map(|c| c.0).collect();
     let cfi = load_cfi_for_processor(cfi_caches)
         .into_iter()
         .map(|(id, cache)| (id.into(), cache))
@@ -1828,19 +1828,17 @@ fn stackwalk_with_breakpad(
     let minidump_state = MinidumpState::new(&process_state);
     let object_type = minidump_state.object_type();
 
-    let mut missing_modules: BTreeMap<DebugId, RawObjectInfo> = process_state
+    let missing_modules = process_state
         .referenced_modules()
         .iter()
-        .map(|module| {
-            (
-                // TODO(ja): Check how this can be empty and how we shim.
-                //           Probably needs explicit conversion from raw
-                DebugId::from_str(&module.debug_identifier()).unwrap_or_default(),
-                object_info_from_minidump_module(object_type, module),
-            )
+        .filter_map(|module| {
+            let id = DebugId::from_str(&module.debug_identifier()).unwrap_or_default();
+            if available_module_ids.contains(&id) {
+                return None;
+            }
+            Some((id, object_info_from_minidump_module(object_type, module)))
         })
         .collect();
-    missing_modules.retain(|id, _| !available_module_ids.contains(id));
     let modules = process_state
         .modules()
         .iter()
@@ -1912,7 +1910,7 @@ fn stackwalk_with_rust_minidump(
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     modules: BTreeMap<DebugId, RawObjectInfo>,
-    missing_modules: BTreeMap<DebugId, RawObjectInfo>,
+    missing_modules: Vec<(DebugId, RawObjectInfo)>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: Duration,
@@ -2170,7 +2168,7 @@ impl SymbolicationActor {
             let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result_old
                 .missing_modules
                 .iter()
-                .map(|t| (*t.0, t.1))
+                .map(|t| (t.0, &t.1))
                 .collect();
 
             if problem.is_some() {
