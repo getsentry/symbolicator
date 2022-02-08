@@ -2036,7 +2036,7 @@ impl SymbolicationActor {
                     minidump_path.clone(),
                     spawn_time,
                 ),
-                |(cfi_caches, minidump_path, spawn_time)| {
+                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
                     stackwalk_with_breakpad(cfi_caches, minidump_path, spawn_time)
                 },
