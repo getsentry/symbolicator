@@ -2,7 +2,7 @@
 -- It is best to prime the symbolicator caches by posting the minidump at least once prior to benchmarking:
 -- > cargo run -p process-event -- path/to/mini.dmp
 -- And then run this script, giving it the minidump file via env:
--- > WRK_MINIDUMP="path/to/mini.dmp" wrk --threads 10 --connections 20 --duration 30s --script wrk_minidump.lua http://127.0.0.1:3021/minidump
+-- > WRK_MINIDUMP="path/to/mini.dmp" wrk --threads 20 --connections 50 --duration 30s --script wrk_minidump.lua http://127.0.0.1:3021/minidump
 
 function read_file(path)
   local file, errorMessage = io.open(path, "rb")
