@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
@@ -219,7 +219,7 @@ impl CfiCacheModules {
     }
 
     /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> BTreeMap<DebugId, PathBuf> {
+    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
         self.inner
             .iter()
             .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
@@ -264,7 +264,7 @@ struct ModuleListBuilder {
 }
 
 impl ModuleListBuilder {
-    fn new(cfi_caches: CfiCacheModules, modules: BTreeMap<DebugId, RawObjectInfo>) -> Self {
+    fn new(cfi_caches: CfiCacheModules, modules: Vec<(DebugId, RawObjectInfo)>) -> Self {
         // Now build the CompletedObjectInfo for all modules
         let cfi_caches = cfi_caches.into_inner();
 
@@ -1743,7 +1743,7 @@ impl MinidumpState {
 ///
 /// This reads the CFI caches from disk and returns them in a format suitable for the
 /// breakpad processor to stackwalk.
-fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, CfiCache<'static>> {
+fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, CfiCache<'static>> {
     cfi.into_iter()
         .filter_map(|(id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
@@ -1804,16 +1804,17 @@ impl std::fmt::Display for ProcError {
 impl std::error::Error for ProcError {}
 
 fn stackwalk_with_breakpad(
-    cfi_caches: BTreeMap<DebugId, PathBuf>,
+    cfi_caches: Vec<(DebugId, PathBuf)>,
     minidump_path: PathBuf,
     spawn_time: SystemTime,
-) -> Result<procspawn::serde::Json<StackWalkMinidumpResult>, ProcError> {
+    return_modules: bool,
+) -> Result<StackWalkMinidumpResult, ProcError> {
     if let Ok(duration) = spawn_time.elapsed() {
         metric!(timer("minidump.stackwalk.spawn.duration") = duration);
     }
 
     // Stackwalk the minidump.
-    let available_module_ids: BTreeSet<DebugId> = cfi_caches.keys().cloned().collect();
+    let available_module_ids: HashSet<DebugId> = cfi_caches.iter().map(|c| c.0).collect();
     let cfi = load_cfi_for_processor(cfi_caches)
         .into_iter()
         .map(|(id, cache)| (id.into(), cache))
@@ -1828,31 +1829,31 @@ fn stackwalk_with_breakpad(
     let minidump_state = MinidumpState::new(&process_state);
     let object_type = minidump_state.object_type();
 
-    let mut missing_modules: BTreeMap<DebugId, RawObjectInfo> = process_state
+    let missing_modules = process_state
         .referenced_modules()
         .iter()
-        .map(|module| {
-            (
-                // TODO(ja): Check how this can be empty and how we shim.
-                //           Probably needs explicit conversion from raw
-                DebugId::from_str(&module.debug_identifier()).unwrap_or_default(),
-                object_info_from_minidump_module(object_type, module),
-            )
+        .filter_map(|module| {
+            let id = DebugId::from_str(&module.debug_identifier()).unwrap_or_default();
+            if available_module_ids.contains(&id) {
+                return None;
+            }
+            Some(id)
         })
         .collect();
-    missing_modules.retain(|id, _| !available_module_ids.contains(id));
-    let modules = process_state
-        .modules()
-        .iter()
-        .map(|module| {
-            (
-                // TODO(ja): Check how this can be empty and how we shim.
-                //           Probably needs explicit conversion from raw
-                DebugId::from_str(&module.debug_identifier()).unwrap_or_default(),
-                object_info_from_minidump_module(object_type, module),
-            )
-        })
-        .collect();
+    let modules = return_modules.then(|| {
+        process_state
+            .modules()
+            .iter()
+            .map(|module| {
+                (
+                    // TODO(ja): Check how this can be empty and how we shim.
+                    //           Probably needs explicit conversion from raw
+                    DebugId::from_str(&module.debug_identifier()).unwrap_or_default(),
+                    object_info_from_minidump_module(object_type, module),
+                )
+            })
+            .collect()
+    });
 
     // Finally iterate through the threads and build the stacktraces to
     // return, marking modules as used when they are referenced by a frame.
@@ -1892,39 +1893,30 @@ fn stackwalk_with_breakpad(
         });
     }
 
-    Ok(procspawn::serde::Json(StackWalkMinidumpResult {
+    Ok(StackWalkMinidumpResult {
         modules,
         missing_modules,
         stacktraces,
         minidump_state,
         duration,
-    }))
+    })
 }
 
 fn stackwalk_with_rust_minidump(
-    _cfi_caches: BTreeMap<DebugId, PathBuf>,
+    _cfi_caches: Vec<(DebugId, PathBuf)>,
     _minidump_path: PathBuf,
     _spawn_time: SystemTime,
-) -> Result<procspawn::serde::Json<StackWalkMinidumpResult>, ProcError> {
+) -> Result<StackWalkMinidumpResult, ProcError> {
     unimplemented!()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
-    modules: BTreeMap<DebugId, RawObjectInfo>,
-    missing_modules: BTreeMap<DebugId, RawObjectInfo>,
+    modules: Option<Vec<(DebugId, RawObjectInfo)>>,
+    missing_modules: Vec<DebugId>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: Duration,
-}
-
-impl PartialEq for StackWalkMinidumpResult {
-    fn eq(&self, other: &Self) -> bool {
-        self.modules == other.modules
-            && self.missing_modules == other.missing_modules
-            && self.stacktraces == other.stacktraces
-            && self.minidump_state == other.minidump_state
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2021,6 +2013,7 @@ impl SymbolicationActor {
         path: &Path,
         cfi_caches: &CfiCacheModules,
         compare_stackwalking_methods: bool,
+        return_modules: bool,
     ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
         let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
@@ -2033,10 +2026,12 @@ impl SymbolicationActor {
                     procspawn::serde::Json(cfi_caches.clone()),
                     minidump_path.clone(),
                     spawn_time,
+                    return_modules,
                 ),
-                |(cfi_caches, minidump_path, spawn_time)| -> Result<_, ProcError> {
+                |(cfi_caches, minidump_path, spawn_time, return_modules)| -> Result<_, ProcError> {
                     let procspawn::serde::Json(cfi_caches) = cfi_caches;
-                    stackwalk_with_breakpad(cfi_caches, minidump_path, spawn_time)
+                    stackwalk_with_breakpad(cfi_caches, minidump_path, spawn_time, return_modules)
+                        .map(procspawn::serde::Json)
                 },
             );
 
@@ -2057,6 +2052,7 @@ impl SymbolicationActor {
                     |(cfi_caches, minidump_path, spawn_time)| {
                         let procspawn::serde::Json(cfi_caches) = cfi_caches;
                         stackwalk_with_rust_minidump(cfi_caches, minidump_path, spawn_time)
+                            .map(procspawn::serde::Json)
                     },
                 );
 
@@ -2082,7 +2078,7 @@ impl SymbolicationActor {
             let problem = result_new.and_then(|result_new| {
                     metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
 
-                    if result_new != result_old {
+                    if result_new.stacktraces != result_old.stacktraces {
                         let diff = serde_json::to_string_pretty(&result_old)
                             .map_err(|e| {
                                 tracing::error!("Failed to convert result_old to json: {}", e)
@@ -2157,29 +2153,47 @@ impl SymbolicationActor {
     ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
         let mut iterations = 0;
 
+        let mut modules: Option<HashMap<DebugId, RawObjectInfo>> = None;
         let mut new_stackwalking_problem = None;
 
-        let result = loop {
+        let mut result = loop {
             iterations += 1;
 
-            let (result_old, problem) = self
-                .stackwalk_minidump(minidump_path, cfi_caches, compare_stackwalking_methods)
+            let (mut result_old, problem) = self
+                .stackwalk_minidump(
+                    minidump_path,
+                    cfi_caches,
+                    compare_stackwalking_methods,
+                    modules.is_none(),
+                )
                 .await?;
-            let missing_modules: Vec<(DebugId, &RawObjectInfo)> = result_old
-                .missing_modules
-                .iter()
-                .map(|t| (*t.0, t.1))
-                .collect();
+
+            let modules = match &modules {
+                Some(modules) => modules,
+                None => {
+                    let received_modules = std::mem::take(&mut result_old.modules);
+                    let received_modules =
+                        received_modules.unwrap_or_default().into_iter().collect();
+                    modules = Some(received_modules);
+                    modules.as_ref().expect("modules was just set")
+                }
+            };
+
+            // We put a hard limit of 5 iterations here.
+            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
+            if result_old.missing_modules.is_empty() || iterations >= 5 {
+                break result_old;
+            }
+
+            let missing_modules: Vec<(DebugId, &RawObjectInfo)> =
+                std::mem::take(&mut result_old.missing_modules)
+                    .into_iter()
+                    .filter_map(|id| modules.get(&id).map(|info| (id, info)))
+                    .collect();
 
             if problem.is_some() {
                 new_stackwalking_problem = problem;
                 compare_stackwalking_methods = false;
-            }
-
-            // We put a hard limit of 5 iterations here.
-            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-            if missing_modules.is_empty() || iterations >= 5 {
-                break result_old;
             }
 
             let loaded_caches = self
@@ -2187,6 +2201,8 @@ impl SymbolicationActor {
                 .await;
             cfi_caches.extend(loaded_caches);
         };
+
+        result.modules = modules.map(|modules| modules.into_iter().collect());
 
         metric!(time_raw("minidump.stackwalk.iterations") = iterations);
         Ok((result, new_stackwalking_problem))
@@ -2240,7 +2256,8 @@ impl SymbolicationActor {
             }
 
             // Start building the module list for the symbolication response.
-            let mut module_builder = ModuleListBuilder::new(cfi_caches, modules);
+            let mut module_builder =
+                ModuleListBuilder::new(cfi_caches, modules.unwrap_or_default());
             module_builder.process_stacktraces(&stacktraces);
 
             let request = SymbolicateStacktraces {
