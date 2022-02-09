@@ -12,10 +12,10 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
+use minidump_processor::FrameTrust;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::debuginfo::Object;
-use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
 use crate::utils::addr::AddrMode;
@@ -232,8 +232,50 @@ pub struct RawFrame {
     pub post_context: Vec<String>,
 
     /// Information about how the raw frame was created.
-    #[serde(default, skip_serializing_if = "is_default_value")]
+    #[serde(
+        default,
+        with = "frame_trust",
+        skip_serializing_if = "is_default_value"
+    )]
     pub trust: FrameTrust,
+}
+
+mod frame_trust {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(trust: &FrameTrust, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(match *trust {
+            FrameTrust::None => "none",
+            FrameTrust::Scan => "scan",
+            FrameTrust::CfiScan => "cfiscan",
+            FrameTrust::FramePointer => "fp",
+            FrameTrust::CallFrameInfo => "cfi",
+            FrameTrust::PreWalked => "prewalked",
+            FrameTrust::Context => "context",
+        })
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<FrameTrust, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let string = <Cow<str>>::deserialize(deserializer)?;
+
+        match string.as_ref() {
+            "none" => Ok(FrameTrust::None),
+            "scan" => Ok(FrameTrust::Scan),
+            "cfiscan" => Ok(FrameTrust::CfiScan),
+            "fp" => Ok(FrameTrust::FramePointer),
+            "cfi" => Ok(FrameTrust::CallFrameInfo),
+            "prewalked" => Ok(FrameTrust::PreWalked),
+            "context" => Ok(FrameTrust::Context),
+            _ => Err(serde::de::Error::custom("failed to parse frame trust")),
+        }
+    }
 }
 
 /// A stack trace containing unsymbolicated stack frames.
