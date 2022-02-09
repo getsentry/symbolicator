@@ -19,12 +19,3 @@ debug = 1
 inherits = "release"
 incremental = true
 codegen-units = 256
-
-[patch.crates-io]
-# minidump = { path = "../rust-minidump/minidump" }
-# minidump-processor = { path = "../rust-minidump/minidump-processor" }
-# breakpad-symbols = { path = "../rust-minidump/breakpad-symbols" }
-
-minidump = { git = "https://github.com/jan-auer/rust-minidump", branch = "tmp/symbolicator-integration" }
-minidump-processor = { git = "https://github.com/jan-auer/rust-minidump", branch = "tmp/symbolicator-integration" }
-breakpad-symbols = { git = "https://github.com/jan-auer/rust-minidump", branch = "tmp/symbolicator-integration" }
