@@ -1732,7 +1732,7 @@ fn stackwalk_with_rust_minidump(
     let minidump_state = MinidumpState::from_rust_minidump(&process_state);
     let object_type = minidump_state.object_type();
 
-    let missing_modules = provider.into_missing_ids().iter().copied().collect();
+    let missing_modules = provider.into_missing_ids().into_iter().collect();
     let modules = return_modules.then(|| {
         process_state
             .modules
@@ -2208,8 +2208,8 @@ impl SymbolicationActor {
                 } = problem
                 {
                     tracing::debug!(
-                        stacktraces = %stacktraces,
-                        modules = %modules,
+                        %stacktraces,
+                        %modules,
                         "Stackwalking difference"
                     );
                 }
