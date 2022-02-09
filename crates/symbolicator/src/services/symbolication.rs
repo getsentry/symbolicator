@@ -2081,8 +2081,8 @@ impl SymbolicationActor {
             let problem = result_new.and_then(|result_new| {
                     metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
 
-                    let stacktraces_diff = (result_new.stacktraces != result_old.stacktraces ).then(|| {
-                        let diff = serde_json::to_string_pretty(&result_old.stacktraces)
+                    let stacktrace_diff = (result_new.stacktraces != result_old.stacktraces ).then(|| {
+                        serde_json::to_string_pretty(&result_old.stacktraces)
                             .map_err(|e| {
                                 let stderr: &dyn std::error::Error = &e;
                                 tracing::error!(stderr, "Failed to convert old stacktraces to json")
@@ -2107,12 +2107,11 @@ impl SymbolicationActor {
                                             Some(("breakpad", "rust-minidump")),
                                         )
                                     })
-                            }).unwrap_or_else(|| String::from("diff unrecoverable"));
-                            diff
+                            }).unwrap_or_else(|| String::from("diff unrecoverable"))
                     });
 
-                    let modules_diff = (result_new.modules != result_old.modules ).then(|| {
-                        let diff = serde_json::to_string_pretty(&result_old.modules)
+                    let module_diff = (result_new.modules != result_old.modules ).then(|| {
+                        serde_json::to_string_pretty(&result_old.modules)
                             .map_err(|e| {
                                 let stderr: &dyn std::error::Error = &e;
                                 tracing::error!(stderr,"Failed to convert old modules to json")
@@ -2137,12 +2136,11 @@ impl SymbolicationActor {
                                             Some(("breakpad", "rust-minidump")),
                                         )
                                     })
-                            }).unwrap_or_else(|| String::from("diff unrecoverable"));
-                            diff
+                            }).unwrap_or_else(|| String::from("diff unrecoverable"))
                     });
 
-                    if stacktraces_diff.is_some() || modules_diff.is_some() {
-                        Some(NewStackwalkingProblem::Diff {stacktraces: stacktraces_diff.unwrap_or_default(), modules: modules_diff.unwrap_or_default()})
+                    if stacktrace_diff.is_some() || module_diff.is_some() {
+                        Some(NewStackwalkingProblem::Diff {stacktraces: stacktrace_diff.unwrap_or_default(), modules: module_diff.unwrap_or_default()})
                     } else if 2 * result_new.duration >= 3 * result_old.duration {
                         Some(NewStackwalkingProblem::Slow)
                     } else {
