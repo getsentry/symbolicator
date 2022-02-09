@@ -14,8 +14,8 @@ use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
-use minidump::MinidumpContext;
-use minidump::{system_info::Os, MinidumpModule, Module};
+use minidump::system_info::Os;
+use minidump::{MinidumpContext, MinidumpModule, Module};
 use minidump_processor::{
     FrameTrust, ProcessState as MinidumpProcessState, SymbolFile, SymbolProvider, SymbolStats,
 };
@@ -1906,8 +1906,8 @@ impl TempSymbolProvider {
             .ok()
     }
 
-    fn missing_ids(&self) -> BTreeSet<DebugId> {
-        std::mem::take(&mut *self.missing_ids.borrow_mut())
+    fn into_missing_ids(self) -> BTreeSet<DebugId> {
+        self.missing_ids.into_inner()
     }
 }
 
@@ -2138,7 +2138,7 @@ fn stackwalk_with_rust_minidump(
     let minidump_state = MinidumpState::from_rust_minidump(&process_state);
     let object_type = minidump_state.object_type();
 
-    let missing_modules = provider.missing_ids().iter().copied().collect();
+    let missing_modules = provider.into_missing_ids().iter().copied().collect();
     let modules = return_modules.then(|| {
         process_state
             .modules
