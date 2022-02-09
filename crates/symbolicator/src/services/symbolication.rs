@@ -1921,7 +1921,10 @@ struct StackWalkMinidumpResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum NewStackwalkingProblem {
-    Diff(String),
+    Diff {
+        stacktraces: String,
+        modules: String,
+    },
     Slow,
 }
 
@@ -2078,18 +2081,20 @@ impl SymbolicationActor {
             let problem = result_new.and_then(|result_new| {
                     metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
 
-                    if result_new.stacktraces != result_old.stacktraces {
-                        let diff = serde_json::to_string_pretty(&result_old)
+                    let stacktraces_diff = (result_new.stacktraces != result_old.stacktraces ).then(|| {
+                        let diff = serde_json::to_string_pretty(&result_old.stacktraces)
                             .map_err(|e| {
-                                tracing::error!("Failed to convert result_old to json: {}", e)
+                                let stderr: &dyn std::error::Error = &e;
+                                tracing::error!(stderr, "Failed to convert old stacktraces to json")
                             })
                             .ok()
                             .and_then(|old| {
-                                serde_json::to_string_pretty(&result_new)
+                                serde_json::to_string_pretty(&result_new.stacktraces)
                                     .map_err(|e| {
+                                        let stderr: &dyn std::error::Error = &e;
                                         tracing::error!(
-                                            "Failed to convert result_new to json: {}",
-                                            e
+                                            stderr,
+                                            "Failed to convert new stacktraces to json",
                                         )
                                     })
                                     .ok()
@@ -2103,7 +2108,41 @@ impl SymbolicationActor {
                                         )
                                     })
                             }).unwrap_or_else(|| String::from("diff unrecoverable"));
-                            Some(NewStackwalkingProblem::Diff(diff))
+                            diff
+                    });
+
+                    let modules_diff = (result_new.modules != result_old.modules ).then(|| {
+                        let diff = serde_json::to_string_pretty(&result_old.modules)
+                            .map_err(|e| {
+                                let stderr: &dyn std::error::Error = &e;
+                                tracing::error!(stderr,"Failed to convert old modules to json")
+                            })
+                            .ok()
+                            .and_then(|old| {
+                                serde_json::to_string_pretty(&result_new.modules)
+                                    .map_err(|e| {
+                                        let stderr: &dyn std::error::Error = &e;
+                                        tracing::error!(
+                                            stderr,
+                                            "Failed to convert new modules to json",
+                                        )
+                                    })
+                                    .ok()
+                                    .map(|new| {
+                                        unified_diff(
+                                            Algorithm::Myers,
+                                            &old,
+                                            &new,
+                                            3,
+                                            Some(("breakpad", "rust-minidump")),
+                                        )
+                                    })
+                            }).unwrap_or_else(|| String::from("diff unrecoverable"));
+                            diff
+                    });
+
+                    if stacktraces_diff.is_some() || modules_diff.is_some() {
+                        Some(NewStackwalkingProblem::Diff {stacktraces: stacktraces_diff.unwrap_or_default(), modules: modules_diff.unwrap_or_default()})
                     } else if 2 * result_new.duration >= 3 * result_old.duration {
                         Some(NewStackwalkingProblem::Slow)
                     } else {
@@ -2273,13 +2312,22 @@ impl SymbolicationActor {
             // Save the minidump if there was a stackwalking difference or the new stackwalking method performed poorly.
             if let Some(problem) = new_stackwalking_problem {
                 let msg = match problem {
-                    NewStackwalkingProblem::Diff(_) => "Different stackwalking results",
+                    NewStackwalkingProblem::Diff { .. } => "Different stackwalking results",
                     NewStackwalkingProblem::Slow => "Slow stackwalking run",
                 };
                 sentry::with_scope(
                     |scope| {
-                        if let NewStackwalkingProblem::Diff(diff) = problem {
-                            scope.set_extra("diff", sentry::protocol::Value::String(diff));
+                        if let NewStackwalkingProblem::Diff {
+                            stacktraces,
+                            modules,
+                        } = problem
+                        {
+                            scope.set_extra(
+                                "stacktrace_diff",
+                                sentry::protocol::Value::String(stacktraces),
+                            );
+                            scope
+                                .set_extra("module_diff", sentry::protocol::Value::String(modules));
                         }
                     },
                     || {
