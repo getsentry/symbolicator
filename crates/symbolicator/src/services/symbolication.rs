@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::fs::File;
 use std::future::Future;
@@ -40,7 +40,6 @@ use tempfile::TempPath;
 use thiserror::Error;
 
 use crate::cache::CacheStatus;
-use crate::logging::LogError;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::{FindObject, ObjectError, ObjectPurpose, ObjectsActor};
@@ -189,11 +188,8 @@ impl CfiCacheModules {
                         CacheStatus::Negative => ObjectFileStatus::Missing,
                         CacheStatus::Malformed(details) => {
                             let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            tracing::warn!(
-                                "Error while parsing cficache: {} ({})",
-                                LogError(&err),
-                                details
-                            );
+                            let stderr: &dyn std::error::Error = &err;
+                            tracing::warn!(stderr, "Error while parsing cficache: {}", details);
                             ObjectFileStatus::from(&err)
                         }
                         // If the cache entry is for a cache specific error, it must be
@@ -217,7 +213,8 @@ impl CfiCacheModules {
                     }
                 }
                 Err(err) => {
-                    tracing::debug!("Error while fetching cficache: {}", LogError(err.as_ref()));
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::debug!(stderr, "Error while fetching cficache");
                     CfiModule {
                         cfi_status: ObjectFileStatus::from(err.as_ref()),
                         ..Default::default()
@@ -637,7 +634,7 @@ pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 struct SourceObjectEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
-    source_object: Option<Arc<SourceObject>>,
+    source_object: Option<SourceObject>,
 }
 
 struct SourceLookup {
@@ -647,15 +644,13 @@ struct SourceLookup {
 impl SourceLookup {
     #[tracing::instrument(skip_all)]
     pub async fn fetch_sources(
-        self,
+        &mut self,
         objects: ObjectsActor,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-        response: &CompletedSymbolicationResponse,
-    ) -> Result<Self, SymbolicationError> {
-        let mut referenced_objects = BTreeSet::new();
-        let stacktraces = &response.stacktraces;
-
+        stacktraces: &[CompleteStacktrace],
+    ) {
+        let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
                 if let Some(i) =
@@ -666,57 +661,61 @@ impl SourceLookup {
             }
         }
 
-        let futures = self.inner.into_iter().map(|mut entry| {
-            let is_used = referenced_objects.contains(&entry.module_index);
-            let objects = objects.clone();
-            let scope = scope.clone();
-            let sources = sources.clone();
-
-            async move {
+        let futures = self
+            .inner
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                let is_used = referenced_objects.contains(&entry.module_index);
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     entry.source_object = None;
-                    return entry;
+                    return None;
                 }
 
-                let opt_object_file_meta = objects
-                    .find(FindObject {
-                        filetypes: FileType::sources(),
-                        purpose: ObjectPurpose::Source,
-                        scope: scope.clone(),
-                        identifier: object_id_from_object_info(&entry.object_info.raw),
-                        sources,
-                    })
-                    .await
-                    .unwrap_or_default()
-                    .meta;
-
-                entry.source_object = match opt_object_file_meta {
-                    None => None,
-                    Some(object_file_meta) => {
-                        objects.fetch(object_file_meta).await.ok().and_then(|x| {
-                            SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
-                                .map(|x| Arc::new(SourceObject(x)))
-                                .ok()
-                        })
-                    }
+                let objects = objects.clone();
+                let find_request = FindObject {
+                    filetypes: FileType::sources(),
+                    purpose: ObjectPurpose::Source,
+                    scope: scope.clone(),
+                    identifier: object_id_from_object_info(&entry.object_info.raw),
+                    sources: sources.clone(),
                 };
+
+                Some(
+                    async move {
+                        let opt_object_file_meta =
+                            objects.find(find_request).await.unwrap_or_default().meta;
+
+                        let source_object = match opt_object_file_meta {
+                            None => None,
+                            Some(object_file_meta) => {
+                                objects.fetch(object_file_meta).await.ok().and_then(|x| {
+                                    SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
+                                        .map(SourceObject)
+                                        .ok()
+                                })
+                            }
+                        };
+
+                        (idx, source_object)
+                    }
+                    .bind_hub(Hub::new_from_top(Hub::current())),
+                )
+            });
+
+        for (idx, source_object) in future::join_all(futures).await {
+            if let Some(entry) = self.inner.get_mut(idx) {
+                entry.source_object = source_object;
 
                 if entry.source_object.is_some() {
                     entry.object_info.features.has_sources = true;
                 }
-
-                entry
             }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        Ok(SourceLookup {
-            inner: future::join_all(futures).await,
-        })
+        }
     }
 
-    pub fn prepare_debug_sessions(&self) -> BTreeMap<usize, Option<ObjectDebugSession<'_>>> {
+    pub fn prepare_debug_sessions(&self) -> HashMap<usize, Option<ObjectDebugSession<'_>>> {
         self.inner
             .iter()
             .map(|entry| {
@@ -733,7 +732,7 @@ impl SourceLookup {
 
     pub fn get_context_lines(
         &self,
-        debug_sessions: &BTreeMap<usize, Option<ObjectDebugSession<'_>>>,
+        debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
         addr: u64,
         addr_mode: AddrMode,
         abs_path: &str,
@@ -741,7 +740,7 @@ impl SourceLookup {
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
         let index = self.get_module_index_by_addr(addr, addr_mode)?;
-        let session = debug_sessions[&index].as_ref()?;
+        let session = debug_sessions.get(&index)?.as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
         let lineno = lineno as usize;
@@ -879,22 +878,26 @@ impl SymCacheLookup {
         });
     }
 
+    /// Returns the original `CompleteObjectInfo` list in its original sorting order.
+    fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
+        self.inner.sort_by_key(|entry| entry.module_index);
+        self.inner
+            .into_iter()
+            .map(|entry| entry.object_info)
+            .collect()
+    }
+
     #[tracing::instrument(skip_all)]
     async fn fetch_symcaches(
-        self,
+        &mut self,
         symcache_actor: SymCacheActor,
-        request: SymbolicateStacktraces,
-    ) -> Self {
-        let mut referenced_objects = BTreeSet::new();
-        let SymbolicateStacktraces {
-            stacktraces,
-            sources,
-            scope,
-            ..
-        } = request;
-
+        scope: Scope,
+        sources: Arc<[SourceConfig]>,
+        stacktraces: &[RawStacktrace],
+    ) {
+        let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
-            for frame in stacktrace.frames {
+            for frame in &stacktrace.frames {
                 if let Some(SymCacheLookupResult { module_index, .. }) =
                     self.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
                 {
@@ -903,26 +906,36 @@ impl SymCacheLookup {
             }
         }
 
-        let futures = self.inner.into_iter().map(|mut entry| {
-            let is_used = referenced_objects.contains(&entry.module_index);
-            let sources = sources.clone();
-            let scope = scope.clone();
-            let symcache_actor = symcache_actor.clone();
-
-            async move {
+        let futures = self
+            .inner
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                let is_used = referenced_objects.contains(&entry.module_index);
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
-                    return entry;
+                    return None;
                 }
-                let symcache_result = symcache_actor
-                    .fetch(FetchSymCache {
-                        object_type: entry.object_info.raw.ty,
-                        identifier: object_id_from_object_info(&entry.object_info.raw),
-                        sources,
-                        scope,
-                    })
-                    .await;
 
+                let symcache_actor = symcache_actor.clone();
+                let request = FetchSymCache {
+                    object_type: entry.object_info.raw.ty,
+                    identifier: object_id_from_object_info(&entry.object_info.raw),
+                    sources: sources.clone(),
+                    scope: scope.clone(),
+                };
+
+                Some(
+                    async move {
+                        let symcache_result = symcache_actor.fetch(request).await;
+                        (idx, symcache_result)
+                    }
+                    .bind_hub(Hub::new_from_top(Hub::current())),
+                )
+            });
+
+        for (idx, symcache_result) in future::join_all(futures).await {
+            if let Some(entry) = self.inner.get_mut(idx) {
                 let (symcache, status) = match symcache_result {
                     Ok(symcache) => match symcache.parse() {
                         Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
@@ -942,13 +955,7 @@ impl SymCacheLookup {
 
                 entry.symcache = symcache;
                 entry.object_info.debug_status = status;
-                entry
             }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        SymCacheLookup {
-            inner: future::join_all(futures).await,
         }
     }
 
@@ -1288,19 +1295,26 @@ fn record_symbolication_metrics(
         .to_string();
 
     // Unusable modules that don’t have any kind of ID to look them up with
-    let unusable_modules = modules
-        .iter()
-        .filter(|m| {
-            let id = object_id_from_object_info(&m.raw);
-            id.debug_id.is_none() && id.code_id.is_none()
-        })
-        .count() as u64;
-
+    let mut unusable_modules = 0;
     // Modules that failed parsing
-    let unparsable_modules = modules
-        .iter()
-        .filter(|m| m.debug_status == ObjectFileStatus::Malformed)
-        .count() as u64;
+    let mut unparsable_modules = 0;
+
+    for m in modules {
+        metric!(
+            counter("symbolication.debug_status") += 1,
+            "status" => m.debug_status.name()
+        );
+
+        // FIXME: `object_id_from_object_info` allocates and is kind-of expensive
+        let id = object_id_from_object_info(&m.raw);
+        if id.debug_id.is_none() && id.code_id.is_none() {
+            unusable_modules += 1;
+        }
+
+        if m.debug_status == ObjectFileStatus::Malformed {
+            unparsable_modules += 1;
+        }
+    }
 
     metric!(
         time_raw("symbolication.num_modules") = modules.len() as u64,
@@ -1567,16 +1581,19 @@ impl SymbolicationActor {
         self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
-        let symcache_lookup: SymCacheLookup = request.modules.iter().cloned().collect();
-        let source_lookup: SourceLookup = request.modules.iter().cloned().collect();
-        let stacktraces = request.stacktraces.clone();
-        let sources = request.sources.clone();
-        let scope = request.scope.clone();
-        let signal = request.signal;
-        let origin = request.origin;
+        let SymbolicateStacktraces {
+            stacktraces,
+            sources,
+            scope,
+            signal,
+            origin,
+            modules,
+            ..
+        } = request;
 
-        let symcache_lookup = symcache_lookup
-            .fetch_symcaches(self.symcaches, request)
+        let mut symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
+        symcache_lookup
+            .fetch_symcaches(self.symcaches, scope.clone(), sources.clone(), &stacktraces)
             .await;
 
         let future = async move {
@@ -1586,22 +1603,8 @@ impl SymbolicationActor {
                 .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
                 .collect();
 
-            let mut modules: Vec<_> = symcache_lookup
-                .inner
-                .into_iter()
-                .map(|entry| {
-                    metric!(
-                        counter("symbolication.debug_status") += 1,
-                        "status" => entry.object_info.debug_status.name()
-                    );
-
-                    (entry.module_index, entry.object_info)
-                })
-                .collect();
-
             // bring modules back into the original order
-            modules.sort_by_key(|&(index, _)| index);
-            let modules: Vec<_> = modules.into_iter().map(|(_, module)| module).collect();
+            let modules = symcache_lookup.into_inner();
 
             record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
 
@@ -1618,9 +1621,10 @@ impl SymbolicationActor {
                 .await
                 .context("Symbolication future cancelled")?;
 
-        let source_lookup = source_lookup
-            .fetch_sources(self.objects, scope, sources, &response)
-            .await?;
+        let mut source_lookup: SourceLookup = modules.into_iter().collect();
+        source_lookup
+            .fetch_sources(self.objects, scope, sources, &response.stacktraces)
+            .await;
 
         let future = async move {
             let debug_sessions = source_lookup.prepare_debug_sessions();
@@ -1684,22 +1688,14 @@ impl SymbolicationActor {
     ///
     /// If the timeout is set and no result is ready within the given time,
     /// [`SymbolicationResponse::Pending`] is returned.
-    // TODO(flub): once the callers are updated to be `async fn` this can take `&self` again.
     pub async fn get_response(
-        self,
+        &self,
         request_id: RequestId,
         timeout: Option<u64>,
     ) -> Option<SymbolicationResponse> {
         let channel_opt = self.requests.lock().get(&request_id).cloned();
         match channel_opt {
-            Some(channel) => {
-                // `wrap_response_channel` internally creates a `tokio::time::timeout`, which
-                // requires an active runtime to be present, otherwise it panics.
-                // This function however is called directly from the actix/tokio01 runtime.
-                let _guard = self.io_pool.enter();
-
-                Some(wrap_response_channel(request_id, timeout, channel).await)
-            }
+            Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
             None => {
                 // This is okay to occur during deploys, but if it happens all the time we have a state
                 // bug somewhere. Could be a misconfigured load balancer (supposed to be pinned to
@@ -1843,7 +1839,8 @@ fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, 
         .filter_map(|(id, cfi_path)| {
             let bytes = ByteView::open(cfi_path)
                 .map_err(|err| {
-                    tracing::error!("Error while reading cficache: {}", LogError(&err));
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::error!(stderr, "Error while reading cficache");
                     err
                 })
                 .ok()?;
@@ -1852,7 +1849,8 @@ fn load_cfi_for_processor(cfi: BTreeMap<DebugId, PathBuf>) -> BTreeMap<DebugId, 
                     // This mostly never happens since we already checked the files
                     // after downloading and they would have been tagged with
                     // CacheStatus::Malformed.
-                    tracing::error!("Error while loading cficache: {}", LogError(&err));
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::error!(stderr, "Error while loading cficache");
                     err
                 })
                 .ok()?;
@@ -1884,18 +1882,27 @@ impl TempSymbolProvider {
 
     fn load(cfi_path: &Path) -> Option<SymbolFile> {
         let bytes = ByteView::open(cfi_path)
-            .map_err(|err| tracing::error!("Error while reading cficache: {}", LogError(&err)))
+            .map_err(|err| {
+                let stderr: &dyn std::error::Error = &err;
+                tracing::error!(stderr, "Error while reading cficache");
+            })
             .ok()?;
 
         let cfi_cache = CfiCache::from_bytes(bytes)
             // This mostly never happens since we already checked the files
             // after downloading and they would have been tagged with
             // CacheStatus::Malformed.
-            .map_err(|err| tracing::error!("Error while loading cficache: {}", LogError(&err)))
+            .map_err(|err| {
+                let stderr: &dyn std::error::Error = &err;
+                tracing::error!(stderr, "Error while loading cficache");
+            })
             .ok()?;
 
         SymbolFile::from_bytes(cfi_cache.as_slice())
-            .map_err(|err| tracing::error!("Error while processing cficache: {}", LogError(&err)))
+            .map_err(|err| {
+                let stderr: &dyn std::error::Error = &err;
+                tracing::error!(stderr, "Error while procecssing cficache");
+            })
             .ok()
     }
 
@@ -3016,9 +3023,8 @@ mod tests {
         // cached debug files to requests that no longer specify a source.
 
         let (service, _cache_dir) = setup_service().await;
-        let (_symsrv, source) = test::symbol_server();
-
         let symbolication = service.symbolication();
+        let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![source]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
@@ -3026,7 +3032,6 @@ mod tests {
 
         assert_snapshot!(response.unwrap());
 
-        let symbolication = service.symbolication();
         let request = get_symbolication_request(vec![]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
@@ -3042,16 +3047,15 @@ mod tests {
         // to requests immediately.
 
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
         let (_symsrv, source) = test::symbol_server();
 
-        let symbolication = service.symbolication();
         let request = get_symbolication_request(vec![]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
 
-        let symbolication = service.symbolication();
         let request = get_symbolication_request(vec![source]);
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
@@ -3065,6 +3069,7 @@ mod tests {
     async fn test_get_response_multi() {
         // Make sure we can repeatedly poll for the response
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -3090,17 +3095,10 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request)
-            .unwrap();
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
 
         for _ in 0..2 {
-            let response = service
-                .symbolication()
-                .get_response(request_id, None)
-                .await
-                .unwrap();
+            let response = symbolication.get_response(request_id, None).await.unwrap();
 
             assert!(
                 matches!(&response, SymbolicationResponse::Completed(_)),
@@ -3114,12 +3112,12 @@ mod tests {
         ($path:expr) => {{
             async {
                 let (service, _cache_dir) = setup_service().await;
+                let symbolication = service.symbolication();
                 let (_symsrv, source) = test::symbol_server();
 
                 let minidump = test::read_fixture($path);
                 let mut minidump_file = NamedTempFile::new()?;
                 minidump_file.write_all(&minidump)?;
-                let symbolication = service.symbolication();
                 let request_id = symbolication.process_minidump(
                     Scope::Global,
                     minidump_file.into_temp_path(),
@@ -3164,11 +3162,11 @@ mod tests {
     #[tokio::test]
     async fn test_apple_crash_report() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
         let (_symsrv, source) = test::symbol_server();
 
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let request_id = service
-            .symbolication()
+        let request_id = symbolication
             .process_apple_crash_report(
                 Scope::Global,
                 report_file,
@@ -3180,7 +3178,7 @@ mod tests {
             )
             .unwrap();
 
-        let response = service.symbolication().get_response(request_id, None).await;
+        let response = symbolication.get_response(request_id, None).await;
 
         assert_snapshot!(response.unwrap());
         Ok(())
@@ -3189,6 +3187,7 @@ mod tests {
     #[tokio::test]
     async fn test_wasm_payload() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
         let (_symsrv, source) = test::symbol_server();
 
         let modules: Vec<RawObjectInfo> = serde_json::from_str(
@@ -3225,11 +3224,8 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = service
-            .symbolication()
-            .symbolicate_stacktraces(request)
-            .unwrap();
-        let response = service.symbolication().get_response(request_id, None).await;
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
 
         insta::assert_yaml_snapshot!(response.unwrap());
         Ok(())

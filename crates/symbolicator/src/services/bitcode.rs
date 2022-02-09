@@ -18,7 +18,6 @@ use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::logging::LogError;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::sources::{FileType, SourceConfig};
@@ -106,7 +105,8 @@ impl FetchFileRequest {
                 return Ok(CacheStatus::Negative);
             }
             Err(e) => {
-                tracing::debug!("Error while downloading file: {}", LogError(&e));
+                let stderr: &dyn std::error::Error = &e;
+                tracing::debug!(stderr, "Error while downloading file");
                 return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
             }
             Ok(DownloadStatus::Completed) => {
@@ -310,9 +310,6 @@ impl BitcodeService {
     }
 
     /// Fetches a file and returns the [`CacheHandle`] if found.
-    ///
-    /// This should only be used to fetch [`FileType::UuidMap`] and
-    /// [`FileType::BcSymbolMap`].
     async fn fetch_file_from_source(
         &self,
         uuid: DebugId,

@@ -10,7 +10,15 @@ debug = false
 [profile.release]
 # In release, however, we do want full debug information to report
 # panic and error stack traces to Sentry.
-debug = true
+debug = 1
+
+[profile.local]
+# For running a local symbolicator, we want the best of both worlds: a fast executable, with quick
+# iteration times.
+# You can compile/run this with: `cargo run --profile local -- --config local.yml run`
+inherits = "release"
+incremental = true
+codegen-units = 256
 
 [patch.crates-io]
 # minidump = { path = "../rust-minidump/minidump" }

@@ -35,7 +35,7 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.47.0"
 rusoto_credential = "0.47.0"
 rusoto_s3 = "0.47.0"
-sentry = { git = "https://github.com/getsentry/sentry-rust", features = ["anyhow", "debug-images", "log", "tracing"] }
+sentry = { version = "0.24.3", features = ["anyhow", "debug-images", "log", "tracing"] }
 sentry-tower = { version = "0.24.2", features = ["http"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
