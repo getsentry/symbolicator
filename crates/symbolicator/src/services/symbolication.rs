@@ -1898,6 +1898,7 @@ impl SymbolicationActor {
         path: &Path,
         cfi_caches: &CfiCacheModules,
         compare_stackwalking_methods: bool,
+        rust_minidump: bool,
         return_modules: bool,
     ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
         let pool = self.spawnpool.clone();
@@ -1926,7 +1927,7 @@ impl SymbolicationActor {
                 "minidump.stackwalk.spawn.error",
             )?;
 
-            let result_new = if compare_stackwalking_methods {
+            let result_new = if compare_stackwalking_methods || rust_minidump {
                 let spawn_time = std::time::SystemTime::now();
                 let spawn_result = pool.spawn(
                     (
@@ -1961,6 +1962,10 @@ impl SymbolicationActor {
             } else {
                 None
             };
+
+            if rust_minidump {
+                return Ok((result_new.unwrap(), Default::default()));
+            }
 
             metric!(timer("minidump.stackwalk.duration") = result_old.duration, "method" => "breakpad");
 
@@ -2075,6 +2080,7 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         cfi_caches: &mut CfiCacheModules,
         mut compare_stackwalking_methods: bool,
+        rust_minidump: bool,
     ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
         let mut iterations = 0;
 
@@ -2089,6 +2095,7 @@ impl SymbolicationActor {
                     minidump_path,
                     cfi_caches,
                     compare_stackwalking_methods,
+                    rust_minidump,
                     modules.is_none(),
                 )
                 .await?;
@@ -2154,6 +2161,7 @@ impl SymbolicationActor {
                 sources.clone(),
                 &mut cfi_caches,
                 options.compare_stackwalking_methods,
+                options.rust_minidump,
             );
 
             let (result_old, new_stackwalking_problem) = match future.await {
@@ -2783,6 +2791,15 @@ mod tests {
 
     macro_rules! stackwalk_minidump {
         ($path:expr) => {{
+            stackwalk_minidump!(
+                $path,
+                RequestOptions {
+                    dif_candidates: true,
+                    ..Default::default()
+                }
+            )
+        }};
+        ($path:expr, $options:expr) => {{
             async {
                 let (service, _cache_dir) = setup_service().await;
                 let symbolication = service.symbolication();
@@ -2795,10 +2812,7 @@ mod tests {
                     Scope::Global,
                     minidump_file.into_temp_path(),
                     Arc::new([source]),
-                    RequestOptions {
-                        dif_candidates: true,
-                        ..Default::default()
-                    },
+                    $options,
                 );
                 let response = symbolication.get_response(request_id.unwrap(), None).await;
 
@@ -2830,6 +2844,45 @@ mod tests {
     #[tokio::test]
     async fn test_minidump_linux() -> anyhow::Result<()> {
         stackwalk_minidump!("linux.dmp").await
+    }
+
+    #[tokio::test]
+    async fn test_minidump_windows_rust_minidup() -> anyhow::Result<()> {
+        stackwalk_minidump!(
+            "windows.dmp",
+            RequestOptions {
+                dif_candidates: true,
+                rust_minidump: true,
+                ..Default::default()
+            }
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_minidump_macos_rust_minidump() -> anyhow::Result<()> {
+        stackwalk_minidump!(
+            "macos.dmp",
+            RequestOptions {
+                dif_candidates: true,
+                rust_minidump: true,
+                ..Default::default()
+            }
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_minidump_linux_rust_minidump() -> anyhow::Result<()> {
+        stackwalk_minidump!(
+            "linux.dmp",
+            RequestOptions {
+                dif_candidates: true,
+                rust_minidump: true,
+                ..Default::default()
+            }
+        )
+        .await
     }
 
     #[tokio::test]
