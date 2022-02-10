@@ -1,0 +1,546 @@
+---
+source: crates/symbolicator/src/services/symbolication.rs
+expression: response.unwrap()
+
+---
+status: completed
+timestamp: 1521713273
+system_info:
+  os_name: Windows
+  os_version: 10.0.14393
+  os_build: ""
+  cpu_arch: x86
+  device_model: ""
+crashed: true
+crash_reason: EXCEPTION_ACCESS_VIOLATION_WRITE
+assertion: ""
+stacktraces:
+  - thread_id: 1636
+    is_requesting: true
+    registers:
+      eax: "0x0"
+      ebp: "0x10ff670"
+      ebx: "0xfe5000"
+      ecx: "0x10ff670"
+      edi: "0x13bfd78"
+      edx: "0x7"
+      eflags: "0x10246"
+      eip: "0x2a2a3d"
+      esi: "0x759c6314"
+      esp: "0x10ff644"
+    frames:
+      - status: symbolicated
+        original_index: 0
+        instruction_addr: "0x2a2a3d"
+        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
+        symbol: main
+        sym_addr: "0x2a2910"
+        function: main
+        filename: main.cpp
+        abs_path: "c:\\projects\\breakpad-tools\\windows\\crash\\main.cpp"
+        lineno: 35
+        trust: context
+      - status: symbolicated
+        original_index: 1
+        instruction_addr: "0x2a2d96"
+        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
+        symbol: __scrt_common_main_seh
+        sym_addr: "0x2a2c9e"
+        function: __scrt_common_main_seh
+        filename: exe_common.inl
+        abs_path: "f:\\dd\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl"
+        lineno: 283
+        trust: cfi
+      - status: missing
+        original_index: 2
+        instruction_addr: "0x750662c4"
+        package: "C:\\Windows\\System32\\kernel32.dll"
+        trust: cfi
+      - status: missing
+        original_index: 3
+        instruction_addr: "0x771d0f79"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: fp
+      - status: missing
+        original_index: 4
+        instruction_addr: "0x771d0f44"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: fp
+  - thread_id: 3580
+    is_requesting: false
+    registers:
+      eax: "0x0"
+      ebp: "0x159faa4"
+      ebx: "0x13b0990"
+      ecx: "0x0"
+      edi: "0x13b4af0"
+      edx: "0x0"
+      eflags: "0x216"
+      eip: "0x771e016c"
+      esi: "0x13b4930"
+      esp: "0x159f900"
+    frames:
+      - status: missing
+        original_index: 0
+        instruction_addr: "0x771e016c"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: context
+      - status: missing
+        original_index: 1
+        instruction_addr: "0x750662c4"
+        package: "C:\\Windows\\System32\\kernel32.dll"
+        trust: fp
+      - status: missing
+        original_index: 2
+        instruction_addr: "0x771d0f79"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: fp
+      - status: missing
+        original_index: 3
+        instruction_addr: "0x771d0f44"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: fp
+  - thread_id: 2600
+    is_requesting: false
+    registers:
+      eax: "0x0"
+      ebp: "0x169fb98"
+      ebx: "0x13b0990"
+      ecx: "0x0"
+      edi: "0x13b7c28"
+      edx: "0x0"
+      eflags: "0x202"
+      eip: "0x771e016c"
+      esi: "0x13b7a68"
+      esp: "0x169f9f4"
+    frames:
+      - status: missing
+        original_index: 0
+        instruction_addr: "0x771e016c"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: context
+      - status: missing
+        original_index: 1
+        instruction_addr: "0x750662c4"
+        package: "C:\\Windows\\System32\\kernel32.dll"
+        trust: fp
+      - status: missing
+        original_index: 2
+        instruction_addr: "0x771d0f79"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: fp
+      - status: missing
+        original_index: 3
+        instruction_addr: "0x771d0f44"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: fp
+  - thread_id: 2920
+    is_requesting: false
+    registers:
+      eax: "0x0"
+      ebp: "0x179f2b8"
+      ebx: "0x17b1aa0"
+      ecx: "0x0"
+      edi: "0x17b1a90"
+      edx: "0x0"
+      eflags: "0x206"
+      eip: "0x771df3dc"
+      esi: "0x2cc"
+      esp: "0x179f2ac"
+    frames:
+      - status: missing
+        original_index: 0
+        instruction_addr: "0x771df3dc"
+        package: "C:\\Windows\\System32\\ntdll.dll"
+        trust: context
+modules:
+  - debug_status: found
+    unwind_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: true
+      has_symbols: true
+      has_sources: false
+    arch: x86
+    type: pe
+    code_id: 5ab380779000
+    code_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
+    debug_id: 3249d99d-0c40-4931-8610-f4e4fb0b6936-1
+    debug_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb"
+    image_addr: "0x2a0000"
+    image_size: 36864
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/5a/b380779000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.ex_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.exe"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: true
+            has_symbols: true
+            has_sources: false
+        unwind:
+          status: ok
+        debug:
+          status: ok
+      - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym"
+        download:
+          status: notfound
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: "57898e12145000"
+    code_file: "C:\\Windows\\System32\\dbghelp.dll"
+    debug_id: 9c2a902b-6fdf-40ad-8308-588a41d572a0-1
+    debug_file: dbghelp.pdb
+    image_addr: "0x70850000"
+    image_size: 1331200
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 589abc846c000
+    code_file: "C:\\Windows\\System32\\msvcp140.dll"
+    debug_id: bf5257f7-8c26-43dd-9bb7-901625e1136a-1
+    debug_file: msvcp140.i386.pdb
+    image_addr: "0x709a0000"
+    image_size: 442368
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 57898eeb92000
+    code_file: "C:\\Windows\\System32\\apphelp.dll"
+    debug_id: 8daf7773-372f-460a-af38-944e193f7e33-1
+    debug_file: apphelp.pdb
+    image_addr: "0x70a10000"
+    image_size: 598016
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 57898dab25000
+    code_file: "C:\\Windows\\System32\\dbgcore.dll"
+    debug_id: aec7ef2f-df4b-4642-a471-4c3e5fe8760a-1
+    debug_file: dbgcore.pdb
+    image_addr: "0x70b70000"
+    image_size: 151552
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/57/898dab25000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.sym"
+        download:
+          status: notfound
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 589abc7714000
+    code_file: "C:\\Windows\\System32\\VCRUNTIME140.dll"
+    debug_id: 0ed80a50-ecda-472b-86a4-eb6c833f8e1b-1
+    debug_file: vcruntime140.i386.pdb
+    image_addr: "0x70c60000"
+    image_size: 81920
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 57899141a000
+    code_file: "C:\\Windows\\System32\\CRYPTBASE.dll"
+    debug_id: 147c51fb-7ca1-408f-85b5-285f2ad6f9c5-1
+    debug_file: cryptbase.pdb
+    image_addr: "0x73ba0000"
+    image_size: 40960
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 59bf30e31f000
+    code_file: "C:\\Windows\\System32\\sspicli.dll"
+    debug_id: 51e432b1-0450-4b19-8ed1-6d4335f9f543-1
+    debug_file: wsspicli.pdb
+    image_addr: "0x73bb0000"
+    image_size: 126976
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 5a49bb7677000
+    code_file: "C:\\Windows\\System32\\advapi32.dll"
+    debug_id: 0c799483-b549-417d-8433-4331852031fe-1
+    debug_file: advapi32.pdb
+    image_addr: "0x73c70000"
+    image_size: 487424
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 57899155be000
+    code_file: "C:\\Windows\\System32\\msvcrt.dll"
+    debug_id: 6f6409b3-d520-43c7-9b2f-62e00bfe761c-1
+    debug_file: msvcrt.pdb
+    image_addr: "0x73cf0000"
+    image_size: 778240
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 598942c741000
+    code_file: "C:\\Windows\\System32\\sechost.dll"
+    debug_id: 6f6a05dd-0a80-478b-a419-9b88703bf75b-1
+    debug_file: sechost.pdb
+    image_addr: "0x74450000"
+    image_size: 266240
+  - debug_status: missing
+    unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 590285e9e0000
+    code_file: "C:\\Windows\\System32\\kernel32.dll"
+    debug_id: d3474559-96f7-47d6-bf43-c176b2171e68-1
+    debug_file: wkernel32.pdb
+    image_addr: "0x75050000"
+    image_size: 917504
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/59/0285e9e0000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.sym"
+        download:
+          status: notfound
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 59b0df8f5a000
+    code_file: "C:\\Windows\\System32\\bcryptPrimitives.dll"
+    debug_id: 287b19c3-9209-4a2b-bb8f-bcc37f411b11-1
+    debug_file: bcryptprimitives.pdb
+    image_addr: "0x75130000"
+    image_size: 368640
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 5a49bb75c1000
+    code_file: "C:\\Windows\\System32\\rpcrt4.dll"
+    debug_id: ae131c67-27a7-4fa1-9916-b5a4aef41190-1
+    debug_file: wrpcrt4.pdb
+    image_addr: "0x75810000"
+    image_size: 790528
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/5a/49bb75c1000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.sym"
+        download:
+          status: notfound
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 59bf2b5ae0000
+    code_file: "C:\\Windows\\System32\\ucrtbase.dll"
+    debug_id: 6bedcbce-0a3a-40e9-8040-81c2c8c6cc2f-1
+    debug_file: ucrtbase.pdb
+    image_addr: "0x758f0000"
+    image_size: 917504
+  - debug_status: unused
+    unwind_status: unused
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 59bf2bcf1a1000
+    code_file: "C:\\Windows\\System32\\KERNELBASE.dll"
+    debug_id: 8462294a-c645-402d-ac82-a4e95f61ddf9-1
+    debug_file: wkernelbase.pdb
+    image_addr: "0x76db0000"
+    image_size: 1708032
+  - debug_status: missing
+    unwind_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_id: 59b0d8f3183000
+    code_file: "C:\\Windows\\System32\\ntdll.dll"
+    debug_id: 971f98e5-ce60-41ff-b2d7-235bbeb34578-1
+    debug_file: wntdll.pdb
+    image_addr: "0x77170000"
+    image_size: 1585152
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/59/b0d8f3183000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.sym"
+        download:
+          status: notfound
+

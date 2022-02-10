@@ -159,6 +159,10 @@ pub struct RequestOptions {
     /// Whether to run the new stackwalking method in addition to the old one and compare their results.
     #[serde(default)]
     pub compare_stackwalking_methods: bool,
+
+    /// Stackwalk with rust-minidump only. Overrides ``compare_stackwalking_methods``.
+    #[serde(default)]
+    pub rust_minidump: bool,
 }
 
 /// A map of register values.
