@@ -1375,7 +1375,7 @@ impl MinidumpState {
         };
 
         MinidumpState {
-            timestamp: process_state.time,
+            timestamp: process_state.time.into(),
             system_info: SystemInfo {
                 os_name: normalize_minidump_os_name_rust_minidump(info.os).to_owned(),
                 os_version: info.os_version.clone().unwrap_or_default(),
