@@ -2850,7 +2850,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_minidump_windows_rust_minidup() -> anyhow::Result<()> {
+    async fn test_minidump_windows_rust_minidump() -> anyhow::Result<()> {
         stackwalk_minidump!(
             "windows.dmp",
             RequestOptions {
