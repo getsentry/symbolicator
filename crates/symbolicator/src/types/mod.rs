@@ -160,7 +160,7 @@ pub struct RequestOptions {
     #[serde(default)]
     pub compare_stackwalking_methods: bool,
 
-    /// Stackwalk with rust-minidump only, if used ``compare_stackwalking_methods`` will be ignored.
+    /// Stackwalk with rust-minidump only. Overrides ``compare_stackwalking_methods``.
     #[serde(default)]
     pub rust_minidump: bool,
 }
