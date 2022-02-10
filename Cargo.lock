@@ -266,16 +266,16 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#fc0f82fbcdcdecdf56996e7603c2d01f47d0469b"
 dependencies = [
  "circular",
- "failure",
  "log",
  "minidump-common",
  "nom 1.2.4",
  "range-map",
  "reqwest 0.11.9",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -777,28 +777,6 @@ dependencies = [
  "num-traits 0.2.14",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "failure"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d32e9bd16cc02eae7db7ef620b392808b89f6a5e16bb3497d159c6b92a0f4f86"
-dependencies = [
- "backtrace",
- "failure_derive",
-]
-
-[[package]]
-name = "failure_derive"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "synstructure",
 ]
 
 [[package]]
@@ -1585,16 +1563,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 
 [[package]]
-name = "memmap"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6585fd95e7bb50d6cc31e20d4cf9afb4e2ba16c5846fc76793f11218da9c475b"
-dependencies = [
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "memmap2"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1631,23 +1599,23 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#fc0f82fbcdcdecdf56996e7603c2d01f47d0469b"
 dependencies = [
- "chrono",
  "encoding",
- "failure",
  "log",
- "memmap",
+ "memmap2",
  "minidump-common",
  "num-traits 0.2.14",
  "range-map",
  "scroll",
+ "thiserror",
+ "time 0.3.6",
 ]
 
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#fc0f82fbcdcdecdf56996e7603c2d01f47d0469b"
 dependencies = [
  "bitflags",
  "enum-primitive-derive",
@@ -1661,19 +1629,17 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#fc0f82fbcdcdecdf56996e7603c2d01f47d0469b"
 dependencies = [
  "breakpad-symbols",
- "chrono",
  "clap",
- "failure",
  "log",
- "memmap",
+ "memmap2",
  "minidump",
  "scroll",
  "serde",
  "serde_json",
- "simplelog",
+ "thiserror",
 ]
 
 [[package]]
@@ -3012,17 +2978,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "simplelog"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1348164456f72ca0116e4538bdaabb0ddb622c7d9f16387c725af3e96d6001c"
-dependencies = [
- "chrono",
- "log",
- "termcolor",
-]
-
-[[package]]
 name = "siphasher"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3357,15 +3312,6 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "termcolor"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dfed899f0eb03f32ee8c6a0aabdb8a7949659e3466561fc0adf54e26d88c5f4"
-dependencies = [
- "winapi-util",
 ]
 
 [[package]]
