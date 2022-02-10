@@ -1998,15 +1998,18 @@ impl SymbolicationActor {
                             }).unwrap_or_else(|| String::from("diff unrecoverable"))
                     });
 
-                    let module_diff = (result_new.modules != result_old.modules ).then(|| {
-                        serde_json::to_string_pretty(&result_old.modules)
+                    let module_diff = {
+                        let modules_old: HashMap<DebugId,  RawObjectInfo> = result_old.modules.clone().unwrap_or_default().into_iter().collect();
+                        let modules_new: HashMap<DebugId,  RawObjectInfo> = result_new.modules.clone().unwrap_or_default().into_iter().collect();
+                        (modules_new != modules_old).then(|| {
+                        serde_json::to_string_pretty(&modules_old)
                             .map_err(|e| {
                                 let stderr: &dyn std::error::Error = &e;
                                 tracing::error!(stderr,"Failed to convert old modules to json")
                             })
                             .ok()
                             .and_then(|old| {
-                                serde_json::to_string_pretty(&result_new.modules)
+                                serde_json::to_string_pretty(&modules_new)
                                     .map_err(|e| {
                                         let stderr: &dyn std::error::Error = &e;
                                         tracing::error!(
@@ -2025,7 +2028,7 @@ impl SymbolicationActor {
                                         )
                                     })
                             }).unwrap_or_else(|| String::from("diff unrecoverable"))
-                    });
+                    })};
 
                     if stacktrace_diff.is_some() || module_diff.is_some() {
                         Some(NewStackwalkingProblem::Diff {stacktraces: stacktrace_diff.unwrap_or_default(), modules: module_diff.unwrap_or_default()})
