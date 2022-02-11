@@ -96,10 +96,9 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use minidump_processor::FrameTrust;
 use thiserror::Error;
 
-use crate::types;
+use crate::types::{self, FrameTrust};
 use crate::utils::hex;
 
 const MINIDUMP_EXTENSION_TYPE: u32 = u32::from_be_bytes([b'S', b'y', 0, 1]);
