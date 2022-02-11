@@ -266,8 +266,9 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#64d62899c931dec6404630a52c8d607e3a0a89f7"
+source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
 dependencies = [
+ "async-trait",
  "circular",
  "log",
  "minidump-common",
@@ -1599,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#64d62899c931dec6404630a52c8d607e3a0a89f7"
+source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
 dependencies = [
  "encoding",
  "log",
@@ -1615,7 +1616,7 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#64d62899c931dec6404630a52c8d607e3a0a89f7"
+source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
 dependencies = [
  "bitflags",
  "enum-primitive-derive",
@@ -1629,8 +1630,9 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#64d62899c931dec6404630a52c8d607e3a0a89f7"
+source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
 dependencies = [
+ "async-trait",
  "breakpad-symbols",
  "clap",
  "log",
@@ -3193,6 +3195,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
+ "async-trait",
  "axum",
  "backtrace",
  "base64 0.13.0",

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
 use std::fs::File;
@@ -11,14 +10,16 @@ use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
+use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::{channel::oneshot, future, FutureExt as _};
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpModule, Module};
 use minidump_processor::{
-    FrameTrust, ProcessState as MinidumpProcessState, SymbolFile, SymbolProvider, SymbolStats,
+    FillSymbolError, FrameSymbolizer, FrameTrust, FrameWalker,
+    ProcessState as MinidumpProcessState, SymbolFile, SymbolProvider, SymbolStats,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use regex::Regex;
 use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
@@ -1455,7 +1456,7 @@ fn load_cfi_for_processor(cfi: Vec<(DebugId, PathBuf)>) -> BTreeMap<DebugId, Cfi
 
 struct TempSymbolProvider {
     files: BTreeMap<DebugId, SymbolFile>,
-    missing_ids: RefCell<BTreeSet<DebugId>>,
+    missing_ids: RwLock<BTreeSet<DebugId>>,
 }
 
 impl TempSymbolProvider {
@@ -1470,7 +1471,7 @@ impl TempSymbolProvider {
                 .filter_map(|(id, path)| Some((*id, Self::load(path)?)))
                 .collect(),
 
-            missing_ids: RefCell::new(BTreeSet::new()),
+            missing_ids: RwLock::new(BTreeSet::new()),
         }
     }
 
@@ -1500,18 +1501,18 @@ impl TempSymbolProvider {
             .ok()
     }
 
-    fn into_missing_ids(self) -> BTreeSet<DebugId> {
-        self.missing_ids.into_inner()
+    fn missing_ids(&self) -> Vec<DebugId> {
+        self.missing_ids.read().iter().copied().collect()
     }
 }
 
+#[async_trait]
 impl SymbolProvider for TempSymbolProvider {
-    fn fill_symbol(
+    async fn fill_symbol(
         &self,
-        module: &dyn Module,
-        _frame: &mut dyn minidump_processor::FrameSymbolizer,
-    ) -> Result<(), minidump_processor::FillSymbolError> {
-        // TODO(ja): Deduplicate this. Probably should use a different map key, ...
+        module: &(dyn Module + Sync),
+        _frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> Result<(), FillSymbolError> {
         let debug_id = module
             .debug_identifier()
             .and_then(|id| DebugId::from_str(&id).ok())
@@ -1524,27 +1525,27 @@ impl SymbolProvider for TempSymbolProvider {
         if self.files.contains_key(&debug_id) {
             Ok(())
         } else {
-            Err(minidump_processor::FillSymbolError {})
+            Err(FillSymbolError {})
         }
     }
 
-    fn walk_frame(
+    async fn walk_frame(
         &self,
-        module: &dyn Module,
-        walker: &mut dyn minidump_processor::FrameWalker,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
         // TODO(ja): Deduplicate this. Probably should use a different map key, ...
         let debug_id = DebugId::from_str(&module.debug_identifier()?).ok()?;
         match self.files.get(&debug_id) {
             Some(file) => file.walk_frame(module, walker),
             None => {
-                self.missing_ids.borrow_mut().insert(debug_id);
+                self.missing_ids.write().insert(debug_id);
                 None
             }
         }
     }
 
-    fn stats(&self) -> HashMap<String, minidump_processor::SymbolStats> {
+    fn stats(&self) -> HashMap<String, SymbolStats> {
         self.files
             .iter()
             .map(|(debug_id, sym)| {
@@ -1712,7 +1713,7 @@ fn stackwalk_with_breakpad(
     })
 }
 
-fn stackwalk_with_rust_minidump(
+async fn stackwalk_with_rust_minidump(
     cfi_caches: Vec<(DebugId, PathBuf)>,
     minidump_path: PathBuf,
     spawn_time: SystemTime,
@@ -1726,13 +1727,13 @@ fn stackwalk_with_rust_minidump(
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
     let provider = TempSymbolProvider::new(cfi_caches.iter());
     let duration = Instant::now();
-    let process_state = minidump_processor::process_minidump(&minidump, &provider)?;
+    let process_state = minidump_processor::process_minidump(&minidump, &provider).await?;
     let duration = duration.elapsed();
 
     let minidump_state = MinidumpState::from_rust_minidump(&process_state);
     let object_type = minidump_state.object_type();
 
-    let missing_modules = provider.into_missing_ids().into_iter().collect();
+    let missing_modules = provider.missing_ids();
     let modules = return_modules.then(|| {
         process_state
             .modules
@@ -1768,9 +1769,9 @@ fn stackwalk_with_rust_minidump(
         let mut frames = Vec::with_capacity(frame_count);
         for frame in thread.frames.iter().take(frame_count) {
             frames.push(RawFrame {
-                instruction_addr: HexValue(frame.return_address),
+                instruction_addr: HexValue(frame.return_address()),
                 package: frame.module.as_ref().map(|m| m.code_file().into_owned()),
-                trust: frame.trust,
+                trust: frame.trust.into(),
                 ..RawFrame::default()
             });
         }
@@ -2065,13 +2066,20 @@ impl SymbolicationActor {
                     ),
                     |(cfi_caches, minidump_path, spawn_time, return_modules)| {
                         let procspawn::serde::Json(cfi_caches) = cfi_caches;
-                        stackwalk_with_rust_minidump(
-                            cfi_caches,
-                            minidump_path,
-                            spawn_time,
-                            return_modules,
-                        )
-                        .map(procspawn::serde::Json)
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
+                        rt.block_on(async move {
+                            stackwalk_with_rust_minidump(
+                                cfi_caches,
+                                minidump_path,
+                                spawn_time,
+                                return_modules,
+                            )
+                            .await
+                            .map(procspawn::serde::Json)
+                        })
                     },
                 );
 
