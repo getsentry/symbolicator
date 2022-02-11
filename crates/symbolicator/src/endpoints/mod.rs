@@ -35,11 +35,11 @@ pub fn create_app(service: Service) -> Router {
         .layer(SentryHttpLayer::with_transaction())
         .layer(MetricsLayer);
     Router::new()
-        .route("/proxy/:path", get(proxy).head(proxy))
+        .route("/proxy/*path", get(proxy).head(proxy))
         .route("/requests/:request_id", get(requests))
-        .route("/symbolicate", post(symbolicate))
-        .route("/minidump", post(minidump))
         .route("/applecrashreport", post(applecrashreport))
+        .route("/minidump", post(minidump))
+        .route("/symbolicate", post(symbolicate))
         .layer(layer)
         // the healthcheck is last, as it will bypass all the middlewares
         .route("/healthcheck", get(healthcheck))
