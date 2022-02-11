@@ -239,7 +239,7 @@ pub struct RawFrame {
     pub trust: FrameTrust,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FrameTrust {
     None,
