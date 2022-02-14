@@ -264,21 +264,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "breakpad-symbols"
-version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
-dependencies = [
- "circular",
- "failure",
- "log",
- "minidump-common",
- "nom 1.2.4",
- "range-map",
- "reqwest 0.11.9",
- "tempfile",
-]
-
-[[package]]
 name = "brownstone"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,12 +370,6 @@ dependencies = [
  "time 0.1.44",
  "winapi 0.3.9",
 ]
-
-[[package]]
-name = "circular"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"
@@ -1631,7 +1610,8 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02e0f06e24debf89a5ed527f0c06422c0c6c112aa28e78c20ac3ed626823c3bc"
 dependencies = [
  "chrono",
  "encoding",
@@ -1647,7 +1627,8 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39e0e0bb43d6a2a4fe9ab129bc8a5107df5e0f2c2869279983932dd222ca03fb"
 dependencies = [
  "bitflags",
  "enum-primitive-derive",
@@ -1656,24 +1637,6 @@ dependencies = [
  "range-map",
  "scroll",
  "smart-default",
-]
-
-[[package]]
-name = "minidump-processor"
-version = "0.9.6"
-source = "git+https://github.com/jan-auer/rust-minidump?branch=tmp/symbolicator-integration#75e59fd84a47ff8e82e981c2da6ece54322817c9"
-dependencies = [
- "breakpad-symbols",
- "chrono",
- "clap",
- "failure",
- "log",
- "memmap",
- "minidump",
- "scroll",
- "serde",
- "serde_json",
- "simplelog",
 ]
 
 [[package]]
@@ -1827,12 +1790,6 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "nom"
-version = "1.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5b8c256fd9471521bcb84c3cdba98921497f1a331cbc15b8030fc63b82050ce"
-
-[[package]]
-name = "nom"
 version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b1d11e1ef389c76fe5b81bcaf2ea32cf88b62bc494e19f493d0b30e7a930109"
@@ -1852,7 +1809,7 @@ dependencies = [
  "indent_write",
  "joinery",
  "memchr",
- "nom 7.1.0",
+ "nom",
 ]
 
 [[package]]
@@ -2436,7 +2393,6 @@ version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87f242f1488a539a79bac6dbe7c8609ae43b7914b7736210f239a37cccb32525"
 dependencies = [
- "async-compression",
  "base64 0.13.0",
  "bytes",
  "encoding_rs",
@@ -2461,7 +2417,6 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
- "tokio-util",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3012,17 +2967,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "simplelog"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1348164456f72ca0116e4538bdaabb0ddb622c7d9f16387c725af3e96d6001c"
-dependencies = [
- "chrono",
- "log",
- "termcolor",
-]
-
-[[package]]
 name = "siphasher"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3178,7 +3122,7 @@ dependencies = [
  "goblin",
  "lazy_static",
  "lazycell",
- "nom 7.1.0",
+ "nom",
  "nom-supreme",
  "parking_lot",
  "pdb",
@@ -3257,7 +3201,6 @@ dependencies = [
  "lazy_static",
  "lru",
  "minidump",
- "minidump-processor",
  "num_cpus",
  "parking_lot",
  "procspawn",
@@ -3357,15 +3300,6 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "termcolor"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dfed899f0eb03f32ee8c6a0aabdb8a7949659e3466561fc0adf54e26d88c5f4"
-dependencies = [
- "winapi-util",
 ]
 
 [[package]]

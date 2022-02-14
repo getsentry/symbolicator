@@ -96,7 +96,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use minidump_processor::FrameTrust;
+use symbolic::minidump::processor::FrameTrust;
 use thiserror::Error;
 
 use crate::types;
@@ -120,7 +120,7 @@ pub fn parse_stacktraces_from_minidump(
     let stacktraces = parsed
         .threads()
         .map(types::RawStacktrace::try_from)
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Some(stacktraces))
 }
@@ -156,7 +156,7 @@ impl TryFrom<format::Frame<'_>> for types::RawFrame {
         Ok(types::RawFrame {
             instruction_addr: hex::HexValue(frame.instruction_addr()),
             function: Some(String::from_utf8_lossy(symbol).into_owned()),
-            trust: FrameTrust::PreWalked,
+            trust: FrameTrust::Prewalked,
             ..Default::default()
         })
     }

@@ -26,8 +26,7 @@ jsonwebtoken = "7.2.0"
 lazy_static = "1.4.0"
 lru = "0.7.0"
 num_cpus = "1.13.0"
-minidump = { git = "https://github.com/jan-auer/rust-minidump", branch = "tmp/symbolicator-integration" }
-minidump-processor = { git = "https://github.com/jan-auer/rust-minidump", branch = "tmp/symbolicator-integration" }
+minidump = "0.9.4"
 parking_lot = "0.11.1"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
