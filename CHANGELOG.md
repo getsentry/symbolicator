@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Features
+
 - Support for `external_debug_info` section in wasm-split for external dwarf files. ([#619](https://github.com/getsentry/symbolicator/pull/619))
 - Added windows binaries for `wasm-split` and `symsorter` to releases ([#624](https://github.com/getsentry/symbolicator/pull/624))
 - Also populate the shared cache from existing items in the local cache, not only new ones. ([#648](https://github.com/getsentry/symbolicator/pull/648))
@@ -10,6 +11,7 @@
 ### Fixes
 
 - Avoid errors from symbol source in bcsymbolmap lookups from cancelling the entire symcache lookup. ([#643](https://github.com/getsentry/symbolicator/pull/643))
+- Use wildcard matcher for symstore proxy. ([#671](https://github.com/getsentry/symbolicator/pull/671))
 
 ## 0.4.1
 
@@ -20,6 +22,7 @@
 - Use Google Application Credentials to authenticate to GCS in the shared cache. ([#591](https://github.com/getsentry/symbolicator/pull/591))
 
 ### Fixes
+
 - Truncate Malformed and Cache-Specific entries in the cache to match the length of their contents, in case they overwrote some longer, existing entry. ([#586](https://github.com/getsentry/symbolicator/pull/586))
 
 ## 0.4.0
