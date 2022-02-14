@@ -442,7 +442,9 @@ pub fn get_directory_paths(
 }
 
 pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
-    let mut split = path.splitn(3, '/');
+    let mut split = path.splitn(4, '/');
+    // Skip the leading / that the path contains
+    split.next()?;
     let leading_fn = split.next()?;
     let signature = split.next()?;
     let trailing_fn = split.next()?;
