@@ -18,8 +18,6 @@ use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use similar::udiff::unified_diff;
-use similar::Algorithm;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::minidump::cfi::CfiCache;
@@ -1496,14 +1494,6 @@ fn stackwalk_with_breakpad(
     })
 }
 
-fn stackwalk_with_rust_minidump(
-    _cfi_caches: Vec<(DebugId, PathBuf)>,
-    _minidump_path: PathBuf,
-    _spawn_time: SystemTime,
-) -> Result<StackWalkMinidumpResult, ProcError> {
-    unimplemented!()
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     modules: Option<Vec<(DebugId, RawObjectInfo)>>,
@@ -1606,9 +1596,8 @@ impl SymbolicationActor {
         &self,
         path: &Path,
         cfi_caches: &CfiCacheModules,
-        compare_stackwalking_methods: bool,
         return_modules: bool,
-    ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
+    ) -> anyhow::Result<StackWalkMinidumpResult> {
         let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
         let minidump_path = path.to_path_buf();
@@ -1635,77 +1624,7 @@ impl SymbolicationActor {
                 "minidump.stackwalk.spawn.error",
             )?;
 
-            let result_new = if compare_stackwalking_methods {
-                let spawn_time = std::time::SystemTime::now();
-                let spawn_result = pool.spawn(
-                    (
-                        procspawn::serde::Json(cfi_caches),
-                        minidump_path,
-                        spawn_time,
-                    ),
-                    |(cfi_caches, minidump_path, spawn_time)| {
-                        let procspawn::serde::Json(cfi_caches) = cfi_caches;
-                        stackwalk_with_rust_minidump(cfi_caches, minidump_path, spawn_time)
-                            .map(procspawn::serde::Json)
-                    },
-                );
-
-                match Self::join_procspawn(
-                    spawn_result,
-                    Duration::from_secs(60),
-                    "minidump.stackwalk_new.spawn.error",
-                ) {
-                    Ok(result) => Some(result),
-                    Err(e) => {
-                        sentry::capture_error::<dyn std::error::Error>(e.as_ref());
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
-            metric!(timer("minidump.stackwalk.duration") = result_old.duration, "method" => "breakpad");
-
-            // Determine if there was a stackwalking difference or the new method performed poorly.
-            // If so, the minidump will be saved further down after some more processing.
-            let problem = result_new.and_then(|result_new| {
-                    metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
-
-                    if result_new.stacktraces != result_old.stacktraces {
-                        let diff = serde_json::to_string_pretty(&result_old)
-                            .map_err(|e| {
-                                tracing::error!("Failed to convert result_old to json: {}", e)
-                            })
-                            .ok()
-                            .and_then(|old| {
-                                serde_json::to_string_pretty(&result_new)
-                                    .map_err(|e| {
-                                        tracing::error!(
-                                            "Failed to convert result_new to json: {}",
-                                            e
-                                        )
-                                    })
-                                    .ok()
-                                    .map(|new| {
-                                        unified_diff(
-                                            Algorithm::Myers,
-                                            &old,
-                                            &new,
-                                            3,
-                                            Some(("breakpad", "rust-minidump")),
-                                        )
-                                    })
-                            }).unwrap_or_else(|| String::from("diff unrecoverable"));
-                            Some(NewStackwalkingProblem::Diff(diff))
-                    } else if 2 * result_new.duration >= 3 * result_old.duration {
-                        Some(NewStackwalkingProblem::Slow)
-                    } else {
-                        None
-                    }
-            });
-
-            Ok::<_, anyhow::Error>((result_old, problem))
+            Ok::<_, anyhow::Error>(result_old)
         };
 
         self.cpu_pool
@@ -1743,23 +1662,16 @@ impl SymbolicationActor {
         minidump_path: &Path,
         sources: Arc<[SourceConfig]>,
         cfi_caches: &mut CfiCacheModules,
-        mut compare_stackwalking_methods: bool,
-    ) -> anyhow::Result<(StackWalkMinidumpResult, Option<NewStackwalkingProblem>)> {
+    ) -> anyhow::Result<StackWalkMinidumpResult> {
         let mut iterations = 0;
 
         let mut modules: Option<HashMap<DebugId, RawObjectInfo>> = None;
-        let mut new_stackwalking_problem = None;
 
         let mut result = loop {
             iterations += 1;
 
-            let (mut result_old, problem) = self
-                .stackwalk_minidump(
-                    minidump_path,
-                    cfi_caches,
-                    compare_stackwalking_methods,
-                    modules.is_none(),
-                )
+            let mut result_old = self
+                .stackwalk_minidump(minidump_path, cfi_caches, modules.is_none())
                 .await?;
 
             let modules = match &modules {
@@ -1785,11 +1697,6 @@ impl SymbolicationActor {
                     .filter_map(|id| modules.get(&id).map(|info| (id, info)))
                     .collect();
 
-            if problem.is_some() {
-                new_stackwalking_problem = problem;
-                compare_stackwalking_methods = false;
-            }
-
             let loaded_caches = self
                 .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
                 .await;
@@ -1799,7 +1706,7 @@ impl SymbolicationActor {
         result.modules = modules.map(|modules| modules.into_iter().collect());
 
         metric!(time_raw("minidump.stackwalk.iterations") = iterations);
-        Ok((result, new_stackwalking_problem))
+        Ok(result)
     }
 
     #[tracing::instrument(skip_all)]
@@ -1822,10 +1729,9 @@ impl SymbolicationActor {
                 &minidump_file,
                 sources.clone(),
                 &mut cfi_caches,
-                options.compare_stackwalking_methods,
             );
 
-            let (result_old, new_stackwalking_problem) = match future.await {
+            let result_old = match future.await {
                 Ok(result) => result,
                 Err(err) => {
                     self.maybe_persist_minidump(minidump_file);
@@ -1863,25 +1769,6 @@ impl SymbolicationActor {
                 stacktraces,
                 options,
             };
-
-            // Save the minidump if there was a stackwalking difference or the new stackwalking method performed poorly.
-            if let Some(problem) = new_stackwalking_problem {
-                let msg = match problem {
-                    NewStackwalkingProblem::Diff(_) => "Different stackwalking results",
-                    NewStackwalkingProblem::Slow => "Slow stackwalking run",
-                };
-                sentry::with_scope(
-                    |scope| {
-                        if let NewStackwalkingProblem::Diff(diff) = problem {
-                            scope.set_extra("diff", sentry::protocol::Value::String(diff));
-                        }
-                    },
-                    || {
-                        self.maybe_persist_minidump(minidump_file);
-                        sentry::capture_message(msg, sentry::Level::Error);
-                    },
-                );
-            }
 
             Ok::<_, anyhow::Error>((request, minidump_state))
         };
