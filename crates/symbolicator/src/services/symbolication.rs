@@ -1810,6 +1810,111 @@ enum NewStackwalkingProblem {
     Slow,
 }
 
+/// Determines whether there was a problem with the rust-minidump based stackwalking method.
+///
+/// A problem is either
+/// 1. a difference in the returned modules or stacktraces, modulo reordering and trivial renaming of registers, or
+/// 2. rust-minidump taking more than 50% longer than breakpad.
+fn find_stackwalking_problem(
+    result_breakpad: &StackWalkMinidumpResult,
+    result_rust_minidump: &StackWalkMinidumpResult,
+) -> Option<NewStackwalkingProblem> {
+    metric!(timer("minidump.stackwalk.duration") = result_rust_minidump.duration, "method" => "rust-minidump");
+
+    // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
+    // Not doing this leads to tons of spurious diffs.
+    let mut stacktraces_breakpad = result_breakpad.stacktraces.clone();
+    for stacktrace in stacktraces_breakpad.iter_mut() {
+        if let Some(val) = stacktrace.registers.remove("eflags") {
+            stacktrace.registers.insert("efl".to_string(), val);
+        }
+    }
+
+    let stacktrace_diff = (result_rust_minidump.stacktraces != stacktraces_breakpad).then(|| {
+        serde_json::to_string_pretty(&result_breakpad.stacktraces)
+            .map_err(|e| {
+                let stderr: &dyn std::error::Error = &e;
+                tracing::error!(stderr, "Failed to convert breakpad stacktraces to json")
+            })
+            .ok()
+            .and_then(|breakpad| {
+                serde_json::to_string_pretty(&result_rust_minidump.stacktraces)
+                    .map_err(|e| {
+                        let stderr: &dyn std::error::Error = &e;
+                        tracing::error!(
+                            stderr,
+                            "Failed to convert rust-minidump stacktraces to json",
+                        )
+                    })
+                    .ok()
+                    .map(|rust_minidump| {
+                        unified_diff(
+                            Algorithm::Myers,
+                            &breakpad,
+                            &rust_minidump,
+                            3,
+                            Some(("breakpad", "rust-minidump")),
+                        )
+                    })
+            })
+            .unwrap_or_else(|| String::from("diff unrecoverable"))
+    });
+
+    let module_diff = {
+        let modules_breakpad: HashMap<DebugId, RawObjectInfo> = result_breakpad
+            .modules
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        let modules_rust_minidump: HashMap<DebugId, RawObjectInfo> = result_rust_minidump
+            .modules
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        (modules_rust_minidump != modules_breakpad).then(|| {
+            serde_json::to_string_pretty(&modules_breakpad)
+                .map_err(|e| {
+                    let stderr: &dyn std::error::Error = &e;
+                    tracing::error!(stderr, "Failed to convert breakpad modules to json")
+                })
+                .ok()
+                .and_then(|breakpad| {
+                    serde_json::to_string_pretty(&modules_rust_minidump)
+                        .map_err(|e| {
+                            let stderr: &dyn std::error::Error = &e;
+                            tracing::error!(
+                                stderr,
+                                "Failed to convert rust-minidump modules to json",
+                            )
+                        })
+                        .ok()
+                        .map(|rust_minidump| {
+                            unified_diff(
+                                Algorithm::Myers,
+                                &breakpad,
+                                &rust_minidump,
+                                3,
+                                Some(("breakpad", "rust-minidump")),
+                            )
+                        })
+                })
+                .unwrap_or_else(|| String::from("diff unrecoverable"))
+        })
+    };
+
+    if stacktrace_diff.is_some() || module_diff.is_some() {
+        Some(NewStackwalkingProblem::Diff {
+            stacktraces: stacktrace_diff.unwrap_or_default(),
+            modules: module_diff.unwrap_or_default(),
+        })
+    } else if 2 * result_rust_minidump.duration >= 3 * result_breakpad.duration {
+        Some(NewStackwalkingProblem::Slow)
+    } else {
+        None
+    }
+}
 impl SymbolicationActor {
     /// Join a procspawn handle with a timeout.
     ///
@@ -1921,13 +2026,13 @@ impl SymbolicationActor {
                 },
             );
 
-            let result_old = Self::join_procspawn(
+            let result_breakpad = Self::join_procspawn(
                 spawn_result,
                 Duration::from_secs(60),
                 "minidump.stackwalk.spawn.error",
             )?;
 
-            let result_new = if compare_stackwalking_methods || rust_minidump {
+            let result_rust_minidump = if compare_stackwalking_methods || rust_minidump {
                 let spawn_time = std::time::SystemTime::now();
                 let spawn_result = pool.spawn(
                     (
@@ -1964,96 +2069,20 @@ impl SymbolicationActor {
             };
 
             if rust_minidump {
-                return Ok((result_new.unwrap(), Default::default()));
+                return Ok((result_rust_minidump.unwrap(), Default::default()));
             }
 
-            metric!(timer("minidump.stackwalk.duration") = result_old.duration, "method" => "breakpad");
+            metric!(timer("minidump.stackwalk.duration") = result_breakpad.duration, "method" => "breakpad");
 
             // Determine if there was a stackwalking difference or the new method performed poorly.
             // If so, the minidump will be saved further down after some more processing.
-            let problem = result_new.and_then(|result_new| {
-                    metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
+            let problem = result_rust_minidump
+                .as_ref()
+                .and_then(|result_rust_minidump| {
+                    find_stackwalking_problem(&result_breakpad, result_rust_minidump)
+                });
 
-                    // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
-                    // Not doing this leads to tons of spurious diffs.
-                    let mut stacktraces_old = result_old.stacktraces.clone();
-                    for stacktrace in stacktraces_old.iter_mut() {
-                        if let Some(val) = stacktrace.registers.remove("eflags") {
-                            stacktrace.registers.insert("efl".to_string(), val);
-                        }
-                    }
-
-                    let stacktrace_diff = (result_new.stacktraces != stacktraces_old).then(|| {
-                        serde_json::to_string_pretty(&result_old.stacktraces)
-                            .map_err(|e| {
-                                let stderr: &dyn std::error::Error = &e;
-                                tracing::error!(stderr, "Failed to convert old stacktraces to json")
-                            })
-                            .ok()
-                            .and_then(|old| {
-                                serde_json::to_string_pretty(&result_new.stacktraces)
-                                    .map_err(|e| {
-                                        let stderr: &dyn std::error::Error = &e;
-                                        tracing::error!(
-                                            stderr,
-                                            "Failed to convert new stacktraces to json",
-                                        )
-                                    })
-                                    .ok()
-                                    .map(|new| {
-                                        unified_diff(
-                                            Algorithm::Myers,
-                                            &old,
-                                            &new,
-                                            3,
-                                            Some(("breakpad", "rust-minidump")),
-                                        )
-                                    })
-                            }).unwrap_or_else(|| String::from("diff unrecoverable"))
-                    });
-
-                    let module_diff = {
-                        let modules_old: HashMap<DebugId,  RawObjectInfo> = result_old.modules.clone().unwrap_or_default().into_iter().collect();
-                        let modules_new: HashMap<DebugId,  RawObjectInfo> = result_new.modules.clone().unwrap_or_default().into_iter().collect();
-                        (modules_new != modules_old).then(|| {
-                        serde_json::to_string_pretty(&modules_old)
-                            .map_err(|e| {
-                                let stderr: &dyn std::error::Error = &e;
-                                tracing::error!(stderr,"Failed to convert old modules to json")
-                            })
-                            .ok()
-                            .and_then(|old| {
-                                serde_json::to_string_pretty(&modules_new)
-                                    .map_err(|e| {
-                                        let stderr: &dyn std::error::Error = &e;
-                                        tracing::error!(
-                                            stderr,
-                                            "Failed to convert new modules to json",
-                                        )
-                                    })
-                                    .ok()
-                                    .map(|new| {
-                                        unified_diff(
-                                            Algorithm::Myers,
-                                            &old,
-                                            &new,
-                                            3,
-                                            Some(("breakpad", "rust-minidump")),
-                                        )
-                                    })
-                            }).unwrap_or_else(|| String::from("diff unrecoverable"))
-                    })};
-
-                    if stacktrace_diff.is_some() || module_diff.is_some() {
-                        Some(NewStackwalkingProblem::Diff {stacktraces: stacktrace_diff.unwrap_or_default(), modules: module_diff.unwrap_or_default()})
-                    } else if 2 * result_new.duration >= 3 * result_old.duration {
-                        Some(NewStackwalkingProblem::Slow)
-                    } else {
-                        None
-                    }
-            });
-
-            Ok::<_, anyhow::Error>((result_old, problem))
+            Ok::<_, anyhow::Error>((result_breakpad, problem))
         };
 
         self.cpu_pool
@@ -2102,7 +2131,7 @@ impl SymbolicationActor {
         let mut result = loop {
             iterations += 1;
 
-            let (mut result_old, problem) = self
+            let (mut result_breakpad, problem) = self
                 .stackwalk_minidump(
                     minidump_path,
                     cfi_caches,
@@ -2115,7 +2144,7 @@ impl SymbolicationActor {
             let modules = match &modules {
                 Some(modules) => modules,
                 None => {
-                    let received_modules = std::mem::take(&mut result_old.modules);
+                    let received_modules = std::mem::take(&mut result_breakpad.modules);
                     let received_modules =
                         received_modules.unwrap_or_default().into_iter().collect();
                     modules = Some(received_modules);
@@ -2125,12 +2154,12 @@ impl SymbolicationActor {
 
             // We put a hard limit of 5 iterations here.
             // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-            if result_old.missing_modules.is_empty() || iterations >= 5 {
-                break result_old;
+            if result_breakpad.missing_modules.is_empty() || iterations >= 5 {
+                break result_breakpad;
             }
 
             let missing_modules: Vec<(DebugId, &RawObjectInfo)> =
-                std::mem::take(&mut result_old.missing_modules)
+                std::mem::take(&mut result_breakpad.missing_modules)
                     .into_iter()
                     .filter_map(|id| modules.get(&id).map(|info| (id, info)))
                     .collect();
