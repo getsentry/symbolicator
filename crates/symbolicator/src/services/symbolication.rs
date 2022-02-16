@@ -1861,18 +1861,10 @@ fn find_stackwalking_problem(
     });
 
     let module_diff = {
-        let modules_breakpad: HashMap<DebugId, RawObjectInfo> = result_breakpad
-            .modules
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        let modules_rust_minidump: HashMap<DebugId, RawObjectInfo> = result_rust_minidump
-            .modules
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        let mut modules_breakpad = result_breakpad.modules.clone().unwrap_or_default();
+        modules_breakpad.sort_by_key(|module| module.0);
+        let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
+        modules_rust_minidump.sort_by_key(|module| module.0);
         (modules_rust_minidump != modules_breakpad).then(|| {
             serde_json::to_string_pretty(&modules_breakpad)
                 .map_err(|e| {
