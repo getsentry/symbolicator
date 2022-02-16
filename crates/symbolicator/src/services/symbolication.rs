@@ -1974,7 +1974,16 @@ impl SymbolicationActor {
             let problem = result_new.and_then(|result_new| {
                     metric!(timer("minidump.stackwalk.duration") = result_new.duration, "method" => "rust-minidump");
 
-                    let stacktrace_diff = (result_new.stacktraces != result_old.stacktraces ).then(|| {
+                    // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
+                    // Not doing this leads to tons of spurious diffs.
+                    let mut stacktraces_old = result_old.stacktraces.clone();
+                    for stacktrace in stacktraces_old.iter_mut() {
+                        if let Some(val) = stacktrace.registers.remove("eflags") {
+                            stacktrace.registers.insert("efl".to_string(), val);
+                        }
+                    }
+
+                    let stacktrace_diff = (result_new.stacktraces != stacktraces_old).then(|| {
                         serde_json::to_string_pretty(&result_old.stacktraces)
                             .map_err(|e| {
                                 let stderr: &dyn std::error::Error = &e;
