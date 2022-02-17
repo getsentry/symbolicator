@@ -1810,6 +1810,36 @@ enum NewStackwalkingProblem {
     Slow,
 }
 
+fn fixup_modules(modules: &mut [(DebugId, RawObjectInfo)]) {
+    modules.sort_by_key(|module| module.0);
+
+    for (_, info) in modules.iter_mut() {
+        if let Some(ref mut code_id) = info.code_id {
+            if code_id.is_empty() {
+                info.code_id = None;
+            }
+        }
+
+        if let Some(ref mut code_file) = info.code_file {
+            if code_file.is_empty() {
+                info.code_file = None;
+            }
+        }
+
+        if let Some(ref mut debug_id) = info.debug_id {
+            if debug_id.is_empty() {
+                info.debug_id = None;
+            }
+        }
+
+        if let Some(ref mut debug_file) = info.debug_file {
+            if debug_file.is_empty() {
+                info.debug_file = None;
+            }
+        }
+    }
+}
+
 /// Determines whether there was a problem with the rust-minidump based stackwalking method.
 ///
 /// A problem is either
@@ -1861,18 +1891,10 @@ fn find_stackwalking_problem(
     });
 
     let module_diff = {
-        let modules_breakpad: HashMap<DebugId, RawObjectInfo> = result_breakpad
-            .modules
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        let modules_rust_minidump: HashMap<DebugId, RawObjectInfo> = result_rust_minidump
-            .modules
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        let mut modules_breakpad = result_breakpad.modules.clone().unwrap_or_default();
+        let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
+        fixup_modules(&mut modules_breakpad);
+        fixup_modules(&mut modules_rust_minidump);
         (modules_rust_minidump != modules_breakpad).then(|| {
             serde_json::to_string_pretty(&modules_breakpad)
                 .map_err(|e| {
