@@ -2585,9 +2585,11 @@ fn map_symbolic_registers_breakpad(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<Str
         .collect()
 }
 
-fn map_symbolic_registers_rust_minidump(_context: &MinidumpContext) -> BTreeMap<String, HexValue> {
-    // TODO: not this!  See https://github.com/luser/rust-minidump/pull/414
-    BTreeMap::new()
+fn map_symbolic_registers_rust_minidump(context: &MinidumpContext) -> BTreeMap<String, HexValue> {
+    context
+        .valid_registers()
+        .map(|(reg, val)| (reg.to_owned(), HexValue(val)))
+        .collect()
 }
 
 impl From<&CfiCacheError> for ObjectFileStatus {
