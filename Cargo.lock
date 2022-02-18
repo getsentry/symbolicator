@@ -266,7 +266,7 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#a06a1b60a7391cbc45a70e5ef5ac395149a34597"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
 dependencies = [
  "circular",
  "debugid",
@@ -1600,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#a06a1b60a7391cbc45a70e5ef5ac395149a34597"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
 dependencies = [
  "debugid",
  "encoding",
@@ -1618,7 +1618,7 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#a06a1b60a7391cbc45a70e5ef5ac395149a34597"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1633,7 +1633,7 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#a06a1b60a7391cbc45a70e5ef5ac395149a34597"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
 dependencies = [
  "breakpad-symbols",
  "clap",

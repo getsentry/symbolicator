@@ -571,16 +571,7 @@ fn object_info_from_minidump_module_rust_minidump(
     ty: ObjectType,
     module: &MinidumpModule,
 ) -> RawObjectInfo {
-    let mut code_id = module.code_identifier().to_string();
-
-    // The processor reports an empty string as code id for MachO files
-    // TODO(ja): Fix MinidumpModule::code_identifier for MachO
-    if ty == ObjectType::Macho {
-        code_id = module
-            .debug_identifier()
-            .map(|id| id.to_string())
-            .unwrap_or_default();
-    }
+    let code_id = module.code_identifier().to_string();
 
     RawObjectInfo {
         ty,
