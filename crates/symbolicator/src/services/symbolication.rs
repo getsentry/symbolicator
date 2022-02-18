@@ -1493,8 +1493,8 @@ impl TempSymbolProvider {
             .ok()
     }
 
-    fn missing_ids(&self) -> Vec<DebugId> {
-        self.missing_ids.read().iter().copied().collect()
+    fn missing_ids(self) -> Vec<DebugId> {
+        self.missing_ids.into_inner().into_iter().collect()
     }
 }
 
