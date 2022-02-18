@@ -584,9 +584,9 @@ fn object_info_from_minidump_module_rust_minidump(
 
     RawObjectInfo {
         ty,
+        // TODO: shouldn't this be None if code_id is empty?
         code_id: Some(code_id),
         code_file: Some(module.code_file().into_owned()),
-        // TODO(ja): Old TODO: This should use module.id().map(_)
         // TODO(ja): This is optional now, wasn't before, check why
         debug_id: module.debug_identifier().map(|id| id.to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
