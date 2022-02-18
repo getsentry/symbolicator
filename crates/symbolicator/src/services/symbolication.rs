@@ -1096,7 +1096,7 @@ pub struct SymbolicateStacktraces {
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     async fn do_symbolicate(
-        self,
+        &self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let serialize_dif_candidates = request.options.dif_candidates;
@@ -1118,7 +1118,7 @@ impl SymbolicationActor {
     }
 
     async fn do_symbolicate_impl(
-        self,
+        &self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
         let SymbolicateStacktraces {
@@ -1133,7 +1133,12 @@ impl SymbolicationActor {
 
         let mut symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
         symcache_lookup
-            .fetch_symcaches(self.symcaches, scope.clone(), sources.clone(), &stacktraces)
+            .fetch_symcaches(
+                self.symcaches.clone(),
+                scope.clone(),
+                sources.clone(),
+                &stacktraces,
+            )
             .await;
 
         let future = async move {
@@ -1163,7 +1168,7 @@ impl SymbolicationActor {
 
         let mut source_lookup: SourceLookup = modules.into_iter().collect();
         source_lookup
-            .fetch_sources(self.objects, scope, sources, &response.stacktraces)
+            .fetch_sources(self.objects.clone(), scope, sources, &response.stacktraces)
             .await;
 
         let future = async move {
@@ -1711,7 +1716,7 @@ impl SymbolicationActor {
 
     #[tracing::instrument(skip_all)]
     async fn do_stackwalk_minidump(
-        self,
+        &self,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
@@ -1782,14 +1787,13 @@ impl SymbolicationActor {
     }
 
     async fn do_process_minidump(
-        self,
+        &self,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
-            .clone()
             .do_stackwalk_minidump(scope, minidump_file, sources, options)
             .await?;
 
