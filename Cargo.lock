@@ -266,10 +266,11 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
+source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
 dependencies = [
  "async-trait",
  "circular",
+ "debugid",
  "log",
  "minidump-common",
  "nom 1.2.4",
@@ -1565,9 +1566,9 @@ checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 
 [[package]]
 name = "memmap2"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe3179b85e1fd8b14447cbebadb75e45a1002f541b925f0bfec366d56a81c56d"
+checksum = "057a3db23999c867821a7a59feb06a578fcb03685e983dff90daf9e7d24ac08f"
 dependencies = [
  "libc",
 ]
@@ -1600,8 +1601,9 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
+source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
 dependencies = [
+ "debugid",
  "encoding",
  "log",
  "memmap2",
@@ -1611,14 +1613,16 @@ dependencies = [
  "scroll",
  "thiserror",
  "time 0.3.6",
+ "uuid",
 ]
 
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
+source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
 dependencies = [
  "bitflags",
+ "debugid",
  "enum-primitive-derive",
  "log",
  "num-traits 0.2.14",
@@ -1630,11 +1634,12 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#8e1f9a8f9fb67d25a817b48fdee7b9870e1cb321"
+source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
  "clap",
+ "debugid",
  "log",
  "memmap2",
  "minidump",
