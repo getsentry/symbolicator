@@ -578,9 +578,8 @@ fn object_info_from_minidump_module_rust_minidump(
     if ty == ObjectType::Macho {
         code_id = module
             .debug_identifier()
-            .map(|id| id.breakpad().to_string())
+            .map(|id| id.to_string())
             .unwrap_or_default();
-        code_id.truncate(32); // MachO code_id is the debug_id without `0` age.
     }
 
     RawObjectInfo {
