@@ -557,7 +557,7 @@ fn object_info_from_minidump_module_breakpad(ty: ObjectType, module: &CodeModule
         ty,
         code_id: Some(code_id),
         code_file: Some(module.code_file()),
-        debug_id: module.id().map(|id| id.as_object_id().to_string()),
+        debug_id: module.id().map(|id| id.to_string()),
         debug_file: Some(module.debug_file()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -579,7 +579,9 @@ fn object_info_from_minidump_module_rust_minidump(
         code_id: Some(code_id),
         code_file: Some(module.code_file().into_owned()),
         // TODO(ja): This is optional now, wasn't before, check why
-        debug_id: module.debug_identifier().map(|id| id.to_string()),
+        debug_id: module
+            .debug_identifier()
+            .map(|id| id.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
