@@ -16,8 +16,8 @@ use futures::{channel::oneshot, future, FutureExt as _};
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpModule, Module};
 use minidump_processor::{
-    FillSymbolError, FrameSymbolizer, FrameTrust, FrameWalker,
-    ProcessState as MinidumpProcessState, SymbolFile, SymbolProvider, SymbolStats,
+    FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState as MinidumpProcessState,
+    SymbolFile, SymbolProvider, SymbolStats,
 };
 use parking_lot::{Mutex, RwLock};
 use regex::Regex;
@@ -42,12 +42,11 @@ use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::{ObjectError, ObjectsActor};
 use crate::services::symcaches::{SymCacheActor, SymCacheError};
 use crate::sources::SourceConfig;
-use crate::types::ObjectFeatures;
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse,
-    FrameStatus, ObjectFileStatus, ObjectId, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
-    Registers, RequestId, RequestOptions, Scope, Signal, SymbolicatedFrame, SymbolicationResponse,
-    SystemInfo,
+    FrameStatus, FrameTrust, ObjectFeatures, ObjectFileStatus, ObjectId, ObjectType, RawFrame,
+    RawObjectInfo, RawStacktrace, Registers, RequestId, RequestOptions, Scope, Signal,
+    SymbolicatedFrame, SymbolicationResponse, SystemInfo,
 };
 use crate::utils::futures::{m, measure, CallOnDrop, CancelOnDrop};
 use crate::utils::hex::HexValue;
@@ -303,7 +302,7 @@ impl ModuleListBuilder {
         for trace in stacktraces {
             for frame in &trace.frames {
                 let addr = frame.instruction_addr.0;
-                let is_prewalked = frame.trust == FrameTrust::PreWalked.into();
+                let is_prewalked = frame.trust == FrameTrust::PreWalked;
                 self.mark_referenced(addr, is_prewalked);
             }
         }
@@ -1013,7 +1012,7 @@ fn symbolicate_stacktrace(
                 //   instruction_addr that is not in any image *we* consider valid. We discard
                 //   images which do not have a debug id, while the stackscanner considers them
                 //   perfectly fine.
-                if frame.trust == crate::types::FrameTrust::Scan
+                if frame.trust == FrameTrust::Scan
                     && (status == FrameStatus::MissingSymbol || status == FrameStatus::UnknownImage)
                 {
                     continue;
@@ -1040,12 +1039,12 @@ fn symbolicate_stacktrace(
 
                 metrics.unsymbolicated_frames += 1;
                 match frame.trust {
-                    crate::types::FrameTrust::Scan => {
+                    FrameTrust::Scan => {
                         metrics.scanned_frames += 1;
                         metrics.unsymbolicated_scanned_frames += 1;
                     }
-                    crate::types::FrameTrust::Cfi => metrics.unsymbolicated_cfi_frames += 1,
-                    crate::types::FrameTrust::Context => metrics.unsymbolicated_context_frames += 1,
+                    FrameTrust::Cfi => metrics.unsymbolicated_cfi_frames += 1,
+                    FrameTrust::Context => metrics.unsymbolicated_context_frames += 1,
                     _ => {}
                 }
                 if status == FrameStatus::UnknownImage {
@@ -1588,17 +1587,15 @@ impl std::fmt::Display for ProcError {
 
 impl std::error::Error for ProcError {}
 
-fn convert_frame_trust(
-    trust: symbolic::minidump::processor::FrameTrust,
-) -> crate::types::FrameTrust {
+fn convert_frame_trust(trust: symbolic::minidump::processor::FrameTrust) -> FrameTrust {
     match trust {
-        symbolic::minidump::processor::FrameTrust::None => crate::types::FrameTrust::None,
-        symbolic::minidump::processor::FrameTrust::Scan => crate::types::FrameTrust::Scan,
-        symbolic::minidump::processor::FrameTrust::CFIScan => crate::types::FrameTrust::CfiScan,
-        symbolic::minidump::processor::FrameTrust::FP => crate::types::FrameTrust::Fp,
-        symbolic::minidump::processor::FrameTrust::CFI => crate::types::FrameTrust::Cfi,
-        symbolic::minidump::processor::FrameTrust::Prewalked => crate::types::FrameTrust::PreWalked,
-        symbolic::minidump::processor::FrameTrust::Context => crate::types::FrameTrust::Context,
+        symbolic::minidump::processor::FrameTrust::None => FrameTrust::None,
+        symbolic::minidump::processor::FrameTrust::Scan => FrameTrust::Scan,
+        symbolic::minidump::processor::FrameTrust::CFIScan => FrameTrust::CfiScan,
+        symbolic::minidump::processor::FrameTrust::FP => FrameTrust::Fp,
+        symbolic::minidump::processor::FrameTrust::CFI => FrameTrust::Cfi,
+        symbolic::minidump::processor::FrameTrust::Prewalked => FrameTrust::PreWalked,
+        symbolic::minidump::processor::FrameTrust::Context => FrameTrust::Context,
     }
 }
 
