@@ -45,7 +45,7 @@ use crate::utils::hex::HexValue;
 
 mod module_lookup;
 
-use module_lookup::{SourceLookup, SymCacheLookup};
+use module_lookup::ModuleLookup;
 
 /// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
@@ -543,7 +543,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &CodeModule) -> RawO
 }
 
 fn symbolicate_frame(
-    caches: &SymCacheLookup,
+    caches: &ModuleLookup,
     registers: &Registers,
     signal: Option<Signal>,
     frame: &mut RawFrame,
@@ -922,7 +922,7 @@ fn record_symbolication_metrics(
 
 fn symbolicate_stacktrace(
     thread: RawStacktrace,
-    caches: &SymCacheLookup,
+    caches: &ModuleLookup,
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
 ) -> CompleteStacktrace {
@@ -1131,57 +1131,41 @@ impl SymbolicationActor {
             ..
         } = request;
 
-        let mut symcache_lookup: SymCacheLookup = modules.iter().cloned().collect();
-        symcache_lookup
-            .fetch_symcaches(
-                self.symcaches.clone(),
-                scope.clone(),
-                sources.clone(),
-                &stacktraces,
-            )
+        let mut module_lookup = ModuleLookup::new(scope, sources, modules.into_iter());
+        module_lookup
+            .fetch_symcaches(self.symcaches.clone(), &stacktraces)
             .await;
 
         let future = async move {
             let mut metrics = StacktraceMetrics::default();
             let stacktraces: Vec<_> = stacktraces
                 .into_iter()
-                .map(|trace| symbolicate_stacktrace(trace, &symcache_lookup, &mut metrics, signal))
+                .map(|trace| symbolicate_stacktrace(trace, &module_lookup, &mut metrics, signal))
                 .collect();
 
-            // bring modules back into the original order
-            let modules = symcache_lookup.into_inner();
-
-            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
-
-            CompletedSymbolicationResponse {
-                signal,
-                stacktraces,
-                modules,
-                ..Default::default()
-            }
+            (module_lookup, stacktraces, metrics)
         };
 
-        let mut response =
+        let (mut module_lookup, mut stacktraces, metrics) =
             CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
                 .await
                 .context("Symbolication future cancelled")?;
 
-        let mut source_lookup: SourceLookup = modules.into_iter().collect();
-        source_lookup
-            .fetch_sources(self.objects.clone(), scope, sources, &response.stacktraces)
+        module_lookup
+            .fetch_sources(self.objects.clone(), &stacktraces)
             .await;
 
         let future = async move {
-            let debug_sessions = source_lookup.prepare_debug_sessions();
+            let debug_sessions = module_lookup.prepare_debug_sessions();
 
-            for trace in &mut response.stacktraces {
+            for trace in &mut stacktraces {
                 for frame in &mut trace.frames {
                     let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
                         (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
                         _ => continue,
                     };
 
-                    let result = source_lookup.get_context_lines(
+                    let result = module_lookup.get_context_lines(
                         &debug_sessions,
                         frame.raw.instruction_addr.0,
                         frame.raw.addr_mode,
@@ -1197,7 +1181,20 @@ impl SymbolicationActor {
                     }
                 }
             }
-            response
+            // explicitly drop this, so it does not borrow `module_lookup` anymore.
+            drop(debug_sessions);
+
+            // bring modules back into the original order
+            let modules = module_lookup.into_inner();
+
+            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
+
+            CompletedSymbolicationResponse {
+                signal,
+                stacktraces,
+                modules,
+                ..Default::default()
+            }
         };
 
         CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
@@ -2451,7 +2448,7 @@ mod tests {
             image_size: Some(0),
         });
 
-        let lookup = SymCacheLookup::from_iter(vec![info.clone()]);
+        let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));
 
         let lookup_result = lookup.lookup_symcache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);
