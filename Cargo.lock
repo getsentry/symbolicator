@@ -266,7 +266,7 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
 dependencies = [
  "circular",
  "debugid",
@@ -1060,13 +1060,13 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "goblin"
-version = "0.4.3"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32401e89c6446dcd28185931a01b1093726d0356820ac744023e6850689bf926"
+checksum = "c955ab4e0ad8c843ea653a3d143048b87490d9be56bd7132a435c2407846ac8f"
 dependencies = [
  "log",
  "plain",
- "scroll",
+ "scroll 0.11.0",
 ]
 
 [[package]]
@@ -1473,9 +1473,9 @@ checksum = "7fb9b38af92608140b86b693604b9ffcc5824240a484d1ecd4795bacb2fe88f3"
 
 [[package]]
 name = "lock_api"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712a4d093c9976e24e7dbca41db895dabcbac38eb5f4045393d17a95bdfb1109"
+checksum = "88943dd7ef4a2e5a4bfa2753aaab3013e34ce2533d1996fb18ef591e315e2b3b"
 dependencies = [
  "scopeguard",
 ]
@@ -1600,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
 dependencies = [
  "debugid",
  "encoding",
@@ -1609,7 +1609,7 @@ dependencies = [
  "minidump-common",
  "num-traits 0.2.14",
  "range-map",
- "scroll",
+ "scroll 0.10.2",
  "thiserror",
  "time 0.3.6",
  "uuid",
@@ -1618,7 +1618,7 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1626,14 +1626,14 @@ dependencies = [
  "log",
  "num-traits 0.2.14",
  "range-map",
- "scroll",
+ "scroll 0.10.2",
  "smart-default",
 ]
 
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#4853cf8d81029a387b0dc50a5cb84afcd0538adc"
+source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
 dependencies = [
  "breakpad-symbols",
  "clap",
@@ -1641,7 +1641,7 @@ dependencies = [
  "log",
  "memmap2",
  "minidump",
- "scroll",
+ "scroll 0.10.2",
  "serde",
  "serde_json",
  "thiserror",
@@ -1961,7 +1961,17 @@ checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
 dependencies = [
  "instant",
  "lock_api",
- "parking_lot_core",
+ "parking_lot_core 0.8.5",
+]
+
+[[package]]
+name = "parking_lot"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87f5ec2493a61ac0506c0f4199f99070cbe83857b0337006a30f3e6719b8ef58"
+dependencies = [
+ "lock_api",
+ "parking_lot_core 0.9.1",
 ]
 
 [[package]]
@@ -1979,13 +1989,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "parking_lot_core"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28141e0cc4143da2443301914478dc976a61ffdb3f043058310c70df2fed8954"
+dependencies = [
+ "cfg-if 1.0.0",
+ "libc",
+ "redox_syscall",
+ "smallvec",
+ "windows-sys",
+]
+
+[[package]]
 name = "pdb"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13f4d162ecaaa1467de5afbe62d597757b674b51da8bb4e587430c5fdb2af7aa"
 dependencies = [
  "fallible-iterator",
- "scroll",
+ "scroll 0.10.2",
  "uuid",
 ]
 
@@ -2644,7 +2667,16 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fda28d4b4830b807a8b43f7b0e6b5df875311b3e7621d84577188c175b6ec1ec"
 dependencies = [
- "scroll_derive",
+ "scroll_derive 0.10.5",
+]
+
+[[package]]
+name = "scroll"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
+dependencies = [
+ "scroll_derive 0.11.0",
 ]
 
 [[package]]
@@ -2652,6 +2684,17 @@ name = "scroll_derive"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aaaae8f38bb311444cfb7f1979af0bc9240d95795f75f9ceddf6a59b79ceffa0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdbda6ac5cd1321e724fa9cee216f3a61885889b896f073b8f82322789c5250e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3058,7 +3101,7 @@ checksum = "923f0f39b6267d37d23ce71ae7235602134b250ace715dd2c90421998ddac0c6"
 dependencies = [
  "lazy_static",
  "new_debug_unreachable",
- "parking_lot",
+ "parking_lot 0.11.2",
  "phf_shared",
  "precomputed-hash",
  "serde",
@@ -3102,8 +3145,8 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "8.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4472c974b6497a786267506d472f61502d3336f0"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3114,8 +3157,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "8.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4472c974b6497a786267506d472f61502d3336f0"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3126,8 +3169,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4472c974b6497a786267506d472f61502d3336f0"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3140,10 +3183,10 @@ dependencies = [
  "lazycell",
  "nom 7.1.0",
  "nom-supreme",
- "parking_lot",
+ "parking_lot 0.12.0",
  "pdb",
  "regex",
- "scroll",
+ "scroll 0.11.0",
  "serde",
  "serde_json",
  "smallvec",
@@ -3155,8 +3198,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "8.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4472c974b6497a786267506d472f61502d3336f0"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3167,8 +3210,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "8.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4472c974b6497a786267506d472f61502d3336f0"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3181,8 +3224,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "8.5.0"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#4472c974b6497a786267506d472f61502d3336f0"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3219,7 +3262,7 @@ dependencies = [
  "minidump",
  "minidump-processor",
  "num_cpus",
- "parking_lot",
+ "parking_lot 0.11.2",
  "procspawn",
  "regex",
  "reqwest 0.11.0",
@@ -3662,7 +3705,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru-cache",
- "parking_lot",
+ "parking_lot 0.11.2",
  "resolv-conf",
  "smallvec",
  "thiserror",
@@ -4074,6 +4117,49 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "windows-sys"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df6e476185f92a12c072be4a189a0210dcdcf512a1891d6dff9edb874deadc6"
+dependencies = [
+ "windows_aarch64_msvc",
+ "windows_i686_gnu",
+ "windows_i686_msvc",
+ "windows_x86_64_gnu",
+ "windows_x86_64_msvc",
+]
+
+[[package]]
+name = "windows_aarch64_msvc"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8e92753b1c443191654ec532f14c199742964a061be25d77d7a96f09db20bf5"
+
+[[package]]
+name = "windows_i686_gnu"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a711c68811799e017b6038e0922cb27a5e2f43a2ddb609fe0b6f3eeda9de615"
+
+[[package]]
+name = "windows_i686_msvc"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "146c11bb1a02615db74680b32a68e2d61f553cc24c4eb5b4ca10311740e44172"
+
+[[package]]
+name = "windows_x86_64_gnu"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c912b12f7454c6620635bbff3450962753834be2a594819bd5e945af18ec64bc"
+
+[[package]]
+name = "windows_x86_64_msvc"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "504a2476202769977a040c6364301a3f65d0cc9e3fb08600b2bda150a0488316"
 
 [[package]]
 name = "winreg"
