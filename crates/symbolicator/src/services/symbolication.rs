@@ -2096,6 +2096,26 @@ impl SymbolicationActor {
                     find_stackwalking_problem(&result_breakpad, result_rust_minidump)
                 });
 
+            if compare_stackwalking_methods {
+                match problem {
+                    Some(NewStackwalkingProblem::StacktraceDiff { scan: true, .. }) => {
+                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "stacktrace-diff-scan" )
+                    }
+                    Some(NewStackwalkingProblem::StacktraceDiff { scan: false, .. }) => {
+                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "stacktrace-diff-noscan" )
+                    }
+                    Some(NewStackwalkingProblem::ModuleDiff { .. }) => {
+                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "module-diff" )
+                    }
+                    Some(NewStackwalkingProblem::Slow) => {
+                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "slow" )
+                    }
+                    None => {
+                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "none" )
+                    }
+                }
+            }
+
             Ok::<_, anyhow::Error>((result_breakpad, problem))
         };
 
