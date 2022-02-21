@@ -83,7 +83,11 @@ impl ModuleLookup {
         modules.sort_by_key(|entry| entry.object_info.raw.image_addr.0);
 
         // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
-        // some.
+        // some. That case would rather be served by a `windows_mut` iterator, but that does not
+        // exist (and probably never will because it would yield overlapping mutable pairs,
+        // violating exclusive mutable borrow rules)
+        // Also NOTE that `dedup_by` is defined like so (entry1/2 are swapped):
+        // > The elements are passed in opposite order from their order in the slice
         modules.dedup_by(|entry2, entry1| {
             // If this underflows we didn't sort properly.
             let size = entry2.object_info.raw.image_addr.0 - entry1.object_info.raw.image_addr.0;
@@ -191,10 +195,10 @@ impl ModuleLookup {
         let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
-                if let Some(i) =
-                    self.get_module_index_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                if let Some(entry) =
+                    self.get_module_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
                 {
-                    referenced_objects.insert(i);
+                    referenced_objects.insert(entry.module_index);
                 }
             }
         }
@@ -253,6 +257,26 @@ impl ModuleLookup {
         }
     }
 
+    /// Look up the corresponding SymCache based on the instruction `addr`.
+    pub fn lookup_symcache(
+        &self,
+        addr: u64,
+        addr_mode: AddrMode,
+    ) -> Option<SymCacheLookupResult<'_>> {
+        self.get_module_by_addr(addr, addr_mode).map(|entry| {
+            let relative_addr = match addr_mode {
+                AddrMode::Abs => entry.object_info.abs_to_rel_addr(addr),
+                AddrMode::Rel(_) => Some(addr),
+            };
+            SymCacheLookupResult {
+                module_index: entry.module_index,
+                object_info: &entry.object_info,
+                symcache: entry.symcache.as_deref(),
+                relative_addr,
+            }
+        })
+    }
+
     /// Creates a [`ObjectDebugSession`] for each module that has a [`SourceObject`].
     ///
     /// This returns a separate HashMap purely to avoid self-referential borrowing issues.
@@ -273,53 +297,6 @@ impl ModuleLookup {
             .collect()
     }
 
-    /// Look up the corresponding SymCache based on the instruction `addr`.
-    pub fn lookup_symcache(
-        &self,
-        addr: u64,
-        addr_mode: AddrMode,
-    ) -> Option<SymCacheLookupResult<'_>> {
-        match addr_mode {
-            AddrMode::Abs => {
-                for entry in self.modules.iter() {
-                    let start_addr = entry.object_info.raw.image_addr.0;
-
-                    if start_addr > addr {
-                        // The debug image starts at a too high address
-                        continue;
-                    }
-
-                    let size = entry.object_info.raw.image_size.unwrap_or(0);
-                    if let Some(end_addr) = start_addr.checked_add(size) {
-                        if end_addr < addr && size != 0 {
-                            // The debug image ends at a too low address and we're also confident that
-                            // end_addr is accurate (size != 0)
-                            continue;
-                        }
-                    }
-
-                    return Some(SymCacheLookupResult {
-                        module_index: entry.module_index,
-                        object_info: &entry.object_info,
-                        symcache: entry.symcache.as_deref(),
-                        relative_addr: entry.object_info.abs_to_rel_addr(addr),
-                    });
-                }
-                None
-            }
-            AddrMode::Rel(this_module_index) => self
-                .modules
-                .iter()
-                .find(|x| x.module_index == this_module_index)
-                .map(|entry| SymCacheLookupResult {
-                    module_index: entry.module_index,
-                    object_info: &entry.object_info,
-                    symcache: entry.symcache.as_deref(),
-                    relative_addr: Some(addr),
-                }),
-        }
-    }
-
     /// This looks up the source of the given line, plus `n` lines above/below.
     pub fn get_context_lines(
         &self,
@@ -330,8 +307,8 @@ impl ModuleLookup {
         lineno: u32,
         n: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let index = self.get_module_index_by_addr(addr, addr_mode)?;
-        let session = debug_sessions.get(&index)?.as_ref()?;
+        let entry = self.get_module_by_addr(addr, addr_mode)?;
+        let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
         let lineno = lineno as usize;
@@ -349,39 +326,38 @@ impl ModuleLookup {
         Some((pre_context, context, post_context))
     }
 
-    // TODO:
-    // * The lookup logic is mostly duplicated with `lookup_symcache`, unify the two in a followup.
-    // * The lookup performs a linear scan, even though we have a sorted list (by addr), switch this
-    //   to a binary search in a followup.
-    fn get_module_index_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<usize> {
+    /// Looks up the [`ModuleEntry`] for the given `addr` and `addr_mode`.
+    fn get_module_by_addr(&self, addr: u64, addr_mode: AddrMode) -> Option<&ModuleEntry> {
         match addr_mode {
             AddrMode::Abs => {
-                for entry in self.modules.iter() {
-                    let start_addr = entry.object_info.raw.image_addr.0;
-
-                    if start_addr > addr {
-                        // The debug image starts at a too high address
-                        continue;
+                let idx = match self
+                    .modules
+                    .binary_search_by_key(&addr, |entry| entry.object_info.raw.image_addr.0)
+                {
+                    Ok(idx) => idx,
+                    Err(idx) if idx == 0 => {
+                        return None;
                     }
+                    Err(idx) => idx - 1,
+                };
+                let entry = self.modules.get(idx)?;
 
-                    let size = entry.object_info.raw.image_size.unwrap_or(0);
-                    if let Some(end_addr) = start_addr.checked_add(size) {
-                        if end_addr < addr && size != 0 {
-                            // The debug image ends at a too low address and we're also confident that
-                            // end_addr is accurate (size != 0)
-                            continue;
-                        }
-                    }
+                let start_addr = entry.object_info.raw.image_addr.0;
+                let size = entry.object_info.raw.image_size.unwrap_or(0);
+                let end_addr = start_addr.checked_add(size)?;
 
-                    return Some(entry.module_index);
+                if end_addr < addr && size != 0 {
+                    // The debug image ends at a too low address and we're also confident that
+                    // end_addr is accurate (size != 0)
+                    return None;
                 }
-                None
+
+                Some(entry)
             }
             AddrMode::Rel(this_module_index) => self
                 .modules
                 .iter()
-                .find(|x| x.module_index == this_module_index)
-                .map(|x| x.module_index),
+                .find(|entry| entry.module_index == this_module_index),
         }
     }
 }
