@@ -2448,7 +2448,7 @@ mod tests {
             image_size: Some(0),
         });
 
-        let lookup = ModuleLookup::from_iter(vec![info.clone()]);
+        let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));
 
         let lookup_result = lookup.lookup_symcache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);
