@@ -1794,10 +1794,8 @@ struct StackWalkMinidumpResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum NewStackwalkingProblem {
-    Diff {
-        stacktraces: String,
-        modules: String,
-    },
+    StacktraceDiff { diff: String, scan: bool },
+    ModuleDiff { diff: String },
     Slow,
 }
 
@@ -1845,14 +1843,24 @@ fn find_stackwalking_problem(
     // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
     // Not doing this leads to tons of spurious diffs.
     let mut stacktraces_breakpad = result_breakpad.stacktraces.clone();
+    let mut scan = false;
     for stacktrace in stacktraces_breakpad.iter_mut() {
         if let Some(val) = stacktrace.registers.remove("eflags") {
             stacktrace.registers.insert("efl".to_string(), val);
         }
+
+        if !scan {
+            for frame in stacktrace.frames.iter() {
+                if frame.trust == FrameTrust::Scan {
+                    scan = true;
+                    break;
+                }
+            }
+        }
     }
 
-    let stacktrace_diff = (result_rust_minidump.stacktraces != stacktraces_breakpad).then(|| {
-        serde_json::to_string_pretty(&result_breakpad.stacktraces)
+    if result_rust_minidump.stacktraces != stacktraces_breakpad {
+        let diff = serde_json::to_string_pretty(&result_breakpad.stacktraces)
             .map_err(|e| {
                 let stderr: &dyn std::error::Error = &e;
                 tracing::error!(stderr, "Failed to convert breakpad stacktraces to json")
@@ -1878,56 +1886,49 @@ fn find_stackwalking_problem(
                         )
                     })
             })
-            .unwrap_or_else(|| String::from("diff unrecoverable"))
-    });
+            .unwrap_or_else(|| String::from("diff unrecoverable"));
+        return Some(NewStackwalkingProblem::StacktraceDiff { diff, scan });
+    }
 
-    let module_diff = {
-        let mut modules_breakpad = result_breakpad.modules.clone().unwrap_or_default();
-        let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
-        fixup_modules(&mut modules_breakpad);
-        fixup_modules(&mut modules_rust_minidump);
-        (modules_rust_minidump != modules_breakpad).then(|| {
-            serde_json::to_string_pretty(&modules_breakpad)
-                .map_err(|e| {
-                    let stderr: &dyn std::error::Error = &e;
-                    tracing::error!(stderr, "Failed to convert breakpad modules to json")
-                })
-                .ok()
-                .and_then(|breakpad| {
-                    serde_json::to_string_pretty(&modules_rust_minidump)
-                        .map_err(|e| {
-                            let stderr: &dyn std::error::Error = &e;
-                            tracing::error!(
-                                stderr,
-                                "Failed to convert rust-minidump modules to json",
-                            )
-                        })
-                        .ok()
-                        .map(|rust_minidump| {
-                            unified_diff(
-                                Algorithm::Myers,
-                                &breakpad,
-                                &rust_minidump,
-                                3,
-                                Some(("breakpad", "rust-minidump")),
-                            )
-                        })
-                })
-                .unwrap_or_else(|| String::from("diff unrecoverable"))
-        })
-    };
+    let mut modules_breakpad = result_breakpad.modules.clone().unwrap_or_default();
+    let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
+    fixup_modules(&mut modules_breakpad);
+    fixup_modules(&mut modules_rust_minidump);
+    if modules_rust_minidump != modules_breakpad {
+        let diff = serde_json::to_string_pretty(&modules_breakpad)
+            .map_err(|e| {
+                let stderr: &dyn std::error::Error = &e;
+                tracing::error!(stderr, "Failed to convert breakpad modules to json")
+            })
+            .ok()
+            .and_then(|breakpad| {
+                serde_json::to_string_pretty(&modules_rust_minidump)
+                    .map_err(|e| {
+                        let stderr: &dyn std::error::Error = &e;
+                        tracing::error!(stderr, "Failed to convert rust-minidump modules to json",)
+                    })
+                    .ok()
+                    .map(|rust_minidump| {
+                        unified_diff(
+                            Algorithm::Myers,
+                            &breakpad,
+                            &rust_minidump,
+                            3,
+                            Some(("breakpad", "rust-minidump")),
+                        )
+                    })
+            })
+            .unwrap_or_else(|| String::from("diff unrecoverable"));
+        return Some(NewStackwalkingProblem::ModuleDiff { diff });
+    }
 
-    if stacktrace_diff.is_some() || module_diff.is_some() {
-        Some(NewStackwalkingProblem::Diff {
-            stacktraces: stacktrace_diff.unwrap_or_default(),
-            modules: module_diff.unwrap_or_default(),
-        })
-    } else if 2 * result_rust_minidump.duration >= 3 * result_breakpad.duration {
+    if 2 * result_rust_minidump.duration >= 3 * result_breakpad.duration {
         Some(NewStackwalkingProblem::Slow)
     } else {
         None
     }
 }
+
 impl SymbolicationActor {
     /// Join a procspawn handle with a timeout.
     ///
@@ -2260,36 +2261,45 @@ impl SymbolicationActor {
             // Save the minidump if there was a stackwalking difference or the new stackwalking method performed poorly.
             if let Some(problem) = new_stackwalking_problem {
                 let msg = match problem {
-                    NewStackwalkingProblem::Diff { .. } => "Different stackwalking results",
+                    NewStackwalkingProblem::StacktraceDiff { scan: true, .. } => {
+                        "Different stackwalking results (stacktraces, scan)"
+                    }
+                    NewStackwalkingProblem::StacktraceDiff { scan: false, .. } => {
+                        "Different stackwalking results (stacktraces, no scan)"
+                    }
+                    NewStackwalkingProblem::ModuleDiff { .. } => {
+                        "Different stackwalking results (modules)"
+                    }
                     NewStackwalkingProblem::Slow => "Slow stackwalking run",
                 };
 
-                if let NewStackwalkingProblem::Diff {
-                    ref stacktraces,
-                    ref modules,
-                } = problem
-                {
+                if let NewStackwalkingProblem::StacktraceDiff { ref diff, scan } = problem {
                     tracing::debug!(
-                        %stacktraces,
-                        %modules,
-                        "Stackwalking difference"
+                        %diff,
+                        scan,
+                        "Stackwalking difference: stacktraces"
+                    );
+                }
+
+                if let NewStackwalkingProblem::ModuleDiff { ref diff } = problem {
+                    tracing::debug!(
+                        %diff,
+                        "Stackwalking difference: modules"
                     );
                 }
 
                 sentry::with_scope(
-                    |scope| {
-                        if let NewStackwalkingProblem::Diff {
-                            stacktraces,
-                            modules,
-                        } = problem
-                        {
+                    |scope| match problem {
+                        NewStackwalkingProblem::StacktraceDiff { diff, .. } => {
                             scope.set_extra(
                                 "stacktrace_diff",
-                                sentry::protocol::Value::String(stacktraces),
+                                sentry::protocol::Value::String(diff),
                             );
-                            scope
-                                .set_extra("module_diff", sentry::protocol::Value::String(modules));
                         }
+                        NewStackwalkingProblem::ModuleDiff { diff } => {
+                            scope.set_extra("module_diff", sentry::protocol::Value::String(diff));
+                        }
+                        NewStackwalkingProblem::Slow => {}
                     },
                     || {
                         self.maybe_persist_minidump(minidump_file);
