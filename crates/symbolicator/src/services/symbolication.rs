@@ -2097,23 +2097,18 @@ impl SymbolicationActor {
                 });
 
             if compare_stackwalking_methods {
-                match problem {
+                let problem_str = match problem {
                     Some(NewStackwalkingProblem::StacktraceDiff { scan: true, .. }) => {
-                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "stacktrace-diff-scan" )
+                        "stacktrace-diff-scan"
                     }
                     Some(NewStackwalkingProblem::StacktraceDiff { scan: false, .. }) => {
-                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "stacktrace-diff-noscan" )
+                        "stacktrace-diff-noscan"
                     }
-                    Some(NewStackwalkingProblem::ModuleDiff { .. }) => {
-                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "module-diff" )
-                    }
-                    Some(NewStackwalkingProblem::Slow) => {
-                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "slow" )
-                    }
-                    None => {
-                        metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => "none" )
-                    }
-                }
+                    Some(NewStackwalkingProblem::ModuleDiff { .. }) => "module-diff",
+                    Some(NewStackwalkingProblem::Slow) => "slow",
+                    None => "none",
+                };
+                metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => problem_str);
             }
 
             Ok::<_, anyhow::Error>((result_breakpad, problem))
