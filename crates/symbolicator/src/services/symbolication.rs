@@ -557,7 +557,7 @@ fn object_info_from_minidump_module_breakpad(ty: ObjectType, module: &CodeModule
         ty,
         code_id: Some(code_id),
         code_file: Some(module.code_file()),
-        debug_id: Some(module.debug_identifier()), // TODO: This should use module.id().map(_)
+        debug_id: module.id().map(|id| id.to_string()),
         debug_file: Some(module.debug_file()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -571,22 +571,17 @@ fn object_info_from_minidump_module_rust_minidump(
     ty: ObjectType,
     module: &MinidumpModule,
 ) -> RawObjectInfo {
-    let mut code_id = module.code_identifier().into_owned();
-
-    // The processor reports an empty string as code id for MachO files
-    // TODO(ja): Fix MinidumpModule::code_identifier for MachO
-    if ty == ObjectType::Macho {
-        code_id = module.debug_identifier().unwrap_or_default().into_owned();
-        code_id.truncate(32); // MachO code_id is the debug_id without `0` age.
-    }
+    let code_id = module.code_identifier().to_string();
 
     RawObjectInfo {
         ty,
+        // TODO: shouldn't this be None if code_id is empty?
         code_id: Some(code_id),
         code_file: Some(module.code_file().into_owned()),
-        // TODO(ja): Old TODO: This should use module.id().map(_)
         // TODO(ja): This is optional now, wasn't before, check why
-        debug_id: module.debug_identifier().map(|c| c.into_owned()),
+        debug_id: module
+            .debug_identifier()
+            .map(|id| id.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -1512,10 +1507,7 @@ impl SymbolProvider for TempSymbolProvider {
         _frame: &mut dyn minidump_processor::FrameSymbolizer,
     ) -> Result<(), minidump_processor::FillSymbolError> {
         // TODO(ja): Deduplicate this. Probably should use a different map key, ...
-        let debug_id = module
-            .debug_identifier()
-            .and_then(|id| DebugId::from_str(&id).ok())
-            .unwrap_or_default();
+        let debug_id = module.debug_identifier().unwrap_or_default();
 
         // Symbolicator's CFI caches never store symbolication information. However, we could hook
         // up symbolic here to fill frame info right away. This requires a larger refactor of
@@ -1534,7 +1526,7 @@ impl SymbolProvider for TempSymbolProvider {
         walker: &mut dyn minidump_processor::FrameWalker,
     ) -> Option<()> {
         // TODO(ja): Deduplicate this. Probably should use a different map key, ...
-        let debug_id = DebugId::from_str(&module.debug_identifier()?).ok()?;
+        let debug_id = module.debug_identifier().unwrap_or_default();
         match self.files.get(&debug_id) {
             Some(file) => file.walk_frame(module, walker),
             None => {
@@ -1741,8 +1733,7 @@ fn stackwalk_with_rust_minidump(
                 (
                     // TODO(ja): Check how this can be empty and how we shim.
                     //           Probably needs explicit conversion from raw
-                    DebugId::from_str(&module.debug_identifier().unwrap_or_default())
-                        .unwrap_or_default(),
+                    module.debug_identifier().unwrap_or_default(),
                     object_info_from_minidump_module_rust_minidump(object_type, module),
                 )
             })
