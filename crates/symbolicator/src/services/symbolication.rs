@@ -1753,7 +1753,7 @@ async fn stackwalk_with_rust_minidump(
         let mut frames = Vec::with_capacity(frame_count);
         for frame in thread.frames.iter().take(frame_count) {
             frames.push(RawFrame {
-                instruction_addr: HexValue(frame.return_address()),
+                instruction_addr: HexValue(frame.resume_address),
                 package: frame.module.as_ref().map(|m| m.code_file().into_owned()),
                 trust: frame.trust.into(),
                 ..RawFrame::default()

@@ -266,7 +266,7 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
  "async-trait",
  "circular",
@@ -588,9 +588,9 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "debugid"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f91cf5a8c2f2097e2a32627123508635d47ce10563d999ec1a95addf08b502ba"
+checksum = "d6ee87af31d84ef885378aebca32be3d682b0e0dc119d5b4860a2c5bb5046730"
 dependencies = [
  "serde",
  "uuid",
@@ -1601,7 +1601,7 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
  "debugid",
  "encoding",
@@ -1619,7 +1619,7 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1634,7 +1634,7 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#7f5adf743560705fa3d46a784c874655e6681432"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
