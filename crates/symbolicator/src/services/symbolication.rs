@@ -25,8 +25,6 @@ use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use similar::udiff::unified_diff;
-use similar::Algorithm;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::minidump::cfi::CfiCache;
@@ -51,8 +49,10 @@ use crate::types::{
 use crate::utils::futures::{m, measure, CallOnDrop, CancelOnDrop};
 use crate::utils::hex::HexValue;
 
+mod comparisons;
 mod module_lookup;
 
+use comparisons::{find_stackwalking_problem, NewStackwalkingProblem};
 use module_lookup::{SourceLookup, SymCacheLookup};
 
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
@@ -557,7 +557,7 @@ fn object_info_from_minidump_module_breakpad(ty: ObjectType, module: &CodeModule
         ty,
         code_id: Some(code_id),
         code_file: Some(module.code_file()),
-        debug_id: Some(module.debug_identifier()), // TODO: This should use module.id().map(_)
+        debug_id: module.id().map(|id| id.to_string()),
         debug_file: Some(module.debug_file()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -577,8 +577,6 @@ fn object_info_from_minidump_module_rust_minidump(
         ty,
         code_id: Some(code_id.to_string()),
         code_file: Some(module.code_file().into_owned()),
-        // TODO(ja): Old TODO: This should use module.id().map(_)
-        // TODO(ja): This is optional now, wasn't before, check why
         debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
         image_addr: HexValue(module.base_address()),
@@ -1505,6 +1503,10 @@ impl SymbolProvider for TempSymbolProvider {
         module: &(dyn Module + Sync),
         _frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
+        // Symbolicator's CFI caches never store symbolication information. However, we could hook
+        // up symbolic here to fill frame info right away. This requires a larger refactor of
+        // minidump processing and the types, however.
+        // TODO(ja): Check if this is OK. Shouldn't trigger skip heuristics
         match module
             .debug_identifier()
             .map(|debug_id| self.files.contains_key(&debug_id))
@@ -1786,142 +1788,6 @@ struct StackWalkMinidumpResult {
     duration: Duration,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-enum NewStackwalkingProblem {
-    Diff {
-        stacktraces: String,
-        modules: String,
-    },
-    Slow,
-}
-
-fn fixup_modules(modules: &mut [(DebugId, RawObjectInfo)]) {
-    modules.sort_by_key(|module| module.0);
-
-    for (_, info) in modules.iter_mut() {
-        if let Some(ref mut code_id) = info.code_id {
-            if code_id.is_empty() {
-                info.code_id = None;
-            }
-        }
-
-        if let Some(ref mut code_file) = info.code_file {
-            if code_file.is_empty() {
-                info.code_file = None;
-            }
-        }
-
-        if let Some(ref mut debug_id) = info.debug_id {
-            if debug_id.is_empty() {
-                info.debug_id = None;
-            }
-        }
-
-        if let Some(ref mut debug_file) = info.debug_file {
-            if debug_file.is_empty() {
-                info.debug_file = None;
-            }
-        }
-    }
-}
-
-/// Determines whether there was a problem with the rust-minidump based stackwalking method.
-///
-/// A problem is either
-/// 1. a difference in the returned modules or stacktraces, modulo reordering and trivial renaming of registers, or
-/// 2. rust-minidump taking more than 50% longer than breakpad.
-fn find_stackwalking_problem(
-    result_breakpad: &StackWalkMinidumpResult,
-    result_rust_minidump: &StackWalkMinidumpResult,
-) -> Option<NewStackwalkingProblem> {
-    metric!(timer("minidump.stackwalk.duration") = result_rust_minidump.duration, "method" => "rust-minidump");
-
-    // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
-    // Not doing this leads to tons of spurious diffs.
-    let mut stacktraces_breakpad = result_breakpad.stacktraces.clone();
-    for stacktrace in stacktraces_breakpad.iter_mut() {
-        if let Some(val) = stacktrace.registers.remove("eflags") {
-            stacktrace.registers.insert("efl".to_string(), val);
-        }
-    }
-
-    let stacktrace_diff = (result_rust_minidump.stacktraces != stacktraces_breakpad).then(|| {
-        serde_json::to_string_pretty(&result_breakpad.stacktraces)
-            .map_err(|e| {
-                let stderr: &dyn std::error::Error = &e;
-                tracing::error!(stderr, "Failed to convert breakpad stacktraces to json")
-            })
-            .ok()
-            .and_then(|breakpad| {
-                serde_json::to_string_pretty(&result_rust_minidump.stacktraces)
-                    .map_err(|e| {
-                        let stderr: &dyn std::error::Error = &e;
-                        tracing::error!(
-                            stderr,
-                            "Failed to convert rust-minidump stacktraces to json",
-                        )
-                    })
-                    .ok()
-                    .map(|rust_minidump| {
-                        unified_diff(
-                            Algorithm::Myers,
-                            &breakpad,
-                            &rust_minidump,
-                            3,
-                            Some(("breakpad", "rust-minidump")),
-                        )
-                    })
-            })
-            .unwrap_or_else(|| String::from("diff unrecoverable"))
-    });
-
-    let module_diff = {
-        let mut modules_breakpad = result_breakpad.modules.clone().unwrap_or_default();
-        let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
-        fixup_modules(&mut modules_breakpad);
-        fixup_modules(&mut modules_rust_minidump);
-        (modules_rust_minidump != modules_breakpad).then(|| {
-            serde_json::to_string_pretty(&modules_breakpad)
-                .map_err(|e| {
-                    let stderr: &dyn std::error::Error = &e;
-                    tracing::error!(stderr, "Failed to convert breakpad modules to json")
-                })
-                .ok()
-                .and_then(|breakpad| {
-                    serde_json::to_string_pretty(&modules_rust_minidump)
-                        .map_err(|e| {
-                            let stderr: &dyn std::error::Error = &e;
-                            tracing::error!(
-                                stderr,
-                                "Failed to convert rust-minidump modules to json",
-                            )
-                        })
-                        .ok()
-                        .map(|rust_minidump| {
-                            unified_diff(
-                                Algorithm::Myers,
-                                &breakpad,
-                                &rust_minidump,
-                                3,
-                                Some(("breakpad", "rust-minidump")),
-                            )
-                        })
-                })
-                .unwrap_or_else(|| String::from("diff unrecoverable"))
-        })
-    };
-
-    if stacktrace_diff.is_some() || module_diff.is_some() {
-        Some(NewStackwalkingProblem::Diff {
-            stacktraces: stacktrace_diff.unwrap_or_default(),
-            modules: module_diff.unwrap_or_default(),
-        })
-    } else if 2 * result_rust_minidump.duration >= 3 * result_breakpad.duration {
-        Some(NewStackwalkingProblem::Slow)
-    } else {
-        None
-    }
-}
 impl SymbolicationActor {
     /// Join a procspawn handle with a timeout.
     ///
@@ -2096,6 +1962,21 @@ impl SymbolicationActor {
                     find_stackwalking_problem(&result_breakpad, result_rust_minidump)
                 });
 
+            if compare_stackwalking_methods {
+                let problem_str = match problem {
+                    Some(NewStackwalkingProblem::StacktraceDiff { scan: true, .. }) => {
+                        "stacktrace-diff-scan"
+                    }
+                    Some(NewStackwalkingProblem::StacktraceDiff { scan: false, .. }) => {
+                        "stacktrace-diff-noscan"
+                    }
+                    Some(NewStackwalkingProblem::ModuleDiff { .. }) => "module-diff",
+                    Some(NewStackwalkingProblem::Slow) => "slow",
+                    None => "none",
+                };
+                metric!(counter("minidump.stackwalk.comparisons") += 1, "problem" => problem_str);
+            }
+
             Ok::<_, anyhow::Error>((result_breakpad, problem))
         };
 
@@ -2261,36 +2142,45 @@ impl SymbolicationActor {
             // Save the minidump if there was a stackwalking difference or the new stackwalking method performed poorly.
             if let Some(problem) = new_stackwalking_problem {
                 let msg = match problem {
-                    NewStackwalkingProblem::Diff { .. } => "Different stackwalking results",
+                    NewStackwalkingProblem::StacktraceDiff { scan: true, .. } => {
+                        "Different stackwalking results (stacktraces, scan)"
+                    }
+                    NewStackwalkingProblem::StacktraceDiff { scan: false, .. } => {
+                        "Different stackwalking results (stacktraces, no scan)"
+                    }
+                    NewStackwalkingProblem::ModuleDiff { .. } => {
+                        "Different stackwalking results (modules)"
+                    }
                     NewStackwalkingProblem::Slow => "Slow stackwalking run",
                 };
 
-                if let NewStackwalkingProblem::Diff {
-                    ref stacktraces,
-                    ref modules,
-                } = problem
-                {
+                if let NewStackwalkingProblem::StacktraceDiff { ref diff, scan } = problem {
                     tracing::debug!(
-                        %stacktraces,
-                        %modules,
-                        "Stackwalking difference"
+                        %diff,
+                        scan,
+                        "Stackwalking difference: stacktraces"
+                    );
+                }
+
+                if let NewStackwalkingProblem::ModuleDiff { ref diff } = problem {
+                    tracing::debug!(
+                        %diff,
+                        "Stackwalking difference: modules"
                     );
                 }
 
                 sentry::with_scope(
-                    |scope| {
-                        if let NewStackwalkingProblem::Diff {
-                            stacktraces,
-                            modules,
-                        } = problem
-                        {
+                    |scope| match problem {
+                        NewStackwalkingProblem::StacktraceDiff { diff, .. } => {
                             scope.set_extra(
                                 "stacktrace_diff",
-                                sentry::protocol::Value::String(stacktraces),
+                                sentry::protocol::Value::String(diff),
                             );
-                            scope
-                                .set_extra("module_diff", sentry::protocol::Value::String(modules));
                         }
+                        NewStackwalkingProblem::ModuleDiff { diff } => {
+                            scope.set_extra("module_diff", sentry::protocol::Value::String(diff));
+                        }
+                        NewStackwalkingProblem::Slow => {}
                     },
                     || {
                         self.maybe_persist_minidump(minidump_file);
