@@ -235,7 +235,7 @@ pub struct RawFrame {
     pub post_context: Vec<String>,
 
     /// Information about how the raw frame was created.
-    #[serde(skip_serializing_if = "is_default_value")]
+    #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
 }
 
