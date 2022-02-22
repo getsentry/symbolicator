@@ -1843,19 +1843,13 @@ fn find_stackwalking_problem(
     // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
     // Not doing this leads to tons of spurious diffs.
     let mut stacktraces_breakpad = result_breakpad.stacktraces.clone();
-    let mut scan = false;
+    let scan = stacktraces_breakpad
+        .iter()
+        .flat_map(|st| st.frames.iter())
+        .any(|f| f.trust == FrameTrust::Scan);
     for stacktrace in stacktraces_breakpad.iter_mut() {
         if let Some(val) = stacktrace.registers.remove("eflags") {
             stacktrace.registers.insert("efl".to_string(), val);
-        }
-
-        if !scan {
-            for frame in stacktrace.frames.iter() {
-                if frame.trust == FrameTrust::Scan {
-                    scan = true;
-                    break;
-                }
-            }
         }
     }
 
