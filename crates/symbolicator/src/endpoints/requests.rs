@@ -18,6 +18,10 @@ pub async fn poll_request(
     extract::Path(request_id): extract::Path<RequestId>,
     extract::Query(query): extract::Query<PollSymbolicationRequestQueryParams>,
 ) -> Result<Json<SymbolicationResponse>, StatusCode> {
+    sentry::configure_scope(|scope| {
+        scope.set_transaction(Some("GET /requests"));
+    });
+
     let response_opt = state
         .symbolication()
         .get_response(request_id, query.timeout)
