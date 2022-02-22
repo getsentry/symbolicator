@@ -1829,6 +1829,18 @@ fn fixup_modules(modules: &mut [(DebugId, RawObjectInfo)]) {
     }
 }
 
+fn raw_object_info_equal(this: &RawObjectInfo, that: &RawObjectInfo) -> bool {
+    this.ty == that.ty
+        && this.code_id.as_ref().map(|id| id.parse::<CodeId>())
+            == that.code_id.as_ref().map(|id| id.parse())
+        && this.code_file == that.code_file
+        && this.debug_id.as_ref().map(|id| id.parse::<DebugId>())
+            == that.debug_id.as_ref().map(|id| id.parse())
+        && this.debug_file == that.debug_file
+        && this.image_addr == that.image_addr
+        && this.image_size == that.image_size
+}
+
 /// Determines whether there was a problem with the rust-minidump based stackwalking method.
 ///
 /// A problem is either
@@ -1888,7 +1900,12 @@ fn find_stackwalking_problem(
     let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
     fixup_modules(&mut modules_breakpad);
     fixup_modules(&mut modules_rust_minidump);
-    if modules_rust_minidump != modules_breakpad {
+    if modules_rust_minidump.len() != modules_breakpad.len()
+        || !modules_rust_minidump
+            .iter()
+            .zip(modules_breakpad.iter())
+            .all(|(md, bp)| md.0 == bp.0 && raw_object_info_equal(&md.1, &bp.1))
+    {
         let diff = serde_json::to_string_pretty(&modules_breakpad)
             .map_err(|e| {
                 let stderr: &dyn std::error::Error = &e;
