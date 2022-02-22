@@ -977,7 +977,7 @@ fn symbolicate_stacktrace(
     while let Some((index, mut frame)) = unsymbolicated_frames_iter.next() {
         match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
             Ok(frames) => {
-                if matches!(frame.trust, crate::types::FrameTrust::Scan) {
+                if matches!(frame.trust, FrameTrust::Scan) {
                     metrics.scanned_frames += 1;
                 }
                 symbolicated_frames.extend(frames)
