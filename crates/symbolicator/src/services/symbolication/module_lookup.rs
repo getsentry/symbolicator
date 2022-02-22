@@ -65,9 +65,9 @@ pub struct ModuleLookup {
 
 impl ModuleLookup {
     /// Creates a new [`ModuleLookup`] out of the given module iterator.
-    pub fn new<Iter>(scope: Scope, sources: Arc<[SourceConfig]>, iter: Iter) -> Self
+    pub fn new<I>(scope: Scope, sources: Arc<[SourceConfig]>, iter: I) -> Self
     where
-        Iter: IntoIterator<Item = CompleteObjectInfo>,
+        I: IntoIterator<Item = CompleteObjectInfo>,
     {
         let mut modules: Vec<_> = iter
             .into_iter()
@@ -82,21 +82,22 @@ impl ModuleLookup {
 
         modules.sort_by_key(|entry| entry.object_info.raw.image_addr.0);
 
-        // Ignore the name `dedup_by`, I just want to iterate over consecutive items and update
-        // some. That case would rather be served by a `windows_mut` iterator, but that does not
-        // exist (and probably never will because it would yield overlapping mutable pairs,
-        // violating exclusive mutable borrow rules)
-        // Also NOTE that `dedup_by` is defined like so (entry1/2 are swapped):
-        // > The elements are passed in opposite order from their order in the slice
-        modules.dedup_by(|entry2, entry1| {
-            // If this underflows we didn't sort properly.
-            let size = entry2.object_info.raw.image_addr.0 - entry1.object_info.raw.image_addr.0;
-            if entry1.object_info.raw.image_size.unwrap_or(0) == 0 {
-                entry1.object_info.raw.image_size = Some(size);
+        // back-fill the `image_size` in case it is missing (or 0), so that it spans up to the
+        // next image
+        if modules.len() > 1 {
+            for i in 0..modules.len() - 1 {
+                let next_addr = modules
+                    .get(i + 1)
+                    .map(|entry| entry.object_info.raw.image_addr.0);
+                if let Some(entry) = modules.get_mut(i) {
+                    if entry.object_info.raw.image_size.unwrap_or(0) == 0 {
+                        let entry_addr = entry.object_info.raw.image_addr.0;
+                        let size = next_addr.unwrap_or(entry_addr) - entry_addr;
+                        entry.object_info.raw.image_size = Some(size);
+                    }
+                }
             }
-
-            false
-        });
+        }
 
         Self {
             modules,
@@ -359,5 +360,84 @@ impl ModuleLookup {
                 .iter()
                 .find(|entry| entry.module_index == this_module_index),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::types::RawObjectInfo;
+
+    use super::*;
+
+    #[test]
+    fn backfill_image_size() {
+        let raw_modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[{
+                "type":"unknown",
+                "image_addr": "0x2000",
+                "image_size": 4096
+            },{
+                "type":"unknown",
+                "image_addr": "0x1000"
+            },{
+                "type":"unknown",
+                "image_addr": "0x3000"
+            }]"#,
+        )
+        .unwrap();
+
+        let modules = ModuleLookup::new(
+            Scope::Global,
+            Arc::new([]),
+            raw_modules.into_iter().map(From::from),
+        );
+
+        let modules = modules.into_inner();
+
+        assert_eq!(modules[0].raw.image_addr.0, 8192);
+        assert_eq!(modules[0].raw.image_size, Some(4096));
+        assert_eq!(modules[1].raw.image_addr.0, 4096);
+        assert_eq!(modules[1].raw.image_size, Some(4096));
+        assert_eq!(modules[2].raw.image_addr.0, 12288);
+        assert_eq!(modules[2].raw.image_size, None);
+    }
+
+    #[test]
+    fn module_lookup() {
+        let raw_modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[{
+                "code_id": "b",
+                "type":"unknown",
+                "image_addr": "0x2000",
+                "image_size": 4096
+            },{
+                "code_id": "a",
+                "type":"unknown",
+                "image_addr": "0x1000"
+            },{
+                "code_id": "c",
+                "type":"unknown",
+                "image_addr": "0x4000"
+            }]"#,
+        )
+        .unwrap();
+
+        let modules = ModuleLookup::new(
+            Scope::Global,
+            Arc::new([]),
+            raw_modules.into_iter().map(From::from),
+        );
+
+        let entry = modules.get_module_by_addr(0x1234, AddrMode::Abs);
+        assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("a"));
+
+        let entry = modules.get_module_by_addr(0x3456, AddrMode::Abs);
+        assert!(entry.is_none());
+
+        let entry = modules.get_module_by_addr(0x3456, AddrMode::Rel(0));
+        assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("b"));
+
+        let entry = modules.get_module_by_addr(0x4567, AddrMode::Abs);
+        assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("c"));
     }
 }
