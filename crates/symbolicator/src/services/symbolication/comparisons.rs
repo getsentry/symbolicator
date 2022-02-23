@@ -112,7 +112,9 @@ pub(super) fn find_stackwalking_problem(
 
     let mut modules_breakpad = result_breakpad.modules.clone().unwrap_or_default();
     fixup_modules(&mut modules_breakpad);
-    let modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
+    let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
+    modules_rust_minidump.sort_by_key(|module| module.0);
+
     if modules_rust_minidump.len() != modules_breakpad.len()
         || !modules_rust_minidump
             .iter()
