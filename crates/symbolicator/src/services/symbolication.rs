@@ -577,7 +577,7 @@ fn object_info_from_minidump_module_rust_minidump(
     let code_id = module.code_identifier();
     let code_id = match code_id.is_nil() {
         true => None,
-        false => Some(code_id.to_string().to_lowercase()),
+        false => Some(code_id.to_string()),
     };
     let code_file = module.code_file();
     let code_file = match code_file.is_empty() {
