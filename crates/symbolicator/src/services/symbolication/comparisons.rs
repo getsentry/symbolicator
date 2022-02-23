@@ -15,6 +15,7 @@ pub(super) enum NewStackwalkingProblem {
 
 fn fixup_modules(modules: &mut [(DebugId, RawObjectInfo)]) {
     modules.sort_by_key(|module| module.0);
+    modules.sort_by_key(|module| module.1.image_addr);
 
     for (_, info) in modules.iter_mut() {
         if let Some(ref mut code_id) = info.code_id {
@@ -114,6 +115,7 @@ pub(super) fn find_stackwalking_problem(
     fixup_modules(&mut modules_breakpad);
     let mut modules_rust_minidump = result_rust_minidump.modules.clone().unwrap_or_default();
     modules_rust_minidump.sort_by_key(|module| module.0);
+    modules_rust_minidump.sort_by_key(|module| module.1.image_addr);
 
     if modules_rust_minidump.len() != modules_breakpad.len()
         || !modules_rust_minidump
