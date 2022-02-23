@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator/src/services/symbolication.rs
-assertion_line: 2880
+assertion_line: 2932
 expression: response.unwrap()
 
 ---
@@ -8,8 +8,8 @@ status: completed
 timestamp: 1522061032
 system_info:
   os_name: Linux
-  os_version: 0.0.0
-  os_build: "Linux 4.9.60-linuxkit-aufs #1 SMP Mon Nov 6 16:00:12 UTC 2017 x86_64"
+  os_version: 4.9.60-linuxkit-aufs
+  os_build: "#1 SMP Mon Nov 6 16:00:12 UTC 2017"
   cpu_arch: x86_64
   device_model: ""
 crashed: true

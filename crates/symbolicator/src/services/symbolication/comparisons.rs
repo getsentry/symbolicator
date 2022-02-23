@@ -1,9 +1,8 @@
-use minidump_processor::FrameTrust;
 use sentry::types::{CodeId, DebugId};
 use serde::{Deserialize, Serialize};
 use similar::{udiff::unified_diff, Algorithm};
 
-use crate::types::RawObjectInfo;
+use crate::types::{FrameTrust, RawObjectInfo};
 
 use super::StackWalkMinidumpResult;
 

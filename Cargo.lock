@@ -266,8 +266,9 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
+ "async-trait",
  "circular",
  "debugid",
  "log",
@@ -587,9 +588,9 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "debugid"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f91cf5a8c2f2097e2a32627123508635d47ce10563d999ec1a95addf08b502ba"
+checksum = "d6ee87af31d84ef885378aebca32be3d682b0e0dc119d5b4860a2c5bb5046730"
 dependencies = [
  "serde",
  "uuid",
@@ -1565,9 +1566,9 @@ checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 
 [[package]]
 name = "memmap2"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe3179b85e1fd8b14447cbebadb75e45a1002f541b925f0bfec366d56a81c56d"
+checksum = "057a3db23999c867821a7a59feb06a578fcb03685e983dff90daf9e7d24ac08f"
 dependencies = [
  "libc",
 ]
@@ -1600,7 +1601,7 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
  "debugid",
  "encoding",
@@ -1618,7 +1619,7 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1633,8 +1634,9 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/getsentry/rust-minidump?branch=feat/symbolicator-integration#6b21c252792272a7bce1b1f4f927c65899e348cb"
+source = "git+https://github.com/luser/rust-minidump?branch=master#d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705"
 dependencies = [
+ "async-trait",
  "breakpad-symbols",
  "clap",
  "debugid",
@@ -3241,6 +3243,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
+ "async-trait",
  "axum",
  "backtrace",
  "base64 0.13.0",

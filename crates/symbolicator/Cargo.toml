@@ -6,9 +6,10 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-axum = { version = "0.4.3", features = ["multipart"] }
 anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
+async-trait = "0.1.52"
+axum = { version = "0.4.3", features = ["multipart"] }
 backtrace = "0.3.55"
 base64 = "0.13.0"
 cadence = "0.27.0"
@@ -25,9 +26,9 @@ ipnetwork = "0.18.0"
 jsonwebtoken = "7.2.0"
 lazy_static = "1.4.0"
 lru = "0.7.0"
+minidump = { git = "https://github.com/luser/rust-minidump", branch = "master" }
+minidump-processor = { git = "https://github.com/luser/rust-minidump", branch = "master", features = ["symbolic-syms"] }
 num_cpus = "1.13.0"
-minidump = { git = "https://github.com/getsentry/rust-minidump", branch = "feat/symbolicator-integration" }
-minidump-processor = { git = "https://github.com/getsentry/rust-minidump", branch = "feat/symbolicator-integration" }
 parking_lot = "0.11.1"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
@@ -40,28 +41,26 @@ sentry-tower = { version = "0.24.2", features = ["http"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
+similar = "2.1.0"
 structopt = "0.3.21"
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
-# Uncomment the line below for local development
-# symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
 thiserror = "1.0.26"
-tracing = "0.1.29"
-tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-util = "0.6"
 tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.10.0"
-similar = "2.1.0"
 
 [dev-dependencies]
 insta = { version = "1.5.2", features = ["redactions"] }
 procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
-warp = "0.3.0"
 test-assembler = "0.1.5"
+warp = "0.3.0"
