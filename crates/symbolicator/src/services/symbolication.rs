@@ -571,10 +571,24 @@ fn object_info_from_minidump_module_rust_minidump(
     ty: ObjectType,
     module: &MinidumpModule,
 ) -> RawObjectInfo {
+    // Some modules are not objects but rather fonts or JIT areas or other mmapped files
+    // which we don't care about.  These may not have complete information so map these to
+    // our schema by converting to None when needed.
+    let code_id = module.code_identifier();
+    let code_id = match code_id.is_nil() {
+        true => None,
+        false => Some(code_id.to_string()),
+    };
+    let code_file = module.code_file();
+    let code_file = match code_file.is_empty() {
+        true => None,
+        false => Some(code_file.into_owned()),
+    };
+
     RawObjectInfo {
         ty,
-        code_id: Some(module.code_identifier().to_string()),
-        code_file: Some(module.code_file().into_owned()),
+        code_id,
+        code_file,
         debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
         image_addr: HexValue(module.base_address()),
