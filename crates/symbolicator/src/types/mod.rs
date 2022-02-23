@@ -239,15 +239,31 @@ pub struct RawFrame {
     pub trust: FrameTrust,
 }
 
+/// How trustworth the instruction pointer of the frame is.
+///
+/// During stack walking it is not always possible to exactly be sure of the instruction
+/// pointer and thus detected frame, especially if there was not enough Call Frame
+/// Information available.  Frames that were detected by scanning may contain dubious
+/// information.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FrameTrust {
+    /// Unknown.
     None,
+    /// Found by scanning the stack.
     Scan,
+    /// Found by scanning the stack using Call Frame Info.
     CfiScan,
+    /// Derived from the Frame Pointer.
     Fp,
+    /// Derived from the Call Frame Info rules.
     Cfi,
+    /// Explicitly provided by an external stack walker (probably on crashing device).
     PreWalked,
+    /// Provided by the CPU context (i.e. the registers).
+    ///
+    /// This is only possible for the topmost, i.e. the crashing, frame as for the other
+    /// frames the registers need to be reconstructed when unwinding the stack.
     Context,
 }
 

@@ -571,11 +571,9 @@ fn object_info_from_minidump_module_rust_minidump(
     ty: ObjectType,
     module: &MinidumpModule,
 ) -> RawObjectInfo {
-    let code_id = module.code_identifier();
-
     RawObjectInfo {
         ty,
-        code_id: Some(code_id.to_string()),
+        code_id: Some(module.code_identifier().to_string()),
         code_file: Some(module.code_file().into_owned()),
         debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
@@ -1503,15 +1501,13 @@ impl SymbolProvider for TempSymbolProvider {
         module: &(dyn Module + Sync),
         _frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
+        let debug_id = module.debug_identifier().ok_or(FillSymbolError {})?;
+
         // Symbolicator's CFI caches never store symbolication information. However, we could hook
         // up symbolic here to fill frame info right away. This requires a larger refactor of
         // minidump processing and the types, however.
         // TODO(ja): Check if this is OK. Shouldn't trigger skip heuristics
-        match module
-            .debug_identifier()
-            .map(|debug_id| self.files.contains_key(&debug_id))
-            .unwrap_or_default()
-        {
+        match self.files.contains_key(&debug_id) {
             true => Ok(()),
             false => Err(FillSymbolError {}),
         }
