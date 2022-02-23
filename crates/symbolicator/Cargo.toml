@@ -41,7 +41,7 @@ serde_json = "1.0.61"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
 # NOTE: Keep symbolic in sync with symsorter
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", version = "8.6.1", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
+symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 # Uncomment the line below for local development
 # symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
