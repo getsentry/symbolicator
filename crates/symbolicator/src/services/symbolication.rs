@@ -555,7 +555,7 @@ fn object_info_from_minidump_module_breakpad(ty: ObjectType, module: &CodeModule
 
     RawObjectInfo {
         ty,
-        code_id: Some(code_id),
+        code_id: Some(code_id.to_lowercase()),
         code_file: Some(module.code_file()),
         debug_id: module.id().map(|id| id.to_string()),
         debug_file: Some(module.debug_file()),
