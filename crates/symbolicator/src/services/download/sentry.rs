@@ -224,6 +224,7 @@ impl SentryDownloader {
                     FileType::WasmDebug | FileType::WasmCode => "wasm",
                     FileType::Breakpad => "breakpad",
                     FileType::SourceBundle => "sourcebundle",
+                    FileType::Il2cppLineMapping => "il2cpp_linemapping",
                 })
                 .map(|val| ("file_formats", val)),
         );

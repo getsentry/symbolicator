@@ -198,6 +198,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         }
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
+        FileType::Il2cppLineMapping => Vec::new(),
     }
 }
 
@@ -257,12 +258,6 @@ fn get_symstore_path(
         FileType::Pdb => get_pdb_symstore_path(identifier, ssqp_casing),
         FileType::Pe => get_pe_symstore_path(identifier, ssqp_casing),
 
-        // Microsoft SymbolServer does not specify Breakpad.
-        FileType::Breakpad => None,
-
-        // Microsoft SymbolServer does not specify WASM.
-        FileType::WasmDebug | FileType::WasmCode => None,
-
         // source bundles are available through an extension for PE/PDB only.
         FileType::SourceBundle => {
             let original_file_type = match identifier.object_type {
@@ -277,11 +272,12 @@ fn get_symstore_path(
             Some(base_path)
         }
 
-        // Microsoft SymbolServer does not specify PropertyList.
+        // Microsoft SymbolServer does not specify the following file types:
+        FileType::Breakpad => None,
+        FileType::WasmDebug | FileType::WasmCode => None,
         FileType::UuidMap => None,
-
-        // Microsoft SymbolServer does not speicfy BCSymbolMap.
         FileType::BcSymbolMap => None,
+        FileType::Il2cppLineMapping => None,
     }
 }
 
@@ -327,6 +323,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::SourceBundle => None,
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
+        FileType::Il2cppLineMapping => None,
     }
 }
 
@@ -344,7 +341,9 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
         }
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
         FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
-        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
+        FileType::SourceBundle | FileType::Breakpad | FileType::Il2cppLineMapping => {
+            identifier.object_type
+        }
     }
 }
 
@@ -359,6 +358,7 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
         FileType::UuidMap => "uuidmap",
         FileType::BcSymbolMap => "bcsymbolmap",
+        FileType::Il2cppLineMapping => "il2cpp_linemapping",
     };
 
     // determine the ID we use for the path

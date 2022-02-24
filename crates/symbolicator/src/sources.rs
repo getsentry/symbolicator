@@ -425,6 +425,11 @@ pub enum FileType {
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
     #[serde(rename = "bcsymbolmap")]
     BcSymbolMap,
+    /// The il2cpp `LineNumberMapping.json` file.
+    ///
+    /// This file maps from C++ source locations to the original C# source location it was transpiled from.
+    #[serde(rename = "il2cpp_linemapping")]
+    Il2cppLineMapping,
 }
 
 impl FileType {
@@ -504,6 +509,7 @@ impl AsRef<str> for FileType {
             FileType::SourceBundle => "sourcebundle",
             FileType::UuidMap => "uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
+            FileType::Il2cppLineMapping => "il2cpp_linemapping",
         }
     }
 }
