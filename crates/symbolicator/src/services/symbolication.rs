@@ -790,7 +790,7 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
         .raw
         .function
         .as_deref()
-        .or_else(|| frame.raw.symbol.as_deref())
+        .or(frame.raw.symbol.as_deref())
     {
         Some(f) => f,
         None => return false,
