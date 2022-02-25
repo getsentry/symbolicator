@@ -594,7 +594,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
 
-        Ok(self.spawn_computation(request, false).await?)
+        self.spawn_computation(request, false).await
     }
 }
 
