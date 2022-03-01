@@ -576,11 +576,10 @@ fn object_info_from_minidump_module_rust_minidump(
     // Some modules are not objects but rather fonts or JIT areas or other mmapped files
     // which we don't care about.  These may not have complete information so map these to
     // our schema by converting to None when needed.
-    let code_id = module.code_identifier();
-    let code_id = match code_id.is_nil() {
-        true => None,
-        false => Some(code_id.to_string()),
-    };
+    let code_id = module
+        .code_identifier()
+        .filter(|code_id| !code_id.is_nil())
+        .map(|code_id| code_id.to_string().to_lowercase());
     let code_file = module.code_file();
     let code_file = match code_file.is_empty() {
         true => None,
