@@ -1,6 +1,8 @@
 ---
-source: src/services/symbolication.rs
-expression: response.await.unwrap()
+source: crates/symbolicator/src/services/symbolication/mod.rs
+assertion_line: 2258
+expression: response.unwrap()
+
 ---
 status: completed
 stacktraces:
@@ -21,3 +23,4 @@ modules:
     debug_id: 502fc0a5-1ec1-3e47-9998-684fa139dca7
     image_addr: "0x100000000"
     image_size: 4096
+
