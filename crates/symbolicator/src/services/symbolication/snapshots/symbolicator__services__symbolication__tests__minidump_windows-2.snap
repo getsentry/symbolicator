@@ -1,5 +1,6 @@
 ---
-source: crates/symbolicator/src/services/symbolication.rs
+source: crates/symbolicator/src/services/symbolication/mod.rs
+assertion_line: 2350
 expression: cache_entries
 
 ---
