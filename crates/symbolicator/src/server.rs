@@ -17,18 +17,21 @@ pub fn run(config: Config) -> Result<()> {
         .thread_name("symbolicator-io")
         .enable_all()
         .thread_stack_size(8 * megs)
-        .build()
-        .unwrap();
+        .build()?;
     let cpu_pool = tokio::runtime::Builder::new_multi_thread()
         .thread_name("symbolicator-cpu")
         .enable_all()
         .thread_stack_size(8 * megs)
-        .build()
-        .unwrap();
+        .build()?;
+    let web_pool = tokio::runtime::Builder::new_multi_thread()
+        .thread_name("symbolicator-web")
+        .enable_all()
+        .thread_stack_size(8 * megs)
+        .build()?;
 
     let socket = config.bind.parse::<SocketAddr>()?;
 
-    let service = io_pool
+    let service = web_pool
         .block_on(Service::create(
             config,
             io_pool.handle().to_owned(),
@@ -36,13 +39,13 @@ pub fn run(config: Config) -> Result<()> {
         ))
         .context("failed to create service state")?;
 
-    let _guard = io_pool.enter();
+    let _guard = web_pool.enter();
     let server =
-        axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
+        axum::Server::try_bind(&socket)?.serve(endpoints::create_app(service).into_make_service());
 
     tracing::info!("Starting server on {}", server.local_addr());
 
-    io_pool.block_on(server)?;
+    web_pool.block_on(server)?;
 
     tracing::info!("System shutdown complete");
 
