@@ -296,10 +296,11 @@ impl GcsState {
                         Ok(SharedCacheStoreResult::Written(total_bytes))
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
-                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
+                    StatusCode::FORBIDDEN => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
                     )),
+                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials",)),
                     _ => Err(anyhow!("Error response from GCS: {}", status)),
                 }
             }
