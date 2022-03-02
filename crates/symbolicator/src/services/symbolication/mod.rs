@@ -7,6 +7,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
+use std::fmt;
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
@@ -339,7 +340,7 @@ impl ModuleListBuilder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
@@ -351,6 +352,25 @@ pub struct SymbolicationActor {
     spawnpool: Arc<procspawn::Pool>,
     max_concurrent_requests: Option<usize>,
     current_requests: Arc<AtomicUsize>,
+    symbolication_taskmon: tokio_metrics::TaskMonitor,
+}
+
+impl fmt::Debug for SymbolicationActor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("SymbolicationActor")
+            .field("objects", &self.objects)
+            .field("symcaches", &self.symcaches)
+            .field("cficaches", &self.cficaches)
+            .field("diagnostics_cache", &self.diagnostics_cache)
+            .field("io_pool", &self.io_pool)
+            .field("cpu_pool", &self.cpu_pool)
+            .field("requests", &self.requests)
+            .field("spawnpool", &self.spawnpool)
+            .field("max_concurrent_requests", &self.max_concurrent_requests)
+            .field("current_requests", &self.current_requests)
+            .field("symbolication_taskmon", &"<TaskMonitor>")
+            .finish()
+    }
 }
 
 impl SymbolicationActor {
@@ -376,7 +396,13 @@ impl SymbolicationActor {
             spawnpool: Arc::new(spawnpool),
             max_concurrent_requests,
             current_requests: Arc::new(AtomicUsize::new(0)),
+            symbolication_taskmon: tokio_metrics::TaskMonitor::new(),
         }
+    }
+
+    /// Returns a clone of the task monitor for symbolication requests.
+    pub fn symbolication_task_monitor(&self) -> tokio_metrics::TaskMonitor {
+        self.symbolication_taskmon.clone()
     }
 
     /// Creates a new request to compute the given future.
@@ -419,7 +445,9 @@ impl SymbolicationActor {
             drop_hub.end_session_with_status(SessionStatus::Crashed);
         });
 
+        let spawn_time = Instant::now();
         let request_future = async move {
+            metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
             let response = match f.await {
                 Ok(response) => {
                     sentry::end_session_with_status(SessionStatus::Exited);
@@ -454,7 +482,7 @@ impl SymbolicationActor {
         }
         .bind_hub(hub);
 
-        self.io_pool.spawn(request_future);
+        self.io_pool.spawn(self.symbolication_taskmon.instrument(request_future));
 
         Ok(request_id)
     }
