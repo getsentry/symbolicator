@@ -30,11 +30,13 @@
 //!  - Some CPU-intensive tasks are spawned on a `tokio 1` runtime.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 
 use crate::cache::Caches;
 use crate::config::Config;
+use crate::metrics::record_task_metrics;
 
 pub mod bitcode;
 pub mod cacher;
@@ -113,6 +115,13 @@ impl Service {
             spawnpool,
             config.max_concurrent_requests,
         );
+        let symbolication_taskmon = symbolication.symbolication_task_monitor();
+        tokio::spawn(async move {
+            for interval in symbolication_taskmon.intervals() {
+                record_task_metrics("symbolication", &interval);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
 
         Ok(Self {
             symbolication,
