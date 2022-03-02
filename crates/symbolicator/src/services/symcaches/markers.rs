@@ -118,6 +118,12 @@ mod tests {
     }
 
     #[test]
+    fn test_valid_but_unknown_marker() {
+        let data = b"\0\x01\x01\0WITH_MARKERS32";
+        assert_ne!(SymCacheMarkers::parse(data), SymCacheMarkers::default());
+    }
+
+    #[test]
     fn test_corrupted_marker() {
         let data = b"ITH_SYMBOLMAP";
         assert_eq!(SymCacheMarkers::parse(data), SymCacheMarkers::default());
@@ -134,7 +140,7 @@ mod tests {
         let data = b"\x01\0WITH_MARKERS32";
         assert_eq!(SymCacheMarkers::parse(data), SymCacheMarkers::default());
 
-        let data = b"\0\0\0WITH_MARKERS32";
+        let data = b"\0\x01\0WITH_MARKERS32";
         assert_eq!(SymCacheMarkers::parse(data), SymCacheMarkers::default());
     }
 }
