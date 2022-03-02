@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryInto;
+use std::fmt;
 use std::fs::File;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -7,7 +8,6 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use std::fmt;
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
@@ -482,7 +482,8 @@ impl SymbolicationActor {
         }
         .bind_hub(hub);
 
-        self.io_pool.spawn(self.symbolication_taskmon.instrument(request_future));
+        self.io_pool
+            .spawn(self.symbolication_taskmon.instrument(request_future));
 
         Ok(request_id)
     }
