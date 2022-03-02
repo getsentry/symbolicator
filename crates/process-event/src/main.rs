@@ -28,6 +28,12 @@ struct Cli {
     /// Whether to compare the old and new stackwalking methods.
     #[structopt(short, long)]
     compare_stackwalking_methods: bool,
+
+    /// Whether to use rust-minidump for stackwalking.
+    ///
+    /// This supersedes `compare_stackwalking_methods`.
+    #[structopt(short, long)]
+    rust_minidump: bool,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -36,6 +42,7 @@ fn main() -> Result<(), anyhow::Error> {
         symbolicator,
         dif_candidates,
         compare_stackwalking_methods,
+        rust_minidump,
     } = Cli::from_args();
 
     let client = reqwest::Client::new();
@@ -56,6 +63,7 @@ fn main() -> Result<(), anyhow::Error> {
             "compare_stackwalking_methods".into(),
             Value::Bool(compare_stackwalking_methods),
         );
+        options.insert("rust_minidump".into(), Value::Bool(rust_minidump));
 
         let mut form = multipart::Form::new();
         form = form.file("upload_file_minidump", input)?;
