@@ -1534,12 +1534,6 @@ struct StackWalkMinidumpResult {
     duration: Duration,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-enum NewStackwalkingProblem {
-    Diff(String),
-    Slow,
-}
-
 impl SymbolicationActor {
     /// Join a procspawn handle with a timeout.
     ///
