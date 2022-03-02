@@ -366,7 +366,6 @@ fn write_symcache(
     bcsymbolmap_handle: Option<BcSymbolMapHandle>,
 ) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
-        scope.set_transaction(Some("compute_symcache"));
         object_handle.to_scope(scope);
     });
 

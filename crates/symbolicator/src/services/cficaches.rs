@@ -299,7 +299,6 @@ impl CfiCacheActor {
 #[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
-        scope.set_transaction(Some("compute_cficache"));
         object_handle.to_scope(scope);
     });
 

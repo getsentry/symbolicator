@@ -157,7 +157,6 @@ async fn fetch_file(
 ) -> Result<CacheStatus, ObjectError> {
     tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
-        scope.set_transaction(Some("download_file"));
         file_id.to_scope(scope);
         object_id.to_scope(scope);
     });

@@ -61,6 +61,10 @@ pub async fn proxy_symstore_request(
     extract::Path(path): extract::Path<String>,
     request: Request<Body>,
 ) -> Result<Response<Body>, ResponseError> {
+    sentry::configure_scope(|scope| {
+        scope.set_transaction(Some("GET /proxy"));
+    });
+
     let object_handle = match load_object(state, path).await? {
         Some(handle) => handle,
         None => {
