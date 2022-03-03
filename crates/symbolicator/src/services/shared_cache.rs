@@ -205,9 +205,10 @@ impl GcsState {
                     StatusCode::FORBIDDEN => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
-                    ))?,
-                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials",))?,
-                    _ => Err(anyhow!("Error response from GCS: {}", status))?,
+                    )
+                    .into()),
+                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials").into()),
+                    _ => Err(anyhow!("Error response from GCS: {}", status).into()),
                 }
             }
             Ok(Err(e)) => {
@@ -237,7 +238,7 @@ impl GcsState {
                 match status {
                     StatusCode::OK => Ok(true),
                     StatusCode::NOT_FOUND => Ok(false),
-                    status => Err(anyhow!("Unexpected status code from GCS: {}", status))?,
+                    status => Err(anyhow!("Unexpected status code from GCS: {}", status).into()),
                 }
             }
             Ok(Err(err)) => Err(err).context("Error connecting to GCS")?,
@@ -324,9 +325,10 @@ impl GcsState {
                     StatusCode::FORBIDDEN => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
-                    ))?,
-                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials",))?,
-                    _ => Err(anyhow!("Error response from GCS: {}", status))?,
+                    )
+                    .into()),
+                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials").into()),
+                    _ => Err(anyhow!("Error response from GCS: {}", status).into()),
                 }
             }
             Ok(Err(err)) => {
