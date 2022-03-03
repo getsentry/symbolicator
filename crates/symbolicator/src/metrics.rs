@@ -244,18 +244,18 @@ trait ToMaxingI64: TryInto<i64> + Copy {
 impl<T: TryInto<i64> + Copy> ToMaxingI64 for T {}
 
 pub fn record_task_metrics(name: &str, metrics: &tokio_metrics::TaskMetrics) {
-    metric!(counter("tasks.instrumented_count") += metrics.instrumented_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.dropped_count") += metrics.dropped_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.first_poll_count") += metrics.first_poll_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_first_poll_delay") += metrics.total_first_poll_delay.as_millis().to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_idled_count") += metrics.total_idled_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_idle_duration") += metrics.total_idle_duration.as_millis().to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_scheduled_count") += metrics.total_scheduled_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_scheduled_duration") += metrics.total_scheduled_duration.as_millis().to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_poll_count") += metrics.total_poll_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_poll_duration") += metrics.total_poll_duration.as_millis().to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_fast_poll_count") += metrics.total_fast_poll_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_fast_poll_durations") += metrics.total_fast_poll_duration.as_millis().to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_slow_poll_count") += metrics.total_slow_poll_count.to_maxing_i64(), "name" => name);
-    metric!(counter("tasks.total_slow_poll_duration") += metrics.total_slow_poll_duration.as_millis().to_maxing_i64(), "name" => name);
+    metric!(counter("tasks.instrumented_count") += metrics.instrumented_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.dropped_count") += metrics.dropped_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.first_poll_count") += metrics.first_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_first_poll_delay") += metrics.total_first_poll_delay.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_idled_count") += metrics.total_idled_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_idle_duration") += metrics.total_idle_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_scheduled_count") += metrics.total_scheduled_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_scheduled_duration") += metrics.total_scheduled_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_poll_count") += metrics.total_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_poll_duration") += metrics.total_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_fast_poll_count") += metrics.total_fast_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_fast_poll_durations") += metrics.total_fast_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_slow_poll_count") += metrics.total_slow_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_slow_poll_duration") += metrics.total_slow_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
 }
