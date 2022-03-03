@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufWriter, Seek, SeekFrom, Write};
+use std::io::{self, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +13,7 @@ use symbolic::symcache::{self, SymCache, SymCacheWriter};
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
-use crate::services::bitcode::{BcSymbolMapHandle, BitcodeService};
+use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
@@ -26,10 +26,11 @@ use crate::types::{
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
 
+use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
+
 use super::shared_cache::SharedCacheService;
 
-/// This marker string is appended to symcaches to indicate that they were created using a `BcSymbolMap`.
-const SYMBOLMAP_MARKER: &[u8] = b"WITH_SYMBOLMAP";
+mod markers;
 
 /// The supported symcache versions.
 ///
@@ -155,8 +156,8 @@ struct FetchSymCacheInternal {
     /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
 
-    /// The result of fetching the BcSymbolMap
-    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+    /// Secondary sources to use when creating a SymCache.
+    secondary_sources: SecondarySymCacheSources,
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
@@ -185,7 +186,7 @@ async fn fetch_difs_and_compute_symcache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
-    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+    secondary_sources: SecondarySymCacheSources,
     threadpool: tokio::runtime::Handle,
 ) -> Result<CacheStatus, SymCacheError> {
     let object_handle = objects_actor
@@ -203,7 +204,7 @@ async fn fetch_difs_and_compute_symcache(
     }
 
     let compute_future = async move {
-        let status = match write_symcache(&path, &*object_handle, bcsymbolmap_handle) {
+        let status = match write_symcache(&path, &*object_handle, secondary_sources) {
             Ok(_) => CacheStatus::Positive,
             Err(err) => {
                 tracing::warn!("Failed to write symcache: {}", err);
@@ -234,7 +235,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             path.to_owned(),
             self.object_meta.clone(),
             self.objects_actor.clone(),
-            self.bcsymbolmap_handle.clone(),
+            self.secondary_sources.clone(),
             self.threadpool.clone(),
         );
 
@@ -251,12 +252,13 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
-        let had_symbolmap = data.ends_with(SYMBOLMAP_MARKER);
         SymCache::parse(data)
             .map(|_symcache| {
                 // NOTE: we do *not* check for the `is_latest` version here.
                 // If the symcache is parsable, we want to use even outdated versions.
-                had_symbolmap == self.bcsymbolmap_handle.is_some()
+
+                let symcache_markers = SymCacheMarkers::parse(data);
+                SymCacheMarkers::from_sources(&self.secondary_sources) == symcache_markers
             })
             .unwrap_or(false)
     }
@@ -333,11 +335,13 @@ impl SymCacheActor {
                     None => None,
                 };
 
+                let secondary_sources = SecondarySymCacheSources { bcsymbolmap_handle };
+
                 self.symcaches
                     .compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
-                        bcsymbolmap_handle,
+                        secondary_sources,
                         object_meta: handle,
                         threadpool: self.threadpool.clone(),
                         candidates,
@@ -357,13 +361,13 @@ impl SymCacheActor {
 
 /// Computes and writes the symcache.
 ///
-/// It is assumed both the `object_handle` contains a positive cache.  The
-/// `bcsymbolmap_handle` can only exist for a positive cache so does not have this issue.
+/// It is assumed that the `object_handle` contains a positive cache.
+/// Any secondary source can only exist for a positive cache so does not have this issue.
 #[tracing::instrument(skip_all)]
 fn write_symcache(
     path: &Path,
     object_handle: &ObjectHandle,
-    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+    secondary_sources: SecondarySymCacheSources,
 ) -> Result<(), SymCacheError> {
     configure_scope(|scope| {
         object_handle.to_scope(scope);
@@ -373,8 +377,11 @@ fn write_symcache(
         .parse()
         .map_err(SymCacheError::ObjectParsing)?
         .unwrap();
+
+    let markers = SymCacheMarkers::from_sources(&secondary_sources);
+
     if let Object::MachO(ref mut macho) = symbolic_object {
-        if let Some(ref handle) = bcsymbolmap_handle {
+        if let Some(ref handle) = secondary_sources.bcsymbolmap_handle {
             let bcsymbolmap = handle
                 .bc_symbol_map()
                 .map_err(SymCacheError::BcSymbolMapError)?;
@@ -396,11 +403,8 @@ fn write_symcache(
 
     let mut file = writer.into_inner().map_err(io::Error::from)?;
 
-    if bcsymbolmap_handle.is_some() {
-        file.flush()?;
-        file.seek(SeekFrom::End(0))?;
-        file.write_all(SYMBOLMAP_MARKER)?;
-    }
+    markers.write_to(&mut file)?;
+
     file.sync_all()?;
 
     Ok(())
