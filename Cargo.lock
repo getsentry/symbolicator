@@ -264,6 +264,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "breakpad-symbols"
+version = "0.9.6"
+source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
+dependencies = [
+ "async-trait",
+ "circular",
+ "debugid",
+ "log",
+ "minidump-common",
+ "nom 1.2.4",
+ "range-map",
+ "reqwest 0.11.9",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "brownstone"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -370,6 +387,12 @@ dependencies = [
  "time 0.1.44",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "circular"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"
@@ -565,9 +588,9 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "debugid"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f91cf5a8c2f2097e2a32627123508635d47ce10563d999ec1a95addf08b502ba"
+checksum = "d6ee87af31d84ef885378aebca32be3d682b0e0dc119d5b4860a2c5bb5046730"
 dependencies = [
  "serde",
  "uuid",
@@ -756,28 +779,6 @@ dependencies = [
  "num-traits 0.2.14",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "failure"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d32e9bd16cc02eae7db7ef620b392808b89f6a5e16bb3497d159c6b92a0f4f86"
-dependencies = [
- "backtrace",
- "failure_derive",
-]
-
-[[package]]
-name = "failure_derive"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "synstructure",
 ]
 
 [[package]]
@@ -1564,20 +1565,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 
 [[package]]
-name = "memmap"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6585fd95e7bb50d6cc31e20d4cf9afb4e2ba16c5846fc76793f11218da9c475b"
-dependencies = [
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "memmap2"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe3179b85e1fd8b14447cbebadb75e45a1002f541b925f0bfec366d56a81c56d"
+checksum = "057a3db23999c867821a7a59feb06a578fcb03685e983dff90daf9e7d24ac08f"
 dependencies = [
  "libc",
 ]
@@ -1610,33 +1601,52 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02e0f06e24debf89a5ed527f0c06422c0c6c112aa28e78c20ac3ed626823c3bc"
+source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
 dependencies = [
- "chrono",
+ "debugid",
  "encoding",
- "failure",
  "log",
- "memmap",
+ "memmap2",
  "minidump-common",
  "num-traits 0.2.14",
  "range-map",
  "scroll 0.10.2",
+ "thiserror",
+ "time 0.3.6",
+ "uuid",
 ]
 
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39e0e0bb43d6a2a4fe9ab129bc8a5107df5e0f2c2869279983932dd222ca03fb"
+source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
 dependencies = [
  "bitflags",
+ "debugid",
  "enum-primitive-derive",
  "log",
  "num-traits 0.2.14",
  "range-map",
  "scroll 0.10.2",
  "smart-default",
+]
+
+[[package]]
+name = "minidump-processor"
+version = "0.9.6"
+source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
+dependencies = [
+ "async-trait",
+ "breakpad-symbols",
+ "clap",
+ "debugid",
+ "log",
+ "memmap2",
+ "minidump",
+ "scroll 0.10.2",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1790,6 +1800,12 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "nom"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5b8c256fd9471521bcb84c3cdba98921497f1a331cbc15b8030fc63b82050ce"
+
+[[package]]
+name = "nom"
 version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b1d11e1ef389c76fe5b81bcaf2ea32cf88b62bc494e19f493d0b30e7a930109"
@@ -1809,7 +1825,7 @@ dependencies = [
  "indent_write",
  "joinery",
  "memchr",
- "nom",
+ "nom 7.1.0",
 ]
 
 [[package]]
@@ -2416,6 +2432,7 @@ version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87f242f1488a539a79bac6dbe7c8609ae43b7914b7736210f239a37cccb32525"
 dependencies = [
+ "async-compression",
  "base64 0.13.0",
  "bytes",
  "encoding_rs",
@@ -2440,6 +2457,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-util",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3129,8 +3147,8 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#410812893989e6d7b02086340421c1f70f9d9961"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3141,8 +3159,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#410812893989e6d7b02086340421c1f70f9d9961"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3153,8 +3171,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#410812893989e6d7b02086340421c1f70f9d9961"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3165,7 +3183,7 @@ dependencies = [
  "goblin",
  "lazy_static",
  "lazycell",
- "nom",
+ "nom 7.1.0",
  "nom-supreme",
  "parking_lot 0.12.0",
  "pdb",
@@ -3182,8 +3200,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#410812893989e6d7b02086340421c1f70f9d9961"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3194,8 +3212,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#410812893989e6d7b02086340421c1f70f9d9961"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "cc",
  "lazy_static",
@@ -3208,8 +3226,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#410812893989e6d7b02086340421c1f70f9d9961"
+version = "8.6.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#9afb94fcc453197b2780f5e64a13d4c8b2daa4fd"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3225,6 +3243,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
+ "async-trait",
  "axum",
  "backtrace",
  "base64 0.13.0",
@@ -3244,6 +3263,7 @@ dependencies = [
  "lazy_static",
  "lru",
  "minidump",
+ "minidump-processor",
  "num_cpus",
  "parking_lot 0.11.2",
  "procspawn",
@@ -3258,6 +3278,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha-1 0.10.0",
+ "similar",
  "structopt",
  "symbolic",
  "tempfile",
