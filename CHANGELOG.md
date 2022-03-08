@@ -12,6 +12,8 @@
 
 - Avoid errors from symbol source in bcsymbolmap lookups from cancelling the entire symcache lookup. ([#643](https://github.com/getsentry/symbolicator/pull/643))
 - Use wildcard matcher for symstore proxy. ([#671](https://github.com/getsentry/symbolicator/pull/671))
+- Detect unwind and debug information in ELF files that contain sections with offset `0`. They were previously skipped in some cases. ([#688](https://github.com/getsentry/symbolicator/pull/688))
+- Support processing unwind information in ELF files linked with `gold`. ([#688](https://github.com/getsentry/symbolicator/pull/688))
 
 ## 0.4.1
 
