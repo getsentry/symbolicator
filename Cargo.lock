@@ -266,7 +266,7 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
+source = "git+https://github.com/luser/rust-minidump?branch=master#6546bbd8524370c1c8ef0093ff2e5326112ad65f"
 dependencies = [
  "async-trait",
  "circular",
@@ -1601,7 +1601,7 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
+source = "git+https://github.com/luser/rust-minidump?branch=master#6546bbd8524370c1c8ef0093ff2e5326112ad65f"
 dependencies = [
  "debugid",
  "encoding",
@@ -1619,7 +1619,7 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
+source = "git+https://github.com/luser/rust-minidump?branch=master#6546bbd8524370c1c8ef0093ff2e5326112ad65f"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1634,7 +1634,7 @@ dependencies = [
 [[package]]
 name = "minidump-processor"
 version = "0.9.6"
-source = "git+https://github.com/luser/rust-minidump?branch=master#3bc49b07a094bad2e8c130a82b86fad017952689"
+source = "git+https://github.com/luser/rust-minidump?branch=master#6546bbd8524370c1c8ef0093ff2e5326112ad65f"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
