@@ -83,7 +83,13 @@ impl ModuleLookup {
         modules.sort_by_key(|entry| entry.object_info.raw.image_addr.0);
 
         // back-fill the `image_size` in case it is missing (or 0), so that it spans up to the
-        // next image
+        // next image.
+        // This is clearly defined in the docs at https://develop.sentry.dev/sdk/event-payloads/debugmeta/#debug-images,
+        // which also explicitly state that this "might lead to invalid stack traces".
+        // As this is exclusively used with `unwrap_or(0)`, there is no difference between
+        // `None` and `Some(0)`.
+        // In reality though, the last module in the list is the only one that can have `None`.
+        // By definition, if the last module has a `0` size, it extends to infinity.
         if modules.len() > 1 {
             for i in 0..modules.len() - 1 {
                 let next_addr = modules
