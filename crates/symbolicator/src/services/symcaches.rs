@@ -390,6 +390,7 @@ fn write_symcache(
                 handle.uuid,
                 object_handle
             );
+            #[allow(deprecated)]
             macho.load_symbolmap(bcsymbolmap);
         }
     }

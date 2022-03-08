@@ -11,7 +11,7 @@ anyhow = "1.0.38"
 apple-crash-report-parser = "0.4.2"
 backtrace = "0.3.55"
 base64 = "0.13.0"
-cadence = "0.27.0"
+cadence = "0.28.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.15.0"
 filetime = "0.2.14"
@@ -22,12 +22,12 @@ glob = "0.3.0"
 hostname = "0.3.1"
 humantime-serde = "1.0.1"
 ipnetwork = "0.18.0"
-jsonwebtoken = "7.2.0"
+jsonwebtoken = "8.0.1"
 lazy_static = "1.4.0"
 lru = "0.7.0"
 num_cpus = "1.13.0"
 minidump = "0.9.4"
-parking_lot = "0.11.1"
+parking_lot = "0.12.0"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
@@ -50,7 +50,7 @@ tracing = "0.1.29"
 tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-metrics = "0.1.0"
-tokio-util = "0.6"
+tokio-util = { version = "0.7.0", features = ["io"] }
 tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
