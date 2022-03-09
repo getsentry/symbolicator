@@ -36,7 +36,9 @@ async function containsChangelog(path) {
 
 async function checkChangelog() {
   const skipChangelog =
-    danger.github && (danger.github.pr.body + "").includes("#skip-changelog");
+    danger.github
+      && ((danger.github.pr.body + "").includes("#skip-changelog")
+          || danger.github.pr.user.href === "https://github.com/apps/dependabot");
 
   if (skipChangelog) {
     return;
