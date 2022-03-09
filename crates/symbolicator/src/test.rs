@@ -415,7 +415,7 @@ pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
                         std::fs::write(&path, data).unwrap();
                         path
                     }
-                    Err(_) => return Ok(None),
+                    _ => return Ok(None),
                 }
             }
             _ => return Err(err),
