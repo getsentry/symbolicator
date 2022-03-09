@@ -410,11 +410,11 @@ pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
             std::io::ErrorKind::NotFound => {
                 // Special case, see if we can create it from a env var, our CI sets this.
                 match std::env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON") {
-                    Ok(data) => {
+                    Ok(data) if !data.is_empty() => {
                         std::fs::write(&path, data).unwrap();
                         path
                     }
-                    Err(_) => return Ok(None),
+                    _ => return Ok(None),
                 }
             }
             _ => return Err(err),
