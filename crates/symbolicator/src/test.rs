@@ -446,12 +446,10 @@ macro_rules! gcs_credentials {
             },
             Ok(None) => {
                 match std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
-                    Ok(path) => {
-                        $crate::test::TestGcsCredentials {
-                            bucket: "sentryio-symbolicator-cache-test".to_string(),
-                            credentials_file: Some(path.into()),
-                        }
-                    }
+                    Ok(path) => $crate::test::TestGcsCredentials {
+                        bucket: "sentryio-symbolicator-cache-test".to_string(),
+                        credentials_file: Some(path.into()),
+                    },
                     Err(_) => {
                         println!("Skipping due to missing GOOGLE_APPLICATION_CREDENTIALS or gcs-service-account.json");
                         return;
