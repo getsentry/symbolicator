@@ -34,13 +34,23 @@ async function containsChangelog(path) {
   return contents.includes(PR_LINK);
 }
 
-async function checkChangelog() {
-  const skipChangelog =
-    danger.github
-      && ((danger.github.pr.body + "").includes("#skip-changelog")
-          || danger.github.pr.user.href === "https://github.com/apps/dependabot");
+function skipChangelog() {
+  if (!danger.github) {
+    return false;
+  }
+  if ((danger.github.pr.body + "").includes("#skip-changelog")) {
+    return true;
+  }
+  for (let review of danger.github.reviews) {
+    if (review.body && review.body.includes("#skip-changelog")) {
+      return true;
+    }
+  }
+  return false;
+}
 
-  if (skipChangelog) {
+async function checkChangelog() {
+  if (skipChangelog()) {
     return;
   }
 
