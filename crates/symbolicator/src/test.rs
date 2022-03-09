@@ -411,7 +411,6 @@ pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
                 // Special case, see if we can create it from a env var, our CI sets this.
                 match std::env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON") {
                     Ok(data) if !data.is_empty() => {
-                        println!("HELLO YES, what is this?? {:?}", data);
                         std::fs::write(&path, data).unwrap();
                         path
                     }
@@ -448,7 +447,6 @@ macro_rules! gcs_credentials {
             Ok(None) => {
                 match std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
                     Ok(path) => {
-                        println!("WELL, seems like we have a credentials file??? {:?}", path);
                         $crate::test::TestGcsCredentials {
                             bucket: "sentryio-symbolicator-cache-test".to_string(),
                             credentials_file: Some(path.into()),

@@ -759,7 +759,6 @@ impl SharedCacheService {
         src: File,
         reason: CacheStoreReason,
     ) -> Option<oneshot::Receiver<()>> {
-        println!("a dummy change");
         let inner_guard = self.inner.read().await;
         match inner_guard.as_ref() {
             Some(inner) => {
