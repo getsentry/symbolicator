@@ -9,3 +9,5 @@ updates:
     timezone: "UTC"
   # Because we only do this weekly, allow for many to be created.
   open-pull-requests-limit: 20
+  commit-message:
+    prefix: "build(deps): "
