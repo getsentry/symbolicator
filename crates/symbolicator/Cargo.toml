@@ -26,7 +26,7 @@ jsonwebtoken = "8.0.1"
 lazy_static = "1.4.0"
 lru = "0.7.0"
 num_cpus = "1.13.0"
-minidump = "0.9.4"
+minidump = "0.10.0"
 parking_lot = "0.12.0"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.4.3"
