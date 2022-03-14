@@ -59,7 +59,7 @@ uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.11.0"
 
 [dev-dependencies]
-insta = { version = "1.5.2", features = ["redactions"] }
+insta = { version = "1.13.0", features = ["redactions"] }
 procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
