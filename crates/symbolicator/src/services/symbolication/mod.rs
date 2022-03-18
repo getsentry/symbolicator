@@ -2716,7 +2716,6 @@ mod tests {
             RequestOptions {
                 dif_candidates: true,
                 rust_minidump: true,
-                ..Default::default()
             }
         )
         .await
@@ -2729,7 +2728,6 @@ mod tests {
             RequestOptions {
                 dif_candidates: true,
                 rust_minidump: true,
-                ..Default::default()
             }
         )
         .await
@@ -2742,7 +2740,6 @@ mod tests {
             RequestOptions {
                 dif_candidates: true,
                 rust_minidump: true,
-                ..Default::default()
             }
         )
         .await
