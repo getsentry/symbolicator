@@ -258,9 +258,9 @@ dependencies = [
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7287cb066399ca1b7ffcaa4cca1364611944d67cd1078620ea8cfc8a625d53da"
+checksum = "93b437a51859b36031ac8331d2828f83674a21393a3c90c4c17734c7ee4595c9"
 dependencies = [
  "async-trait",
  "circular",
@@ -1216,9 +1216,9 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "humantime-serde"
-version = "1.0.1"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac34a56cfd4acddb469cc7fff187ed5ac36f498ba085caf8bbc725e3ff474058"
+checksum = "57a3db5ea5923d99402c94e9feb261dc5ee9b4efa158b0315f788cf549cc200c"
 dependencies = [
  "humantime",
  "serde",
@@ -1594,9 +1594,9 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da059e37532e5950e6ec8dcf0a43f9164c287408dc8d5cde4f941b488a59af98"
+checksum = "fb1cc38e48a5a7e1c2441508db51b0b77241f26d2e2d201b1a247decb8fbfad1"
 dependencies = [
  "debugid",
  "encoding",
@@ -1613,9 +1613,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d618971de3c26a0e3aaa89bb579e97bdc711cbfbb05761a2963dee38cec69444"
+checksum = "0d8672936ac95419dbf1563bdea9283efa6ec3b051797c0f08fde1a05c30f74a"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1629,9 +1629,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e2df1b10c1bd388ffb515b9d200eeeeb845b45f0c37d7a7304175ba3ef7f97b"
+checksum = "bfdd9d5c847fad4c414c5ae41dff3f2d63c8fa63a75cc9c280b63a93dc0c46ff"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -4261,18 +4261,18 @@ dependencies = [
 
 [[package]]
 name = "zstd"
-version = "0.10.0+zstd.1.5.2"
+version = "0.11.0+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b1365becbe415f3f0fcd024e2f7b45bacfb5bdd055f0dc113571394114e7bdd"
+checksum = "3c2ae3d536c6f877ff0ddcad1935ee0135809b744105a69b0c773ec5512b853e"
 dependencies = [
  "zstd-safe",
 ]
 
 [[package]]
 name = "zstd-safe"
-version = "4.1.4+zstd.1.5.2"
+version = "5.0.0+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f7cd17c9af1a4d6c24beb1cc54b17e2ef7b593dc92f19e9d9acad8b182bbaee"
+checksum = "f5b425ac5cd50820af66e860434dd74e118b920a7777ed70c72cc09ac682fa16"
 dependencies = [
  "libc",
  "zstd-sys",
@@ -4280,9 +4280,9 @@ dependencies = [
 
 [[package]]
 name = "zstd-sys"
-version = "1.6.3+zstd.1.5.2"
+version = "2.0.0+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc49afa5c8d634e75761feda8c592051e7eeb4683ba827211eb0d731d3402ea8"
+checksum = "2ab0ea89a91ad628fca266da6c2864366d93dbc4b3008b9ab2d63be89da414b4"
 dependencies = [
  "cc",
  "libc",
