@@ -6,9 +6,10 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-axum = { version = "0.4.3", features = ["multipart"] }
 anyhow = "1.0.56"
 apple-crash-report-parser = "0.4.2"
+async-trait = "0.1.52"
+axum = { version = "0.4.3", features = ["multipart"] }
 backtrace = "0.3.55"
 base64 = "0.13.0"
 cadence = "0.28.0"
@@ -25,8 +26,9 @@ ipnetwork = "0.18.0"
 jsonwebtoken = "8.0.1"
 lazy_static = "1.4.0"
 lru = "0.7.0"
+minidump = "0.10.1"
+minidump-processor = { version = "0.10.1", features = ["symbolic-syms"] }
 num_cpus = "1.13.0"
-minidump = "0.10.0"
 parking_lot = "0.12.0"
 procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.5.5"
@@ -40,20 +42,17 @@ serde = { version = "1.0.119", features = ["derive", "rc"] }
 serde_json = "1.0.61"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
-# NOTE: Keep symbolic in sync with symsorter
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
-# Uncomment the line below for local development
-# symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
 thiserror = "1.0.26"
-tracing = "0.1.29"
-tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-metrics = "0.1.0"
 tokio-util = { version = "0.7.0", features = ["io"] }
 tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 zstd = "0.11.0"
@@ -63,5 +62,5 @@ insta = { version = "1.13.0", features = ["redactions"] }
 procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
-warp = "0.3.0"
 test-assembler = "0.1.5"
+warp = "0.3.0"

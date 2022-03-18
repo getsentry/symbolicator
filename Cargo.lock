@@ -257,6 +257,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "breakpad-symbols"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93b437a51859b36031ac8331d2828f83674a21393a3c90c4c17734c7ee4595c9"
+dependencies = [
+ "async-trait",
+ "circular",
+ "debugid",
+ "log",
+ "minidump-common",
+ "nom 1.2.4",
+ "range-map",
+ "reqwest 0.11.9",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "brownstone"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -363,6 +381,12 @@ dependencies = [
  "time 0.1.44",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "circular"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"
@@ -1570,9 +1594,9 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da059e37532e5950e6ec8dcf0a43f9164c287408dc8d5cde4f941b488a59af98"
+checksum = "fb1cc38e48a5a7e1c2441508db51b0b77241f26d2e2d201b1a247decb8fbfad1"
 dependencies = [
  "debugid",
  "encoding",
@@ -1589,9 +1613,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d618971de3c26a0e3aaa89bb579e97bdc711cbfbb05761a2963dee38cec69444"
+checksum = "0d8672936ac95419dbf1563bdea9283efa6ec3b051797c0f08fde1a05c30f74a"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1601,6 +1625,24 @@ dependencies = [
  "range-map",
  "scroll 0.11.0",
  "smart-default",
+]
+
+[[package]]
+name = "minidump-processor"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfdd9d5c847fad4c414c5ae41dff3f2d63c8fa63a75cc9c280b63a93dc0c46ff"
+dependencies = [
+ "async-trait",
+ "breakpad-symbols",
+ "debugid",
+ "log",
+ "memmap2",
+ "minidump",
+ "scroll 0.11.0",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -1754,6 +1796,12 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "nom"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5b8c256fd9471521bcb84c3cdba98921497f1a331cbc15b8030fc63b82050ce"
+
+[[package]]
+name = "nom"
 version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b1d11e1ef389c76fe5b81bcaf2ea32cf88b62bc494e19f493d0b30e7a930109"
@@ -1773,7 +1821,7 @@ dependencies = [
  "indent_write",
  "joinery",
  "memchr",
- "nom",
+ "nom 7.1.0",
 ]
 
 [[package]]
@@ -2377,6 +2425,7 @@ version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87f242f1488a539a79bac6dbe7c8609ae43b7914b7736210f239a37cccb32525"
 dependencies = [
+ "async-compression",
  "base64",
  "bytes",
  "encoding_rs",
@@ -2401,6 +2450,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-util 0.6.9",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3113,7 +3163,7 @@ dependencies = [
  "goblin",
  "lazy_static",
  "lazycell",
- "nom",
+ "nom 7.1.0",
  "nom-supreme",
  "parking_lot 0.12.0",
  "pdb",
@@ -3173,6 +3223,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
+ "async-trait",
  "axum",
  "backtrace",
  "base64",
@@ -3192,6 +3243,7 @@ dependencies = [
  "lazy_static",
  "lru",
  "minidump",
+ "minidump-processor",
  "num_cpus",
  "parking_lot 0.12.0",
  "procspawn",
