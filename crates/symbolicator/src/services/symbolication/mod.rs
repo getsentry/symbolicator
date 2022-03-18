@@ -1758,9 +1758,9 @@ async fn stackwalk_with_rust_minidump(
     }
 
     // Stackwalk the minidump.
+    let duration = Instant::now();
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
     let provider = TempSymbolProvider::new(cfi_caches.iter());
-    let duration = Instant::now();
     let process_state = minidump_processor::process_minidump(&minidump, &provider).await?;
     let duration = duration.elapsed();
 
