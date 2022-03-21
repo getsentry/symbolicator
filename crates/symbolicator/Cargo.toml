@@ -56,7 +56,7 @@ tower-layer = "0.3"
 tower-service = "0.3"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
-zstd = "0.11.0"
+zstd = "0.11.1"
 
 [dev-dependencies]
 insta = { version = "1.13.0", features = ["redactions"] }
