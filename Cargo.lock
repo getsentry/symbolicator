@@ -1570,9 +1570,9 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da059e37532e5950e6ec8dcf0a43f9164c287408dc8d5cde4f941b488a59af98"
+checksum = "fb1cc38e48a5a7e1c2441508db51b0b77241f26d2e2d201b1a247decb8fbfad1"
 dependencies = [
  "debugid",
  "encoding",
@@ -1589,9 +1589,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d618971de3c26a0e3aaa89bb579e97bdc711cbfbb05761a2963dee38cec69444"
+checksum = "0d8672936ac95419dbf1563bdea9283efa6ec3b051797c0f08fde1a05c30f74a"
 dependencies = [
  "bitflags",
  "debugid",
