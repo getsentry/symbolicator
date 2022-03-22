@@ -66,20 +66,13 @@ pub(super) fn find_stackwalking_problem(
 ) -> Option<NewStackwalkingProblem> {
     metric!(timer("minidump.stackwalk.duration") = result_rust_minidump.duration, "method" => "rust-minidump");
 
-    // Normalize the name of the `eflags` register (returned by breakpad) to `efl` (returned by rust-minidump).
-    // Not doing this leads to tons of spurious diffs.
-    let mut stacktraces_breakpad = result_breakpad.stacktraces.clone();
-    let scan = stacktraces_breakpad
+    let scan = result_breakpad
+        .stacktraces
         .iter()
         .flat_map(|st| st.frames.iter())
         .any(|f| f.trust == FrameTrust::Scan);
-    for stacktrace in stacktraces_breakpad.iter_mut() {
-        if let Some(val) = stacktrace.registers.remove("eflags") {
-            stacktrace.registers.insert("efl".to_string(), val);
-        }
-    }
 
-    if result_rust_minidump.stacktraces != stacktraces_breakpad {
+    if result_rust_minidump.stacktraces != result_breakpad.stacktraces {
         let diff = serde_json::to_string_pretty(&result_breakpad.stacktraces)
             .map_err(|e| {
                 let stderr: &dyn std::error::Error = &e;
