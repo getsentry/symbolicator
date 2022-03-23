@@ -26,7 +26,9 @@ use sentry::protocol::SessionStatus;
 use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use symbolic::common::{Arch, ByteView, CodeId, DebugId, InstructionInfo, Language, Name};
+use symbolic::common::{
+    Arch, ByteView, CodeId, CpuFamily, DebugId, InstructionInfo, Language, Name,
+};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::minidump::cfi::CfiCache;
 use symbolic::minidump::processor::{
@@ -1698,11 +1700,10 @@ fn stackwalk_with_breakpad(
     let requesting_thread_index: Option<usize> = process_state.requesting_thread().try_into().ok();
     let threads = process_state.threads();
     let mut stacktraces = Vec::with_capacity(threads.len());
+    let arch = minidump_state.system_info.cpu_arch;
     for (index, thread) in threads.iter().enumerate() {
         let registers = match thread.frames().get(0) {
-            Some(frame) => map_symbolic_registers_breakpad(
-                frame.registers(minidump_state.system_info.cpu_arch),
-            ),
+            Some(frame) => map_symbolic_registers_breakpad(frame.registers(arch), arch),
             None => Registers::new(),
         };
 
@@ -1713,7 +1714,7 @@ fn stackwalk_with_breakpad(
         let frame_count = thread.frames().len().min(20000);
         let mut frames = Vec::with_capacity(frame_count);
         for frame in thread.frames().iter().take(frame_count) {
-            let return_address = frame.return_address(minidump_state.system_info.cpu_arch);
+            let return_address = frame.return_address(arch);
 
             frames.push(RawFrame {
                 instruction_addr: HexValue(return_address),
@@ -2388,11 +2389,29 @@ impl SymbolicationActor {
     }
 }
 
-fn map_symbolic_registers_breakpad(x: BTreeMap<&'_ str, RegVal>) -> BTreeMap<String, HexValue> {
+/// Normalizes the breakpad register names to the names we use in our output.
+fn map_breakpad_register_name(name: &str, family: CpuFamily) -> String {
+    let canonical = match name {
+        "r11" if family == CpuFamily::Arm32 => "fp",
+        "r13" if family == CpuFamily::Arm32 => "sp",
+        "r14" if family == CpuFamily::Arm32 => "lr",
+        "r15" if family == CpuFamily::Arm32 => "pc",
+        "x29" => "fp",
+        "x30" => "lr",
+        name => name,
+    };
+    canonical.to_owned()
+}
+
+fn map_symbolic_registers_breakpad(
+    x: BTreeMap<&'_ str, RegVal>,
+    arch: Arch,
+) -> BTreeMap<String, HexValue> {
+    let family = arch.cpu_family();
     x.into_iter()
         .map(|(register, value)| {
             (
-                register.to_owned(),
+                map_breakpad_register_name(register, family),
                 HexValue(match value {
                     RegVal::U32(x) => x.into(),
                     RegVal::U64(x) => x,

@@ -1,8 +1,7 @@
 ---
 source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 2350
+assertion_line: 2838
 expression: response.unwrap()
-
 ---
 status: completed
 timestamp: 1521713273
