@@ -2488,14 +2488,13 @@ impl SymbolicationActor {
     }
 }
 
-/// Normalizes the breakpad register names to canonical names as returned by rust-minidump.
+/// Normalizes the breakpad register names to the names we use in our output.
 fn map_breakpad_register_name(name: &str, family: CpuFamily) -> String {
     let canonical = match name {
         "r11" if family == CpuFamily::Arm32 => "fp",
         "r13" if family == CpuFamily::Arm32 => "sp",
         "r14" if family == CpuFamily::Arm32 => "lr",
         "r15" if family == CpuFamily::Arm32 => "pc",
-        "eflags" => "efl",
         "x29" => "fp",
         "x30" => "lr",
         name => name,
@@ -2521,10 +2520,19 @@ fn map_symbolic_registers_breakpad(
         .collect()
 }
 
+/// Normalizes the rust minidump register names to the names we use in our output.
+fn map_rust_minidump_register_name(name: &str) -> String {
+    let canonical = match name {
+        "efl" => "eflags",
+        name => name,
+    };
+    canonical.to_owned()
+}
+
 fn map_symbolic_registers_rust_minidump(context: &MinidumpContext) -> BTreeMap<String, HexValue> {
     context
         .valid_registers()
-        .map(|(reg, val)| (reg.to_owned(), HexValue(val)))
+        .map(|(reg, val)| (map_rust_minidump_register_name(reg), HexValue(val)))
         .collect()
 }
 
