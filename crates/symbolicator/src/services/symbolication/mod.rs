@@ -1510,29 +1510,39 @@ impl TempSymbolProvider {
     }
 
     fn load(cfi_path: &Path) -> Option<SymbolFile> {
-        let bytes = ByteView::open(cfi_path)
-            .map_err(|err| {
-                let stderr: &dyn std::error::Error = &err;
-                tracing::error!(stderr, "Error while reading cficache");
-            })
-            .ok()?;
+        sentry::with_scope(
+            |scope| {
+                scope.set_extra(
+                    "cfi_cache",
+                    sentry::protocol::Value::String(cfi_path.to_string_lossy().to_string()),
+                )
+            },
+            || {
+                let bytes = ByteView::open(cfi_path)
+                    .map_err(|err| {
+                        let stderr: &dyn std::error::Error = &err;
+                        tracing::error!(stderr, "Error while reading cficache");
+                    })
+                    .ok()?;
 
-        let cfi_cache = CfiCache::from_bytes(bytes)
-            // This mostly never happens since we already checked the files
-            // after downloading and they would have been tagged with
-            // CacheStatus::Malformed.
-            .map_err(|err| {
-                let stderr: &dyn std::error::Error = &err;
-                tracing::error!(stderr, "Error while loading cficache");
-            })
-            .ok()?;
+                let cfi_cache = CfiCache::from_bytes(bytes)
+                    // This mostly never happens since we already checked the files
+                    // after downloading and they would have been tagged with
+                    // CacheStatus::Malformed.
+                    .map_err(|err| {
+                        let stderr: &dyn std::error::Error = &err;
+                        tracing::error!(stderr, "Error while loading cficache");
+                    })
+                    .ok()?;
 
-        SymbolFile::from_bytes(cfi_cache.as_slice())
-            .map_err(|err| {
-                let stderr: &dyn std::error::Error = &err;
-                tracing::error!(stderr, "Error while procecssing cficache");
-            })
-            .ok()
+                SymbolFile::from_bytes(cfi_cache.as_slice())
+                    .map_err(|err| {
+                        let stderr: &dyn std::error::Error = &err;
+                        tracing::error!(stderr, "Error while processing cficache");
+                    })
+                    .ok()
+            },
+        )
     }
 
     fn missing_ids(self) -> Vec<DebugId> {
