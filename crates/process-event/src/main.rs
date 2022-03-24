@@ -54,7 +54,7 @@ fn main() -> Result<(), anyhow::Error> {
     file.read_exact(&mut magic)?;
     file.seek(SeekFrom::Start(0))?;
 
-    let req = if &magic == b"MDMP" {
+    let req = if &magic == b"MDMP" || &magic == b"PMDM" {
         let req = client.post(&format!("{}/minidump", symbolicator));
 
         let mut options = Map::new();
