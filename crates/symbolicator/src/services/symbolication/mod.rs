@@ -1531,6 +1531,10 @@ impl TempSymbolProvider {
                     })
                     .ok()?;
 
+                if cfi_cache.as_slice().is_empty() {
+                    return None;
+                }
+
                 SymbolFile::from_bytes(cfi_cache.as_slice())
                     .map_err(|err| {
                         let stderr: &dyn std::error::Error = &err;
