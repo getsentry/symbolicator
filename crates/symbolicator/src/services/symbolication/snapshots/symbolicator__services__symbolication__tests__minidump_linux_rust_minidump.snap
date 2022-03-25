@@ -1,8 +1,7 @@
 ---
-source: crates/symbolicator/src/services/symbolication.rs
-assertion_line: 2932
+source: crates/symbolicator/src/services/symbolication/mod.rs
+assertion_line: 2775
 expression: response.unwrap()
-
 ---
 status: completed
 timestamp: 1522061032
@@ -13,7 +12,7 @@ system_info:
   cpu_arch: x86_64
   device_model: ""
 crashed: true
-crash_reason: SIGSEGV
+crash_reason: SIGSEGV / 0x45
 assertion: ""
 stacktraces:
   - thread_id: 1304

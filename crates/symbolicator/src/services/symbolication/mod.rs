@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryInto;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::fs::File;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -1419,7 +1419,13 @@ impl MinidumpState {
             crashed: process_state.crashed(),
             crash_reason: process_state
                 .crash_reason
-                .map(|r| r.to_string())
+                .map(|reason| {
+                    let mut reason = reason.to_string();
+                    if let Some(addr) = process_state.crash_address {
+                        let _ = write!(&mut reason, " / {:#x}", addr);
+                    }
+                    reason
+                })
                 .unwrap_or_default(),
             assertion: process_state.assertion.clone().unwrap_or_default(),
         }
