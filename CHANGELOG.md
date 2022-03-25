@@ -9,6 +9,7 @@
 - Also populate the shared cache from existing items in the local cache, not only new ones. ([#648](https://github.com/getsentry/symbolicator/pull/648))
 - Add support for minidump processing based on `rust-minidump`, which is opt-in by using the `rust_minidump: true` request option. ([#723](https://github.com/getsentry/symbolicator/pull/723))
 - Removed breakpad Stackwalking from the codebase, leaving `rust-minidump` as the only implementation ([#731](https://github.com/getsentry/symbolicator/pull/731))
+- Removed subprocess isolation of minidump stackwalking, as that code was migrated to safe Rust and isolation became unnecessary. ([#732](https://github.com/getsentry/symbolicator/pull/732))
 
 ### Fixes
 

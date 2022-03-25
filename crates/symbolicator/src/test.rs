@@ -341,9 +341,6 @@ impl FailingSymbolServer {
     }
 }
 
-// make sure procspawn works.
-procspawn::enable_test_support!();
-
 /// Returns the legacy read-only GCS credentials for testing GCS support.
 ///
 /// Use the `gcs_source_key!()` macro instead which will skip correctly.

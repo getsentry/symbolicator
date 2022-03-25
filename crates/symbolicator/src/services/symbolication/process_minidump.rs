@@ -2,9 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
-use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::future;
@@ -18,7 +17,6 @@ use minidump_processor::{
 use parking_lot::RwLock;
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
 use symbolic_minidump::cfi::CfiCache;
@@ -45,41 +43,6 @@ use super::{
 type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 
-/// Generic error serialized over procspawn.
-#[derive(Debug, Serialize, Deserialize)]
-struct ProcError(String);
-
-impl ProcError {
-    pub fn new(d: impl std::fmt::Display) -> Self {
-        Self(d.to_string())
-    }
-}
-
-impl From<std::io::Error> for ProcError {
-    fn from(e: std::io::Error) -> Self {
-        Self::new(e)
-    }
-}
-impl From<minidump::Error> for ProcError {
-    fn from(e: minidump::Error) -> Self {
-        Self::new(e)
-    }
-}
-
-impl From<minidump_processor::ProcessError> for ProcError {
-    fn from(e: minidump_processor::ProcessError) -> Self {
-        Self::new(e)
-    }
-}
-
-impl std::fmt::Display for ProcError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for ProcError {}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
     modules: Option<Vec<(DebugId, RawObjectInfo)>>,
@@ -91,9 +54,8 @@ struct StackWalkMinidumpResult {
 
 /// Contains some meta-data about a minidump.
 ///
-/// The minidump meta-data contained here is extracted in a [`procspawn`] subprocess, so needs
-/// to be (de)serialisable to/from JSON. It is only a way to get this metadata out of the
-/// subprocess and merged into the final symbolication result.
+/// The minidump meta-data contained here is extracted in the [`stackwalk`]
+/// function and merged into the final symbolication result.
 ///
 /// A few more convenience methods exist to help with building the symbolication results.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -440,13 +402,8 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
 async fn stackwalk(
     cfi_caches: Vec<(DebugId, PathBuf)>,
     minidump_path: PathBuf,
-    spawn_time: SystemTime,
     return_modules: bool,
-) -> Result<StackWalkMinidumpResult, ProcError> {
-    if let Ok(duration) = spawn_time.elapsed() {
-        metric!(timer("minidump.stackwalk.spawn.duration") = duration);
-    }
-
+) -> anyhow::Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
@@ -640,41 +597,6 @@ impl ModuleListBuilder {
 }
 
 impl SymbolicationActor {
-    /// Join a procspawn handle with a timeout.
-    ///
-    /// This handles the procspawn result, makes sure to appropriately log any failures and
-    /// save the minidump for debugging.  Returns a simple result converted to the
-    /// [`SymbolicationError`].
-    fn join_procspawn<T, E>(
-        handle: procspawn::JoinHandle<Result<procspawn::serde::Json<T>, E>>,
-        timeout: Duration,
-        metric: &str,
-    ) -> Result<T, anyhow::Error>
-    where
-        T: Serialize + DeserializeOwned,
-        E: Into<anyhow::Error> + Serialize + DeserializeOwned,
-    {
-        match handle.join_timeout(timeout) {
-            Ok(Ok(procspawn::serde::Json(out))) => Ok(out),
-            Ok(Err(err)) => Err(err.into()),
-            Err(perr) => {
-                let reason = if perr.is_timeout() {
-                    "timeout"
-                } else if perr.is_panic() {
-                    "panic"
-                } else if perr.is_remote_close() {
-                    "remote-close"
-                } else if perr.is_cancellation() {
-                    "canceled"
-                } else {
-                    "unknown"
-                };
-                metric!(counter(metric) += 1, "reason" => reason);
-                Err(anyhow::Error::new(perr))
-            }
-        }
-    }
-
     #[tracing::instrument(skip_all)]
     async fn load_cfi_caches(
         &self,
@@ -795,48 +717,15 @@ impl SymbolicationActor {
         cfi_caches: &CfiCacheModules,
         return_modules: bool,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
-        let pool = self.spawnpool.clone();
         let cfi_caches = cfi_caches.for_processing();
         let minidump_path = path.to_path_buf();
 
-        let lazy = async move {
-            let spawn_time = std::time::SystemTime::now();
-            let spawn_result = pool.spawn(
-                (
-                    procspawn::serde::Json(cfi_caches.clone()),
-                    minidump_path.clone(),
-                    spawn_time,
-                    return_modules,
-                ),
-                |(cfi_caches, minidump_path, spawn_time, return_modules)| -> Result<_, ProcError> {
-                    let procspawn::serde::Json(cfi_caches) = cfi_caches;
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .unwrap();
-                    rt.block_on(async move {
-                        stackwalk(cfi_caches, minidump_path, spawn_time, return_modules)
-                            .await
-                            .map(procspawn::serde::Json)
-                    })
-                },
-            );
-
-            let result = Self::join_procspawn(
-                spawn_result,
-                Duration::from_secs(60),
-                "minidump.stackwalk.spawn.error",
-            )?;
-
-            metric!(timer("minidump.stackwalk.duration") = result.duration);
-
-            Ok::<_, anyhow::Error>(result)
-        };
-
         self.cpu_pool
-            .spawn(lazy.bind_hub(sentry::Hub::current()))
-            .await
-            .context("Minidump stackwalk future cancelled")?
+            .spawn(
+                stackwalk(cfi_caches, minidump_path, return_modules)
+                    .bind_hub(sentry::Hub::current()),
+            )
+            .await?
     }
 
     /// Iteratively stackwalks/processes the given `minidump_file`.

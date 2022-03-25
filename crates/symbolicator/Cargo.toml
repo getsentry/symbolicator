@@ -30,7 +30,6 @@ minidump = "0.10.2"
 minidump-processor = { version = "0.10.2", features = ["symbolic-syms"] }
 num_cpus = "1.13.0"
 parking_lot = "0.12.0"
-procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.5.5"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
 rusoto_core = "0.47.0"
@@ -60,7 +59,6 @@ zstd = "0.11.1"
 
 [dev-dependencies]
 insta = { version = "1.14.0", features = ["redactions"] }
-procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
 test-assembler = "0.1.5"

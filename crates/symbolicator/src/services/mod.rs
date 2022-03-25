@@ -75,9 +75,6 @@ impl Service {
     ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let spawnpool = procspawn::Pool::new(config.processing_pool_size)
-            .context("failed to create process pool")?;
-
         let downloader = DownloadService::new(config.clone());
         let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()).await);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
@@ -112,7 +109,6 @@ impl Service {
             caches.diagnostics,
             io_pool,
             cpu_pool,
-            spawnpool,
             config.max_concurrent_requests,
         );
         let symbolication_taskmon = symbolication.symbolication_task_monitor();
