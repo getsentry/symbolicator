@@ -46,7 +46,7 @@ symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demang
 # symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 tempfile = "3.2.0"
 thiserror = "1.0.26"
-tracing = "0.1.29"
+tracing = "0.1.32"
 tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 tokio = { version = "1.0.2", features = ["rt", "macros", "fs"] }
 tokio-metrics = "0.1.0"
