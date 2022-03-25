@@ -7,10 +7,8 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
-use symbolic::{
-    common::ByteView,
-    minidump::cfi::{self, CfiCache},
-};
+use symbolic::common::ByteView;
+use symbolic_minidump::cfi::CfiCache;
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
@@ -46,7 +44,7 @@ const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 0,
     fallbacks: &[],
 };
-static_assert!(symbolic::minidump::cfi::CFICACHE_LATEST_VERSION == 2);
+static_assert!(symbolic_minidump::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
@@ -58,7 +56,7 @@ pub enum CfiCacheError {
     Fetching(#[source] ObjectError),
 
     #[error("failed to parse cficache")]
-    Parsing(#[from] cfi::CfiError),
+    Parsing(#[from] symbolic_minidump::cfi::CfiError),
 
     #[error("failed to parse object")]
     ObjectParsing(#[source] ObjectError),

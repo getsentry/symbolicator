@@ -154,10 +154,6 @@ pub struct RequestOptions {
     /// [`ObjectCandidate`] struct for which extra information is returned for DIF objects.
     #[serde(default)]
     pub dif_candidates: bool,
-
-    /// Stackwalk with rust-minidump.
-    #[serde(default)]
-    pub rust_minidump: bool,
 }
 
 /// A map of register values.
@@ -279,20 +275,6 @@ impl From<minidump_processor::FrameTrust> for FrameTrust {
             minidump_processor::FrameTrust::CallFrameInfo => FrameTrust::Cfi,
             minidump_processor::FrameTrust::PreWalked => FrameTrust::PreWalked,
             minidump_processor::FrameTrust::Context => FrameTrust::Context,
-        }
-    }
-}
-
-impl From<symbolic::minidump::processor::FrameTrust> for FrameTrust {
-    fn from(source: symbolic::minidump::processor::FrameTrust) -> Self {
-        match source {
-            symbolic::minidump::processor::FrameTrust::None => FrameTrust::None,
-            symbolic::minidump::processor::FrameTrust::Scan => FrameTrust::Scan,
-            symbolic::minidump::processor::FrameTrust::CFIScan => FrameTrust::CfiScan,
-            symbolic::minidump::processor::FrameTrust::FP => FrameTrust::Fp,
-            symbolic::minidump::processor::FrameTrust::CFI => FrameTrust::Cfi,
-            symbolic::minidump::processor::FrameTrust::Prewalked => FrameTrust::PreWalked,
-            symbolic::minidump::processor::FrameTrust::Context => FrameTrust::Context,
         }
     }
 }

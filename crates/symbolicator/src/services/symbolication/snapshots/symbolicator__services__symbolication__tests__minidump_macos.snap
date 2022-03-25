@@ -1,8 +1,7 @@
 ---
 source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 2355
+assertion_line: 2475
 expression: response.unwrap()
-
 ---
 status: completed
 timestamp: 1521713398
@@ -13,7 +12,7 @@ system_info:
   cpu_arch: x86_64
   device_model: ""
 crashed: true
-crash_reason: EXC_BAD_ACCESS / KERN_INVALID_ADDRESS
+crash_reason: EXC_BAD_ACCESS / KERN_INVALID_ADDRESS / 0x45
 assertion: ""
 stacktraces:
   - thread_id: 775
