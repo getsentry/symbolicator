@@ -1396,13 +1396,11 @@ impl MinidumpState {
             minidump::system_info::Cpu::Ppc64 => Arch::Ppc64,
             minidump::system_info::Cpu::Arm => Arch::Arm,
             minidump::system_info::Cpu::Arm64 => Arch::Arm64,
-            minidump::system_info::Cpu::Unknown(val) => {
-                let msg = format!("Unknown minidump arch: {}", val);
+            minidump::system_info::Cpu::Mips => Arch::Mips,
+            minidump::system_info::Cpu::Mips64 => Arch::Mips64,
+            arch => {
+                let msg = format!("Unknown minidump arch: {}", arch);
                 sentry::capture_message(&msg, sentry::Level::Error);
-                Arch::Unknown
-            }
-            minidump::system_info::Cpu::Sparc => {
-                sentry::capture_message("Unknown minidump arch: sparc", sentry::Level::Error);
                 Arch::Unknown
             }
         };
