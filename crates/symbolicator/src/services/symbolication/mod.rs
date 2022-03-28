@@ -1991,6 +1991,8 @@ impl SymbolicationActor {
                 "minidump.stackwalk.spawn.error",
             )?;
 
+            metric!(timer("minidump.stackwalk.duration") = result.duration, "method" => if rust_minidump { "rust-minidump" } else { "breakpad" });
+
             Ok::<_, anyhow::Error>(result)
         };
 
