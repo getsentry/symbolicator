@@ -138,7 +138,7 @@ struct FetchCfiCacheInternal {
 /// Extracts the Call Frame Information (CFI) from an object file.
 ///
 /// The extracted CFI is written to `path` in symbolic's
-/// [`CfiCache`](symbolic::minidump::cfi::CfiCache) format.
+/// [`CfiCache`](symbolic_minidump::cfi::CfiCache) format.
 #[tracing::instrument(skip_all)]
 async fn compute_cficache(
     threadpool: tokio::runtime::Handle,
@@ -293,7 +293,7 @@ impl CfiCacheActor {
 /// Extracts the CFI from an object file, writing it to a CFI file.
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
-/// [symbolic::minidump::cfi::CfiCache].
+/// [symbolic_minidump::cfi::CfiCache].
 #[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
