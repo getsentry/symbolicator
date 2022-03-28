@@ -1,7 +1,7 @@
 ---
-source: crates/symbolicator/src/endpoints/minidump.rs
-assertion_line: 110
-expression: response
+source: crates/symbolicator/src/services/symbolication/mod.rs
+assertion_line: 2751
+expression: response.unwrap()
 ---
 status: completed
 timestamp: 1521713273
@@ -12,7 +12,7 @@ system_info:
   cpu_arch: x86
   device_model: ""
 crashed: true
-crash_reason: EXCEPTION_ACCESS_VIOLATION_WRITE
+crash_reason: EXCEPTION_ACCESS_VIOLATION_WRITE / 0x45
 assertion: ""
 stacktraces:
   - thread_id: 1636
@@ -29,53 +29,40 @@ stacktraces:
       esi: "0x759c6314"
       esp: "0x10ff644"
     frames:
-      - status: missing
+      - status: symbolicated
         original_index: 0
         instruction_addr: "0x2a2a3d"
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
+        symbol: main
+        sym_addr: "0x2a2910"
+        function: main
+        filename: main.cpp
+        abs_path: "c:\\projects\\breakpad-tools\\windows\\crash\\main.cpp"
+        lineno: 35
         trust: context
-      - status: missing
+      - status: symbolicated
         original_index: 1
-        instruction_addr: "0x2a28d0"
+        instruction_addr: "0x2a2d96"
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        trust: fp
+        symbol: __scrt_common_main_seh
+        sym_addr: "0x2a2c9e"
+        function: __scrt_common_main_seh
+        filename: exe_common.inl
+        abs_path: "f:\\dd\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl"
+        lineno: 283
+        trust: cfi
       - status: missing
         original_index: 2
-        instruction_addr: "0x7584e9c0"
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        trust: scan
-      - status: missing
-        original_index: 3
-        instruction_addr: "0x70b7ae40"
-        package: "C:\\Windows\\System32\\dbgcore.dll"
-        trust: scan
-      - status: missing
-        original_index: 4
-        instruction_addr: "0x7584e9c0"
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        trust: scan
-      - status: missing
-        original_index: 5
-        instruction_addr: "0x2a3435"
-        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        trust: scan
-      - status: missing
-        original_index: 6
-        instruction_addr: "0x2a2d97"
-        package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        trust: scan
-      - status: missing
-        original_index: 7
         instruction_addr: "0x750662c4"
         package: "C:\\Windows\\System32\\kernel32.dll"
-        trust: fp
+        trust: cfi
       - status: missing
-        original_index: 8
+        original_index: 3
         instruction_addr: "0x771d0f79"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
       - status: missing
-        original_index: 9
+        original_index: 4
         instruction_addr: "0x771d0f44"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
@@ -167,14 +154,14 @@ stacktraces:
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
 modules:
-  - debug_status: missing
-    unwind_status: missing
+  - debug_status: found
+    unwind_status: found
     features:
-      has_debug_info: false
-      has_unwind_info: false
-      has_symbols: false
+      has_debug_info: true
+      has_unwind_info: true
+      has_symbols: true
       has_sources: false
-    arch: unknown
+    arch: x86
     type: pe
     code_id: 5ab380779000
     code_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
@@ -182,6 +169,40 @@ modules:
     debug_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb"
     image_addr: "0x2a0000"
     image_size: 36864
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/5a/b380779000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.ex_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.exe/5AB380779000/crash.exe"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: true
+            has_symbols: true
+            has_sources: false
+        unwind:
+          status: ok
+        debug:
+          status: ok
+      - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym"
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -227,8 +248,8 @@ modules:
     debug_file: apphelp.pdb
     image_addr: "0x70a10000"
     image_size: 598016
-  - debug_status: missing
-    unwind_status: missing
+  - debug_status: unused
+    unwind_status: unused
     features:
       has_debug_info: false
       has_unwind_info: false
@@ -242,6 +263,31 @@ modules:
     debug_file: dbgcore.pdb
     image_addr: "0x70b70000"
     image_size: 151552
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/57/898dab25000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.dll/57898DAB25000/dbgcore.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/dbgcore.pdb/AEC7EF2FDF4B4642A4714C3E5FE8760A1/dbgcore.sym"
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -347,6 +393,31 @@ modules:
     debug_file: wkernel32.pdb
     image_addr: "0x75050000"
     image_size: 917504
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/59/0285e9e0000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/kernel32.dll/590285E9e0000/kernel32.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.sym"
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -362,8 +433,8 @@ modules:
     debug_file: bcryptprimitives.pdb
     image_addr: "0x75130000"
     image_size: 368640
-  - debug_status: missing
-    unwind_status: missing
+  - debug_status: unused
+    unwind_status: unused
     features:
       has_debug_info: false
       has_unwind_info: false
@@ -377,6 +448,31 @@ modules:
     debug_file: wrpcrt4.pdb
     image_addr: "0x75810000"
     image_size: 790528
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/5a/49bb75c1000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/rpcrt4.dll/5A49BB75c1000/rpcrt4.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wrpcrt4.pdb/AE131C6727A74FA19916B5A4AEF411901/wrpcrt4.sym"
+        download:
+          status: notfound
   - debug_status: unused
     unwind_status: unused
     features:
@@ -422,4 +518,29 @@ modules:
     debug_file: wntdll.pdb
     image_addr: "0x77170000"
     image_size: 1585152
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/59/b0d8f3183000.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dl_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/ntdll.dll/59B0D8F3183000/ntdll.dll"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.sym"
+        download:
+          status: notfound
 

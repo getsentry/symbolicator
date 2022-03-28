@@ -15,7 +15,6 @@ use chrono::{DateTime, Utc};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
 use symbolic::debuginfo::Object;
-use symbolic::minidump::processor::FrameTrust;
 use uuid::Uuid;
 
 use crate::utils::addr::AddrMode;
@@ -156,9 +155,9 @@ pub struct RequestOptions {
     #[serde(default)]
     pub dif_candidates: bool,
 
-    /// Whether to run the new stackwalking method in addition to the old one and compare their results.
+    /// Stackwalk with rust-minidump.
     #[serde(default)]
-    pub compare_stackwalking_methods: bool,
+    pub rust_minidump: bool,
 }
 
 /// A map of register values.
@@ -234,6 +233,68 @@ pub struct RawFrame {
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
+}
+
+/// How trustworth the instruction pointer of the frame is.
+///
+/// During stack walking it is not always possible to exactly be sure of the instruction
+/// pointer and thus detected frame, especially if there was not enough Call Frame
+/// Information available.  Frames that were detected by scanning may contain dubious
+/// information.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FrameTrust {
+    /// Unknown.
+    None,
+    /// Found by scanning the stack.
+    Scan,
+    /// Found by scanning the stack using Call Frame Info.
+    CfiScan,
+    /// Derived from the Frame Pointer.
+    Fp,
+    /// Derived from the Call Frame Info rules.
+    Cfi,
+    /// Explicitly provided by an external stack walker (probably on crashing device).
+    PreWalked,
+    /// Provided by the CPU context (i.e. the registers).
+    ///
+    /// This is only possible for the topmost, i.e. the crashing, frame as for the other
+    /// frames the registers need to be reconstructed when unwinding the stack.
+    Context,
+}
+
+impl Default for FrameTrust {
+    fn default() -> Self {
+        FrameTrust::None
+    }
+}
+
+impl From<minidump_processor::FrameTrust> for FrameTrust {
+    fn from(source: minidump_processor::FrameTrust) -> Self {
+        match source {
+            minidump_processor::FrameTrust::None => FrameTrust::None,
+            minidump_processor::FrameTrust::Scan => FrameTrust::Scan,
+            minidump_processor::FrameTrust::CfiScan => FrameTrust::CfiScan,
+            minidump_processor::FrameTrust::FramePointer => FrameTrust::Fp,
+            minidump_processor::FrameTrust::CallFrameInfo => FrameTrust::Cfi,
+            minidump_processor::FrameTrust::PreWalked => FrameTrust::PreWalked,
+            minidump_processor::FrameTrust::Context => FrameTrust::Context,
+        }
+    }
+}
+
+impl From<symbolic::minidump::processor::FrameTrust> for FrameTrust {
+    fn from(source: symbolic::minidump::processor::FrameTrust) -> Self {
+        match source {
+            symbolic::minidump::processor::FrameTrust::None => FrameTrust::None,
+            symbolic::minidump::processor::FrameTrust::Scan => FrameTrust::Scan,
+            symbolic::minidump::processor::FrameTrust::CFIScan => FrameTrust::CfiScan,
+            symbolic::minidump::processor::FrameTrust::FP => FrameTrust::Fp,
+            symbolic::minidump::processor::FrameTrust::CFI => FrameTrust::Cfi,
+            symbolic::minidump::processor::FrameTrust::Prewalked => FrameTrust::PreWalked,
+            symbolic::minidump::processor::FrameTrust::Context => FrameTrust::Context,
+        }
+    }
 }
 
 /// A stack trace containing unsymbolicated stack frames.
