@@ -906,6 +906,7 @@ fn record_symbolication_metrics(
     metrics: StacktraceMetrics,
     modules: &[CompleteObjectInfo],
     stacktraces: &[CompleteStacktrace],
+    method: &'static str,
 ) {
     let origin = origin.to_string();
 
@@ -929,7 +930,7 @@ fn record_symbolication_metrics(
     for m in modules {
         metric!(
             counter("symbolication.debug_status") += 1,
-            "status" => m.debug_status.name()
+            "status" => m.debug_status.name(), "method" => method,
         );
 
         // FIXME: `object_id_from_object_info` allocates and is kind-of expensive
@@ -945,65 +946,65 @@ fn record_symbolication_metrics(
 
     metric!(
         time_raw("symbolication.num_modules") = modules.len() as u64,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unusable_modules") = unusable_modules,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unparsable_modules") = unparsable_modules,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
 
     metric!(
         time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.short_stacktraces") = metrics.short_traces,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.bad_stacktraces") = metrics.bad_traces,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
 
     metric!(
         time_raw("symbolication.num_frames") =
             stacktraces.iter().map(|s| s.frames.len() as u64).sum::<u64>(),
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.scanned_frames") = metrics.scanned_frames,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unsymbolicated_context_frames") =
             metrics.unsymbolicated_context_frames,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unsymbolicated_cfi_frames") =
             metrics.unsymbolicated_cfi_frames,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unsymbolicated_scanned_frames") =
             metrics.unsymbolicated_scanned_frames,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
     metric!(
         time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames,
-        "platform" => &platform, "origin" => &origin,
+        "platform" => &platform, "origin" => &origin, "method" => method,
     );
 }
 
@@ -1215,6 +1216,7 @@ impl SymbolicationActor {
             signal,
             origin,
             modules,
+            options,
             ..
         } = request;
 
@@ -1273,8 +1275,18 @@ impl SymbolicationActor {
 
             // bring modules back into the original order
             let modules = module_lookup.into_inner();
-
-            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
+            let stackwalking_method = if options.rust_minidump {
+                "rust-minidump"
+            } else {
+                "breakpad"
+            };
+            record_symbolication_metrics(
+                origin,
+                metrics,
+                &modules,
+                &stacktraces,
+                stackwalking_method,
+            );
 
             CompletedSymbolicationResponse {
                 signal,
@@ -1979,6 +1991,8 @@ impl SymbolicationActor {
                 "minidump.stackwalk.spawn.error",
             )?;
 
+            metric!(timer("minidump.stackwalk.duration") = result.duration, "method" => if rust_minidump { "rust-minidump" } else { "breakpad" });
+
             Ok::<_, anyhow::Error>(result)
         };
 
@@ -2060,8 +2074,7 @@ impl SymbolicationActor {
         };
 
         result.modules = modules.map(|modules| modules.into_iter().collect());
-
-        metric!(time_raw("minidump.stackwalk.iterations") = iterations);
+        metric!(time_raw("minidump.stackwalk.iterations") = iterations, "method" => if rust_minidump { "rust-minidump" } else { "breakpad" });
         Ok(result)
     }
 
