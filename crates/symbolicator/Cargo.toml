@@ -51,14 +51,14 @@ tokio-util = { version = "0.7.0", features = ["io"] }
 tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
-tracing = "0.1.29"
+tracing = "0.1.32"
 tracing-subscriber = { version = "0.3.6", features = ["tracing-log", "local-time", "env-filter", "json"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
-zstd = "0.11.0"
+zstd = "0.11.1"
 
 [dev-dependencies]
-insta = { version = "1.13.0", features = ["redactions"] }
+insta = { version = "1.14.0", features = ["redactions"] }
 procspawn = { version = "0.10.0", features = ["test-support"] }
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
