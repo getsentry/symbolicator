@@ -214,9 +214,6 @@ impl S3Downloader {
                             }
                         });
                         if let Some(code) = code {
-                            sentry::configure_scope(|scope| {
-                                scope.set_extra("AWS code", code.into());
-                            });
                             return Err(DownloadError::S3WithCode(
                                 response.status,
                                 code.to_string(),
