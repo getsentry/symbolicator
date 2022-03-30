@@ -1998,8 +1998,8 @@ impl SymbolicationActor {
 
         self.cpu_pool
             .spawn(lazy.bind_hub(sentry::Hub::current()))
-            .await?
-            .context("Minidump stackwalk future cancelled")
+            .await
+            .context("Minidump stackwalk future cancelled")?
     }
 
     /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
