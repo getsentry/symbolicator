@@ -4,7 +4,6 @@ use anyhow::Result;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -13,6 +12,9 @@ use url::Url;
 use crate::types::{Glob, ObjectId, ObjectType};
 use crate::utils::paths;
 
+// use aws_sdk_s3::Region;
+
+use aws_types::region::Region;
 /// An identifier for DIF sources.
 ///
 /// This is essentially a newtype for a string.
@@ -125,32 +127,32 @@ pub struct FilesystemSourceConfig {
 }
 
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
-fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
-where
-    D: Deserializer<'de>,
+fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
+    where
+        D: Deserializer<'de>,
 {
     // This is a Visitor that forwards string types to rusoto_core::Region's
     // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
     // impl.
-    struct RusotoRegion;
+    struct SdkRegion;
 
-    impl<'de> serde::de::Visitor<'de> for RusotoRegion {
-        type Value = rusoto_core::Region;
+    impl<'de> serde::de::Visitor<'de> for SdkRegion {
+        type Value = Region;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("string or tuple")
         }
 
-        fn visit_str<E>(self, value: &str) -> Result<rusoto_core::Region, E>
-        where
-            E: serde::de::Error,
+        fn visit_str<E>(self, value: &str) -> Result<Region, E>
+            where
+                E: serde::de::Error,
         {
             FromStr::from_str(value).map_err(|e| E::custom(format!("region: {:?}", e)))
         }
 
-        fn visit_seq<S>(self, seq: S) -> Result<rusoto_core::Region, S::Error>
-        where
-            S: serde::de::SeqAccess<'de>,
+        fn visit_seq<S>(self, seq: S) -> Result<Region, S::Error>
+            where
+                S: serde::de::SeqAccess<'de>,
         {
             Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
         }
@@ -181,7 +183,7 @@ impl Default for AwsCredentialsProvider {
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
-    pub region: rusoto_core::Region,
+    pub region: aws_types::region::Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
     #[serde(default)]
@@ -210,7 +212,7 @@ impl std::hash::Hash for S3SourceKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.access_key.hash(state);
         self.secret_key.hash(state);
-        self.region.name().hash(state);
+        self.region.to_string().hash(state);
     }
 }
 
@@ -515,7 +517,7 @@ impl AsRef<str> for FileType {
 
 #[cfg(test)]
 mod tests {
-    use rusoto_core::Region;
+    use aws_types::region::Region;
 
     use super::*;
 

@@ -9,21 +9,31 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::TryStreamExt;
+// use futures::TryStreamExt;
 use parking_lot::Mutex;
-use reqwest::StatusCode;
-use rusoto_core::RusotoError;
-use rusoto_s3::{GetObjectError, S3};
+// use reqwest::StatusCode;
+// use rusoto_core::RusotoError;
+// use rusoto_s3::{GetObjectError, S3};
+use aws_sdk_s3::{Client, Region};
+// use aws_sdk_s3::error::GetObjectError;
+use aws_types::Credentials;
+// use aws_types::credentials::ProvideCredentials;
+use aws_sdk_s3::types::SdkError;
+// use aws_sdk_s3::{Error};
+use aws_sdk_s3::types::SdkError::*;
+use aws_sdk_s3::error::GetObjectErrorKind;
 
-use rusoto_core::credential::ProvideAwsCredentials;
-use rusoto_core::region::Region;
+use aws_types::credentials::ProvideCredentials;
+
+// use rusoto_core::credential::ProvideAwsCredentials;
+// use rusoto_core::region::Region;
 
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
-type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
+type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<aws_sdk_s3::client::Client>>;
 
 /// Maximum number of cached S3 clients.
 ///
@@ -74,7 +84,7 @@ impl S3RemoteDif {
 
 /// Downloader implementation that supports the [`S3SourceConfig`] source.
 pub struct S3Downloader {
-    http_client: Arc<rusoto_core::HttpClient>,
+    // http_client: Arc<rusoto_core::HttpClient>,
     client_cache: Mutex<ClientCache>,
     connect_timeout: Duration,
     streaming_timeout: Duration,
@@ -83,25 +93,27 @@ pub struct S3Downloader {
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
-            .field("http_client", &format_args!("rusoto_core::HttpClient"))
+            // .field("http_client", &format_args!("rusoto_core::HttpClient"))
             .field("client_cache", &self.client_cache)
             .finish()
     }
 }
 
-pub type S3Error = RusotoError<GetObjectError>;
+// It's one of these?
+// pub type S3Error = aws_sdk_s3::types::SdkError;
+pub type S3Error = aws_sdk_s3::Error;
 
 impl S3Downloader {
     pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
         Self {
-            http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
+            // http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
             connect_timeout,
             streaming_timeout,
         }
     }
 
-    fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
+    async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<aws_sdk_s3::client::Client> {
         let mut container = self.client_cache.lock();
         if let Some(client) = container.get(&*key) {
             metric!(counter("source.s3.client.cached") += 1);
@@ -116,23 +128,16 @@ impl S3Downloader {
             );
             let s3 = Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
-                    let container_provider = rusoto_credential::ContainerProvider::new();
-                    let provider =
-                        match rusoto_credential::AutoRefreshingProvider::new(container_provider) {
-                            Ok(provider) => provider,
-                            Err(err) => panic!(
-                            "Unable to instantiate rusoto_credential::AutoRefreshingProvider: {:?}",
-                            err
-                        ),
-                        };
-                    self.create_s3_client(provider, region)
+                    let provider = aws_config::ecs::EcsCredentialsProvider::builder().build();
+                    self.create_s3_client(provider, region).await
                 }
                 AwsCredentialsProvider::Static => {
-                    let provider = rusoto_credential::StaticProvider::new_minimal(
+                    let provider = Credentials::from_keys(
                         key.access_key.clone(),
                         key.secret_key.clone(),
+                        None,
                     );
-                    self.create_s3_client(provider, region)
+                    self.create_s3_client(provider, region).await
                 }
             });
 
@@ -141,12 +146,14 @@ impl S3Downloader {
         }
     }
 
-    fn create_s3_client<P: ProvideAwsCredentials + Send + Sync + 'static>(
+    async fn create_s3_client<P: ProvideCredentials + Send + Sync + 'static>(
         &self,
         provider: P,
         region: Region,
-    ) -> rusoto_s3::S3Client {
-        rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
+    ) -> aws_sdk_s3::client::Client {
+        let shared_config = aws_config::from_env().credentials_provider(provider).region(region).load().await;
+        Client::new(&shared_config)
+        // rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
 
     /// Downloads a source hosted on an S3 bucket.
@@ -164,93 +171,72 @@ impl S3Downloader {
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
         let source_key = &file_source.source.source_key;
-        let client = self.get_s3_client(source_key);
-        let request = client.get_object(rusoto_s3::GetObjectRequest {
-            key: key.clone(),
-            bucket: bucket.clone(),
-            ..Default::default()
-        });
+        let client = self.get_s3_client(source_key).await;
+        let request = client.get_object()
+            .bucket(bucket.clone())
+            .key(key.clone()).send();
 
         let source = RemoteDif::from(file_source);
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = match request.await {
+        let response0 = request.await;
+        let response = match response0 {
             Ok(Ok(response)) => response,
-            Ok(Err(err)) => {
-                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
-
-                // Do note that it's possible for Amazon to return different status codes when a
-                // file is missing. 403 is returned if the `ListBucket` permission isn't available,
-                // which means that a 403 returned below may actually be for a missing file.
-                // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-                match &err {
-                    RusotoError::Service(_) => return Ok(DownloadStatus::NotFound),
-                    RusotoError::Unknown(response) if response.status == StatusCode::FORBIDDEN => {
-                        return Err(DownloadError::Permissions)
-                    }
-                    RusotoError::Unknown(response) if response.status.is_client_error() => {
-                        return Ok(DownloadStatus::NotFound)
-                    }
-                    RusotoError::Unknown(response) => {
-                        // Parse some stuff out of this giant error collection.
-                        let start = response.body_as_str().find("<Code>");
-                        let end = response.body_as_str().find("</Code>");
-                        let code = match (start, end) {
-                            (Some(start), Some(end)) => {
-                                let start = start + "<Code>".len();
-                                response.body_as_str().get(start..end)
+            Ok(Err(err0)) => {
+                log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err0);
+                return match &err0 {
+                    ConstructionFailure(err) => {
+                        println!("ERROR: ConstructionFailure: {:?}", err0);
+                        Err(DownloadError::Canceled)
+                    },
+                    TimeoutError(err) => {
+                        println!("ERROR: TimeoutError: {:?}", err0);
+                        Err(DownloadError::Canceled)
+                    },
+                    DispatchFailure(err) => {
+                        println!("ERROR: DispatchFailure: {:?}", err0);
+                        Err(DownloadError::Canceled)
+                    },
+                    ResponseError { err, raw: _ } => {
+                        println!("ERROR: ResponseError: {:?}", err0);
+                        Err(DownloadError::Canceled)
+                    },
+                    ServiceError { err: err1, raw: _ } => {
+                        println!("ServiceError: {:?}", &err1);
+                        match &err1.kind {
+                            GetObjectErrorKind::NoSuchKey(err) => {
+                                println!("ERROR: NoSuchKey: {:?}", &err1)
                             }
-                            _ => None,
+                            GetObjectErrorKind::InvalidObjectState(err) => {
+                                println!("ERROR: InvalidObjectState: {:?}", &err1);
+                            }
+                            GetObjectErrorKind::Unhandled(err) => {
+                                println!("ERROR: Unhandled: {:?}", &err1)
+                            }
+                            _ => println!("ERROR: other GetObjectErrorKind: {:?}", &err1.kind),
                         };
-                        let start = response.body_as_str().find("<Message>");
-                        let end = response.body_as_str().find("</Message>");
-                        let message = match (start, end) {
-                            (Some(start), Some(end)) => {
-                                let start = start + "<Message>".len();
-                                response.body_as_str().get(start..end)
-                            }
-                            _ => None,
-                        };
-                        sentry::configure_scope(|scope| {
-                            scope.set_extra("AWS body:", response.body_as_str().into());
-                            if let Some(message) = message {
-                                scope.set_extra("AWS message", message.into());
-                            }
-                            if let Some(code) = code {
-                                scope.set_extra("AWS code", code.into());
-                            }
-                        });
-                        if let Some(code) = code {
-                            return Err(DownloadError::S3WithCode(
-                                response.status,
-                                code.to_string(),
-                            ));
-                        } else {
-                            return Err(DownloadError::S3(err));
-                        }
+                        Err(DownloadError::S3(err0.into()))
                     }
-                    _ => return Err(err.into()),
                 }
-            }
+            },
             Err(_) => {
+                // TODO Verify this is still the correct action to take with aws-sdk-rust
                 // Timed out
                 return Err(DownloadError::Canceled);
             }
         };
 
-        let stream = match response.body {
-            Some(body) => body.map_err(DownloadError::Io),
-            None => {
+        let content_length = u32::try_from(response.content_length).ok();
+        let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
+
+        let stream = match content_length {
+            Some(0) | None => {
                 tracing::debug!("Empty response from s3:{}{}", bucket, &key);
                 return Ok(DownloadStatus::NotFound);
             }
+            Some(_) => response.body,
         };
-
-        let content_length = response
-            .content_length
-            .and_then(|cl| u32::try_from(cl).ok());
-        let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
 
         super::download_stream(&source, stream, destination, timeout).await
     }
@@ -273,6 +259,7 @@ impl S3Downloader {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -282,7 +269,7 @@ mod tests {
     use crate::types::ObjectType;
 
     use super::*;
-    use rusoto_s3::S3Client;
+    use aws_sdk_s3::client::Client;
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.
@@ -296,7 +283,7 @@ mod tests {
             None
         } else {
             Some(S3SourceKey {
-                region: rusoto_core::Region::UsEast1,
+                region: aws_sdk_s3::Region::from_static("us-east-1"),
                 aws_credentials_provider: AwsCredentialsProvider::Static,
                 access_key,
                 secret_key,
@@ -544,3 +531,4 @@ mod tests {
         );
     }
 }
+*/

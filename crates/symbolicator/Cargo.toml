@@ -7,6 +7,9 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
+aws-config = "0.9.0"
+aws-types = { version = "0.9.0", features = ["hardcoded-credentials"] }
+aws-sdk-s3 = "0.9.0"
 apple-crash-report-parser = "0.4.2"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
@@ -32,9 +35,6 @@ num_cpus = "1.13.0"
 parking_lot = "0.12.0"
 regex = "1.5.5"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
-rusoto_core = "0.48.0"
-rusoto_credential = "0.48.0"
-rusoto_s3 = "0.48.0"
 sentry = { version = "0.25.0", features = ["anyhow", "debug-images", "log", "tracing"] }
 sentry-tower = { version = "0.25.0", features = ["http"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
