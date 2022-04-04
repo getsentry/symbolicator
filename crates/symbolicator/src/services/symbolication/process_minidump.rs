@@ -1,37 +1,49 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use futures::future;
+use minidump::system_info::Os;
 use minidump::MinidumpContext;
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
-    FillSymbolError, FrameSymbolizer, FrameWalker, SymbolFile, SymbolProvider, SymbolStats,
+    FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile, SymbolProvider,
+    SymbolStats,
 };
 use parking_lot::RwLock;
 use sentry::types::DebugId;
-use sentry::SentryFutureExt;
+use sentry::{Hub, SentryFutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use symbolic::common::ByteView;
+use symbolic::common::{Arch, ByteView};
 use symbolic_minidump::cfi::CfiCache;
 use tempfile::TempPath;
 
+use crate::cache::CacheStatus;
+use crate::services::cficaches::{CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
+use crate::services::objects::ObjectError;
 use crate::sources::SourceConfig;
 use crate::types::{
-    CompleteObjectInfo, FrameTrust, ObjectFileStatus, ObjectType, RawFrame, RawObjectInfo,
-    RawStacktrace, Registers, RequestOptions, Scope,
+    AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust,
+    ObjectFeatures, ObjectFileStatus, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
+    Registers, RequestId, RequestOptions, Scope, SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
 use super::{
-    CfiCacheModules, Minidump, MinidumpState, StacktraceOrigin, SymbolicateStacktraces,
+    object_id_from_object_info, MaxRequestsError, StacktraceOrigin, SymbolicateStacktraces,
     SymbolicationActor, SymbolicationError,
 };
+
+type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
+type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 
 /// Generic error serialized over procspawn.
 #[derive(Debug, Serialize, Deserialize)]
@@ -75,6 +87,98 @@ struct StackWalkMinidumpResult {
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: std::time::Duration,
+}
+
+/// Contains some meta-data about a minidump.
+///
+/// The minidump meta-data contained here is extracted in a [`procspawn`] subprocess, so needs
+/// to be (de)serialisable to/from JSON. It is only a way to get this metadata out of the
+/// subprocess and merged into the final symbolication result.
+///
+/// A few more convenience methods exist to help with building the symbolication results.
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub(super) struct MinidumpState {
+    timestamp: DateTime<Utc>,
+    system_info: SystemInfo,
+    crashed: bool,
+    crash_reason: String,
+    assertion: String,
+}
+
+impl MinidumpState {
+    fn from_process_state(process_state: &ProcessState) -> Self {
+        let info = &process_state.system_info;
+
+        let cpu_arch = match info.cpu {
+            minidump::system_info::Cpu::X86 => Arch::X86,
+            minidump::system_info::Cpu::X86_64 => Arch::Amd64,
+            minidump::system_info::Cpu::Ppc => Arch::Ppc,
+            minidump::system_info::Cpu::Ppc64 => Arch::Ppc64,
+            minidump::system_info::Cpu::Arm => Arch::Arm,
+            minidump::system_info::Cpu::Arm64 => Arch::Arm64,
+            minidump::system_info::Cpu::Mips => Arch::Mips,
+            minidump::system_info::Cpu::Mips64 => Arch::Mips64,
+            arch => {
+                let msg = format!("Unknown minidump arch: {}", arch);
+                sentry::capture_message(&msg, sentry::Level::Error);
+                Arch::Unknown
+            }
+        };
+
+        MinidumpState {
+            timestamp: process_state.time.into(),
+            system_info: SystemInfo {
+                os_name: normalize_minidump_os_name(info.os).to_owned(),
+                os_version: info.os_version.clone().unwrap_or_default(),
+                os_build: info.os_build.clone().unwrap_or_default(),
+                cpu_arch,
+                device_model: String::default(),
+            },
+            crashed: process_state.crashed(),
+            crash_reason: process_state
+                .crash_reason
+                .map(|reason| {
+                    let mut reason = reason.to_string();
+                    if let Some(addr) = process_state.crash_address {
+                        let _ = write!(&mut reason, " / {:#x}", addr);
+                    }
+                    reason
+                })
+                .unwrap_or_default(),
+            assertion: process_state.assertion.clone().unwrap_or_default(),
+        }
+    }
+
+    /// Merges this meta-data into a symbolication result.
+    ///
+    /// This updates the `response` with the meta-data contained.
+    fn merge_into(mut self, response: &mut CompletedSymbolicationResponse) {
+        if self.system_info.cpu_arch == Arch::Unknown {
+            self.system_info.cpu_arch = response
+                .modules
+                .iter()
+                .map(|object| object.arch)
+                .find(|arch| *arch != Arch::Unknown)
+                .unwrap_or_default();
+        }
+
+        response.timestamp = Some(self.timestamp);
+        response.system_info = Some(self.system_info);
+        response.crashed = Some(self.crashed);
+        response.crash_reason = Some(self.crash_reason);
+        response.assertion = Some(self.assertion);
+    }
+
+    /// Returns the type of executable object that produced this minidump.
+    fn object_type(&self) -> ObjectType {
+        // Note that the names matched here are normalised by normalize_minidump_os_name().
+        match self.system_info.os_name.as_str() {
+            "Windows" => ObjectType::Pe,
+            "iOS" | "macOS" => ObjectType::Macho,
+            "Linux" | "Solaris" | "Android" => ObjectType::Elf,
+            _ => ObjectType::Unknown,
+        }
+    }
 }
 
 struct SymbolicatorSymbolProvider {
@@ -190,6 +294,120 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
                 (debug_id.to_string(), stats)
             })
             .collect()
+    }
+}
+
+/// A module which was referenced in a minidump and processing information for it.
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct CfiModule {
+    /// Combined features provided by all the DIFs we found for this module.
+    features: ObjectFeatures,
+    /// Status of the CFI or unwind information for this module.
+    cfi_status: ObjectFileStatus,
+    /// Path to the CFI file in our cache, if there was a cache.
+    cfi_path: Option<PathBuf>,
+    /// The DIF object candidates for for this module.
+    cfi_candidates: AllObjectCandidates,
+    /// Indicates if the module was scanned during stack unwinding.
+    scanned: bool,
+    /// Indicates if the CFI for this module was consulted during stack unwinding.
+    cfi_used: bool,
+}
+
+/// The CFI modules referenced by a minidump for CFI processing.
+///
+/// This is continuously updated with [`CfiCacheResult`] from referenced modules that have not yet
+/// been fetched.  It contains the CFI cache status of the modules and allows loading the CFI from
+/// the caches for the correct minidump stackwalking.
+///
+/// It maintains the status of the object file availability itself as well as any features
+/// provided by it.  This can later be used to compile the required modules information
+/// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
+/// this.
+#[derive(Clone, Debug)]
+struct CfiCacheModules {
+    /// We have to make sure to hold onto a reference to the CfiCacheFile,
+    /// to make sure it will not be evicted in the middle of reading it in the procspawn
+    cache_files: Vec<Arc<CfiCacheFile>>,
+    inner: BTreeMap<DebugId, CfiModule>,
+}
+
+impl CfiCacheModules {
+    /// Creates a new CFI cache entries for code modules.
+    fn new() -> Self {
+        Self {
+            cache_files: vec![],
+            inner: Default::default(),
+        }
+    }
+
+    /// Extend the CacheModules with the fetched caches represented by
+    /// [`CfiCacheResult`].
+    fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
+        self.cache_files.extend(
+            cfi_caches
+                .iter()
+                .filter_map(|(_, cache_result)| cache_result.as_ref().ok())
+                .map(Arc::clone),
+        );
+
+        let iter = cfi_caches.into_iter().map(|(code_id, cache_result)| {
+            let cfi_module = match cache_result {
+                Ok(cfi_cache) => {
+                    let cfi_status = match cfi_cache.status() {
+                        CacheStatus::Positive => ObjectFileStatus::Found,
+                        CacheStatus::Negative => ObjectFileStatus::Missing,
+                        CacheStatus::Malformed(details) => {
+                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            let stderr: &dyn std::error::Error = &err;
+                            tracing::warn!(stderr, "Error while parsing cficache: {}", details);
+                            ObjectFileStatus::from(&err)
+                        }
+                        // If the cache entry is for a cache specific error, it must be
+                        // from a previous cficache conversion attempt.
+                        CacheStatus::CacheSpecificError(details) => {
+                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                            tracing::warn!("Cached error from parsing cficache: {}", details);
+                            ObjectFileStatus::from(&err)
+                        }
+                    };
+                    let cfi_path = match cfi_cache.status() {
+                        CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
+                        _ => None,
+                    };
+                    CfiModule {
+                        features: cfi_cache.features(),
+                        cfi_status,
+                        cfi_path,
+                        cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
+                        ..Default::default()
+                    }
+                }
+                Err(err) => {
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::debug!(stderr, "Error while fetching cficache");
+                    CfiModule {
+                        cfi_status: ObjectFileStatus::from(err.as_ref()),
+                        ..Default::default()
+                    }
+                }
+            };
+            (code_id, cfi_module)
+        });
+        self.inner.extend(iter)
+    }
+
+    /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
+    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
+        self.inner
+            .iter()
+            .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
+            .collect()
+    }
+
+    /// Returns the inner Map.
+    fn into_inner(self) -> BTreeMap<DebugId, CfiModule> {
+        self.inner
     }
 }
 
@@ -461,6 +679,102 @@ impl SymbolicationActor {
         }
     }
 
+    #[tracing::instrument(skip_all)]
+    async fn load_cfi_caches(
+        &self,
+        scope: Scope,
+        requests: &[(DebugId, &RawObjectInfo)],
+        sources: Arc<[SourceConfig]>,
+    ) -> Vec<CfiCacheResult> {
+        let futures = requests.iter().map(|(id, object_info)| {
+            let sources = sources.clone();
+            let scope = scope.clone();
+
+            async move {
+                let result = self
+                    .cficaches
+                    .fetch(FetchCfiCache {
+                        object_type: object_info.ty,
+                        identifier: object_id_from_object_info(object_info),
+                        sources,
+                        scope,
+                    })
+                    .await;
+                ((*id).to_owned(), result)
+            }
+            .bind_hub(Hub::new_from_top(Hub::current()))
+        });
+
+        future::join_all(futures).await
+    }
+
+    /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
+    fn maybe_persist_minidump(&self, minidump_file: TempPath) {
+        if let Some(dir) = self.diagnostics_cache.cache_dir() {
+            if let Some(file_name) = minidump_file.file_name() {
+                let path = dir.join(file_name);
+                match minidump_file.persist(&path) {
+                    Ok(_) => {
+                        sentry::configure_scope(|scope| {
+                            scope.set_extra(
+                                "crashed_minidump",
+                                sentry::protocol::Value::String(path.to_string_lossy().to_string()),
+                            );
+                        });
+                    }
+                    Err(e) => tracing::error!("Failed to save minidump {:?}", &e),
+                };
+            }
+        } else {
+            tracing::debug!("No diagnostics retention configured, not saving minidump");
+        }
+    }
+
+    async fn do_process_minidump(
+        &self,
+        scope: Scope,
+        minidump_file: TempPath,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+        let (request, state) = self
+            .do_stackwalk_minidump(scope, minidump_file, sources, options)
+            .await?;
+
+        let mut response = self.do_symbolicate(request).await?;
+        state.merge_into(&mut response);
+
+        Ok(response)
+    }
+
+    /// Creates a new request to process a minidump.
+    ///
+    /// Returns `None` if the `SymbolicationActor` is already processing the
+    /// maximum number of requests, as given by `max_concurrent_requests`.
+    pub fn process_minidump(
+        &self,
+        scope: Scope,
+        minidump_file: TempPath,
+        sources: Arc<[SourceConfig]>,
+        options: RequestOptions,
+    ) -> Result<RequestId, MaxRequestsError> {
+        let slf = self.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "process_minidump",
+            "process_minidump",
+            span,
+        );
+        self.create_symbolication_request(async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf
+                .do_process_minidump(scope, minidump_file, sources, options)
+                .await;
+            transaction.finish();
+            res
+        })
+    }
     /// Unwind the stack from a minidump.
     ///
     /// This processes the minidump to stackwalk all the threads found in the minidump.
@@ -695,6 +1009,21 @@ fn map_symbolic_registers(context: &MinidumpContext) -> BTreeMap<String, HexValu
         .valid_registers()
         .map(|(reg, val)| (reg.to_owned(), HexValue(val)))
         .collect()
+}
+
+fn normalize_minidump_os_name(os: Os) -> &'static str {
+    // Be aware that MinidumpState::object_type matches on names produced here.
+    match os {
+        Os::Windows => "Windows",
+        Os::MacOs => "macOS",
+        Os::Ios => "iOS",
+        Os::Linux => "Linux",
+        Os::Solaris => "Solaris",
+        Os::Android => "Android",
+        Os::Ps3 => "PS3",
+        Os::NaCl => "NaCl",
+        Os::Unknown(_) => "", // TODO(ja): What was the breakpad value?
+    }
 }
 
 #[cfg(test)]
