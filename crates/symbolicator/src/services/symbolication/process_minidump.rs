@@ -1034,7 +1034,7 @@ mod tests {
 
     use tempfile::NamedTempFile;
 
-    use crate::services::symbolication::stackwalking::ModuleListBuilder;
+    use super::*;
     use crate::services::symbolication::tests::setup_service;
     use crate::test;
     use crate::types::Scope;
