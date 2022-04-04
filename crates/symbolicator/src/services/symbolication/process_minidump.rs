@@ -780,7 +780,7 @@ impl SymbolicationActor {
     /// This processes the minidump to stackwalk all the threads found in the minidump.
     ///
     /// The `cfi_results` will contain all modules found in the minidump and the result of trying
-    /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`].
+    /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`](crate.services.cficaches.CfiCacheActor).
     ///
     /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
     /// Once it has stacktraces it creates the list of used modules and returns the
