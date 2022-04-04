@@ -12,7 +12,7 @@ system_info:
   cpu_arch: x86
   device_model: ""
 crashed: true
-crash_reason: EXCEPTION_ACCESS_VIOLATION_WRITE
+crash_reason: EXCEPTION_ACCESS_VIOLATION_WRITE / 0x45
 assertion: ""
 stacktraces:
   - thread_id: 1636

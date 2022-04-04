@@ -8,6 +8,7 @@
 - Added windows binaries for `wasm-split` and `symsorter` to releases ([#624](https://github.com/getsentry/symbolicator/pull/624))
 - Also populate the shared cache from existing items in the local cache, not only new ones. ([#648](https://github.com/getsentry/symbolicator/pull/648))
 - Add support for minidump processing based on `rust-minidump`, which is opt-in by using the `rust_minidump: true` request option. ([#723](https://github.com/getsentry/symbolicator/pull/723))
+- Removed breakpad Stackwalking from the codebase, leaving `rust-minidump` as the only implementation ([#731](https://github.com/getsentry/symbolicator/pull/731))
 
 ### Fixes
 
