@@ -45,7 +45,7 @@ impl fmt::Display for SourceId {
 /// Sources provide the ability to download Download Information Files (DIF).
 /// Their configuration is a combination of the location of the source plus any
 /// required authentication etc.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
     /// Sentry debug files endpoint.
@@ -128,8 +128,8 @@ pub struct FilesystemSourceConfig {
 
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
 fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     // This is a Visitor that forwards string types to rusoto_core::Region's
     // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
@@ -140,21 +140,23 @@ fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
         type Value = Region;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("string or tuple")
+            formatter.write_str("string")
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Region, E>
-            where
-                E: serde::de::Error,
+        where
+            E: serde::de::Error,
         {
-            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {:?}", e)))
-        }
-
-        fn visit_seq<S>(self, seq: S) -> Result<Region, S::Error>
-            where
-                S: serde::de::SeqAccess<'de>,
-        {
-            Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
+            // aws-sdk-rust does not validate region strings
+            let v: &str = &value.to_lowercase();
+            match v {
+                "ap-east-1" | "ap-northeast-1" | "ap-northeast-2" | "ap-south-1"
+                | "ap-southeast-1" | "ap-southeast-2" | "ca-central-1" | "cn-north-1"
+                | "cn-northwest-1" | "eu-central-1" | "eu-north-1" | "eu-west-1" | "eu-west-2"
+                | "eu-west-3" | "sa-east-1" | "us-east-1" | "us-east-2" | "us-gov-east-1"
+                | "us-gov-west-1" | "us-west-1" | "us-west-2" => Ok(Region::new(v)),
+                invalid_region => Err(E::custom(format!("unknown region: {}", invalid_region))),
+            }
         }
     }
 
@@ -179,7 +181,7 @@ impl Default for AwsCredentialsProvider {
 }
 
 /// Amazon S3 authorization information.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
@@ -248,7 +250,7 @@ pub struct GcsSourceConfig {
 }
 
 /// Configuration for S3 symbol buckets.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct S3SourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
