@@ -190,9 +190,8 @@ impl SymbolicatorSymbolProvider {
     /// Load the CFI information from the cache.
     ///
     /// This reads the CFI caches from disk and returns them in a format suitable for the
-    /// breakpad processor to stackwalk.
+    /// processor to stackwalk.
     pub fn new<'a, M: Iterator<Item = &'a (DebugId, PathBuf)>>(modules: M) -> Self {
-        // TODO(ja): Make TempSymbolProvider the thing serialized to procspawn (prepares for moving in-process)
         Self {
             files: modules
                 .filter_map(|(id, path)| Some((*id, Self::load(path)?)))
@@ -259,7 +258,6 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         // Symbolicator's CFI caches never store symbolication information. However, we could hook
         // up symbolic here to fill frame info right away. This requires a larger refactor of
         // minidump processing and the types, however.
-        // TODO(ja): Check if this is OK. Shouldn't trigger skip heuristics
         match self.files.contains_key(&debug_id) {
             true => Ok(()),
             false => Err(FillSymbolError {}),
@@ -439,7 +437,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
     }
 }
 
-async fn stackwalk_with_rust_minidump(
+async fn stackwalk(
     cfi_caches: Vec<(DebugId, PathBuf)>,
     minidump_path: PathBuf,
     spawn_time: SystemTime,
@@ -466,8 +464,6 @@ async fn stackwalk_with_rust_minidump(
             .iter()
             .map(|module| {
                 (
-                    // TODO(ja): Check how this can be empty and how we shim.
-                    //           Probably needs explicit conversion from raw
                     module.debug_identifier().unwrap_or_default(),
                     object_info_from_minidump_module(object_type, module),
                 )
@@ -782,7 +778,7 @@ impl SymbolicationActor {
     /// The `cfi_results` will contain all modules found in the minidump and the result of trying
     /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`](crate.services.cficaches.CfiCacheActor).
     ///
-    /// This function will load the CFI files and ask breakpad to stackwalk the minidump.
+    /// This function will load the CFI files and ask rust-minidump to stackwalk the minidump.
     /// Once it has stacktraces it creates the list of used modules and returns the
     /// un-symbolicated stacktraces in a structure suitable for requesting symbolication.
     ///
@@ -819,14 +815,9 @@ impl SymbolicationActor {
                         .build()
                         .unwrap();
                     rt.block_on(async move {
-                        stackwalk_with_rust_minidump(
-                            cfi_caches,
-                            minidump_path,
-                            spawn_time,
-                            return_modules,
-                        )
-                        .await
-                        .map(procspawn::serde::Json)
+                        stackwalk(cfi_caches, minidump_path, spawn_time, return_modules)
+                            .await
+                            .map(procspawn::serde::Json)
                     })
                 },
             );
@@ -848,7 +839,7 @@ impl SymbolicationActor {
             .context("Minidump stackwalk future cancelled")?
     }
 
-    /// Iteratively stackwalks/processes the given `minidump_file` using breakpad.
+    /// Iteratively stackwalks/processes the given `minidump_file`.
     async fn stackwalk_minidump_iteratively(
         &self,
         scope: Scope,
@@ -974,7 +965,7 @@ impl SymbolicationActor {
     }
 }
 
-/// Merges the Stack Traces processed via Breakpad with the ones captured on the Client.
+/// Merges the stacktraces processed via rust-minidump with the ones captured on the client.
 ///
 /// For now, this means we will prefer the client-side stack trace over the processed one, but in
 /// the future we could be a bit smarter about what to do.
@@ -1022,7 +1013,7 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
         Os::Android => "Android",
         Os::Ps3 => "PS3",
         Os::NaCl => "NaCl",
-        Os::Unknown(_) => "", // TODO(ja): What was the breakpad value?
+        Os::Unknown(_) => "",
     }
 }
 
