@@ -448,6 +448,7 @@ impl FileType {
             SourceBundle,
             UuidMap,
             BcSymbolMap,
+            Usym,
         ]
     }
 
