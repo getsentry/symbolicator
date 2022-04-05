@@ -42,7 +42,9 @@ function skipChangelog() {
     return true;
   }
   for (let review of danger.github.reviews) {
-    if (review.body && review.body.includes("#skip-changelog")) {
+      if (review.body
+          && review.body.includes("#skip-changelog")
+          && review.body.includes("@dependabot")) {
       return true;
     }
   }
