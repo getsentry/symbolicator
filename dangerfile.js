@@ -39,13 +39,14 @@ function skipChangelog() {
     return false;
   }
   if ((danger.github.pr.body + "").includes("#skip-changelog")) {
+    // The PR description can always contain skip-changelog
     return true;
   }
-  for (let review of danger.github.reviews) {
-      if (review.body
-          && review.body.includes("#skip-changelog")
-          && review.body.includes("@dependabot")) {
-      return true;
+  for (let comment of danger.github.api.getPullRequestComments) {
+    // If a comment in a command to dependabot we also accept a #skip-changelog marker there
+    if (comment.body.includes("@dependabot")
+        && comment.body.includes("#skip-changelog")) {
+        return true;
     }
   }
   return false;
