@@ -331,7 +331,6 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::SourceBundle => None,
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
-        // TODO(sebastian): is this correct?
         FileType::Usym => None,
     }
 }
@@ -350,7 +349,6 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
         }
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
         FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
-        // TODO(sebastian): is this correct? do we have to fall back to the identifier for usym?
         FileType::SourceBundle | FileType::Breakpad | FileType::Usym => identifier.object_type,
     }
 }
