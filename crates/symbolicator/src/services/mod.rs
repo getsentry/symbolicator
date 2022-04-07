@@ -47,6 +47,7 @@ pub mod objects;
 pub mod shared_cache;
 pub mod symbolication;
 pub mod symcaches;
+mod usym;
 
 use self::bitcode::BitcodeService;
 use self::cficaches::CfiCacheActor;
