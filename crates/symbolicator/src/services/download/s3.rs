@@ -117,9 +117,14 @@ impl S3Downloader {
             let s3 = Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
                     let container_provider = rusoto_credential::ContainerProvider::new();
-                    let provider = match rusoto_credential::AutoRefreshingProvider::new(container_provider) {
+                    let provider = match rusoto_credential::AutoRefreshingProvider::new(
+                        container_provider,
+                    ) {
                         Ok(provider) => provider,
-                        Err(err) => panic!("Unable to instantiate rusoto_credential::AutoRefreshingProvider: {:?}", err),
+                        Err(err) => panic!(
+                            "Unable to instantiate rusoto_credential::AutoRefreshingProvider: {:?}",
+                            err
+                        ),
                     };
                     self.create_s3_client(provider, region)
                 }
