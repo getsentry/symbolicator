@@ -52,7 +52,7 @@ tokio-util = { version = "0.7.1", features = ["io"] }
 tower = "0.4"
 tower-layer = "0.3"
 tower-service = "0.3"
-tracing = "0.1.32"
+tracing = "0.1.33"
 tracing-subscriber = { version = "0.3.10", features = ["tracing-log", "local-time", "env-filter", "json"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
