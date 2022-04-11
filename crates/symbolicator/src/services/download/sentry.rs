@@ -214,16 +214,17 @@ impl SentryDownloader {
         index_url.query_pairs_mut().extend_pairs(
             file_types
                 .iter()
-                .map(|file_type| match file_type {
-                    FileType::UuidMap => "uuidmap",
-                    FileType::BcSymbolMap => "bcsymbolmap",
-                    FileType::Pe => "pe",
-                    FileType::Pdb => "pdb",
-                    FileType::MachDebug | FileType::MachCode => "macho",
-                    FileType::ElfDebug | FileType::ElfCode => "elf",
-                    FileType::WasmDebug | FileType::WasmCode => "wasm",
-                    FileType::Breakpad => "breakpad",
-                    FileType::SourceBundle => "sourcebundle",
+                .filter_map(|file_type| match file_type {
+                    FileType::UuidMap => Some("uuidmap"),
+                    FileType::BcSymbolMap => Some("bcsymbolmap"),
+                    FileType::Pe => Some("pe"),
+                    FileType::Pdb => Some("pdb"),
+                    FileType::MachDebug | FileType::MachCode => Some("macho"),
+                    FileType::ElfDebug | FileType::ElfCode => Some("elf"),
+                    FileType::WasmDebug | FileType::WasmCode => Some("wasm"),
+                    FileType::Breakpad => Some("breakpad"),
+                    FileType::SourceBundle => Some("sourcebundle"),
+                    FileType::Usym => None,
                 })
                 .map(|val| ("file_formats", val)),
         );

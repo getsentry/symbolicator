@@ -121,7 +121,7 @@ fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
 
 /// Returns the relative locations on a native symbols server for the requested DIF.
 ///
-/// Some filetypes can not be stored on a native symbol server so return an emtpy vector.
+/// Some filetypes can not be stored on a native symbol server so return an empty vector.
 fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
     match filetype {
         // ELF follows GDB "Build ID Method" conventions.
@@ -198,6 +198,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         }
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
+        FileType::Usym => Vec::new(),
     }
 }
 
@@ -280,8 +281,11 @@ fn get_symstore_path(
         // Microsoft SymbolServer does not specify PropertyList.
         FileType::UuidMap => None,
 
-        // Microsoft SymbolServer does not speicfy BCSymbolMap.
+        // Microsoft SymbolServer does not specify BCSymbolMap.
         FileType::BcSymbolMap => None,
+
+        // Microsoft SymbolServer does not specify Usym.
+        FileType::Usym => None,
     }
 }
 
@@ -327,6 +331,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::SourceBundle => None,
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
+        FileType::Usym => None,
     }
 }
 
@@ -344,7 +349,7 @@ fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> O
         }
         FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
         FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
-        FileType::SourceBundle | FileType::Breakpad => identifier.object_type,
+        FileType::SourceBundle | FileType::Breakpad | FileType::Usym => identifier.object_type,
     }
 }
 
@@ -359,6 +364,7 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
         FileType::UuidMap => "uuidmap",
         FileType::BcSymbolMap => "bcsymbolmap",
+        FileType::Usym => "usym",
     };
 
     // determine the ID we use for the path

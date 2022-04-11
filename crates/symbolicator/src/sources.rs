@@ -425,6 +425,9 @@ pub enum FileType {
     /// BCSymbolMap, de-obfuscates symbol names for MachO.
     #[serde(rename = "bcsymbolmap")]
     BcSymbolMap,
+    /// A .usym file that maps source information between generated C++ code and managed
+    /// C# code.
+    Usym,
 }
 
 impl FileType {
@@ -445,6 +448,7 @@ impl FileType {
             SourceBundle,
             UuidMap,
             BcSymbolMap,
+            Usym,
         ]
     }
 
@@ -504,6 +508,7 @@ impl AsRef<str> for FileType {
             FileType::SourceBundle => "sourcebundle",
             FileType::UuidMap => "uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
+            FileType::Usym => "usym",
         }
     }
 }
