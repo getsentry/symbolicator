@@ -16,6 +16,7 @@
 - Use wildcard matcher for symstore proxy. ([#671](https://github.com/getsentry/symbolicator/pull/671))
 - Detect unwind and debug information in ELF files that contain sections with offset `0`. They were previously skipped in some cases. ([#688](https://github.com/getsentry/symbolicator/pull/688))
 - Support processing unwind information in ELF files linked with `gold`. ([#688](https://github.com/getsentry/symbolicator/pull/688))
+- Automatically refresh expired AWS ECS container credentials. ([#754](https://github.com/getsentry/symbolicator/pull/754))
 - Don't emit ANSI escape sequences with `auto=false` and `simplified` logging formats. ([#755](https://github.com/getsentry/symbolicator/pull/755))
 
 ## 0.4.1
