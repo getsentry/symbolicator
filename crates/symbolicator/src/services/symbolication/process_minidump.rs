@@ -693,40 +693,6 @@ impl SymbolicationActor {
             res
         })
     }
-    /// Unwind the stack from a minidump.
-    ///
-    /// This processes the minidump to stackwalk all the threads found in the minidump.
-    ///
-    /// The `cfi_results` will contain all modules found in the minidump and the result of trying
-    /// to fetch the Call Frame Information (CFI) for them from the [`CfiCacheActor`](crate.services.cficaches.CfiCacheActor).
-    ///
-    /// This function will load the CFI files and ask rust-minidump to stackwalk the minidump.
-    /// Once it has stacktraces it creates the list of used modules and returns the
-    /// un-symbolicated stacktraces in a structure suitable for requesting symbolication.
-    ///
-    /// The module list returned is usable for symbolication itself and is also directly
-    /// used in the final symbolication response of the public API.  It will contain all
-    /// modules which either have been referenced by any of the frames in the stacktraces or
-    /// have a full debug id.  This is intended to skip over modules like `mmap`ed fonts or
-    /// similar which are mapped in the address space but do not actually contain executable
-    /// modules.
-    #[tracing::instrument(skip_all)]
-    async fn stackwalk_minidump(
-        &self,
-        path: &Path,
-        cfi_caches: &CfiCacheModules,
-        return_modules: bool,
-    ) -> anyhow::Result<StackWalkMinidumpResult> {
-        let cfi_caches = cfi_caches.for_processing();
-        let minidump_path = path.to_path_buf();
-
-        self.cpu_pool
-            .spawn(
-                stackwalk(cfi_caches, minidump_path, return_modules)
-                    .bind_hub(sentry::Hub::current()),
-            )
-            .await?
-    }
 
     /// Iteratively stackwalks/processes the given `minidump_file`.
     async fn stackwalk_minidump_iteratively(
@@ -743,9 +709,18 @@ impl SymbolicationActor {
         let mut result = loop {
             iterations += 1;
 
-            let mut result = self
-                .stackwalk_minidump(minidump_path, cfi_caches, modules.is_none())
-                .await?;
+            let mut result = {
+                let return_modules = modules.is_none();
+                let cfi_caches = cfi_caches.for_processing();
+                let minidump_path = minidump_path.to_path_buf();
+
+                let future = tokio::time::timeout(
+                    Duration::from_secs(60),
+                    stackwalk(cfi_caches, minidump_path, return_modules)
+                        .bind_hub(sentry::Hub::current()),
+                );
+                self.cpu_pool.spawn(future).await???
+            };
 
             let modules = match &modules {
                 Some(modules) => modules,
