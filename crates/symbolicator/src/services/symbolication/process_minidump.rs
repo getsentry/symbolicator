@@ -714,12 +714,10 @@ impl SymbolicationActor {
                 let cfi_caches = cfi_caches.for_processing();
                 let minidump_path = minidump_path.to_path_buf();
 
-                let future = tokio::time::timeout(
-                    Duration::from_secs(60),
-                    stackwalk(cfi_caches, minidump_path, return_modules)
-                        .bind_hub(sentry::Hub::current()),
-                );
-                self.cpu_pool.spawn(future).await???
+                let future = stackwalk(cfi_caches, minidump_path, return_modules)
+                    .bind_hub(sentry::Hub::current());
+                tokio::time::timeout(Duration::from_secs(60), self.cpu_pool.spawn(future))
+                    .await???
             };
 
             let modules = match &modules {
