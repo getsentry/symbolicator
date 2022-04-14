@@ -250,18 +250,16 @@ impl SymbolicatorSymbolProvider {
 impl SymbolProvider for SymbolicatorSymbolProvider {
     async fn fill_symbol(
         &self,
-        module: &(dyn Module + Sync),
+        _module: &(dyn Module + Sync),
         _frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        let debug_id = module.debug_identifier().ok_or(FillSymbolError {})?;
-
-        // Symbolicator's CFI caches never store symbolication information. However, we could hook
-        // up symbolic here to fill frame info right away. This requires a larger refactor of
-        // minidump processing and the types, however.
-        match self.files.contains_key(&debug_id) {
-            true => Ok(()),
-            false => Err(FillSymbolError {}),
-        }
+        // Always return an error here to signal that we have no useful symbol information to
+        // contribute. Doing nothing and reporting Ok trips a check in rust_minidump's
+        // instruction_seems_valid_by_symbols function that leads stack scanning to stop prematurely.
+        // See https://github.com/rust-minidump/rust-minidump/blob/7eed71e4075e0a81696ccc307d6ac68920de5db5/minidump-processor/src/stackwalker/mod.rs#L295.
+        //
+        // TODO: implement this properly, i.e., use symbolic to actually fill in information.
+        Err(FillSymbolError {})
     }
 
     async fn walk_frame(
