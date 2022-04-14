@@ -143,8 +143,8 @@ impl SymCacheFile {
     }
 
     /// Returns the list of DIFs which were searched for this symcache.
-    pub fn candidates(&self) -> AllObjectCandidates {
-        self.candidates.clone()
+    pub fn candidates(&self) -> &AllObjectCandidates {
+        &self.candidates
     }
 }
 
@@ -277,7 +277,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let mut candidates = self.candidates.clone(); // yuk!
         candidates.set_debug(
-            self.object_meta.source_id().clone(),
+            self.object_meta.source_id(),
             &self.object_meta.uri(),
             ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
         );
