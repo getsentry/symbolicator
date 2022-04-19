@@ -884,6 +884,14 @@ impl SymbolicationActor {
             let loaded_caches = self
                 .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
                 .await;
+
+            // break if no new cfi caches were successfully loaded
+            if loaded_caches.iter().all(|(_, result)| match result {
+                Err(_) => true,
+                Ok(cfi_cache_file) => cfi_cache_file.status() != &CacheStatus::Positive,
+            }) {
+                break result;
+            }
             cfi_caches.extend(loaded_caches);
         };
 
