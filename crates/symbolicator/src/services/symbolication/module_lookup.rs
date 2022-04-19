@@ -6,7 +6,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 
-use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
+use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheFile};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{
@@ -226,17 +226,17 @@ impl ModuleLookup {
                 let find_request = FindObject {
                     filetypes: FileType::sources(),
                     purpose: ObjectPurpose::Source,
-                    scope: self.scope.clone(),
                     identifier: object_id_from_object_info(&entry.object_info.raw),
                     sources: self.sources.clone(),
+                    scope: self.scope.clone(),
                 };
 
                 Some(
                     async move {
-                        let opt_object_file_meta =
-                            objects.find(find_request).await.unwrap_or_default().meta;
+                        let FoundObject { meta, candidates } =
+                            objects.find(find_request).await.unwrap_or_default();
 
-                        let source_object = match opt_object_file_meta {
+                        let source_object = match meta {
                             None => None,
                             Some(object_file_meta) => {
                                 objects.fetch(object_file_meta).await.ok().and_then(|x| {
@@ -247,18 +247,19 @@ impl ModuleLookup {
                             }
                         };
 
-                        (idx, source_object)
+                        (idx, source_object, candidates)
                     }
                     .bind_hub(Hub::new_from_top(Hub::current())),
                 )
             });
 
-        for (idx, source_object) in future::join_all(futures).await {
+        for (idx, source_object, candidates) in future::join_all(futures).await {
             if let Some(entry) = self.modules.get_mut(idx) {
                 entry.source_object = source_object;
 
                 if entry.source_object.is_some() {
                     entry.object_info.features.has_sources = true;
+                    entry.object_info.candidates.merge(&candidates);
                 }
             }
         }

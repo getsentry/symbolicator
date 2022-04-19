@@ -18,6 +18,7 @@
 - Support processing unwind information in ELF files linked with `gold`. ([#688](https://github.com/getsentry/symbolicator/pull/688))
 - Automatically refresh expired AWS ECS container credentials. ([#754](https://github.com/getsentry/symbolicator/pull/754))
 - Don't emit ANSI escape sequences with `auto=false` and `simplified` logging formats. ([#755](https://github.com/getsentry/symbolicator/pull/755))
+- Make sure "source" candidates are being recorded (ISSUE-1365). ([#765](https://github.com/getsentry/symbolicator/pull/765))
 
 ## 0.4.1
 
