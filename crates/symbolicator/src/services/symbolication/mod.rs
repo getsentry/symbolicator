@@ -585,9 +585,16 @@ fn record_symbolication_metrics(
             "status" => m.debug_status.name()
         );
 
-        // FIXME: `object_id_from_object_info` allocates and is kind-of expensive
-        let id = object_id_from_object_info(&m.raw);
-        if id.debug_id.is_none() && id.code_id.is_none() {
+        let usable_code_id = !matches!(m.raw.code_id.as_deref(), None | Some(""));
+
+        // NOTE: this is a closure as a way to short-circuit the computation because
+        // it is expensive
+        let usable_debug_id = || match m.raw.debug_id.as_deref() {
+            None | Some("") => false,
+            Some(string) => string.parse::<DebugId>().is_ok(),
+        };
+
+        if !usable_code_id && !usable_debug_id() {
             unusable_modules += 1;
         }
 
