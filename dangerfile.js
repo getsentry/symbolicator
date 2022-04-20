@@ -34,26 +34,11 @@ async function containsChangelog(path) {
   return contents.includes(PR_LINK);
 }
 
-function skipChangelog() {
-  if (!danger.github) {
-    return false;
-  }
-  if ((danger.github.pr.body + "").includes("#skip-changelog")) {
-    // The PR description can always contain skip-changelog
-    return true;
-  }
-  for (let comment of danger.github.api.getPullRequestComments) {
-    // If a comment in a command to dependabot we also accept a #skip-changelog marker there
-    if (comment.body.includes("@dependabot")
-        && comment.body.includes("#skip-changelog")) {
-        return true;
-    }
-  }
-  return false;
-}
-
 async function checkChangelog() {
-  if (skipChangelog()) {
+  const skipChangelog =
+    danger.github && (danger.github.pr.body + "").includes("#skip-changelog");
+
+  if (skipChangelog) {
     return;
   }
 

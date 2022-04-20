@@ -182,11 +182,11 @@ impl AllObjectCandidates {
     ///
     /// You can only request symcaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_debug(&mut self, source: SourceId, uri: &RemoteDifUri, info: ObjectUseInfo) {
+    pub fn set_debug(&mut self, source: &SourceId, uri: &RemoteDifUri, info: ObjectUseInfo) {
         let found_pos = self.0.binary_search_by(|candidate| {
             candidate
                 .source
-                .cmp(&source)
+                .cmp(source)
                 .then(candidate.location.cmp(uri))
         });
         match found_pos {
@@ -247,8 +247,8 @@ impl AllObjectCandidates {
     /// [`ObjectCandidate::download`] will be overwritten by `other` and for
     /// [`ObjectCandidate::unwind`] and [`ObjectCandidate::debug`] it will be overwritten by
     /// `other` if they are not [`ObjectUseInfo::None`].
-    pub fn merge(&mut self, other: AllObjectCandidates) {
-        for other_info in other.0 {
+    pub fn merge(&mut self, other: &AllObjectCandidates) {
+        for other_info in &other.0 {
             let found_pos = self.0.binary_search_by(|candidate| {
                 candidate
                     .source
@@ -258,17 +258,17 @@ impl AllObjectCandidates {
             match found_pos {
                 Ok(index) => {
                     if let Some(mut info) = self.0.get_mut(index) {
-                        info.download = other_info.download;
+                        info.download = other_info.download.clone();
                         if other_info.unwind != ObjectUseInfo::None {
-                            info.unwind = other_info.unwind;
+                            info.unwind = other_info.unwind.clone();
                         }
                         if other_info.debug != ObjectUseInfo::None {
-                            info.debug = other_info.debug;
+                            info.debug = other_info.debug.clone();
                         }
                     }
                 }
                 Err(index) => {
-                    self.0.insert(index, other_info);
+                    self.0.insert(index, other_info.clone());
                 }
             }
         }
@@ -314,7 +314,7 @@ mod tests {
 
         let mut all: AllObjectCandidates = vec![src_a, src_c].into();
         let other: AllObjectCandidates = vec![src_b].into();
-        all.merge(other);
+        all.merge(&other);
         assert_eq!(all.0[0].source, SourceId::new("A"));
         assert_eq!(all.0[1].source, SourceId::new("B"));
         assert_eq!(all.0[2].source, SourceId::new("C"));
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(all.0[0].debug, ObjectUseInfo::None);
 
         let other: AllObjectCandidates = vec![src1].into();
-        all.merge(other);
+        all.merge(&other);
         assert_eq!(all.0[0].unwind, ObjectUseInfo::Malformed);
         assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
     }
@@ -377,7 +377,7 @@ mod tests {
         assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
 
         let other: AllObjectCandidates = vec![src1].into();
-        all.merge(other);
+        all.merge(&other);
         assert_eq!(all.0[0].unwind, ObjectUseInfo::Ok);
         assert_eq!(all.0[0].debug, ObjectUseInfo::Ok);
     }

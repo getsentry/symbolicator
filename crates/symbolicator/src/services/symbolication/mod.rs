@@ -581,9 +581,16 @@ fn record_symbolication_metrics(
             "status" => m.debug_status.name()
         );
 
-        // FIXME: `object_id_from_object_info` allocates and is kind-of expensive
-        let id = object_id_from_object_info(&m.raw);
-        if id.debug_id.is_none() && id.code_id.is_none() {
+        let usable_code_id = !matches!(m.raw.code_id.as_deref(), None | Some(""));
+
+        // NOTE: this is a closure as a way to short-circuit the computation because
+        // it is expensive
+        let usable_debug_id = || match m.raw.debug_id.as_deref() {
+            None | Some("") => false,
+            Some(string) => string.parse::<DebugId>().is_ok(),
+        };
+
+        if !usable_code_id && !usable_debug_id() {
             unusable_modules += 1;
         }
 
@@ -1480,7 +1487,57 @@ mod tests {
         let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
         let response = symbolication.get_response(request_id, None).await;
 
-        insta::assert_yaml_snapshot!(response.unwrap());
+        assert_snapshot!(response.unwrap());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_source_candidates() -> anyhow::Result<()> {
+        let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
+        let (_symsrv, source) = test::symbol_server();
+
+        // its not wasm, but that is the easiest to write tests because of relative
+        // addressing ;-)
+        let modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[
+              {
+                "type":"wasm",
+                "debug_id":"7f883fcd-c553-36d0-a809-b0150f09500b",
+                "code_id":"7f883fcdc55336d0a809b0150f09500b"
+              }
+            ]"#,
+        )?;
+
+        let stacktraces = serde_json::from_str(
+            r#"[
+              {
+                "frames":[
+                  {
+                    "instruction_addr":"0x3880",
+                    "addr_mode":"rel:0"
+                  }
+                ]
+              }
+            ]"#,
+        )?;
+
+        let request = SymbolicateStacktraces {
+            modules: modules.into_iter().map(From::from).collect(),
+            stacktraces,
+            signal: None,
+            origin: StacktraceOrigin::Symbolicate,
+            sources: Arc::new([source]),
+            scope: Default::default(),
+            options: RequestOptions {
+                dif_candidates: true,
+            },
+        };
+
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
+
+        assert_snapshot!(response.unwrap());
         Ok(())
     }
 

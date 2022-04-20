@@ -60,6 +60,7 @@ pub fn init_logging(config: &Config) {
             .init(),
         (LogFormat::Auto, false) | (LogFormat::Simplified, _) => subscriber
             .compact()
+            .with_ansi(false)
             .finish()
             .with(sentry::integrations::tracing::layer())
             .init(),
