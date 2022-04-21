@@ -718,6 +718,8 @@ impl SymbolicationActor {
                     .await???
             };
 
+            metric!(timer("minidump.stackwalk.duration") = result.duration);
+
             let modules = match &modules {
                 Some(modules) => modules,
                 None => {
