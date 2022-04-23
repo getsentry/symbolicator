@@ -18,15 +18,14 @@ use aws_sdk_s3::{Client, Region};
 // use aws_sdk_s3::error::GetObjectError;
 use aws_types::Credentials;
 // use aws_types::credentials::ProvideCredentials;
-use aws_sdk_s3::types::SdkError;
 // use aws_sdk_s3::{Error};
 use aws_sdk_s3::types::SdkError::*;
 use aws_sdk_s3::error::GetObjectErrorKind;
-
+use aws_sdk_s3::types::SdkError::*;
+use aws_sdk_s3::{Client, Region};
 use aws_types::credentials::ProvideCredentials;
-
-// use rusoto_core::credential::ProvideAwsCredentials;
-// use rusoto_core::region::Region;
+use aws_types::Credentials;
+use parking_lot::Mutex;
 
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
@@ -159,7 +158,11 @@ impl S3Downloader {
         provider: P,
         region: Region,
     ) -> aws_sdk_s3::client::Client {
-        let shared_config = aws_config::from_env().credentials_provider(provider).region(region).load().await;
+        let shared_config = aws_config::from_env()
+            .credentials_provider(provider)
+            .region(region)
+            .load()
+            .await;
         Client::new(&shared_config)
         // rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
@@ -180,9 +183,11 @@ impl S3Downloader {
 
         let source_key = &file_source.source.source_key;
         let client = self.get_s3_client(source_key).await;
-        let request = client.get_object()
+        let request = client
+            .get_object()
             .bucket(bucket.clone())
-            .key(key.clone()).send();
+            .key(key.clone())
+            .send();
 
         let source = RemoteDif::from(file_source);
         let request = tokio::time::timeout(self.connect_timeout, request);
@@ -197,19 +202,19 @@ impl S3Downloader {
                     ConstructionFailure(err) => {
                         println!("ERROR: ConstructionFailure: {:?}", err0);
                         Err(DownloadError::Canceled)
-                    },
+                    }
                     TimeoutError(err) => {
                         println!("ERROR: TimeoutError: {:?}", err0);
                         Err(DownloadError::Canceled)
-                    },
+                    }
                     DispatchFailure(err) => {
                         println!("ERROR: DispatchFailure: {:?}", err0);
                         Err(DownloadError::Canceled)
-                    },
+                    }
                     ResponseError { err, raw: _ } => {
                         println!("ERROR: ResponseError: {:?}", err0);
                         Err(DownloadError::Canceled)
-                    },
+                    }
                     ServiceError { err: err1, raw: _ } => {
                         println!("ServiceError: {:?}", &err1);
                         match &err1.kind {
@@ -226,8 +231,8 @@ impl S3Downloader {
                         };
                         Err(DownloadError::S3(err0.into()))
                     }
-                }
-            },
+                };
+            }
             Err(_) => {
                 // TODO Verify this is still the correct action to take with aws-sdk-rust
                 // Timed out
