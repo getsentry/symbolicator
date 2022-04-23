@@ -114,8 +114,13 @@ impl S3Downloader {
     }
 
     async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<aws_sdk_s3::client::Client> {
-        let mut container = self.client_cache.lock();
-        if let Some(client) = container.get(&*key) {
+        if let Some(client) = {
+            let mut container = self.client_cache.lock();
+            match container.get(&*key) {
+                Some(key) => Some(key.clone()),
+                None => None,
+            }
+        } {
             metric!(counter("source.s3.client.cached") += 1);
             client.clone()
         } else {
@@ -141,7 +146,10 @@ impl S3Downloader {
                 }
             });
 
-            container.put(key.clone(), s3.clone());
+            {
+                let mut container = self.client_cache.lock();
+                container.put(key.clone(), s3.clone())
+            };
             s3
         }
     }
