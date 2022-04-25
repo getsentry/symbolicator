@@ -9,7 +9,7 @@ license = "MIT"
 anyhow = "1.0.56"
 apple-crash-report-parser = "0.4.2"
 async-trait = "0.1.53"
-axum = { version = "0.5.1", features = ["multipart"] }
+axum = { version = "0.5.3", features = ["multipart"] }
 backtrace = "0.3.55"
 base64 = "0.13.0"
 cadence = "0.29.0"
