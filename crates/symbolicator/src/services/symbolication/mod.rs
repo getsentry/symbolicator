@@ -92,7 +92,6 @@ pub struct SymbolicationActor {
     io_pool: tokio::runtime::Handle,
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
-    spawnpool: Arc<procspawn::Pool>,
     max_concurrent_requests: Option<usize>,
     current_requests: Arc<AtomicUsize>,
     symbolication_taskmon: tokio_metrics::TaskMonitor,
@@ -108,7 +107,6 @@ impl fmt::Debug for SymbolicationActor {
             .field("io_pool", &self.io_pool)
             .field("cpu_pool", &self.cpu_pool)
             .field("requests", &self.requests)
-            .field("spawnpool", &self.spawnpool)
             .field("max_concurrent_requests", &self.max_concurrent_requests)
             .field("current_requests", &self.current_requests)
             .field("symbolication_taskmon", &"<TaskMonitor>")
@@ -125,7 +123,6 @@ impl SymbolicationActor {
         diagnostics_cache: crate::cache::Cache,
         io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
-        spawnpool: procspawn::Pool,
         max_concurrent_requests: Option<usize>,
     ) -> Self {
         SymbolicationActor {
@@ -136,7 +133,6 @@ impl SymbolicationActor {
             io_pool,
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
-            spawnpool: Arc::new(spawnpool),
             max_concurrent_requests,
             current_requests: Arc::new(AtomicUsize::new(0)),
             symbolication_taskmon: tokio_metrics::TaskMonitor::new(),

@@ -106,13 +106,6 @@ pub fn execute() -> Result<()> {
         metrics::configure_statsd(&config.metrics.prefix, statsd, tags);
     }
 
-    procspawn::ProcConfig::new()
-        .config_callback(|| {
-            tracing::trace!("[procspawn] initializing in sub process");
-            metric!(counter("procspawn.init") += 1);
-        })
-        .init();
-
     match cli.command {
         Command::Run => server::run(config).context("failed to start the server")?,
         Command::Cleanup => cache::cleanup(config).context("failed to clean up caches")?,
