@@ -39,6 +39,18 @@ use super::cacher::CacheKey;
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 const STORE_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Errors using the cache backend.
+///
+/// This exists since some special cache errors should not be logged since they are
+/// considered to be normal at scale, as long as their ratio stays low.
+#[derive(thiserror::Error, Debug)]
+enum CacheError {
+    #[error("timeout connecting to cache service")]
+    ConnectTimeout,
+    #[error(transparent)]
+    Other(#[from] Error),
+}
+
 struct GcsState {
     config: GcsSharedCacheConfig,
     client: Client,
@@ -149,7 +161,11 @@ impl GcsState {
     /// # Returns
     ///
     /// If successful the number of bytes written to the writer are returned.
-    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<u64>>
+    async fn fetch<W>(
+        &self,
+        key: &SharedCacheKey,
+        writer: &mut W,
+    ) -> Result<Option<u64>, CacheError>
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
@@ -160,7 +176,8 @@ impl GcsState {
             scope.set_context("GCS Shared Cache", Context::Other(map));
         });
         let token = self.get_token().await?;
-        let url = gcs::download_url(&self.config.bucket, key.gcs_bucket_key().as_ref())?;
+        let url = gcs::download_url(&self.config.bucket, key.gcs_bucket_key().as_ref())
+            .context("URL construction failed")?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
         let request = measure_download_time("services.shared_cache.fetch.connect", "gcs", request);
@@ -180,15 +197,18 @@ impl GcsState {
                         let mut stream = StreamReader::new(stream);
                         let res = io::copy(&mut stream, writer)
                             .await
-                            .context("IO Error streaming HTTP bytes to writer");
+                            .context("IO Error streaming HTTP bytes to writer")
+                            .map_err(CacheError::Other);
                         Some(res).transpose()
                     }
                     StatusCode::NOT_FOUND => Ok(None),
-                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => Err(anyhow!(
+                    StatusCode::FORBIDDEN => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
-                    )),
-                    _ => Err(anyhow!("Error response from GCS: {}", status)),
+                    )
+                    .into()),
+                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials").into()),
+                    _ => Err(anyhow!("Error response from GCS: {}", status).into()),
                 }
             }
             Ok(Err(e)) => {
@@ -196,15 +216,16 @@ impl GcsState {
                     "Error in shared_cache GCS response for {}",
                     key.gcs_bucket_key()
                 );
-                Err(e).context("Bad GCS response for shared_cache")
+                Err(e).context("Bad GCS response for shared_cache")?
             }
-            Err(_) => Err(Error::msg("Timeout from GCS for shared_cache")),
+            Err(_) => Err(CacheError::ConnectTimeout),
         }
     }
 
-    async fn exists(&self, key: &SharedCacheKey) -> Result<bool> {
+    async fn exists(&self, key: &SharedCacheKey) -> Result<bool, CacheError> {
         let token = self.get_token().await?;
-        let url = gcs::object_url(&self.config.bucket, key.gcs_bucket_key().as_ref())?;
+        let url = gcs::object_url(&self.config.bucket, key.gcs_bucket_key().as_ref())
+            .context("failed to build object url")?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
 
@@ -217,11 +238,11 @@ impl GcsState {
                 match status {
                     StatusCode::OK => Ok(true),
                     StatusCode::NOT_FOUND => Ok(false),
-                    status => Err(anyhow!("Unexpected status code from GCS: {}", status)),
+                    status => Err(anyhow!("Unexpected status code from GCS: {}", status).into()),
                 }
             }
-            Ok(Err(err)) => Err(err).context("Error connecting to GCS"),
-            Err(_) => Err(anyhow!("Timeout connecting to GCS")),
+            Ok(Err(err)) => Err(err).context("Error connecting to GCS")?,
+            Err(_) => Err(CacheError::ConnectTimeout),
         }
     }
 
@@ -237,7 +258,7 @@ impl GcsState {
         key: SharedCacheKey,
         mut src: File,
         reason: CacheStoreReason,
-    ) -> Result<SharedCacheStoreResult> {
+    ) -> Result<SharedCacheStoreResult, CacheError> {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("bucket".to_string(), self.config.bucket.clone().into());
@@ -258,15 +279,20 @@ impl GcsState {
             }
         }
 
-        let total_bytes = src.seek(SeekFrom::End(0)).await?;
-        src.rewind().await?;
+        let total_bytes = src
+            .seek(SeekFrom::End(0))
+            .await
+            .context("failed to seek to end")?;
+        src.rewind().await.context("failed to rewind")?;
         let token = self.get_token().await?;
         let mut url =
             Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
-                .map_err(|_| GcsError::InvalidUrl)?;
+                .map_err(|_| GcsError::InvalidUrl)
+                .context("failed to parse url")?;
         // Append path segments manually for proper encoding
         url.path_segments_mut()
-            .map_err(|_| GcsError::InvalidUrl)?
+            .map_err(|_| GcsError::InvalidUrl)
+            .context("failed to build url")?
             .extend(&[&self.config.bucket, "o"]);
         url.query_pairs_mut()
             .append_pair("name", &key.gcs_bucket_key())
@@ -299,9 +325,10 @@ impl GcsState {
                     StatusCode::FORBIDDEN => Err(anyhow!(
                         "Insufficient permissions for bucket {}",
                         self.config.bucket
-                    )),
-                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials",)),
-                    _ => Err(anyhow!("Error response from GCS: {}", status)),
+                    )
+                    .into()),
+                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials").into()),
+                    _ => Err(anyhow!("Error response from GCS: {}", status).into()),
                 }
             }
             Ok(Err(err)) => {
@@ -309,9 +336,9 @@ impl GcsState {
                     "Error in shared_cache GCS response for {}",
                     key.gcs_bucket_key()
                 );
-                Err(err).context("Bad GCS response for shared_cache")
+                Err(err).context("Bad GCS response for shared_cache")?
             }
-            Err(_) => Err(Error::msg("Timeout from GCS for shared_cache")),
+            Err(_) => Err(CacheError::ConnectTimeout),
         }
     }
 }
@@ -322,7 +349,11 @@ impl FilesystemSharedCacheConfig {
     /// # Returns
     ///
     /// If successful the number of bytes written to the writer are returned.
-    async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> Result<Option<u64>>
+    async fn fetch<W>(
+        &self,
+        key: &SharedCacheKey,
+        writer: &mut W,
+    ) -> Result<Option<u64>, CacheError>
     where
         W: AsyncWrite + Unpin,
     {
@@ -332,16 +363,20 @@ impl FilesystemSharedCacheConfig {
             Ok(file) => file,
             Err(err) => match err.kind() {
                 io::ErrorKind::NotFound => return Ok(None),
-                _ => return Err(err).context("Failed to open file in shared cache"),
+                _ => return Err(err).context("Failed to open file in shared cache")?,
             },
         };
         match io::copy(&mut file, writer).await {
             Ok(bytes) => Ok(Some(bytes)),
-            Err(err) => Err(err).context("Failed to copy file from shared cache"),
+            Err(err) => Err(err).context("Failed to copy file from shared cache")?,
         }
     }
 
-    async fn store(&self, key: SharedCacheKey, mut src: File) -> Result<SharedCacheStoreResult> {
+    async fn store(
+        &self,
+        key: SharedCacheKey,
+        mut src: File,
+    ) -> Result<SharedCacheStoreResult, CacheError> {
         let abspath = self.path.join(key.relative_path());
         let parent_dir = abspath
             .parent()
@@ -354,12 +389,14 @@ impl FilesystemSharedCacheConfig {
         }
 
         let temp_dir = parent_dir.join(".tmp");
-        fs::create_dir_all(&temp_dir).await?;
-        let temp_file = NamedTempFile::new_in(&temp_dir)?;
-        let dup_file = temp_file.reopen()?;
+        fs::create_dir_all(&temp_dir)
+            .await
+            .context("failed to create tempdir")?;
+        let temp_file = NamedTempFile::new_in(&temp_dir).context("failed to create tempfile")?;
+        let dup_file = temp_file.reopen().context("failed to dup filedescriptor")?;
         let mut dest = File::from_std(dup_file);
 
-        src.rewind().await?;
+        src.rewind().await.context("failed to rewind")?;
         let bytes = io::copy(&mut src, &mut dest)
             .await
             .context("Failed to copy data into file")?;
@@ -628,18 +665,25 @@ impl SharedCacheService {
                     );
                 }
             }
-            Err(err) => {
-                let stderr: &dyn std::error::Error = &*err;
-                tracing::error!(
-                    stderr,
-                    "Error storing file on {} shared cache",
-                    backend.name(),
-                );
+            Err(outer_err) => {
+                let errdetails = match outer_err {
+                    CacheError::ConnectTimeout => "connect-timeout",
+                    CacheError::Other(_) => "other",
+                };
+                if let CacheError::Other(err) = outer_err {
+                    let stderr: &dyn std::error::Error = &*err;
+                    tracing::error!(
+                        stderr,
+                        "Error storing file on {} shared cache",
+                        backend.name(),
+                    );
+                }
                 metric!(
                     counter("services.shared_cache.store") += 1,
                     "cache" => cache_name.as_ref(),
                     "status" => "error",
                     "reason" => reason.as_ref(),
+                    "errdetails" => errdetails,
                 );
             }
         }
@@ -721,14 +765,21 @@ impl SharedCacheService {
                 );
                 false
             }
-            Err(err) => {
-                let backend_name = self.backend_name().await;
-                let stderr: &dyn std::error::Error = &*err;
-                tracing::error!(stderr, "Error fetching from {} shared cache", backend_name);
+            Err(outer_err) => {
+                let errdetails = match outer_err {
+                    CacheError::ConnectTimeout => "connect-timeout",
+                    CacheError::Other(_) => "other",
+                };
+                if let CacheError::Other(err) = outer_err {
+                    let backend_name = self.backend_name().await;
+                    let stderr: &dyn std::error::Error = &*err;
+                    tracing::error!(stderr, "Error fetching from {} shared cache", backend_name);
+                }
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
                     "cache" => key.name.as_ref(),
                     "status" => "error",
+                    "errdetails" => errdetails,
                 );
                 false
             }
