@@ -34,7 +34,7 @@ procspawn = { version = "0.10.0", features = ["backtrace", "json"] }
 regex = "1.5.5"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
 rusoto_core = "0.47.0"
-rusoto_credential = "0.47.0"
+rusoto_credential = "0.48.0"
 rusoto_s3 = "0.47.0"
 sentry = { version = "0.25.0", features = ["anyhow", "debug-images", "log", "tracing"] }
 sentry-tower = { version = "0.25.0", features = ["http"] }
