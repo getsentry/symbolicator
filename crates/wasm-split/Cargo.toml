@@ -10,5 +10,5 @@ edition = "2021"
 anyhow = "1.0.56"
 structopt = "0.3.21"
 hex = "0.4.2"
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { version = "1.0.0", features = ["v4"] }
 wasmbin = "0.3.1"
