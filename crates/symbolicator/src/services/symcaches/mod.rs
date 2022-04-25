@@ -416,8 +416,7 @@ mod tests {
     use std::fs;
     use std::sync::Arc;
 
-    use symbolic::common::DebugId;
-    use uuid::Uuid;
+    use symbolic::common::{DebugId, Uuid};
 
     use super::*;
     use crate::cache::Caches;
