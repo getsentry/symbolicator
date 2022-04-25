@@ -259,9 +259,9 @@ dependencies = [
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f2bb9b391135094326978448b624497bfc62be825d849d410a6afe8b45f122b"
+checksum = "b380c56e49149cc5459da00a15942dab5873861b1403ed74b768735df717286d"
 dependencies = [
  "async-trait",
  "circular",
@@ -1630,9 +1630,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f1c0a7ac16c2c130e4dc4c361f6606b1d5b1acc8ee476dcf72dcb5798075b92"
+checksum = "b9277db4578c087aefdaa8e7ff9c2359a39e5d8b75377adae6db869ecbb8e52f"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
