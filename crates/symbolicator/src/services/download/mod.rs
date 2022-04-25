@@ -453,8 +453,7 @@ fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Dura
 
 #[cfg(test)]
 mod tests {
-    use symbolic::common::{CodeId, DebugId};
-    use uuid::Uuid;
+    use symbolic::common::{CodeId, DebugId, Uuid};
 
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.

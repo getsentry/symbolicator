@@ -64,7 +64,7 @@ dependencies = [
  "chrono",
  "lazy_static",
  "regex",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -589,7 +589,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6ee87af31d84ef885378aebca32be3d682b0e0dc119d5b4860a2c5bb5046730"
 dependencies = [
  "serde",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -1352,7 +1352,7 @@ dependencies = [
  "rand 0.7.3",
  "serde",
  "tempfile",
- "uuid",
+ "uuid 0.8.2",
  "winapi 0.3.9",
 ]
 
@@ -1609,7 +1609,7 @@ dependencies = [
  "scroll 0.11.0",
  "thiserror",
  "time 0.3.7",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -2007,7 +2007,7 @@ checksum = "13f4d162ecaaa1467de5afbe62d597757b674b51da8bb4e587430c5fdb2af7aa"
 dependencies = [
  "fallible-iterator",
  "scroll 0.10.2",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -2857,7 +2857,7 @@ dependencies = [
  "thiserror",
  "time 0.3.7",
  "url",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3144,7 +3144,7 @@ dependencies = [
  "memmap2",
  "serde",
  "stable_deref_trait",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3268,7 +3268,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "uuid",
+ "uuid 1.0.0",
  "warp",
  "zstd",
 ]
@@ -3860,6 +3860,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "uuid"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cfcd319456c4d6ea10087ed423473267e1a071f3bc0aa89f80d60997843c6f0"
+dependencies = [
+ "getrandom 0.2.5",
+ "serde",
+]
+
+[[package]]
 name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4021,7 +4031,7 @@ dependencies = [
  "anyhow",
  "hex",
  "structopt",
- "uuid",
+ "uuid 1.0.0",
  "wasmbin",
 ]
 
