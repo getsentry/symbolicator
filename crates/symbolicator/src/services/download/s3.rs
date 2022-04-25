@@ -9,6 +9,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+// I think you can use futures::TryStreamExt's .map_err()
+// on the stream to change the error type of the stream.
 // use futures::TryStreamExt;
 use parking_lot::Mutex;
 // use reqwest::StatusCode;
@@ -116,7 +118,7 @@ impl S3Downloader {
         if let Some(client) = {
             let mut container = self.client_cache.lock();
             match container.get(&*key) {
-                Some(key) => Some(key.clone()),
+                Some(client) => Some(client.clone()),
                 None => None,
             }
         } {
