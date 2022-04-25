@@ -5,7 +5,7 @@ authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.56"
+anyhow = "1.0.57"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.15.0"
 lazy_static = "1.4.0"

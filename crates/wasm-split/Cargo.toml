@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.56"
+anyhow = "1.0.57"
 structopt = "0.3.21"
 hex = "0.4.2"
 uuid = { version = "0.8.2", features = ["v4"] }
