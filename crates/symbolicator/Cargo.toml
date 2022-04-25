@@ -6,11 +6,11 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.56"
+anyhow = "1.0.57"
 apple-crash-report-parser = "0.4.2"
 async-trait = "0.1.53"
-axum = { version = "0.5.1", features = ["multipart"] }
-backtrace = "0.3.55"
+axum = { version = "0.5.3", features = ["multipart"] }
+backtrace = "0.3.65"
 base64 = "0.13.0"
 cadence = "0.29.0"
 chrono = { version = "0.4.19", features = ["serde"] }
@@ -27,14 +27,14 @@ jsonwebtoken = "8.1.0"
 lazy_static = "1.4.0"
 lru = "0.7.5"
 minidump = "0.10.3"
-minidump-processor = { version = "0.10.2", features = ["symbolic-syms"] }
+minidump-processor = { version = "0.10.3", features = ["symbolic-syms"] }
 num_cpus = "1.13.0"
 parking_lot = "0.12.0"
 regex = "1.5.5"
 reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
-rusoto_core = "0.47.0"
-rusoto_credential = "0.47.0"
-rusoto_s3 = "0.47.0"
+rusoto_core = "0.48.0"
+rusoto_credential = "0.48.0"
+rusoto_s3 = "0.48.0"
 sentry = { version = "0.25.0", features = ["anyhow", "debug-images", "log", "tracing"] }
 sentry-tower = { version = "0.25.0", features = ["http"] }
 serde = { version = "1.0.119", features = ["derive", "rc"] }
@@ -54,7 +54,7 @@ tower-service = "0.3"
 tracing = "0.1.34"
 tracing-subscriber = { version = "0.3.11", features = ["tracing-log", "local-time", "env-filter", "json"] }
 url = { version = "2.2.0", features = ["serde"] }
-uuid = { version = "0.8.2", features = ["v4", "serde"] }
+uuid = { version = "1.0.0", features = ["v4", "serde"] }
 zstd = "0.11.1"
 
 [dev-dependencies]
