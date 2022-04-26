@@ -229,7 +229,7 @@ impl GcsState {
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
 
-        match request.await {
+        let ret = match request.await {
             Ok(Ok(response)) => {
                 // Consume the response body to be nice to the server, it is only a bit of JSON.
                 let status = response.status();
@@ -243,7 +243,18 @@ impl GcsState {
             }
             Ok(Err(err)) => Err(err).context("Error connecting to GCS")?,
             Err(_) => Err(CacheError::ConnectTimeout),
-        }
+        };
+        let status = match ret {
+            Ok(_) => "ok",
+            Err(CacheError::ConnectTimeout) => "connect-timeout",
+            Err(_) => "error",
+        };
+        metric!(
+            counter("services.shared_cache.exists") += 1,
+            "cache" => key.name.as_ref(),
+            "status" => status
+        );
+        ret
     }
 
     /// Stores a file on GCS.
@@ -269,13 +280,16 @@ impl GcsState {
             match self
                 .exists(&key)
                 .await
-                .context("Failed fetching object metadata from shared cache")
+                .context("Failed fetching GCS object metadata from shared cache")
             {
                 Ok(true) => return Ok(SharedCacheStoreResult::Skipped),
                 Ok(false) => (),
-                Err(err) => {
-                    sentry::capture_error(&*err);
-                }
+                Err(err) => match err.downcast_ref::<CacheError>() {
+                    Some(CacheError::ConnectTimeout) => (),
+                    _ => {
+                        sentry::capture_error(&*err);
+                    }
+                },
             }
         }
 
