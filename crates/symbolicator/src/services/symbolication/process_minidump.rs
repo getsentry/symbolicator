@@ -43,8 +43,9 @@ use super::{
 type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct StackWalkMinidumpResult {
+    cfi_caches: CfiCacheModules,
     modules: Option<Vec<(DebugId, RawObjectInfo)>>,
     missing_modules: Vec<DebugId>,
     stacktraces: Vec<RawStacktrace>,
@@ -58,7 +59,7 @@ struct StackWalkMinidumpResult {
 /// function and merged into the final symbolication result.
 ///
 /// A few more convenience methods exist to help with building the symbolication results.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(super) struct MinidumpState {
     timestamp: DateTime<Utc>,
     system_info: SystemInfo,
@@ -153,7 +154,7 @@ impl SymbolicatorSymbolProvider {
     ///
     /// This reads the CFI caches from disk and returns them in a format suitable for the
     /// processor to stackwalk.
-    pub fn new<'a, M: Iterator<Item = &'a (DebugId, PathBuf)>>(modules: M) -> Self {
+    pub fn new<'a, M: Iterator<Item = (&'a DebugId, &'a Path)>>(modules: M) -> Self {
         Self {
             files: modules
                 .filter_map(|(id, path)| Some((*id, Self::load(path)?)))
@@ -282,7 +283,7 @@ struct CfiModule {
 /// provided by it.  This can later be used to compile the required modules information
 /// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
 /// this.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct CfiCacheModules {
     /// We have to make sure to hold onto a reference to the CfiCacheFile,
     /// to make sure it will not be evicted in the middle of reading it in the procspawn
@@ -356,11 +357,10 @@ impl CfiCacheModules {
     }
 
     /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
+    fn for_processing(&self) -> impl Iterator<Item = (&DebugId, &Path)> {
         self.inner
             .iter()
-            .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
-            .collect()
+            .filter_map(|(id, module)| Some((id, module.cfi_path.as_deref()?)))
     }
 
     /// Returns the inner Map.
@@ -398,14 +398,14 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
 }
 
 async fn stackwalk(
-    cfi_caches: Vec<(DebugId, PathBuf)>,
+    cfi_caches: CfiCacheModules,
     minidump_path: PathBuf,
     return_modules: bool,
 ) -> anyhow::Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
-    let provider = SymbolicatorSymbolProvider::new(cfi_caches.iter());
+    let provider = SymbolicatorSymbolProvider::new(cfi_caches.for_processing());
     let process_state = minidump_processor::process_minidump(&minidump, &provider).await?;
     let duration = duration.elapsed();
 
@@ -461,6 +461,7 @@ async fn stackwalk(
     }
 
     Ok(StackWalkMinidumpResult {
+        cfi_caches,
         modules,
         missing_modules,
         stacktraces,
@@ -698,10 +699,10 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_path: &Path,
         sources: Arc<[SourceConfig]>,
-        cfi_caches: &mut CfiCacheModules,
     ) -> anyhow::Result<StackWalkMinidumpResult> {
         let mut iterations = 0;
 
+        let mut cfi_caches = CfiCacheModules::new();
         let mut modules: Option<HashMap<DebugId, RawObjectInfo>> = None;
 
         let mut result = loop {
@@ -709,7 +710,6 @@ impl SymbolicationActor {
 
             let mut result = {
                 let return_modules = modules.is_none();
-                let cfi_caches = cfi_caches.for_processing();
                 let minidump_path = minidump_path.to_path_buf();
 
                 let future = stackwalk(cfi_caches, minidump_path, return_modules)
@@ -754,6 +754,7 @@ impl SymbolicationActor {
             }) {
                 break result;
             }
+            cfi_caches = std::mem::take(&mut result.cfi_caches);
             cfi_caches.extend(loaded_caches);
         };
 
@@ -775,14 +776,8 @@ impl SymbolicationActor {
             tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
-            let mut cfi_caches = CfiCacheModules::new();
-
-            let future = self.stackwalk_minidump_iteratively(
-                scope.clone(),
-                &minidump_file,
-                sources.clone(),
-                &mut cfi_caches,
-            );
+            let future =
+                self.stackwalk_minidump_iteratively(scope.clone(), &minidump_file, sources.clone());
 
             let result = match future.await {
                 Ok(result) => result,
@@ -793,6 +788,7 @@ impl SymbolicationActor {
             };
 
             let StackWalkMinidumpResult {
+                cfi_caches,
                 modules,
                 mut stacktraces,
                 minidump_state,
