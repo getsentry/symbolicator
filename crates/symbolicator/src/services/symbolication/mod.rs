@@ -64,10 +64,11 @@ impl SymbolicationError {
     fn to_symbolication_response(&self) -> SymbolicationResponse {
         match self {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Failed(_) => SymbolicationResponse::InternalError,
-            SymbolicationError::InvalidAppleCrashReport(_) => SymbolicationResponse::Failed {
-                message: self.to_string(),
-            },
+            SymbolicationError::Failed(_) | SymbolicationError::InvalidAppleCrashReport(_) => {
+                SymbolicationResponse::Failed {
+                    message: self.to_string(),
+                }
+            }
         }
     }
 }
