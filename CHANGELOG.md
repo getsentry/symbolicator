@@ -7,9 +7,7 @@
 - Support for `external_debug_info` section in wasm-split for external dwarf files. ([#619](https://github.com/getsentry/symbolicator/pull/619))
 - Added windows binaries for `wasm-split` and `symsorter` to releases ([#624](https://github.com/getsentry/symbolicator/pull/624))
 - Also populate the shared cache from existing items in the local cache, not only new ones. ([#648](https://github.com/getsentry/symbolicator/pull/648))
-- Add support for minidump processing based on `rust-minidump`, which is opt-in by using the `rust_minidump: true` request option. ([#723](https://github.com/getsentry/symbolicator/pull/723))
-- Removed breakpad Stackwalking from the codebase, leaving `rust-minidump` as the only implementation ([#731](https://github.com/getsentry/symbolicator/pull/731))
-- Removed subprocess isolation of minidump stackwalking, as that code was migrated to safe Rust and isolation became unnecessary. ([#732](https://github.com/getsentry/symbolicator/pull/732))
+- Switch minidump processing entirely to `rust-minidump`, this is currently faster, more reliable and produces at least similar quality stacktraces.  Breakpad has been removed as a dependency. ([#723](https://github.com/getsentry/symbolicator/pull/723) [#731](https://github.com/getsentry/symbolicator/pull/731) [#732](https://github.com/getsentry/symbolicator/pull/732))
 
 ### Fixes
 
