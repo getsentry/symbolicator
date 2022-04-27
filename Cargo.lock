@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "reqwest 0.11.9",
@@ -2910,8 +2910,8 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#d2864f4cb1ec5e70f0e673d66e1e29f6cf59da7d"
+version = "8.7.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#1034134e10c8f9ab47dbb63e24ecaf1c2d6073f0"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -2921,8 +2921,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#d2864f4cb1ec5e70f0e673d66e1e29f6cf59da7d"
+version = "8.7.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#1034134e10c8f9ab47dbb63e24ecaf1c2d6073f0"
 dependencies = [
  "debugid",
  "memmap2",
@@ -2933,8 +2933,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#d2864f4cb1ec5e70f0e673d66e1e29f6cf59da7d"
+version = "8.7.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#1034134e10c8f9ab47dbb63e24ecaf1c2d6073f0"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -2962,8 +2962,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#d2864f4cb1ec5e70f0e673d66e1e29f6cf59da7d"
+version = "8.7.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#1034134e10c8f9ab47dbb63e24ecaf1c2d6073f0"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -2974,8 +2974,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-minidump"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#d2864f4cb1ec5e70f0e673d66e1e29f6cf59da7d"
+version = "8.7.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#1034134e10c8f9ab47dbb63e24ecaf1c2d6073f0"
 dependencies = [
  "cc",
  "symbolic-common",
@@ -2985,8 +2985,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "8.6.1"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#d2864f4cb1ec5e70f0e673d66e1e29f6cf59da7d"
+version = "8.7.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#1034134e10c8f9ab47dbb63e24ecaf1c2d6073f0"
 dependencies = [
  "dmsort",
  "fnv",
@@ -2998,7 +2998,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -3058,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3803,7 +3803,7 @@ checksum = "3d958d035c4438e28c70e4321a2911302f10135ce78a9c7834c0cab4123d06a2"
 
 [[package]]
 name = "wasm-split"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "hex",
