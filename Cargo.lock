@@ -1496,9 +1496,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06b52ce4b24b178fd0edfbc829b70f2c23c2ab29f0189abaf9dff679c476f743"
+checksum = "190480ae87a21dc26a115c4ef5ce8c05c10074d55ea2042c472be7bf6dc6e592"
 dependencies = [
  "bitflags",
  "debugid",
