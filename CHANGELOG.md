@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Added  an internal option to capture minidumps for hard crashes. This has to be enabled via the `_crash_db` config parameter. ([#795](https://github.com/getsentry/symbolicator/pull/795))
+
 ## 0.5.0
 
 ### Features
