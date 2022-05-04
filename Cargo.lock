@@ -1477,9 +1477,9 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "485ffe110d89d9481bedaab03f2239e53dce03042fb81baa2136197a0e1749c5"
+checksum = "1ccb06643400b8a48ebcaf69d5c4b6adf50cacaf3b5d6aa27bfbaf0da21156cc"
 dependencies = [
  "debugid",
  "encoding",
@@ -1496,9 +1496,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06b52ce4b24b178fd0edfbc829b70f2c23c2ab29f0189abaf9dff679c476f743"
+checksum = "190480ae87a21dc26a115c4ef5ce8c05c10074d55ea2042c472be7bf6dc6e592"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1512,9 +1512,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9277db4578c087aefdaa8e7ff9c2359a39e5d8b75377adae6db869ecbb8e52f"
+checksum = "d286bdf783be15a8677b971a8860d43f626823f757472a9e3c4d1d6f3e52b85d"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -1522,6 +1522,7 @@ dependencies = [
  "log",
  "memmap2",
  "minidump",
+ "minidump-common",
  "scroll 0.11.0",
  "serde",
  "serde_json",
