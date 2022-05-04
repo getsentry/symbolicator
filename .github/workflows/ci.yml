@@ -17,7 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install libcurl-dev
-        run: sudo apt-get install -y libcurl4-openssl-dev
+        run: |
+          sudo apt update
+          sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -64,7 +66,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install libcurl-dev
-        run: sudo apt-get install -y libcurl4-openssl-dev
+        run: |
+          sudo apt update
+          sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -96,7 +100,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install libcurl-dev
-        run: sudo apt-get install -y libcurl4-openssl-dev
+        run: |
+          sudo apt update
+          sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -131,7 +137,9 @@ jobs:
 
     steps:
       - name: Install libcurl-dev
-        run: sudo apt-get install -y libcurl4-openssl-dev
+        run: |
+          sudo apt update
+          sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout Symbolicator
         uses: actions/checkout@v2
