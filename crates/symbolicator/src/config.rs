@@ -305,6 +305,11 @@ pub struct Config {
     /// The aim is to make it easy to start up a new symbolicator which will quickly fill up
     /// caches from already running symbolicators.
     pub shared_cache: Option<SharedCacheConfig>,
+
+    /// Internal. Enables crash handling and sets the absolute path to where minidumps should be
+    /// cached on disk. The path is created if it doesn't exist. Path must be UTF-8.
+    #[serde(default)]
+    pub _crash_db: Option<PathBuf>,
 }
 
 impl Config {
@@ -375,6 +380,7 @@ impl Default for Config {
             streaming_timeout: Duration::from_secs(250),
             max_concurrent_requests: Some(120),
             shared_cache: None,
+            _crash_db: None,
         }
     }
 }
