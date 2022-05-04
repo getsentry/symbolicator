@@ -16,6 +16,9 @@ jobs:
     name: Lints
     runs-on: ubuntu-latest
     steps:
+      - name: Install libcurl-dev
+        run: sudo apt-get install -y libcurl4-openssl-dev
+
       - name: Checkout sources
         uses: actions/checkout@v2
 
@@ -60,6 +63,9 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
+      - name: Install libcurl-dev
+        run: sudo apt-get install -y libcurl4-openssl-dev
+
       - name: Checkout sources
         uses: actions/checkout@v2
 
@@ -89,6 +95,9 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     steps:
+      - name: Install libcurl-dev
+        run: sudo apt-get install -y libcurl4-openssl-dev
+
       - name: Checkout sources
         uses: actions/checkout@v2
 
@@ -121,6 +130,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install libcurl-dev
+        run: sudo apt-get install -y libcurl4-openssl-dev
+
       - name: Checkout Symbolicator
         uses: actions/checkout@v2
 

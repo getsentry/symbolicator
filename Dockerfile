@@ -5,6 +5,8 @@ WORKDIR /work
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
+    # below required for sentry-native
+    clang libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CARGO_HOME=/usr/local/cargo \
@@ -16,6 +18,9 @@ ENV CARGO_HOME=/usr/local/cargo \
 ENV RUST_TOOLCHAIN=1.57.0
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $RUST_TOOLCHAIN
+
+ARG SYMBOLICATOR_FEATURES=symbolicator-crash
+ENV SYMBOLICATOR_FEATURES=${SYMBOLICATOR_FEATURES}
 
 # Build only dependencies to speed up subsequent builds
 COPY Cargo.toml Cargo.lock ./
@@ -37,7 +42,7 @@ COPY .git ./.git/
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
-RUN cargo build --release
+RUN cargo build --release --features=${SYMBOLICATOR_FEATURES}
 RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
     && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
