@@ -12,7 +12,7 @@ lazy_static = "1.4.0"
 rayon = "1.5.2"
 regex = "1.5.5"
 serde = { version = "1.0.119", features = ["derive"] }
-serde_json = "1.0.61"
+serde_json = "1.0.81"
 structopt = "0.3.21"
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
