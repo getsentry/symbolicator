@@ -1,0 +1,17 @@
+[package]
+name = "symbolicator-crash"
+authors = ["Sentry <oss@sentry.io>"]
+description = "Native crash reporting for Symbolicator"
+homepage = "https://getsentry.github.io/symbolicator/"
+repository = "https://github.com/getsentry/symbolicator"
+version = "0.5.0"
+edition = "2018"
+build = "build.rs"
+license-file = "../LICENSE"
+publish = false
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.59.1"
+cmake = { version = "0.1.46" }

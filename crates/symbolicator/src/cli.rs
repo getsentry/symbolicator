@@ -63,6 +63,16 @@ pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config()).context("failed loading config")?;
 
+    #[cfg(feature = "symbolicator-crash")]
+    {
+        if let Some(dsn) = config.sentry_dsn.clone().map(|d| d.to_string()) {
+            if let Some(db) = config._crash_db.as_deref() {
+                symbolicator_crash::CrashHandler::new(dsn.as_ref(), db)
+                    .release(sentry::release_name!().as_deref())
+                    .install();
+            }
+        }
+    }
     let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
