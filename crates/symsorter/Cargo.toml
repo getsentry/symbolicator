@@ -17,4 +17,4 @@ structopt = "0.3.21"
 symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
 zip = "0.5.11"
-zstd = "0.11.1"
+zstd = "0.11.2"
