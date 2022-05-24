@@ -19,3 +19,9 @@ debug = 1
 inherits = "release"
 incremental = true
 codegen-units = 256
+
+# For local development: uncomment the following two lines (and adjust the path if necessary)
+# to use a local symbolic checkout everywhere.
+# See also https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html
+# [patch."https://github.com/getsentry/symbolic"]
+# symbolic = { path = "../symbolic/symbolic" }
