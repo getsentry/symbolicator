@@ -57,14 +57,14 @@ dependencies = [
 
 [[package]]
 name = "apple-crash-report-parser"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c1614301c75a08d6715446fe38b0b7ee44873e74c07c76fc27d5025e285576a"
+checksum = "77a93af7a900a542a9c20da77e19dc81f374e8f42a2969d833c8766692d5f291"
 dependencies = [
  "chrono",
  "lazy_static",
  "regex",
- "uuid 0.8.2",
+ "uuid",
 ]
 
 [[package]]
@@ -272,9 +272,9 @@ dependencies = [
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.10.4"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46350020400cced01aed8f6a4054c9d31919f9dced320263cf8b4f681d9a73b4"
+checksum = "4bd91dbd8c9c4a9ae92b043390cb669f18f6c46e94323fc155c5830f40fe9aa4"
 dependencies = [
  "async-trait",
  "circular",
@@ -283,16 +283,14 @@ dependencies = [
  "minidump-common",
  "nom 1.2.4",
  "range-map",
- "reqwest 0.11.10",
- "tempfile",
  "thiserror",
 ]
 
 [[package]]
 name = "brownstone"
-version = "1.1.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "030ea61398f34f1395ccbeb046fb68c87b631d1f34567fed0f0f11fa35d18d8d"
+checksum = "c5839ee4f953e811bfdcf223f509cb2c6a3e1447959b0bff459405575bc17f22"
 dependencies = [
  "arrayvec",
 ]
@@ -590,12 +588,12 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "debugid"
-version = "0.7.3"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6ee87af31d84ef885378aebca32be3d682b0e0dc119d5b4860a2c5bb5046730"
+checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
  "serde",
- "uuid 0.8.2",
+ "uuid",
 ]
 
 [[package]]
@@ -1053,7 +1051,7 @@ checksum = "cfeb764aa29a0774d290c2df134a37ab2e3c1ba59009162626658aabefda321a"
 dependencies = [
  "log",
  "plain",
- "scroll 0.11.0",
+ "scroll",
 ]
 
 [[package]]
@@ -1553,9 +1551,9 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.10.4"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ccb06643400b8a48ebcaf69d5c4b6adf50cacaf3b5d6aa27bfbaf0da21156cc"
+checksum = "fe66b009ea76a4727d61e386f6e6e353d373a963954c8fe5b93da650eab7db5d"
 dependencies = [
  "debugid",
  "encoding",
@@ -1564,17 +1562,17 @@ dependencies = [
  "minidump-common",
  "num-traits 0.2.15",
  "range-map",
- "scroll 0.11.0",
+ "scroll",
  "thiserror",
  "time 0.3.9",
- "uuid 0.8.2",
+ "uuid",
 ]
 
 [[package]]
 name = "minidump-common"
-version = "0.10.4"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "190480ae87a21dc26a115c4ef5ce8c05c10074d55ea2042c472be7bf6dc6e592"
+checksum = "a5f37f242baafb519413c7f12baa8e6854a176ea2f44910e2c434a428e27358d"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1582,15 +1580,15 @@ dependencies = [
  "log",
  "num-traits 0.2.15",
  "range-map",
- "scroll 0.11.0",
+ "scroll",
  "smart-default",
 ]
 
 [[package]]
 name = "minidump-processor"
-version = "0.10.4"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d286bdf783be15a8677b971a8860d43f626823f757472a9e3c4d1d6f3e52b85d"
+checksum = "34b8fc0048d90e4d5e804f062e00ac2010c73b318434f2a13df08252346b5851"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -1599,7 +1597,7 @@ dependencies = [
  "memmap2",
  "minidump",
  "minidump-common",
- "scroll 0.11.0",
+ "scroll",
  "serde",
  "serde_json",
  "thiserror",
@@ -1719,9 +1717,9 @@ dependencies = [
 
 [[package]]
 name = "nom-supreme"
-version = "0.6.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aadc66631948f6b65da03be4c4cd8bd104d481697ecbb9bbd65719b1ec60bc9f"
+checksum = "2bd3ae6c901f1959588759ff51c95d24b491ecb9ff91aa9c2ef4acc5b1dcab27"
 dependencies = [
  "brownstone",
  "indent_write",
@@ -1911,13 +1909,13 @@ dependencies = [
 
 [[package]]
 name = "pdb"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13f4d162ecaaa1467de5afbe62d597757b674b51da8bb4e587430c5fdb2af7aa"
+checksum = "82040a392923abe6279c00ab4aff62d5250d1c8555dc780e4b02783a7aa74863"
 dependencies = [
  "fallible-iterator",
- "scroll 0.10.2",
- "uuid 0.8.2",
+ "scroll",
+ "uuid",
 ]
 
 [[package]]
@@ -2276,7 +2274,6 @@ version = "0.11.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46a1f7aa4f35e5e8b4160449f51afc758f0ce6454315a9fa7d0d113e958c41eb"
 dependencies = [
- "async-compression",
  "base64",
  "bytes",
  "encoding_rs",
@@ -2301,7 +2298,6 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
- "tokio-util 0.6.10",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2524,12 +2520,6 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "scroll"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fda28d4b4830b807a8b43f7b0e6b5df875311b3e7621d84577188c175b6ec1ec"
-
-[[package]]
-name = "scroll"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
@@ -2589,9 +2579,9 @@ checksum = "8cb243bdfdb5936c8dc3c45762a19d12ab4550cdc753bc247637d4ec35a040fd"
 
 [[package]]
 name = "sentry"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2d23af89cf3e40dffb53f974e9a21653353b3e21cf51633aa58006f2a0caf8a"
+checksum = "904eca4fb30c6112a1dae60c0a9e29cfb42f42129da4260f1ee20e94151b62e3"
 dependencies = [
  "httpdate",
  "reqwest 0.11.10",
@@ -2608,9 +2598,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-anyhow"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de88cf0967eb3d7247071a7e6753b06c0939d509f9db44607ec00aa4b4aefd04"
+checksum = "40ec14f6bedc88480805096ee145afcc1e517a28db3f58f51b93e2899d932f56"
 dependencies = [
  "anyhow",
  "sentry-backtrace",
@@ -2619,9 +2609,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-backtrace"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8158a446429420acdf6a4f75192ee8929da16a0c41c89a1c34b2e0f1eaebcc02"
+checksum = "1671189d1b759879fa4bdde46c50a499abb14332ed81f84fc6f60658f41b2fdb"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -2631,9 +2621,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-contexts"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a3bda8a1e3213f1944da2d42f3081ea9f3717105bb2a6b0a8fe4f5e603010a3"
+checksum = "db80ceff16bb1a4b2689b8758e5e61e405fc4d8ff9f2d1b5b845b76ce37fa34e"
 dependencies = [
  "hostname",
  "libc",
@@ -2644,9 +2634,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-core"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56333f11be3a78131c67637f7611339df8af7ad9af831226585a457df75f9e3b"
+checksum = "6c9f509d3959ed4dbbd80ca42572caad682aaa1cdd92c719e0815d0e87f82c96"
 dependencies = [
  "lazy_static",
  "rand",
@@ -2657,9 +2647,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-debug-images"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4c700f97918705167bde634fd33fa407d392cdf573da5362d1a55d6655ceb7d"
+checksum = "b0a28809378552c81392a6f0b80863bdeac137acb45124a44b0dbb2895a7c0d3"
 dependencies = [
  "findshlibs",
  "lazy_static",
@@ -2668,9 +2658,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-log"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91b56c287a5295358bd4a3481a32add1f3fb7131102e300f561f788e33b79efe"
+checksum = "f4e00357035f6af5404870048167affaa551e15e0bee6efa2157e4b9bec6a453"
 dependencies = [
  "log",
  "sentry-core",
@@ -2678,9 +2668,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-panic"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b957b1965c450acd220a27806fe1f2dec998d393973ebae797936b12df1c7416"
+checksum = "f8b442769cc34115f64393f7bfe4f863c3c38749e0c0b9613a7ae25b37c7ba53"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2688,22 +2678,23 @@ dependencies = [
 
 [[package]]
 name = "sentry-tower"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd49ee3ab5156738ae19c89c87e5516bd56a7f7fa93d7b05cefba88dc7bbd262"
+checksum = "b12c49abfd7adfbbfb68d46328bc4a7aad9be0880eb553ad05aeb7e6c703d88d"
 dependencies = [
  "http",
  "pin-project",
  "sentry-core",
  "tower-layer",
  "tower-service",
+ "url",
 ]
 
 [[package]]
 name = "sentry-tracing"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a1b281efe225a8750e2011a325a5455b29a3e5cd40762337ef647a253e3213f"
+checksum = "d4e2796e40502893ed0d04646e507f91e74f1cbf09e370d42bb1cdbcaeeca9bb"
 dependencies = [
  "sentry-core",
  "tracing-core",
@@ -2712,9 +2703,9 @@ dependencies = [
 
 [[package]]
 name = "sentry-types"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "825fd3382e2397007499a910e0184e55f7837cb0df4af30ae62bd2123e2ebcd6"
+checksum = "254b600e93e9ef00a48382c9f1e86d27884bd9a5489efa4eb9210c20c72e88a6"
 dependencies = [
  "debugid",
  "getrandom",
@@ -2724,7 +2715,7 @@ dependencies = [
  "thiserror",
  "time 0.3.9",
  "url",
- "uuid 0.8.2",
+ "uuid",
 ]
 
 [[package]]
@@ -2993,9 +2984,10 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
 dependencies = [
+ "symbolic-cfi",
  "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-demangle",
@@ -3004,21 +2996,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolic-cfi"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
+dependencies = [
+ "symbolic-common",
+ "symbolic-debuginfo",
+ "thiserror",
+]
+
+[[package]]
 name = "symbolic-common"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
 dependencies = [
  "debugid",
  "memmap2",
  "serde",
  "stable_deref_trait",
- "uuid 0.8.2",
+ "uuid",
 ]
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3034,20 +3036,20 @@ dependencies = [
  "parking_lot 0.12.1",
  "pdb",
  "regex",
- "scroll 0.11.0",
+ "scroll",
  "serde",
  "serde_json",
  "smallvec",
  "symbolic-common",
  "thiserror",
  "wasmparser",
- "zip 0.5.13",
+ "zip",
 ]
 
 [[package]]
 name = "symbolic-demangle"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3058,14 +3060,14 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
 dependencies = [
  "anyhow",
  "gimli",
  "indexmap",
  "object",
- "scroll 0.11.0",
+ "scroll",
  "serde_json",
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3073,20 +3075,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "symbolic-minidump"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
-dependencies = [
- "cc",
- "symbolic-common",
- "symbolic-debuginfo",
- "thiserror",
-]
-
-[[package]]
 name = "symbolic-symcache"
-version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#fefe8572e8f2b3e0be69d9fa259fff97adc5542d"
+version = "9.0.0"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#b5fba17e54335c0ea6f5d5db9bfbe7b5ee234c61"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3139,7 +3130,6 @@ dependencies = [
  "sha-1 0.10.0",
  "structopt",
  "symbolic",
- "symbolic-minidump",
  "symbolicator-crash",
  "tempfile",
  "test-assembler",
@@ -3153,7 +3143,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "uuid 1.1.1",
+ "uuid",
  "warp",
  "zstd",
 ]
@@ -3181,7 +3171,7 @@ dependencies = [
  "structopt",
  "symbolic",
  "walkdir",
- "zip 0.6.2",
+ "zip",
  "zstd",
 ]
 
@@ -3759,16 +3749,6 @@ checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "getrandom",
- "serde",
-]
-
-[[package]]
-name = "uuid"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6d5d669b51467dcf7b2f1a796ce0f955f05f01cafda6c19d6e95f730df29238"
@@ -3939,7 +3919,7 @@ dependencies = [
  "anyhow",
  "hex",
  "structopt",
- "uuid 1.1.1",
+ "uuid",
  "wasmbin",
 ]
 
@@ -3972,9 +3952,12 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.83.0"
+version = "0.84.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "718ed7c55c2add6548cca3ddd6383d738cd73b892df400e96b9aa876f0141d7a"
+checksum = "77dc97c22bb5ce49a47b745bed8812d30206eff5ef3af31424f2c1820c0974b2"
+dependencies = [
+ "indexmap",
+]
 
 [[package]]
 name = "web-sys"
@@ -4143,18 +4126,6 @@ name = "zeroize"
 version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94693807d016b2f2d2e14420eb3bfcca689311ff775dcf113d74ea624b7cdf07"
-
-[[package]]
-name = "zip"
-version = "0.5.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93ab48844d61251bb3835145c521d88aa4031d7139e8485990f60ca911fa0815"
-dependencies = [
- "byteorder",
- "crc32fast",
- "flate2",
- "thiserror",
-]
 
 [[package]]
 name = "zip"

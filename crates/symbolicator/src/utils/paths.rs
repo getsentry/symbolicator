@@ -55,17 +55,9 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
         Cow::Borrowed(debug_file)
     };
     let debug_id = if ssqp_casing {
-        format!(
-            "{:x}{:X}",
-            debug_id.uuid().to_simple_ref(),
-            debug_id.appendix()
-        )
+        format!("{:x}{:X}", debug_id.uuid().simple(), debug_id.appendix())
     } else {
-        format!(
-            "{:X}{:x}",
-            debug_id.uuid().to_simple_ref(),
-            debug_id.appendix()
-        )
+        format!("{:X}{:x}", debug_id.uuid().simple(), debug_id.appendix())
     };
 
     Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
@@ -243,16 +235,13 @@ fn get_symstore_path(
             Some(format!(
                 "{}/mach-uuid-{}/{}",
                 code_file,
-                uuid.to_simple_ref(),
+                uuid.simple(),
                 code_file
             ))
         }
         FileType::MachDebug => {
             let uuid = get_mach_uuid(identifier)?;
-            Some(format!(
-                "_.dwarf/mach-uuid-sym-{}/_.dwarf",
-                uuid.to_simple_ref()
-            ))
+            Some(format!("_.dwarf/mach-uuid-sym-{}/_.dwarf", uuid.simple()))
         }
 
         FileType::Pdb => get_pdb_symstore_path(identifier, ssqp_casing),
@@ -365,9 +354,7 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
         | FileType::BcSymbolMap
         | FileType::Il2cpp => {
             if identifier.code_id.is_none() {
-                Some(Cow::Owned(
-                    identifier.debug_id?.uuid().to_simple_ref().to_string(),
-                ))
+                Some(Cow::Owned(identifier.debug_id?.uuid().simple().to_string()))
             } else {
                 Some(Cow::Borrowed(identifier.code_id.as_ref()?.as_str()))
             }
@@ -397,7 +384,6 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
 
     // determine the ID we use for the path
     let id = get_search_target_id(filetype, identifier)?;
-
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
 }
 

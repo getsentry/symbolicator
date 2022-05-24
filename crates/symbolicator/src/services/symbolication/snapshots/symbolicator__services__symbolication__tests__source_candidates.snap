@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 1537
+assertion_line: 1521
 expression: response.unwrap()
 ---
 status: completed
@@ -14,7 +14,7 @@ stacktraces:
         symbol: trigger_crash
         sym_addr: "0x3860"
         function: trigger_crash
-        filename: examples/example.c
+        filename: example.c
         abs_path: /Users/swatinem/Coding/sentry-native/examples/example.c
         lineno: 60
         pre_context:

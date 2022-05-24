@@ -25,4 +25,3 @@ codegen-units = 256
 # See also https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html
 # [patch."https://github.com/getsentry/symbolic"]
 # symbolic = { path = "../symbolic/symbolic" }
-# symbolic-minidump = { path = "../symbolic/symbolic-minidump" }
