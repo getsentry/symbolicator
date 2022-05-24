@@ -255,17 +255,19 @@ mod format {
             // SAFETY: the above buffer size check also made sure we are not going out of bounds
             // here
             let threads = unsafe {
-                &*(ptr::slice_from_raw_parts(threads_start, header.num_threads as usize)
-                    as *const [RawThread])
+                &*ptr::slice_from_raw_parts(
+                    threads_start as *const RawThread,
+                    header.num_threads as usize,
+                )
             };
             let frames = unsafe {
-                &*(ptr::slice_from_raw_parts(frames_start, header.num_frames as usize)
-                    as *const [RawFrame])
+                &*ptr::slice_from_raw_parts(
+                    frames_start as *const RawFrame,
+                    header.num_frames as usize,
+                )
             };
-            let symbol_bytes = unsafe {
-                &*(ptr::slice_from_raw_parts(symbols_start, header.symbol_bytes as usize)
-                    as *const [u8])
-            };
+            let symbol_bytes =
+                unsafe { &*ptr::slice_from_raw_parts(symbols_start, header.symbol_bytes as usize) };
 
             Ok(Format {
                 threads,
