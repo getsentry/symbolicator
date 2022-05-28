@@ -7,9 +7,9 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
-aws-config = "0.9.0"
-aws-types = { version = "0.9.0", features = ["hardcoded-credentials"] }
-aws-sdk-s3 = "0.9.0"
+aws-config = "0.12.0"
+aws-types = { version = "0.12.0", features = ["hardcoded-credentials"] }
+aws-sdk-s3 = "0.12.0"
 apple-crash-report-parser = "0.4.2"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
