@@ -148,14 +148,33 @@ where
             E: serde::de::Error,
         {
             // aws-sdk-rust does not validate region strings
-            let v: &str = &value.to_lowercase();
-            match v {
-                "ap-east-1" | "ap-northeast-1" | "ap-northeast-2" | "ap-south-1"
-                | "ap-southeast-1" | "ap-southeast-2" | "ca-central-1" | "cn-north-1"
-                | "cn-northwest-1" | "eu-central-1" | "eu-north-1" | "eu-west-1" | "eu-west-2"
-                | "eu-west-3" | "sa-east-1" | "us-east-1" | "us-east-2" | "us-gov-east-1"
-                | "us-gov-west-1" | "us-west-1" | "us-west-2" => Ok(Region::new(v)),
-                invalid_region => Err(E::custom(format!("unknown region: {}", invalid_region))),
+            const AWS_REGIONS: [&str; 21] = [
+                "ap-east-1",
+                "ap-northeast-1",
+                "ap-northeast-2",
+                "ap-south-1",
+                "ap-southeast-1",
+                "ap-southeast-2",
+                "ca-central-1",
+                "cn-north-1",
+                "cn-northwest-1",
+                "eu-central-1",
+                "eu-north-1",
+                "eu-west-1",
+                "eu-west-2",
+                "eu-west-3",
+                "sa-east-1",
+                "us-east-1",
+                "us-east-2",
+                "us-gov-east-1",
+                "us-gov-west-1",
+                "us-west-1",
+                "us-west-2",
+            ];
+            let pos = AWS_REGIONS.iter().position(|&x| x == value);
+            match pos {
+                Some(_) => Ok(Region::new(String::from(value))),
+                None => Err(E::custom(format!("unknown region: {}", value))),
             }
         }
     }
