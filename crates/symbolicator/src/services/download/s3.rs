@@ -9,24 +9,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-// I think you can use futures::TryStreamExt's .map_err()
-// on the stream to change the error type of the stream.
-// use futures::TryStreamExt;
-use parking_lot::Mutex;
-// use reqwest::StatusCode;
-// use rusoto_core::RusotoError;
-// use rusoto_s3::{GetObjectError, S3};
-use aws_sdk_s3::{Client, Region};
-// use aws_sdk_s3::error::GetObjectError;
-use aws_types::Credentials;
-// use aws_types::credentials::ProvideCredentials;
-// use aws_sdk_s3::{Error};
-use aws_sdk_s3::types::SdkError::*;
 use aws_sdk_s3::error::GetObjectErrorKind;
 use aws_sdk_s3::types::SdkError::*;
 use aws_sdk_s3::{Client, Region};
 use aws_types::credentials::ProvideCredentials;
 use aws_types::Credentials;
+use futures::TryStreamExt;
 use parking_lot::Mutex;
 
 use super::locations::SourceLocation;
@@ -250,7 +238,7 @@ impl S3Downloader {
                 tracing::debug!("Empty response from s3:{}{}", bucket, &key);
                 return Ok(DownloadStatus::NotFound);
             }
-            Some(_) => response.body,
+            Some(_) => response.body.map_err(DownloadError::S3SDK),
         };
 
         super::download_stream(&source, stream, destination, timeout).await

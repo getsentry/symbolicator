@@ -10,6 +10,8 @@ anyhow = "1.0.57"
 aws-config = "0.12.0"
 aws-types = { version = "0.12.0", features = ["hardcoded-credentials"] }
 aws-sdk-s3 = "0.12.0"
+aws-smithy-http = "0.42.0"
+anyhow = "1.0.56"
 apple-crash-report-parser = "0.4.2"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
