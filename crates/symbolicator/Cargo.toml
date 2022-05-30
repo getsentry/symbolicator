@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
-apple-crash-report-parser = "0.4.2"
+apple-crash-report-parser = "0.5.0"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
 backtrace = "0.3.65"
