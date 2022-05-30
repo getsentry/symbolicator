@@ -189,32 +189,32 @@ impl S3Downloader {
                 log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err0);
                 return match &err0 {
                     ConstructionFailure(err) => {
-                        println!("ERROR: ConstructionFailure: {:?}", err0);
+                        println!("ERROR: ConstructionFailure: {:?}", err);
                         Err(DownloadError::Canceled)
                     }
                     TimeoutError(err) => {
-                        println!("ERROR: TimeoutError: {:?}", err0);
+                        println!("ERROR: TimeoutError: {:?}", err);
                         Err(DownloadError::Canceled)
                     }
                     DispatchFailure(err) => {
-                        println!("ERROR: DispatchFailure: {:?}", err0);
+                        println!("ERROR: DispatchFailure: {:?}", err);
                         Err(DownloadError::Canceled)
                     }
                     ResponseError { err, raw: _ } => {
-                        println!("ERROR: ResponseError: {:?}", err0);
+                        println!("ERROR: ResponseError: {:?}", err);
                         Err(DownloadError::Canceled)
                     }
                     ServiceError { err: err1, raw: _ } => {
                         println!("ServiceError: {:?}", &err1);
                         match &err1.kind {
                             GetObjectErrorKind::NoSuchKey(err) => {
-                                println!("ERROR: NoSuchKey: {:?}", &err1)
+                                println!("ERROR: NoSuchKey: {:?}", &err)
                             }
                             GetObjectErrorKind::InvalidObjectState(err) => {
-                                println!("ERROR: InvalidObjectState: {:?}", &err1);
+                                println!("ERROR: InvalidObjectState: {:?}", &err);
                             }
                             GetObjectErrorKind::Unhandled(err) => {
-                                println!("ERROR: Unhandled: {:?}", &err1)
+                                println!("ERROR: Unhandled: {:?}", &err)
                             }
                             _ => println!("ERROR: other GetObjectErrorKind: {:?}", &err1.kind),
                         };
