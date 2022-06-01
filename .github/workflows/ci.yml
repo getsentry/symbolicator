@@ -166,6 +166,7 @@ jobs:
         with:
           repository: getsentry/sentry
           path: sentry
+          ref: 617fcae084aebe6a331729c4ecf00549195636bb
 
       - name: Setup steps
         id: setup
