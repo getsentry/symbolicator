@@ -46,6 +46,10 @@ mod markers;
 ///
 /// In case a symbolic update increased its own internal format version, bump the
 /// symcache file version as described above, and update the static assertion.
+///
+/// # Version History
+///
+/// - `1`: New binary format based on instruction addr lookup.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
     fallbacks: &[0],
