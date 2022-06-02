@@ -15,7 +15,7 @@ ENV CARGO_HOME=/usr/local/cargo \
 # We should really depend on the rust:slim-buster images again as this
 # will automatically upgrade our Rust toolchains when a new one is
 # released.  But while we can't: bump versions manually.
-ENV RUST_TOOLCHAIN=1.57.0
+ENV RUST_TOOLCHAIN=1.61.0
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain $RUST_TOOLCHAIN
 
