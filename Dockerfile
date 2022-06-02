@@ -3,11 +3,18 @@ FROM debian:stretch-slim AS symbolicator-build
 
 WORKDIR /work
 
+# Hooray for running with a totally outdated debian image
+RUN echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/sources.list.d/cmake-backports.list
+RUN echo 'deb http://deb.debian.org/debian stretch-backports-sloppy main' >> /etc/apt/sources.list.d/cmake-backports.list
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
     # below required for sentry-native
-    clang libcurl4-openssl-dev \
+    clang-11 cmake/stretch-backports libarchive13/stretch-backports-sloppy libuv1/stretch-backports libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Because the image has gcc-6 as default compiler, and 3.8 as default clang. We are at 11 and 14 respectively. Let that sink in.
+ENV CC=clang-11 CXX=clang++-11
 
 ENV CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
@@ -26,6 +33,7 @@ ENV SYMBOLICATOR_FEATURES=${SYMBOLICATOR_FEATURES}
 COPY Cargo.toml Cargo.lock ./
 
 COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
+COPY crates/symbolicator-crash/build.rs crates/symbolicator-crash/Cargo.toml crates/symbolicator-crash/
 
 # Build without --locked.
 #
@@ -35,9 +43,13 @@ COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolic
 # will get some unused dependencies pruned during this build.
 RUN mkdir -p crates/symbolicator/src \
     && echo "fn main() {}" > crates/symbolicator/src/main.rs \
+    && mkdir -p crates/symbolicator-crash/src \
+    && echo "pub fn main() {}" > crates/symbolicator-crash/src/lib.rs \
     && cargo build --release
 
 COPY crates/symbolicator/src crates/symbolicator/src/
+COPY crates/symbolicator-crash/src crates/symbolicator-crash/src/
+COPY crates/symbolicator-crash/sentry-native crates/symbolicator-crash/sentry-native/
 COPY .git ./.git/
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
 # This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
