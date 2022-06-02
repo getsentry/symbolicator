@@ -25,7 +25,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --all --release --locked
+          args: --bins --release --locked
 
       - name: Split and archive debug info
         run: |
@@ -76,7 +76,7 @@ jobs:
           CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
         with:
           command: build
-          args: --all --release --locked --target=x86_64-apple-darwin
+          args: --bins --release --locked --target=x86_64-apple-darwin
 
       - name: Install rust stable toolchain for ARM
         uses: actions-rs/toolchain@v1
