@@ -10,8 +10,11 @@ RUN echo 'deb http://deb.debian.org/debian stretch-backports-sloppy main' >> /et
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
     # below required for sentry-native
-    clang cmake/stretch-backports libarchive13/stretch-backports-sloppy libuv1/stretch-backports libcurl4-openssl-dev \
+    clang-11 cmake/stretch-backports libarchive13/stretch-backports-sloppy libuv1/stretch-backports libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Because the image has gcc-6 as default compiler, and 3.8 as default clang. We are at 11 and 14 respectively. Let that sink in.
+ENV CC=clang-11 CXX=clang++-11
 
 ENV CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
