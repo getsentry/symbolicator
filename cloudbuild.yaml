@@ -1,4 +1,19 @@
 steps:
+  # GCB only fetches a source archive, but the build requires an actual git repo. Note that the
+  # clone behavior changed multiple times between 2017 and 2019 and might not be stable.
+  # See: https://github.com/GoogleCloudPlatform/cloud-builders/issues/236#issuecomment-558991730
+  - name: "gcr.io/cloud-builders/git"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        git init
+        git remote add origin https://github.com/getsentry/$REPO_NAME.git
+        git fetch --depth=1 origin $COMMIT_SHA
+        git reset --hard FETCH_HEAD
+        git config -f .gitmodules submodule.core.url https://github.com/getsentry/$REPO_NAME.git
+        git submodule update --init --recursive
+
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
     args:
@@ -39,31 +54,31 @@ steps:
       ]
 
   - name: "us.gcr.io/$PROJECT_ID/symbolicator:nightly"
-    args: ['--version']
+    args: ["--version"]
     id: "smoke test 1"
 
   - name: "us.gcr.io/$PROJECT_ID/symbolicator:nightly"
-    args: ['--help']
+    args: ["--help"]
     id: "smoke test 2"
 
   # Only tag "nightly" when on master
-  - name: 'gcr.io/cloud-builders/docker'
-    secretEnv: ['DOCKER_PASSWORD']
-    entrypoint: 'bash'
+  - name: "gcr.io/cloud-builders/docker"
+    secretEnv: ["DOCKER_PASSWORD"]
+    entrypoint: "bash"
     args:
-    - '-e'
-    - '-c'
-    - |
-      # Only push to Docker Hub from master
-      [ "$BRANCH_NAME" != "master" ] && exit 0
-      docker push us.gcr.io/$PROJECT_ID/symbolicator:nightly
-      echo "$$DOCKER_PASSWORD" | docker login --username=sentrybuilder --password-stdin
-      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$SHORT_SHA
-      docker push getsentry/symbolicator:$SHORT_SHA
-      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$COMMIT_SHA
-      docker push getsentry/symbolicator:$COMMIT_SHA
-      docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:nightly
-      docker push getsentry/symbolicator:nightly
+      - "-e"
+      - "-c"
+      - |
+        # Only push to Docker Hub from master
+        [ "$BRANCH_NAME" != "master" ] && exit 0
+        docker push us.gcr.io/$PROJECT_ID/symbolicator:nightly
+        echo "$$DOCKER_PASSWORD" | docker login --username=sentrybuilder --password-stdin
+        docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$SHORT_SHA
+        docker push getsentry/symbolicator:$SHORT_SHA
+        docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$COMMIT_SHA
+        docker push getsentry/symbolicator:$COMMIT_SHA
+        docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:nightly
+        docker push getsentry/symbolicator:nightly
 
 images:
   [
@@ -75,11 +90,11 @@ options:
   # Run on bigger machines
   machineType: "N1_HIGHCPU_8"
 secrets:
-- kmsKeyName: projects/sentryio/locations/global/keyRings/service-credentials/cryptoKeys/cloudbuild
-  secretEnv:
-    # This is a personal access token for the sentrybuilder account, encrypted using the
-    # short guide at http://bit.ly/2Pg6uw9
-    DOCKER_PASSWORD: |
-      CiQAE8gN7y3OMxn+a1kofmK4Bi8jQZtdRFj2lYYwaZHVeIIBUzMSTQA9tvn8XCv2vqj6u8CHoeSP
-      TVW9pLvSCorKoeNtOp0eb+6V1yNJW/+JC07DNO1KLbTbodbuza6jKJHU5xeAJ4kGQI78UY5Vu1Gp
-      QcMK
+  - kmsKeyName: projects/sentryio/locations/global/keyRings/service-credentials/cryptoKeys/cloudbuild
+    secretEnv:
+      # This is a personal access token for the sentrybuilder account, encrypted using the
+      # short guide at http://bit.ly/2Pg6uw9
+      DOCKER_PASSWORD: |
+        CiQAE8gN7y3OMxn+a1kofmK4Bi8jQZtdRFj2lYYwaZHVeIIBUzMSTQA9tvn8XCv2vqj6u8CHoeSP
+        TVW9pLvSCorKoeNtOp0eb+6V1yNJW/+JC07DNO1KLbTbodbuza6jKJHU5xeAJ4kGQI78UY5Vu1Gp
+        QcMK
