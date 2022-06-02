@@ -3,10 +3,14 @@ FROM debian:stretch-slim AS symbolicator-build
 
 WORKDIR /work
 
+# Hooray for running with a totally outdated debian image
+RUN echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/sources.list.d/cmake-backports.list
+RUN echo 'deb http://deb.debian.org/debian stretch-backports-sloppy main' >> /etc/apt/sources.list.d/cmake-backports.list
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential ca-certificates curl cmake libssl-dev pkg-config git zip \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
     # below required for sentry-native
-    clang libcurl4-openssl-dev \
+    clang cmake/stretch-backports libarchive13/stretch-backports-sloppy libuv1/stretch-backports libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CARGO_HOME=/usr/local/cargo \
