@@ -4,7 +4,7 @@ FROM debian:stretch-slim AS symbolicator-build
 WORKDIR /work
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates curl cmake libssl-dev pkg-config git zip \
     # below required for sentry-native
     clang libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
