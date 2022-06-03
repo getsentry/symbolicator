@@ -191,7 +191,7 @@ impl S3Downloader {
         let response = match response0 {
             Ok(Ok(response)) => response,
             Ok(Err(err0)) => {
-                log::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err0);
+                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err0);
                 return match &err0 {
                     ConstructionFailure(err) => {
                         println!("ERROR: ConstructionFailure: {:?}", err);

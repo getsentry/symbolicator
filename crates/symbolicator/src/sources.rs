@@ -179,7 +179,7 @@ where
         }
     }
 
-    deserializer.deserialize_any(RusotoRegion)
+    deserializer.deserialize_any(SdkRegion)
 }
 
 /// The types of Amazon IAM credentials providers we support.
