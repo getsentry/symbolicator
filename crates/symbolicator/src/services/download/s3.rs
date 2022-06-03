@@ -73,7 +73,6 @@ impl S3RemoteDif {
 
 /// Downloader implementation that supports the [`S3SourceConfig`] source.
 pub struct S3Downloader {
-    // http_client: Arc<rusoto_core::HttpClient>,
     client_cache: Mutex<ClientCache>,
     connect_timeout: Duration,
     streaming_timeout: Duration,
@@ -82,7 +81,6 @@ pub struct S3Downloader {
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
-            // .field("http_client", &format_args!("rusoto_core::HttpClient"))
             .field("client_cache", &self.client_cache)
             .finish()
     }
@@ -95,7 +93,6 @@ pub type S3Error = aws_sdk_s3::Error;
 impl S3Downloader {
     pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
         Self {
-            // http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
             connect_timeout,
             streaming_timeout,
@@ -153,7 +150,6 @@ impl S3Downloader {
             .load()
             .await;
         Client::new(&shared_config)
-        // rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
     }
 
     /// Downloads a source hosted on an S3 bucket.
