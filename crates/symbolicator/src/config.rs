@@ -28,6 +28,36 @@ pub enum LogFormat {
     Json,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub struct HTTPSConfig {
+    pub certificate_path: PathBuf,
+    pub key_path: PathBuf,
+}
+
+impl Default for HTTPSConfig {
+    fn default() -> Self {
+        HTTPSConfig {
+            certificate_path: PathBuf::from("cert.pem"),
+            key_path: PathBuf::from("cert.pem"),
+        }
+    }
+}
+
+/// Controls the HTTP server setup
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct ServerConfig {
+    /// The log level for the relay.
+    pub https: Option<HTTPSConfig>,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        ServerConfig { https: None }
+    }
+}
+
 /// Controls the logging system.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
@@ -242,11 +272,16 @@ pub struct Config {
     /// Host and port to bind the HTTP webserver to.
     pub bind: String,
 
+    /// Host and port to bind the HTTPS webserver to.
+    pub bind_https: Option<String>,
+
     /// Configuration for internal logging.
     pub logging: Logging,
 
     /// Configuration for reporting metrics to a statsd instance.
     pub metrics: Metrics,
+
+    pub server_config: ServerConfig,
 
     /// DSN to report internal errors to
     pub sentry_dsn: Option<Dsn>,
@@ -365,7 +400,9 @@ impl Default for Config {
         Config {
             cache_dir: default_cache_dir(),
             bind: default_bind(),
+            bind_https: None,
             logging: Logging::default(),
+            server_config: ServerConfig::default(),
             metrics: Metrics::default(),
             sentry_dsn: None,
             caches: CacheConfigs::default(),
