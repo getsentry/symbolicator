@@ -52,7 +52,7 @@ pub fn run(config: Config) -> Result<()> {
     let server_http = axum_server::bind(socket_http)
         .serve(endpoints::create_app(service_http).into_make_service());
     servers.push(Box::pin(server_http));
-    tracing::info!("Starting HTTP server");
+    tracing::info!("Starting HTTP server on {}", socket_http);
 
     if let Some(ref bind_str) = config.bind_https {
         let https_conf = match config.server_config.https {
@@ -74,7 +74,7 @@ pub fn run(config: Config) -> Result<()> {
         let server_https = axum_server::bind_rustls(socket_https, tls_config)
             .serve(endpoints::create_app(service_https).into_make_service());
         servers.push(Box::pin(server_https));
-        tracing::info!("Starting HTTPS server");
+        tracing::info!("Starting HTTPS server on {}", socket_https);
     }
 
     let _guard = web_pool.enter();
