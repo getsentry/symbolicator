@@ -45,17 +45,11 @@ impl Default for HTTPSConfig {
 }
 
 /// Controls the HTTP server setup
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
     /// The log level for the relay.
     pub https: Option<HTTPSConfig>,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        ServerConfig { https: None }
-    }
 }
 
 /// Controls the logging system.
