@@ -77,7 +77,6 @@ pub fn run(config: Config) -> Result<()> {
         tracing::info!("Starting HTTPS server on {}", socket_https);
     }
 
-    let _guard = web_pool.enter();
     web_pool.block_on(try_join_all(servers))?;
     tracing::info!("System shutdown complete");
 
