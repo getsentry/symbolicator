@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://getsentry.github.io/symbolicator/api/response/">
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.3.0, mkdocs-material-8.2.11">
+      <meta name="generator" content="mkdocs-1.3.0, mkdocs-material-8.3.3">
     
     
       
@@ -21,11 +21,12 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.8c5ef100.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.4a0965b7.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.9647289d.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.cbb835fc.min.css">
         
+      
       
     
     
@@ -613,51 +614,51 @@ different data depending on the status of the symbolication job:</p>
 <h2 id="success-response">Success Response</h2>
 <p>Symbol server responds with <em>200 OK</em> and the response payload listed below if
 symbolication succeeds within a configured timeframe (around 20 seconds):</p>
-<div class="codehilite"><pre><span></span><code><span class="p">{</span>
-  <span class="s2">&quot;status&quot;</span><span class="o">:</span> <span class="s2">&quot;complete&quot;</span><span class="p">,</span>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;status&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;complete&quot;</span><span class="p">,</span><span class="w"></span>
 
-  <span class="c1">// Symbolicated stack traces</span>
-  <span class="s2">&quot;stacktraces&quot;</span><span class="o">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="s2">&quot;frames&quot;</span><span class="o">:</span> <span class="p">[</span>
-        <span class="p">{</span>
-          <span class="c1">// Symbolication meta data</span>
-          <span class="s2">&quot;status&quot;</span><span class="o">:</span> <span class="s2">&quot;symbolicated&quot;</span><span class="p">,</span>
-          <span class="s2">&quot;original_index&quot;</span><span class="o">:</span> <span class="mf">0</span><span class="p">,</span>
+<span class="w">  </span><span class="c1">// Symbolicated stack traces</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;stacktraces&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">    </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="s2">&quot;frames&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">        </span><span class="p">{</span><span class="w"></span>
+<span class="w">          </span><span class="c1">// Symbolication meta data</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;status&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;symbolicated&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;original_index&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">0</span><span class="p">,</span><span class="w"></span>
 
-          <span class="c1">// Frame information</span>
-          <span class="s2">&quot;instruction_addr&quot;</span><span class="o">:</span> <span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span>  <span class="c1">// actual address of the frame</span>
-          <span class="s2">&quot;addr_mode&quot;</span><span class="o">:</span> <span class="s2">&quot;abs&quot;</span><span class="p">,</span>                <span class="c1">// address mode</span>
-          <span class="s2">&quot;sym_addr&quot;</span><span class="o">:</span> <span class="s2">&quot;0xfeed0000&quot;</span><span class="p">,</span>          <span class="c1">// start address of the function</span>
-          <span class="s2">&quot;package&quot;</span><span class="o">:</span> <span class="s2">&quot;/path/to/module.so&quot;</span><span class="p">,</span>   <span class="c1">// path to the module&#39;s code file</span>
-          <span class="s2">&quot;symbol&quot;</span><span class="o">:</span> <span class="s2">&quot;__1cGmemset6FpviI_0_&quot;</span><span class="p">,</span>  <span class="c1">// original mangled function name</span>
-          <span class="s2">&quot;function&quot;</span><span class="o">:</span> <span class="s2">&quot;memset&quot;</span><span class="p">,</span>              <span class="c1">// demangled short version of symbol</span>
-          <span class="s2">&quot;lang&quot;</span><span class="o">:</span> <span class="s2">&quot;cpp&quot;</span><span class="p">,</span>
-          <span class="s2">&quot;abs_path&quot;</span><span class="o">:</span> <span class="s2">&quot;/path/to/src/file.c&quot;</span><span class="p">,</span> <span class="c1">// normalized absolute path</span>
-          <span class="s2">&quot;filename&quot;</span><span class="o">:</span> <span class="s2">&quot;../src/file.c&quot;</span><span class="p">,</span>       <span class="c1">// path relative to compilation dir</span>
-          <span class="s2">&quot;lineno&quot;</span><span class="o">:</span> <span class="mf">22</span><span class="p">,</span>
-        <span class="p">},</span>
-        <span class="p">...</span>
-      <span class="p">],</span>
-      <span class="s2">&quot;registers&quot;</span><span class="o">:</span> <span class="p">{</span> <span class="p">...</span> <span class="p">}</span>
-    <span class="p">}</span>
-  <span class="p">],</span>
+<span class="w">          </span><span class="c1">// Frame information</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;instruction_addr&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;0xfeedbeef&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// actual address of the frame</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;addr_mode&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;abs&quot;</span><span class="p">,</span><span class="w">                </span><span class="c1">// address mode</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;sym_addr&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;0xfeed0000&quot;</span><span class="p">,</span><span class="w">          </span><span class="c1">// start address of the function</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;package&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;/path/to/module.so&quot;</span><span class="p">,</span><span class="w">   </span><span class="c1">// path to the module&#39;s code file</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;symbol&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;__1cGmemset6FpviI_0_&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// original mangled function name</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;function&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;memset&quot;</span><span class="p">,</span><span class="w">              </span><span class="c1">// demangled short version of symbol</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;lang&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;cpp&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;abs_path&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;/path/to/src/file.c&quot;</span><span class="p">,</span><span class="w"> </span><span class="c1">// normalized absolute path</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;filename&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;../src/file.c&quot;</span><span class="p">,</span><span class="w">       </span><span class="c1">// path relative to compilation dir</span><span class="w"></span>
+<span class="w">          </span><span class="s2">&quot;lineno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">22</span><span class="p">,</span><span class="w"></span>
+<span class="w">        </span><span class="p">},</span><span class="w"></span>
+<span class="w">        </span><span class="p">...</span><span class="w"></span>
+<span class="w">      </span><span class="p">],</span><span class="w"></span>
+<span class="w">      </span><span class="s2">&quot;registers&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">],</span><span class="w"></span>
 
-  <span class="c1">// Modules completed with information read from object files</span>
-  <span class="s2">&quot;modules&quot;</span><span class="o">:</span> <span class="p">[</span>
-    <span class="p">{</span>
-      <span class="s2">&quot;status&quot;</span><span class="o">:</span> <span class="s2">&quot;found&quot;</span><span class="p">,</span>
-      <span class="p">...</span>
-    <span class="p">}</span>
-  <span class="p">],</span>
-  <span class="c1">// Additional information read from crash report</span>
-  <span class="s2">&quot;arch&quot;</span><span class="o">:</span> <span class="s2">&quot;x86_64&quot;</span><span class="p">,</span>
-  <span class="s2">&quot;signal&quot;</span><span class="o">:</span> <span class="mf">11</span><span class="p">,</span>
-  <span class="s2">&quot;os&quot;</span><span class="o">:</span> <span class="p">{</span>
-    <span class="s2">&quot;name&quot;</span><span class="o">:</span> <span class="s2">&quot;Windows NT&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;version&quot;</span><span class="o">:</span> <span class="s2">&quot;8.1.2700&quot;</span>
-  <span class="p">}</span>
-<span class="p">}</span>
+<span class="w">  </span><span class="c1">// Modules completed with information read from object files</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;modules&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="w"></span>
+<span class="w">    </span><span class="p">{</span><span class="w"></span>
+<span class="w">      </span><span class="s2">&quot;status&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;found&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">      </span><span class="p">...</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="p">],</span><span class="w"></span>
+<span class="w">  </span><span class="c1">// Additional information read from crash report</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;arch&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;x86_64&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;signal&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">11</span><span class="p">,</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;os&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="s2">&quot;name&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;Windows NT&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="s2">&quot;version&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;8.1.2700&quot;</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
 </code></pre></div>
 
 <p>The symbolicated frames are returned in the same order as provided in the
@@ -677,11 +678,11 @@ the addresses are absolute, when <code>"rel:X"</code> it's relative to module in
 responds with a backoff response. It will then continue to fetch symbols and
 symbolication. The response indicates the estimated time for symbol retrieval,
 after which the symbolication request can be expected to succeed:</p>
-<div class="codehilite"><pre><span></span><code><span class="p">{</span>
-  <span class="s2">&quot;status&quot;</span><span class="o">:</span> <span class="s2">&quot;pending&quot;</span><span class="p">,</span>
-  <span class="s2">&quot;request_id&quot;</span><span class="o">:</span> <span class="s2">&quot;deadbeef&quot;</span><span class="p">,</span>
-  <span class="s2">&quot;retry_after&quot;</span><span class="o">:</span> <span class="mf">300</span> <span class="c1">// 5 minutes</span>
-<span class="p">}</span>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;status&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;pending&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;request_id&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;deadbeef&quot;</span><span class="p">,</span><span class="w"></span>
+<span class="w">  </span><span class="s2">&quot;retry_after&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">300</span><span class="w"> </span><span class="c1">// 5 minutes</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
 </code></pre></div>
 
 <p>The symbolication server must not send a backoff response if no timeout was sent
@@ -701,6 +702,7 @@ then re-schedule symbolication</p>
 
               
             </article>
+            
           </div>
         </div>
         
@@ -708,7 +710,8 @@ then re-schedule symbolication</p>
       
         <footer class="md-footer">
   
-    <nav class="md-footer__inner md-grid" aria-label="Footer">
+    
+    <nav class="md-footer__inner md-grid" aria-label="Footer" >
       
         
         <a href="../applecrashreport/" class="md-footer__link md-footer__link--prev" aria-label="Previous: POST /applecrashreport" rel="prev">
@@ -763,10 +766,10 @@ then re-schedule symbolication</p>
     <div class="md-dialog" data-md-component="dialog">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
-    <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2a1c317c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version.title": "Select version"}}</script>
+    <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.b028fd86.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version.title": "Select version"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.748e2769.min.js"></script>
+      <script src="../../assets/javascripts/bundle.f758a944.min.js"></script>
       
     
   </body>
