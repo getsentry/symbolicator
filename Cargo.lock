@@ -97,9 +97,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.53"
+version = "0.1.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed6aa3524a2dfcf9fe180c51eae2b58738348d819517ceadf95789c51fff7600"
+checksum = "96cf8829f67d2eab0b2dfa42c5d0ef737e0724e4a82b01b3e292456202b19716"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -309,9 +309,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.9.1"
+version = "3.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a45a46ab1f2412e53d3a0ade76ffad2025804294569aae387231a0cd6e0899"
+checksum = "37ccbd214614c6783386c1af30caf03192f17891059cecc394b4fb119e363de3"
 
 [[package]]
 name = "byte-tools"
@@ -1046,9 +1046,9 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "goblin"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c955ab4e0ad8c843ea653a3d143048b87490d9be56bd7132a435c2407846ac8f"
+checksum = "cfeb764aa29a0774d290c2df134a37ab2e3c1ba59009162626658aabefda321a"
 dependencies = [
  "log",
  "plain",
@@ -1070,7 +1070,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio",
- "tokio-util 0.7.2",
+ "tokio-util 0.7.3",
  "tracing",
 ]
 
@@ -1161,9 +1161,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff8670570af52249509a86f5e3e18a08c60b177071826898fde8997cf5f6bfbb"
+checksum = "75f43d41e26995c17e71ee126451dd3941010b0514a81a9d11f3b341debc2399"
 dependencies = [
  "bytes",
  "fnv",
@@ -1518,9 +1518,9 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "memmap2"
-version = "0.5.3"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "057a3db23999c867821a7a59feb06a578fcb03685e983dff90daf9e7d24ac08f"
+checksum = "d5172b50c23043ff43dd53e51392f36519d9b35a8f3a410d30ece5d1aedd58ae"
 dependencies = [
  "libc",
 ]
@@ -1848,9 +1848,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.73"
+version = "0.9.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d5fd19fb3e0a8191c1e34935718976a3e70c112ab9a24af6d7cadccd9d90bc0"
+checksum = "835363342df5fba8354c5b453325b110ffd54044e588c539cf2f20a8014e4cb1"
 dependencies = [
  "autocfg",
  "cc",
@@ -2096,15 +2096,6 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
-
-[[package]]
-name = "quickcheck"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "588f6378e4dd99458b60ec275b4477add41ce4fa9f64dcba6f15adccb19b50d6"
-dependencies = [
- "rand",
-]
 
 [[package]]
 name = "quote"
@@ -2870,9 +2861,9 @@ checksum = "2e24979f63a11545f5f2c60141afe249d4f19f84581ea2138065e400941d83d3"
 
 [[package]]
 name = "simple_asn1"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a762b1c38b9b990c694b9c2f8abe3372ce6a9ceaae6bca39cfc46e054f45745"
+checksum = "adc4e5204eb1910f40f9cfa375f6f05b68c3abac4b6fd879c8ff5e7ae8a0a085"
 dependencies = [
  "num-bigint",
  "num-traits 0.2.15",
@@ -3001,7 +2992,7 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 [[package]]
 name = "symbolic"
 version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#20ef03f4a16dcf13d73fc8fa6a13d594d0f93d5c"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#024f78e7b75007df614dcad1154783c204f9e221"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3012,7 +3003,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#20ef03f4a16dcf13d73fc8fa6a13d594d0f93d5c"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#024f78e7b75007df614dcad1154783c204f9e221"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3024,7 +3015,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#20ef03f4a16dcf13d73fc8fa6a13d594d0f93d5c"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#024f78e7b75007df614dcad1154783c204f9e221"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3053,7 +3044,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#20ef03f4a16dcf13d73fc8fa6a13d594d0f93d5c"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#024f78e7b75007df614dcad1154783c204f9e221"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3065,7 +3056,7 @@ dependencies = [
 [[package]]
 name = "symbolic-minidump"
 version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#20ef03f4a16dcf13d73fc8fa6a13d594d0f93d5c"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#024f78e7b75007df614dcad1154783c204f9e221"
 dependencies = [
  "cc",
  "symbolic-common",
@@ -3076,7 +3067,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "8.7.3"
-source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#20ef03f4a16dcf13d73fc8fa6a13d594d0f93d5c"
+source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#024f78e7b75007df614dcad1154783c204f9e221"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3135,7 +3126,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-metrics",
- "tokio-util 0.7.2",
+ "tokio-util 0.7.3",
  "tower",
  "tower-layer",
  "tower-service",
@@ -3176,9 +3167,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.95"
+version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbaf6116ab8924f39d52792136fb74fd60a80194cf1b1c6ffa6453eef1c3f942"
+checksum = "0748dd251e24453cb8717f0354206b91557e4ec8703673a4b30208f2abaf1ebf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3309,7 +3300,6 @@ dependencies = [
  "itoa",
  "libc",
  "num_threads",
- "quickcheck",
  "serde",
  "time-macros",
 ]
@@ -3337,9 +3327,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.18.2"
+version = "1.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4903bf0427cf68dddd5aa6a93220756f8be0c34fcfa9f5e6191e103e15a31395"
+checksum = "c51a52ed6686dd62c320f9b89299e9dfb46f730c7a48e635c19f21d116cb1439"
 dependencies = [
  "bytes",
  "libc",
@@ -3356,9 +3346,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b557f72f448c511a979e2564e55d74e6c4432fc96ff4f6241bc6bded342643b7"
+checksum = "9724f9a975fb987ef7a3cd9be0350edcbe130698af5b8f7a631e23d42d052484"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3399,9 +3389,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50145484efff8818b5ccd256697f36863f587da82cf8b409c53adf1e840798e3"
+checksum = "df54d54117d6fdc4e4fea40fe1e4e566b3505700e148a6827e59b34b0d2600d9"
 dependencies = [
  "futures-core",
  "pin-project-lite",
@@ -3437,9 +3427,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f988a1a1adc2fb21f9c12aa96441da33a1728193ae0b95d2be22dbd17fcb4e5c"
+checksum = "cc463cd8deddc3770d20f9852143d50bf6094e640b485cb2e189a2099085ff45"
 dependencies = [
  "bytes",
  "futures-core",
@@ -3460,7 +3450,7 @@ dependencies = [
  "pin-project",
  "pin-project-lite",
  "tokio",
- "tokio-util 0.7.2",
+ "tokio-util 0.7.3",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -3468,9 +3458,9 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d342c6d58709c0a6d48d48dabbb62d4ef955cf5f0f3bbfd845838e7ae88dbae"
+checksum = "3c530c8675c1dbf98facee631536fa116b5fb6382d7dd6dc1b118d970eafe3ba"
 dependencies = [
  "bitflags",
  "bytes",
