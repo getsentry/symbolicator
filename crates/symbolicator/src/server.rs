@@ -49,9 +49,10 @@ pub fn run(config: Config) -> Result<()> {
         ))
         .context("failed to create service state")?;
 
+    let svc = endpoints::create_app(service).into_make_service();
+
     let socket_http = config.bind.parse::<SocketAddr>()?;
-    let server_http = axum_server::bind(socket_http)
-        .serve(endpoints::create_app(service.clone()).into_make_service());
+    let server_http = axum_server::bind(socket_http).serve(svc.clone());
     servers.push(Box::pin(server_http));
     tracing::info!("Starting HTTP server on {}", socket_http);
 
@@ -65,8 +66,7 @@ pub fn run(config: Config) -> Result<()> {
         let key = read_pem_file(&https_conf.key_path)?;
         let tls_config =
             web_pool.block_on(async { RustlsConfig::from_pem(certificate, key).await })?;
-        let server_https = axum_server::bind_rustls(socket_https, tls_config)
-            .serve(endpoints::create_app(service.clone()).into_make_service());
+        let server_https = axum_server::bind_rustls(socket_https, tls_config).serve(svc);
         servers.push(Box::pin(server_https));
         tracing::info!("Starting HTTPS server on {}", socket_https);
     }
