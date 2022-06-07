@@ -48,7 +48,7 @@ impl Default for HTTPSConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
-    /// The log level for the relay.
+    /// HTTPS configuration
     pub https: Option<HTTPSConfig>,
 }
 
