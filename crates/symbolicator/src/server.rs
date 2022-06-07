@@ -41,16 +41,17 @@ pub fn run(config: Config) -> Result<()> {
 
     let mut servers: Vec<BoxFuture<_>> = vec![];
 
-    let service_http = web_pool
+    let service = web_pool
         .block_on(Service::create(
             config.clone(),
             io_pool.handle().to_owned(),
             cpu_pool.handle().to_owned(),
         ))
-        .context("failed to create HTTP service state")?;
+        .context("failed to create service state")?;
+
     let socket_http = config.bind.parse::<SocketAddr>()?;
     let server_http = axum_server::bind(socket_http)
-        .serve(endpoints::create_app(service_http).into_make_service());
+        .serve(endpoints::create_app(service.clone()).into_make_service());
     servers.push(Box::pin(server_http));
     tracing::info!("Starting HTTP server on {}", socket_http);
 
@@ -59,20 +60,13 @@ pub fn run(config: Config) -> Result<()> {
             None => panic!("Need HTTPS config"),
             Some(ref conf) => conf,
         };
-        let service_https = web_pool
-            .block_on(Service::create(
-                config.clone(),
-                io_pool.handle().to_owned(),
-                cpu_pool.handle().to_owned(),
-            ))
-            .context("failed to create HTTPS service state")?;
         let socket_https = bind_str.parse::<SocketAddr>()?;
         let certificate = read_pem_file(&https_conf.certificate_path)?;
         let key = read_pem_file(&https_conf.key_path)?;
         let tls_config =
             web_pool.block_on(async { RustlsConfig::from_pem(certificate, key).await })?;
         let server_https = axum_server::bind_rustls(socket_https, tls_config)
-            .serve(endpoints::create_app(service_https).into_make_service());
+            .serve(endpoints::create_app(service.clone()).into_make_service());
         servers.push(Box::pin(server_https));
         tracing::info!("Starting HTTPS server on {}", socket_https);
     }
