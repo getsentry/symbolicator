@@ -28,6 +28,7 @@ use crate::utils::sentry::ConfigureScope;
 
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
+use super::il2cpp::Il2cppService;
 use super::shared_cache::SharedCacheService;
 
 mod markers;
@@ -77,6 +78,9 @@ pub enum SymCacheError {
     #[error("failed to handle auxiliary BCSymbolMap file")]
     BcSymbolMapError(#[source] Error),
 
+    #[error("failed to handle auxiliary il2cpp line mapping file")]
+    Il2cppError(#[source] Error),
+
     #[error("symcache building took too long")]
     Timeout,
 
@@ -89,6 +93,7 @@ pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
     objects: ObjectsActor,
     bitcode_svc: BitcodeService,
+    il2cpp_svc: Il2cppService,
     threadpool: tokio::runtime::Handle,
 }
 
@@ -98,12 +103,14 @@ impl SymCacheActor {
         shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
+        il2cpp_svc: Il2cppService,
         threadpool: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
             symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             bitcode_svc,
+            il2cpp_svc,
             threadpool,
         }
     }
@@ -322,20 +329,44 @@ impl SymCacheActor {
             Some(handle) => {
                 // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
                 // fetch request is not cached
-                let bcsymbolmap_handle = match handle.object_id().debug_id {
-                    Some(debug_id) => {
-                        self.bitcode_svc
-                            .fetch_bcsymbolmap(
-                                debug_id,
-                                handle.scope().clone(),
-                                request.sources.clone(),
-                            )
-                            .await
+                let fetch_bcsymbolmap = async {
+                    match handle.object_id().debug_id {
+                        Some(debug_id) => {
+                            self.bitcode_svc
+                                .fetch_bcsymbolmap(
+                                    debug_id,
+                                    handle.scope().clone(),
+                                    request.sources.clone(),
+                                )
+                                .await
+                        }
+                        None => None,
                     }
-                    None => None,
                 };
 
-                let secondary_sources = SecondarySymCacheSources { bcsymbolmap_handle };
+                let fetch_il2cpp = async {
+                    match handle.object_id().debug_id {
+                        Some(debug_id) => {
+                            tracing::trace!("Fetching line mapping");
+                            self.il2cpp_svc
+                                .fetch_line_mapping(
+                                    debug_id,
+                                    handle.scope().clone(),
+                                    request.sources.clone(),
+                                )
+                                .await
+                        }
+                        None => None,
+                    }
+                };
+
+                let (bcsymbolmap_handle, il2cpp_handle) =
+                    futures::future::join(fetch_bcsymbolmap, fetch_il2cpp).await;
+
+                let secondary_sources = SecondarySymCacheSources {
+                    bcsymbolmap_handle,
+                    il2cpp_handle,
+                };
 
                 self.symcaches
                     .compute_memoized(FetchSymCacheInternal {
@@ -380,6 +411,10 @@ fn write_symcache(
 
     let markers = SymCacheMarkers::from_sources(&secondary_sources);
 
+    let file = File::create(&path)?;
+    let mut writer = BufWriter::new(file);
+    let mut symcache_writer = SymCacheWriter::new(&mut writer).unwrap();
+
     if let Object::MachO(ref mut macho) = symbolic_object {
         if let Some(ref handle) = secondary_sources.bcsymbolmap_handle {
             let bcsymbolmap = handle
@@ -395,12 +430,22 @@ fn write_symcache(
         }
     }
 
-    let file = File::create(&path)?;
-    let mut writer = BufWriter::new(file);
+    if let Some(ref handle) = secondary_sources.il2cpp_handle {
+        let il2cpp = handle.line_mapping().map_err(SymCacheError::Il2cppError)?;
+        tracing::debug!(
+            "Adding il2cpp line mapping {} to object {}",
+            handle.debug_id,
+            object_handle
+        );
+        symcache_writer.add_transformer(il2cpp);
+    }
 
     tracing::debug!("Converting symcache for {}", object_handle.cache_key());
 
-    SymCacheWriter::write_object(&symbolic_object, &mut writer).map_err(SymCacheError::Writing)?;
+    symcache_writer
+        .process_object(&symbolic_object)
+        .map_err(SymCacheError::Writing)?;
+    symcache_writer.finish().map_err(SymCacheError::Writing)?;
 
     let mut file = writer.into_inner().map_err(io::Error::from)?;
 
@@ -452,9 +497,17 @@ mod tests {
             shared_cache.clone(),
             downloader.clone(),
         );
-        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader);
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
+        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
 
-        SymCacheActor::new(caches.symcaches, shared_cache, objects, bitcode, cpu_pool)
+        SymCacheActor::new(
+            caches.symcaches,
+            shared_cache,
+            objects,
+            bitcode,
+            il2cpp,
+            cpu_pool,
+        )
     }
 
     /// Tests that a symcache is regenerated when it was created without a BcSymbolMap
