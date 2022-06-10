@@ -645,7 +645,6 @@ impl SharedCacheService {
             reason,
         } = message;
 
-        let _guard = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend.name().into());
@@ -785,7 +784,6 @@ impl SharedCacheService {
                     CacheError::Other(_) => "other",
                 };
                 if let CacheError::Other(err) = outer_err {
-                    let backend_name = self.backend_name().await;
                     let stderr: &dyn std::error::Error = &*err;
                     tracing::error!(stderr, "Error fetching from {} shared cache", backend_name);
                 }
