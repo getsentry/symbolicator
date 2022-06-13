@@ -289,7 +289,6 @@ impl BitcodeService {
         scope: Scope,
         source: SourceConfig,
     ) -> Option<Arc<CacheHandle>> {
-        let _guard = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
             scope.set_tag("auxdif.debugid", uuid);
             scope.set_extra("auxdif.kind", dif_kind.to_string().into());
