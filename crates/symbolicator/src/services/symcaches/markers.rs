@@ -1,6 +1,6 @@
 use std::io::SeekFrom;
 
-use crate::services::bitcode::BcSymbolMapHandle;
+use crate::services::{bitcode::BcSymbolMapHandle, il2cpp::Il2cppHandle};
 
 /// This is the legacy marker that was used previously to flag a SymCache that was created
 /// using a`BcSymbolMap`.
@@ -13,9 +13,11 @@ const MARKERS32_MARKER: &[u8] = b"WITH_MARKERS32";
 #[derive(Clone, Debug, Default)]
 pub struct SecondarySymCacheSources {
     pub bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+    pub il2cpp_handle: Option<Il2cppHandle>,
 }
 
 const MARKER_BCSYMBOLMAP: u32 = 1 << 0;
+const MARKER_IL2CPP: u32 = 1 << 1;
 
 /// This is the markers that are being embedded into, and read from, a SymCache file.
 #[derive(Debug, Default, PartialEq)]
@@ -29,6 +31,9 @@ impl SymCacheMarkers {
         let mut markers = 0;
         if sources.bcsymbolmap_handle.is_some() {
             markers |= MARKER_BCSYMBOLMAP;
+        }
+        if sources.il2cpp_handle.is_some() {
+            markers |= MARKER_IL2CPP;
         }
         Self { markers }
     }
@@ -81,6 +86,8 @@ mod tests {
 
     use symbolic::common::ByteView;
 
+    use crate::services::il2cpp::Il2cppHandle;
+
     use super::*;
 
     #[test]
@@ -97,8 +104,13 @@ mod tests {
             uuid: Default::default(),
             data: ByteView::from_vec(vec![]),
         };
+        let il2cpp = Il2cppHandle {
+            debug_id: Default::default(),
+            data: ByteView::from_vec(vec![]),
+        };
         let sources = SecondarySymCacheSources {
             bcsymbolmap_handle: Some(bcsymbolmap),
+            il2cpp_handle: Some(il2cpp),
         };
         let markers = SymCacheMarkers::from_sources(&sources);
 
