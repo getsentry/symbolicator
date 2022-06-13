@@ -28,6 +28,7 @@ pub enum LogFormat {
     Json,
 }
 
+#[cfg(feature = "https")]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct HTTPSConfig {
@@ -35,6 +36,7 @@ pub struct HTTPSConfig {
     pub key_path: PathBuf,
 }
 
+#[cfg(feature = "https")]
 impl Default for HTTPSConfig {
     fn default() -> Self {
         HTTPSConfig {
@@ -44,7 +46,8 @@ impl Default for HTTPSConfig {
     }
 }
 
-/// Controls the HTTP server setup
+/// Controls the HTTPS server setup
+#[cfg(feature = "https")]
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
@@ -267,6 +270,7 @@ pub struct Config {
     pub bind: String,
 
     /// Host and port to bind the HTTPS webserver to.
+    #[cfg(feature = "https")]
     pub bind_https: Option<String>,
 
     /// Configuration for internal logging.
@@ -275,6 +279,7 @@ pub struct Config {
     /// Configuration for reporting metrics to a statsd instance.
     pub metrics: Metrics,
 
+    #[cfg(feature = "https")]
     pub server_config: ServerConfig,
 
     /// DSN to report internal errors to
@@ -394,8 +399,10 @@ impl Default for Config {
         Config {
             cache_dir: default_cache_dir(),
             bind: default_bind(),
+            #[cfg(feature = "https")]
             bind_https: None,
             logging: Logging::default(),
+            #[cfg(feature = "https")]
             server_config: ServerConfig::default(),
             metrics: Metrics::default(),
             sentry_dsn: None,

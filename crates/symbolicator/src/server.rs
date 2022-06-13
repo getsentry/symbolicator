@@ -1,9 +1,13 @@
+#[cfg(feature = "https")]
 use std::fs::read;
 use std::net::SocketAddr;
+#[cfg(feature = "https")]
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
+use axum_server;
+#[cfg(feature = "https")]
 use axum_server::tls_rustls::RustlsConfig;
 use futures::future::try_join_all;
 use futures::future::BoxFuture;
@@ -12,6 +16,7 @@ use crate::config::Config;
 use crate::endpoints;
 use crate::services::Service;
 
+#[cfg(feature = "https")]
 fn read_pem_file(path: &PathBuf) -> Result<Vec<u8>> {
     read(path).context(format!("unable to read file: {}", path.display()))
 }
@@ -56,6 +61,7 @@ pub fn run(config: Config) -> Result<()> {
     servers.push(Box::pin(server_http));
     tracing::info!("Starting HTTP server on {}", socket_http);
 
+    #[cfg(feature = "https")]
     if let Some(ref bind_str) = config.bind_https {
         let https_conf = match config.server_config.https {
             None => panic!("Need HTTPS config"),

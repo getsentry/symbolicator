@@ -65,3 +65,6 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 sha-1 = "0.10.0"
 test-assembler = "0.1.5"
 warp = "0.3.0"
+
+[features]
+https = ["axum-server/tls-rustls"]
