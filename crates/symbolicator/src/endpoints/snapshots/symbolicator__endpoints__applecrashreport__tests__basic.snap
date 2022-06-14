@@ -1,5 +1,6 @@
 ---
-source: src/endpoints/applecrashreport.rs
+source: crates/symbolicator/src/endpoints/applecrashreport.rs
+assertion_line: 90
 expression: response
 ---
 status: completed
@@ -74,6 +75,7 @@ stacktraces:
         instruction_addr: "0xea004"
         package: YetanotherMac
   - thread_id: 1
+    thread_name: Test Thread Name
     is_requesting: true
     registers:
       cs: "0x2b"
@@ -180,3 +182,4 @@ modules:
     debug_file: /Users/bruno/Documents/Unreal Projects/YetAnotherMac/MacNoEditor/YetAnotherMac.app/Contents/UE4/Engine/Binaries/ThirdParty/PhysX3/Mac/libPxFoundationPROFILE.dylib
     image_addr: "0x1131fa000"
     image_size: 28671
+

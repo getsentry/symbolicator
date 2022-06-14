@@ -778,6 +778,7 @@ fn symbolicate_stacktrace(
 
     CompleteStacktrace {
         thread_id: thread.thread_id,
+        thread_name: thread.thread_name,
         is_requesting: thread.is_requesting,
         registers: thread.registers,
         frames: symbolicated_frames,
@@ -1086,6 +1087,7 @@ impl SymbolicationActor {
 
                 stacktraces.push(RawStacktrace {
                     thread_id: Some(thread.id),
+                    thread_name: thread.name,
                     is_requesting: Some(thread.crashed),
                     registers,
                     frames,
