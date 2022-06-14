@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
-use axum_server;
 #[cfg(feature = "https")]
 use axum_server::tls_rustls::RustlsConfig;
 use futures::future::try_join_all;
