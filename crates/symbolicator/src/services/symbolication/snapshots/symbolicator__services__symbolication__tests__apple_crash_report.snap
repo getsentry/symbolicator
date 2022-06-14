@@ -1,8 +1,7 @@
 ---
 source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 2384
+assertion_line: 1446
 expression: response.unwrap()
-
 ---
 status: completed
 timestamp: 1547055742
@@ -76,6 +75,7 @@ stacktraces:
         instruction_addr: "0xea004"
         package: YetanotherMac
   - thread_id: 1
+    thread_name: Test Thread Name
     is_requesting: true
     registers:
       cs: "0x2b"

@@ -431,7 +431,7 @@ async fn stackwalk(
     let requesting_thread_index: Option<usize> = process_state.requesting_thread;
     let threads = process_state.threads;
     let mut stacktraces = Vec::with_capacity(threads.len());
-    for (index, thread) in threads.iter().enumerate() {
+    for (index, thread) in threads.into_iter().enumerate() {
         let registers = match thread.frames.get(0) {
             Some(frame) => map_symbolic_registers(&frame.context),
             None => Registers::new(),
@@ -454,6 +454,7 @@ async fn stackwalk(
 
         stacktraces.push(RawStacktrace {
             is_requesting: requesting_thread_index.map(|r| r == index),
+            thread_name: thread.thread_name,
             thread_id: Some(thread.thread_id.into()),
             registers,
             frames,
