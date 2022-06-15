@@ -1,3 +1,4 @@
+use axum_server::Handle;
 #[cfg(feature = "https")]
 use std::fs::read;
 use std::net::SocketAddr;
@@ -55,13 +56,26 @@ pub fn run(config: Config) -> Result<()> {
 
     let svc = endpoints::create_app(service).into_make_service();
 
+    let handle_http = Handle::new();
     let socket_http = config.bind.parse::<SocketAddr>()?;
-    let server_http = axum_server::bind(socket_http).serve(svc.clone());
+    let server_http = axum_server::bind(socket_http)
+        .handle(handle_http.clone())
+        .serve(svc.clone());
     servers.push(Box::pin(server_http));
-    tracing::info!("Starting HTTP server on {}", socket_http);
+
+    let listening_http = async move {
+        if let Some(local_addr) = handle_http.listening().await {
+            tracing::info!("Starting HTTP server on {}", local_addr);
+        } else {
+            panic!("Unable to listen on HTTP port");
+        }
+        Ok(())
+    };
+    servers.push(Box::pin(listening_http));
 
     #[cfg(feature = "https")]
     if let Some(ref bind_str) = config.bind_https {
+        let handle_https = Handle::new();
         let https_conf = match config.server_config.https {
             None => panic!("Need HTTPS config"),
             Some(ref conf) => conf,
@@ -71,9 +85,20 @@ pub fn run(config: Config) -> Result<()> {
         let key = read_pem_file(&https_conf.key_path)?;
         let tls_config =
             web_pool.block_on(async { RustlsConfig::from_pem(certificate, key).await })?;
-        let server_https = axum_server::bind_rustls(socket_https, tls_config).serve(svc);
+        let server_https = axum_server::bind_rustls(socket_https, tls_config)
+            .handle(handle_https.clone())
+            .serve(svc);
         servers.push(Box::pin(server_https));
-        tracing::info!("Starting HTTPS server on {}", socket_https);
+
+        let listening_https = async move {
+            if let Some(local_addr) = handle_https.listening().await {
+                tracing::info!("Starting HTTPS server on {}", local_addr);
+            } else {
+                panic!("Unable to listen on HTTPS port");
+            }
+            Ok(())
+        };
+        servers.push(Box::pin(listening_https));
     }
 
     web_pool.block_on(try_join_all(servers))?;
