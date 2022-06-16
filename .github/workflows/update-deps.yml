@@ -1,0 +1,22 @@
+name: Update Dependencies
+
+on:
+  # Run every day.
+  schedule:
+    - cron: '0 3 * * *'
+  # And on on every PR merge so we get the updated dependencies ASAP, and to make sure the changelog doesn't conflict.
+  push:
+    # TODO uncomment
+    # branches:
+    #   - master
+
+jobs:
+  native:
+    # TODO update after it moves to a custom repo
+    uses: getsentry/sentry-unity/.github/workflows/submodule-updater.yml@127562f3adfdb83714e68fb3f66e210f87f51fa4
+    with:
+      path: crates/symbolicator-crash/sentry-native
+      name: Native SDK
+    secrets:
+      # TODO provide a custom API token to have the CI triggered
+      api_token: ${{ github.token }}
