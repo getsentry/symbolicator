@@ -436,15 +436,42 @@ mod tests {
         );
 
         let entry = modules.get_module_by_addr(0x1234, AddrMode::Abs);
-        assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("a"));
+        assert_eq!(
+            entry
+                .unwrap()
+                .object_info
+                .raw
+                .code_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("a")
+        );
 
         let entry = modules.get_module_by_addr(0x3456, AddrMode::Abs);
         assert!(entry.is_none());
 
         let entry = modules.get_module_by_addr(0x3456, AddrMode::Rel(0));
-        assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("b"));
+        assert_eq!(
+            entry
+                .unwrap()
+                .object_info
+                .raw
+                .code_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("b")
+        );
 
         let entry = modules.get_module_by_addr(0x4567, AddrMode::Abs);
-        assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("c"));
+        assert_eq!(
+            entry
+                .unwrap()
+                .object_info
+                .raw
+                .code_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("c")
+        );
     }
 }

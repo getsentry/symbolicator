@@ -265,14 +265,8 @@ async fn wrap_response_channel(
 
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
-        debug_id: match object_info.debug_id.as_deref() {
-            None | Some("") => None,
-            Some(string) => string.parse().ok(),
-        },
-        code_id: match object_info.code_id.as_deref() {
-            None | Some("") => None,
-            Some(string) => string.parse().ok(),
-        },
+        debug_id: object_info.debug_id,
+        code_id: object_info.code_id.clone(),
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
         object_type: object_info.ty,
@@ -582,16 +576,10 @@ fn record_symbolication_metrics(
             "status" => m.debug_status.name()
         );
 
-        let usable_code_id = !matches!(m.raw.code_id.as_deref(), None | Some(""));
+        let usable_code_id = m.raw.code_id.is_some();
+        let usable_debug_id = m.raw.debug_id.is_some();
 
-        // NOTE: this is a closure as a way to short-circuit the computation because
-        // it is expensive
-        let usable_debug_id = || match m.raw.debug_id.as_deref() {
-            None | Some("") => false,
-            Some(string) => string.parse::<DebugId>().is_ok(),
-        };
-
-        if !usable_code_id && !usable_debug_id() {
+        if !usable_code_id && !usable_debug_id {
             unusable_modules += 1;
         }
 
@@ -1026,9 +1014,9 @@ fn map_apple_binary_image(image: apple_crash_report_parser::BinaryImage) -> Comp
 
     let raw_info = RawObjectInfo {
         ty: ObjectType::Macho,
-        code_id: Some(code_id.to_string()),
+        code_id: Some(code_id),
         code_file: Some(image.path.clone()),
-        debug_id: Some(debug_id.to_string()),
+        debug_id: Some(debug_id),
         debug_file: Some(image.path),
         image_addr: HexValue(image.addr.0),
         image_size: match image.size {
@@ -1296,8 +1284,8 @@ mod tests {
             }],
             modules: vec![CompleteObjectInfo::from(RawObjectInfo {
                 ty: ObjectType::Macho,
-                code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
-                debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
+                code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
+                debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".parse().unwrap()),
                 image_addr: HexValue(0x1_0000_0000),
                 image_size: Some(4096),
                 code_file: None,

@@ -373,10 +373,6 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
     // Some modules are not objects but rather fonts or JIT areas or other mmapped files
     // which we don't care about.  These may not have complete information so map these to
     // our schema by converting to None when needed.
-    let code_id = module
-        .code_identifier()
-        .filter(|code_id| !code_id.is_nil())
-        .map(|code_id| code_id.to_string().to_lowercase());
     let code_file = module.code_file();
     let code_file = match code_file.is_empty() {
         true => None,
@@ -385,9 +381,9 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
 
     RawObjectInfo {
         ty,
-        code_id,
+        code_id: module.code_identifier().filter(|code_id| !code_id.is_nil()),
         code_file,
-        debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
+        debug_id: module.debug_identifier(),
         debug_file: module.debug_file().map(|c| c.into_owned()),
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -920,7 +916,7 @@ mod tests {
             ty: ObjectType::Elf,
             code_id: None,
             code_file: None,
-            debug_id: Some(uuid::Uuid::new_v4().to_string()).filter(|_| has_id),
+            debug_id: has_id.then(|| DebugId::from_uuid(uuid::Uuid::new_v4())),
             debug_file: None,
             image_addr: HexValue(addr),
             image_size: size,

@@ -313,7 +313,7 @@ pub struct RawObjectInfo {
 
     /// Identifier of the code file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code_id: Option<String>,
+    pub code_id: Option<CodeId>,
 
     /// Name of the code file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -321,7 +321,7 @@ pub struct RawObjectInfo {
 
     /// Identifier of the debug file.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub debug_id: Option<String>,
+    pub debug_id: Option<DebugId>,
 
     /// Name of the debug file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -602,19 +602,7 @@ impl CompleteObjectInfo {
 }
 
 impl From<RawObjectInfo> for CompleteObjectInfo {
-    fn from(mut raw: RawObjectInfo) -> Self {
-        raw.debug_id = raw
-            .debug_id
-            .filter(|id| !id.is_empty())
-            .and_then(|id| id.parse::<DebugId>().ok())
-            .map(|id| id.to_string());
-
-        raw.code_id = raw
-            .code_id
-            .filter(|id| !id.is_empty())
-            .and_then(|id| id.parse::<CodeId>().ok())
-            .map(|id| id.to_string());
-
+    fn from(raw: RawObjectInfo) -> Self {
         CompleteObjectInfo {
             debug_status: ObjectFileStatus::Unused,
             unwind_status: None,
