@@ -22,7 +22,7 @@ use symbolic_minidump::cfi::CfiCache;
 use tempfile::TempPath;
 
 use crate::cache::CacheStatus;
-use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::services::cficaches::{CfiCacheActor, CfiCacheError, FetchCfiCache};
 use crate::services::download::ObjectId;
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::ObjectError;
