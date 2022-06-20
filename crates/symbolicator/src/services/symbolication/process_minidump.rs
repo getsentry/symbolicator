@@ -360,7 +360,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
     }
 }
 
-fn object_info_from_minidump_module(os: Os, module: &MinidumpModule) -> CompleteObjectInfo {
+fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> CompleteObjectInfo {
     // Some modules are not objects but rather fonts or JIT areas or other mmapped files
     // which we don't care about.  These may not have complete information so map these to
     // our schema by converting to None when needed.
@@ -372,13 +372,6 @@ fn object_info_from_minidump_module(os: Os, module: &MinidumpModule) -> Complete
     let code_file = match code_file.is_empty() {
         true => None,
         false => Some(code_file.into_owned()),
-    };
-
-    let ty = match os {
-        Os::Windows => ObjectType::Pe,
-        Os::MacOs | Os::Ios => ObjectType::Macho,
-        Os::Linux | Os::Solaris | Os::Android => ObjectType::Elf,
-        _ => ObjectType::Unknown,
     };
 
     CompleteObjectInfo::from(RawObjectInfo {
@@ -460,7 +453,7 @@ async fn stackwalk(
         .get_stream::<MinidumpModuleList>()?
         .iter()
         .map(|module| {
-            let mut obj_info = object_info_from_minidump_module(system_info.os, module);
+            let mut obj_info = object_info_from_minidump_module(ty, module);
 
             let id = (
                 module.debug_identifier().unwrap_or_default(),
