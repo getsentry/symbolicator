@@ -173,7 +173,7 @@ struct SymbolicatorSymbolProvider {
     scope: Scope,
     sources: Arc<[SourceConfig]>,
     cficache_actor: CfiCacheActor,
-    cficaches: RwLock<HashMap<DebugId, (CfiModule, Option<SymbolFile>)>>,
+    cficaches: RwLock<HashMap<(DebugId, u64), (CfiModule, Option<SymbolFile>)>>,
     object_type: ObjectType,
 }
 
@@ -195,9 +195,21 @@ impl SymbolicatorSymbolProvider {
 
     #[tracing::instrument(skip_all)]
     async fn load_symbol_file(&self, module: &(dyn Module + Sync)) -> Option<()> {
-        let debug_id = module.debug_identifier()?;
-        if self.cficaches.read().contains_key(&debug_id) {
+        let id = (
+            module.debug_identifier().unwrap_or_default(),
+            module.base_address(),
+        );
+        if self.cficaches.read().contains_key(&id) {
             return Some(());
+        }
+
+        if id.0.is_nil() {
+            let cfi_module = CfiModule {
+                cfi_status: ObjectFileStatus::Missing,
+                ..Default::default()
+            };
+            self.cficaches.write().insert(id, (cfi_module, None));
+            return None;
         }
 
         let sources = self.sources.clone();
@@ -270,9 +282,7 @@ impl SymbolicatorSymbolProvider {
             .map(load_symbolfile)
             .and_then(Result::ok);
 
-        self.cficaches
-            .write()
-            .insert(debug_id, (cfi_module, symbol_file));
+        self.cficaches.write().insert(id, (cfi_module, symbol_file));
 
         Some(())
     }
@@ -300,19 +310,16 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
         self.load_symbol_file(module).await?;
-        self.cficaches
-            .read()
-            .get(&module.debug_identifier()?)?
-            .1
-            .as_ref()?
-            .walk_frame(module, walker)
+        let id = (module.debug_identifier()?, module.base_address());
+        let caches = self.cficaches.read();
+        caches.get(&id)?.1.as_ref()?.walk_frame(module, walker)
     }
 
     fn stats(&self) -> HashMap<String, SymbolStats> {
         self.cficaches
             .read()
             .iter()
-            .filter_map(|(debug_id, (_, sym))| {
+            .filter_map(|((debug_id, _), (_, sym))| {
                 let stats = SymbolStats {
                     symbol_url: sym.as_ref()?.url.clone(), // TODO(ja): We could put our candidate URI here
                     loaded_symbols: true, // TODO(ja): Should we return `false` for not found?
@@ -394,7 +401,7 @@ async fn stackwalk(
     let duration = duration.elapsed();
 
     let SymbolicatorSymbolProvider { cficaches, .. } = provider;
-    let cficaches = cficaches.into_inner();
+    let mut cficaches = cficaches.into_inner();
     let minidump_state = MinidumpState::from_process_state(&process_state);
 
     // Finally iterate through the threads and build the stacktraces to
@@ -439,12 +446,16 @@ async fn stackwalk(
         .map(|module| {
             let mut obj_info = object_info_from_minidump_module(system_info.os, module);
 
-            let id = module.debug_identifier().unwrap_or_default();
-            obj_info.unwind_status = match cficaches.get(&id) {
+            let id = (
+                module.debug_identifier().unwrap_or_default(),
+                module.base_address(),
+            );
+
+            obj_info.unwind_status = match cficaches.remove(&id) {
                 None => Some(ObjectFileStatus::Unused),
                 Some((cfi_module, _)) => {
                     obj_info.features.merge(cfi_module.features);
-                    obj_info.candidates = cfi_module.cfi_candidates.clone();
+                    obj_info.candidates = cfi_module.cfi_candidates;
                     Some(cfi_module.cfi_status)
                 }
             };
