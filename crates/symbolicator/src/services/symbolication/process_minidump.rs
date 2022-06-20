@@ -22,7 +22,7 @@ use symbolic_minidump::cfi::CfiCache;
 use tempfile::TempPath;
 
 use crate::cache::CacheStatus;
-use crate::services::cficaches::{CfiCacheActor, CfiCacheError, FetchCfiCache};
+use crate::services::cficaches::{CfiCacheActor, CfiCacheError, CfiCacheFile, FetchCfiCache};
 use crate::services::download::ObjectId;
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::ObjectError;
@@ -130,7 +130,8 @@ impl MinidumpState {
     }
 }
 
-fn load_symbolfile(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
+/// Loads a [`SymbolFile`] from the given `Path`.
+fn load_symbol_file(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
     sentry::with_scope(
         |scope| {
             scope.set_extra(
@@ -170,17 +171,36 @@ fn load_symbolfile(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
     )
 }
 
-struct LoadedCfiModule {
-    cfi_module: CfiModule,
+/// Processing information for a module that was referenced in a minidump.
+#[derive(Debug, Default)]
+struct CfiModule {
+    /// Combined features provided by all the DIFs we found for this module.
+    features: ObjectFeatures,
+    /// Status of the CFI or unwind information for this module.
+    cfi_status: ObjectFileStatus,
+    /// Call frame information for the module, loaded as a [`SymbolFile`].
     symbol_file: Option<SymbolFile>,
+    /// The DIF object candidates for for this module.
+    cfi_candidates: AllObjectCandidates,
 }
 
+/// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
+/// CFI for stackwalking.
+///
+/// An instance of this type is always used to stackwalk one particular minidump.
 struct SymbolicatorSymbolProvider {
+    /// The scope of the stackwalking request.
     scope: Scope,
+    /// The sources from which to fetch CFI.
     sources: Arc<[SourceConfig]>,
+    /// The object type of the minidump to stackwalk.
     object_type: ObjectType,
+    /// The actor used for fetching CFI.
     cficache_actor: CfiCacheActor,
-    cficaches: RwLock<HashMap<(DebugId, u64), LoadedCfiModule>>,
+    /// An internal database of loaded CFI.
+    ///
+    /// The key consists of a module's debug identifier and base address.
+    cficaches: RwLock<HashMap<(DebugId, u64), CfiModule>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -199,8 +219,9 @@ impl SymbolicatorSymbolProvider {
         }
     }
 
+    /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
     #[tracing::instrument(skip_all)]
-    async fn load_symbol_file(&self, module: &(dyn Module + Sync)) -> Option<()> {
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Option<()> {
         let id = (
             module.debug_identifier().unwrap_or_default(),
             module.base_address(),
@@ -210,17 +231,12 @@ impl SymbolicatorSymbolProvider {
         }
 
         if id.0.is_nil() {
+            // save a dummy "missing" CfiModule for this id.
             let cfi_module = CfiModule {
                 cfi_status: ObjectFileStatus::Missing,
                 ..Default::default()
             };
-            self.cficaches.write().insert(
-                id,
-                LoadedCfiModule {
-                    cfi_module,
-                    symbol_file: None,
-                },
-            );
+            self.cficaches.write().insert(id, cfi_module);
             return None;
         }
 
@@ -267,20 +283,22 @@ impl SymbolicatorSymbolProvider {
                         ObjectFileStatus::from(&err)
                     }
                 };
-                let cfi_path = match cfi_cache.status() {
-                    CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
+                let symbol_file = match cfi_cache.status() {
+                    CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
                     _ => None,
                 };
                 CfiModule {
                     features: cfi_cache.features(),
                     cfi_status,
-                    cfi_path,
+                    symbol_file,
                     cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
                 }
             }
+
             Err(err) => {
                 let stderr: &dyn std::error::Error = &err;
                 tracing::debug!(stderr, "Error while fetching cficache");
+
                 CfiModule {
                     cfi_status: ObjectFileStatus::from(err.as_ref()),
                     ..Default::default()
@@ -288,19 +306,7 @@ impl SymbolicatorSymbolProvider {
             }
         };
 
-        let symbol_file = cfi_module
-            .cfi_path
-            .as_deref()
-            .map(load_symbolfile)
-            .and_then(Result::ok);
-
-        self.cficaches.write().insert(
-            id,
-            LoadedCfiModule {
-                cfi_module,
-                symbol_file,
-            },
-        );
+        self.cficaches.write().insert(id, cfi_module);
 
         Some(())
     }
@@ -327,7 +333,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        self.load_symbol_file(module).await?;
+        self.load_cfi_module(module).await?;
         let id = (module.debug_identifier()?, module.base_address());
         self.cficaches
             .read()
@@ -352,19 +358,6 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
             })
             .collect()
     }
-}
-
-/// A module which was referenced in a minidump and processing information for it.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-struct CfiModule {
-    /// Combined features provided by all the DIFs we found for this module.
-    features: ObjectFeatures,
-    /// Status of the CFI or unwind information for this module.
-    cfi_status: ObjectFileStatus,
-    /// Path to the CFI file in our cache, if there was a cache.
-    cfi_path: Option<PathBuf>,
-    /// The DIF object candidates for for this module.
-    cfi_candidates: AllObjectCandidates,
 }
 
 fn object_info_from_minidump_module(os: Os, module: &MinidumpModule) -> CompleteObjectInfo {
@@ -422,8 +415,6 @@ async fn stackwalk(
     let process_state = minidump_processor::process_minidump(&minidump, &provider).await?;
     let duration = duration.elapsed();
 
-    let SymbolicatorSymbolProvider { cficaches, .. } = provider;
-    let mut cficaches = cficaches.into_inner();
     let minidump_state = MinidumpState::from_process_state(&process_state);
 
     // Finally iterate through the threads and build the stacktraces to
@@ -462,6 +453,9 @@ async fn stackwalk(
     }
 
     // Start building the module list for the symbolication response.
+    // After stackwalking, `provider.cficaches` contains entries for exactly
+    // those modules that were referenced by some stack frame in the minidump.
+    let mut cficaches = provider.cficaches.into_inner();
     let mut modules: Vec<CompleteObjectInfo> = minidump
         .get_stream::<MinidumpModuleList>()?
         .iter()
@@ -475,7 +469,7 @@ async fn stackwalk(
 
             obj_info.unwind_status = match cficaches.remove(&id) {
                 None => Some(ObjectFileStatus::Unused),
-                Some(LoadedCfiModule { cfi_module, .. }) => {
+                Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);
                     obj_info.candidates = cfi_module.cfi_candidates;
                     Some(cfi_module.cfi_status)
