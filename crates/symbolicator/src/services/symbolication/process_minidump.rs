@@ -169,12 +169,18 @@ fn load_symbolfile(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
         },
     )
 }
+
+struct LoadedCfiModule {
+    cfi_module: CfiModule,
+    symbol_file: Option<SymbolFile>,
+}
+
 struct SymbolicatorSymbolProvider {
     scope: Scope,
     sources: Arc<[SourceConfig]>,
-    cficache_actor: CfiCacheActor,
-    cficaches: RwLock<HashMap<(DebugId, u64), (CfiModule, Option<SymbolFile>)>>,
     object_type: ObjectType,
+    cficache_actor: CfiCacheActor,
+    cficaches: RwLock<HashMap<(DebugId, u64), LoadedCfiModule>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -208,7 +214,13 @@ impl SymbolicatorSymbolProvider {
                 cfi_status: ObjectFileStatus::Missing,
                 ..Default::default()
             };
-            self.cficaches.write().insert(id, (cfi_module, None));
+            self.cficaches.write().insert(
+                id,
+                LoadedCfiModule {
+                    cfi_module,
+                    symbol_file: None,
+                },
+            );
             return None;
         }
 
@@ -282,7 +294,13 @@ impl SymbolicatorSymbolProvider {
             .map(load_symbolfile)
             .and_then(Result::ok);
 
-        self.cficaches.write().insert(id, (cfi_module, symbol_file));
+        self.cficaches.write().insert(
+            id,
+            LoadedCfiModule {
+                cfi_module,
+                symbol_file,
+            },
+        );
 
         Some(())
     }
@@ -311,17 +329,21 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
     ) -> Option<()> {
         self.load_symbol_file(module).await?;
         let id = (module.debug_identifier()?, module.base_address());
-        let caches = self.cficaches.read();
-        caches.get(&id)?.1.as_ref()?.walk_frame(module, walker)
+        self.cficaches
+            .read()
+            .get(&id)?
+            .symbol_file
+            .as_ref()?
+            .walk_frame(module, walker)
     }
 
     fn stats(&self) -> HashMap<String, SymbolStats> {
         self.cficaches
             .read()
             .iter()
-            .filter_map(|((debug_id, _), (_, sym))| {
+            .filter_map(|((debug_id, _), sym)| {
                 let stats = SymbolStats {
-                    symbol_url: sym.as_ref()?.url.clone(), // TODO(ja): We could put our candidate URI here
+                    symbol_url: sym.symbol_file.as_ref()?.url.clone(), // TODO(ja): We could put our candidate URI here
                     loaded_symbols: true, // TODO(ja): Should we return `false` for not found?
                     corrupt_symbols: false,
                 };
@@ -453,7 +475,7 @@ async fn stackwalk(
 
             obj_info.unwind_status = match cficaches.remove(&id) {
                 None => Some(ObjectFileStatus::Unused),
-                Some((cfi_module, _)) => {
+                Some(LoadedCfiModule { cfi_module, .. }) => {
                     obj_info.features.merge(cfi_module.features);
                     obj_info.candidates = cfi_module.cfi_candidates;
                     Some(cfi_module.cfi_status)
