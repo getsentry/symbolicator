@@ -7,8 +7,8 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use sentry::{configure_scope, Hub, SentryFutureExt};
+use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
-use symbolic_minidump::cfi::CfiCache;
 use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
@@ -44,7 +44,7 @@ const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 0,
     fallbacks: &[],
 };
-static_assert!(symbolic_minidump::cfi::CFICACHE_LATEST_VERSION == 2);
+static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
@@ -56,7 +56,7 @@ pub enum CfiCacheError {
     Fetching(#[source] ObjectError),
 
     #[error("failed to parse cficache")]
-    Parsing(#[from] symbolic_minidump::cfi::CfiError),
+    Parsing(#[from] symbolic::cfi::CfiError),
 
     #[error("failed to parse object")]
     ObjectParsing(#[source] ObjectError),
@@ -138,7 +138,7 @@ struct FetchCfiCacheInternal {
 /// Extracts the Call Frame Information (CFI) from an object file.
 ///
 /// The extracted CFI is written to `path` in symbolic's
-/// [`CfiCache`](symbolic_minidump::cfi::CfiCache) format.
+/// [`CfiCache`] format.
 #[tracing::instrument(skip_all)]
 async fn compute_cficache(
     threadpool: tokio::runtime::Handle,
@@ -151,15 +151,15 @@ async fn compute_cficache(
         .await
         .map_err(CfiCacheError::Fetching)?;
 
-    let future = async move {
-        // The original has a download error so the cfi cache entry should just be negative.
-        if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
-            return Ok(CacheStatus::Negative);
-        }
-        if object.status() != &CacheStatus::Positive {
-            return Ok(object.status().clone());
-        }
+    // The original has a download error so the cfi cache entry should just be negative.
+    if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
+        return Ok(CacheStatus::Negative);
+    }
+    if object.status() != &CacheStatus::Positive {
+        return Ok(object.status().clone());
+    }
 
+    let future = async move {
         let status = if let Err(e) = write_cficache(&path, &*object) {
             tracing::warn!("Could not write cficache: {}", e);
             sentry::capture_error(&e);
@@ -293,7 +293,7 @@ impl CfiCacheActor {
 /// Extracts the CFI from an object file, writing it to a CFI file.
 ///
 /// The source file is probably an executable or so, the resulting file is in the format of
-/// [symbolic_minidump::cfi::CfiCache].
+/// [`CfiCache`].
 #[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     configure_scope(|scope| {
