@@ -18,8 +18,8 @@ use parking_lot::RwLock;
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
+use symbolic::cfi::CfiCache;
 use symbolic::common::{Arch, ByteView};
-use symbolic_minidump::cfi::CfiCache;
 use tempfile::TempPath;
 
 use crate::cache::CacheStatus;

@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use regex::Regex;
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
-use symbolic::common::{Arch, CodeId, DebugId, InstructionInfo, Language, Name};
+use symbolic::common::{split_path, Arch, CodeId, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use thiserror::Error;
 
@@ -353,11 +353,6 @@ fn symbolicate_frame(
     };
 
     tracing::trace!("Symbolicating {:#x}", relative_addr);
-    let line_infos = match symcache.lookup(relative_addr) {
-        Ok(x) => x,
-        Err(_) => return Err(FrameStatus::Malformed),
-    };
-
     let mut rv = vec![];
 
     // The symbol addr only makes sense for the outermost top-level function, and not its inlinees.
@@ -366,57 +361,47 @@ fn symbolicate_frame(
     let mut sym_addr = None;
     let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
 
-    for line_info in line_infos {
-        let line_info = match line_info {
-            Ok(x) => x,
-            Err(_) => return Err(FrameStatus::Malformed),
-        };
+    for source_location in symcache.lookup(relative_addr) {
+        let abs_path = source_location
+            .file()
+            .map(|f| f.full_path())
+            .unwrap_or_default();
+        let filename = split_path(&abs_path).1;
 
-        // The logic for filename and abs_path intentionally diverges from how symbolic is used
-        // inside of Sentry right now.
-        let (filename, abs_path) = {
-            let rel_path = line_info.path();
-            let abs_path = line_info.abs_path();
-
-            if abs_path == rel_path {
-                // rel_path is absolute and therefore not usable for `filename`. Use the
-                // basename as filename.
-                (line_info.filename().to_owned(), abs_path.to_owned())
-            } else {
-                // rel_path is relative (probably to the compilation dir) and therefore useful
-                // as filename for Sentry.
-                (rel_path.to_owned(), abs_path.to_owned())
-            }
-        };
-
-        let name = line_info.function_name();
+        let func = source_location.function();
+        let symbol = func.name();
 
         // Detect the language from the bare name, ignoring any pre-set language. There are a few
         // languages that we should always be able to demangle. Only complain about those that we
         // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
         // reported as C++, which are expected not to demangle.
-        let detected_language = Name::from(name.as_str()).detect_language();
-        let should_demangle = match (line_info.language(), detected_language) {
+        let detected_language = Name::from(symbol).detect_language();
+        let should_demangle = match (func.language(), detected_language) {
             (_, Language::Unknown) => false, // can't demangle what we cannot detect
             (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
             (Language::Unknown, _) => true,  // if there was no language, then rely on detection
             (lang, detected) => lang == detected, // avoid false-positive detections
         };
 
-        let demangled_opt = name.demangle(DEMANGLE_OPTIONS);
+        let demangled_opt = func.name_for_demangling().demangle(DEMANGLE_OPTIONS);
         if should_demangle && demangled_opt.is_none() {
             sentry::with_scope(
-                |scope| scope.set_extra("identifier", name.to_string().into()),
+                |scope| scope.set_extra("identifier", symbol.to_string().into()),
                 || {
-                    let message = format!("Failed to demangle {} identifier", line_info.language());
+                    let message = format!("Failed to demangle {} identifier", func.language());
                     sentry::capture_message(&message, sentry::Level::Error);
                 },
             );
         }
 
         sym_addr = Some(HexValue(
-            lookup_result.expose_preferred_addr(line_info.function_address()),
+            lookup_result.expose_preferred_addr(func.entry_pc() as u64),
         ));
+        let filename = if !filename.is_empty() {
+            Some(filename.to_string())
+        } else {
+            frame.filename.clone()
+        };
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
@@ -424,7 +409,7 @@ fn symbolicate_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
-                symbol: Some(line_info.symbol().to_string()),
+                symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
                 } else {
@@ -432,19 +417,15 @@ fn symbolicate_frame(
                 },
                 function: Some(match demangled_opt {
                     Some(demangled) => demangled,
-                    None => name.into_cow().into_owned(),
+                    None => symbol.to_string(),
                 }),
-                filename: if !filename.is_empty() {
-                    Some(filename)
-                } else {
-                    frame.filename.clone()
-                },
-                lineno: Some(line_info.line()),
+                filename,
+                lineno: Some(source_location.line()),
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
                 sym_addr: None,
-                lang: match line_info.language() {
+                lang: match func.language() {
                     Language::Unknown => None,
                     language => Some(language),
                 },

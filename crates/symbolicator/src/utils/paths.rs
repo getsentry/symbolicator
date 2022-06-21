@@ -55,17 +55,9 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
         Cow::Borrowed(debug_file)
     };
     let debug_id = if ssqp_casing {
-        format!(
-            "{:x}{:X}",
-            debug_id.uuid().to_simple_ref(),
-            debug_id.appendix()
-        )
+        format!("{:x}{:X}", debug_id.uuid().as_simple(), debug_id.appendix())
     } else {
-        format!(
-            "{:X}{:x}",
-            debug_id.uuid().to_simple_ref(),
-            debug_id.appendix()
-        )
+        format!("{:X}{:x}", debug_id.uuid().as_simple(), debug_id.appendix())
     };
 
     Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
@@ -243,7 +235,7 @@ fn get_symstore_path(
             Some(format!(
                 "{}/mach-uuid-{}/{}",
                 code_file,
-                uuid.to_simple_ref(),
+                uuid.as_simple(),
                 code_file
             ))
         }
@@ -251,7 +243,7 @@ fn get_symstore_path(
             let uuid = get_mach_uuid(identifier)?;
             Some(format!(
                 "_.dwarf/mach-uuid-sym-{}/_.dwarf",
-                uuid.to_simple_ref()
+                uuid.as_simple()
             ))
         }
 
@@ -366,7 +358,7 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
         | FileType::Il2cpp => {
             if identifier.code_id.is_none() {
                 Some(Cow::Owned(
-                    identifier.debug_id?.uuid().to_simple_ref().to_string(),
+                    identifier.debug_id?.uuid().as_simple().to_string(),
                 ))
             } else {
                 Some(Cow::Borrowed(identifier.code_id.as_ref()?.as_str()))
