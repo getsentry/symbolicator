@@ -151,15 +151,15 @@ async fn compute_cficache(
         .await
         .map_err(CfiCacheError::Fetching)?;
 
-    let future = async move {
-        // The original has a download error so the cfi cache entry should just be negative.
-        if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
-            return Ok(CacheStatus::Negative);
-        }
-        if object.status() != &CacheStatus::Positive {
-            return Ok(object.status().clone());
-        }
+    // The original has a download error so the cfi cache entry should just be negative.
+    if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
+        return Ok(CacheStatus::Negative);
+    }
+    if object.status() != &CacheStatus::Positive {
+        return Ok(object.status().clone());
+    }
 
+    let future = async move {
         let status = if let Err(e) = write_cficache(&path, &*object) {
             tracing::warn!("Could not write cficache: {}", e);
             sentry::capture_error(&e);
