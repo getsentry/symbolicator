@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
@@ -397,7 +398,9 @@ async fn stackwalk(
     // Stackwalk the minidump.
     let duration = Instant::now();
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
-    let system_info = minidump.get_stream::<MinidumpSystemInfo>()?;
+    let system_info = minidump
+        .get_stream::<MinidumpSystemInfo>()
+        .context("Could not read system info stream")?;
     let ty = match system_info.os {
         Os::Windows => ObjectType::Pe,
         Os::MacOs | Os::Ios => ObjectType::Macho,
@@ -450,7 +453,8 @@ async fn stackwalk(
     // those modules that were referenced by some stack frame in the minidump.
     let mut cficaches = provider.cficaches.into_inner();
     let mut modules: Vec<CompleteObjectInfo> = minidump
-        .get_stream::<MinidumpModuleList>()?
+        .get_stream::<MinidumpModuleList>()
+        .context("Could not read module list stream")?
         .iter()
         .map(|module| {
             let mut obj_info = object_info_from_minidump_module(ty, module);
