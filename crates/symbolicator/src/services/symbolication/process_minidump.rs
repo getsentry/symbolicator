@@ -30,14 +30,14 @@ use crate::sources::SourceConfig;
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust,
     ObjectFeatures, ObjectFileStatus, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
-    Registers, RequestId, RequestOptions, Scope, SystemInfo,
+    Registers, RequestOptions, Scope, SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
 use super::{
-    object_id_from_object_info, MaxRequestsError, StacktraceOrigin, SymbolicateStacktraces,
-    SymbolicationActor, SymbolicationError,
+    object_id_from_object_info, StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
+    SymbolicationError,
 };
 
 type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
@@ -647,7 +647,7 @@ impl SymbolicationActor {
         }
     }
 
-    async fn do_process_minidump(
+    pub(super) async fn do_process_minidump(
         &self,
         scope: Scope,
         minidump_file: TempPath,
@@ -662,35 +662,6 @@ impl SymbolicationActor {
         state.merge_into(&mut response);
 
         Ok(response)
-    }
-
-    /// Creates a new request to process a minidump.
-    ///
-    /// Returns `None` if the `SymbolicationActor` is already processing the
-    /// maximum number of requests, as given by `max_concurrent_requests`.
-    pub fn process_minidump(
-        &self,
-        scope: Scope,
-        minidump_file: TempPath,
-        sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
-    ) -> Result<RequestId, MaxRequestsError> {
-        let slf = self.clone();
-        let span = sentry::configure_scope(|scope| scope.get_span());
-        let ctx = sentry::TransactionContext::continue_from_span(
-            "process_minidump",
-            "process_minidump",
-            span,
-        );
-        self.create_symbolication_request(async move {
-            let transaction = sentry::start_transaction(ctx);
-            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let res = slf
-                .do_process_minidump(scope, minidump_file, sources, options)
-                .await;
-            transaction.finish();
-            res
-        })
     }
 
     /// Iteratively stackwalks/processes the given `minidump_file`.
@@ -764,7 +735,7 @@ impl SymbolicationActor {
     }
 
     #[tracing::instrument(skip_all)]
-    pub(super) async fn do_stackwalk_minidump(
+    async fn do_stackwalk_minidump(
         &self,
         scope: Scope,
         minidump_file: TempPath,
