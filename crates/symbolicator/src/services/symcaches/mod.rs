@@ -490,17 +490,17 @@ mod tests {
         let mut cache_config = CacheConfigs::default();
         cache_config.downloaded.retry_misses_after = Some(timeout);
 
-        let config = Arc::new(Config {
+        let config = Config {
             cache_dir: Some(cache_dir),
             connect_to_reserved_ips: true,
             caches: cache_config,
             ..Default::default()
-        });
+        };
 
         let cpu_pool = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(config);
+        let downloader = DownloadService::new(&config);
         let shared_cache = Arc::new(SharedCacheService::new(None).await);
         let objects = ObjectsActor::new(
             caches.object_meta,
