@@ -26,6 +26,9 @@ use crate::utils::futures::CallOnDrop;
 mod apple;
 mod module_lookup;
 mod process_minidump;
+// we should really rename this here to the `SymbolicatorService`, as it does a lot more
+// than just symbolication ;-)
+#[allow(clippy::module_inception)]
 mod symbolication;
 
 pub use symbolication::{StacktraceOrigin, SymbolicateStacktraces};
