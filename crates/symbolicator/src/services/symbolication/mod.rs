@@ -28,7 +28,7 @@ mod module_lookup;
 mod process_minidump;
 mod symbolication;
 
-use symbolication::{StacktraceOrigin, SymbolicateStacktraces};
+pub use symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 
 // We want a shared future here because otherwise polling for a response would hold the global lock.
 type ComputationChannel = future::Shared<oneshot::Receiver<(Instant, SymbolicationResponse)>>;
