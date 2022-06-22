@@ -131,6 +131,7 @@ impl MinidumpState {
 }
 
 /// Loads a [`SymbolFile`] from the given `Path`.
+#[tracing::instrument(skip_all, fields(cfi_cache = %cfi_path.to_string_lossy()))]
 fn load_symbol_file(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
     sentry::with_scope(
         |scope| {
@@ -220,7 +221,6 @@ impl SymbolicatorSymbolProvider {
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    #[tracing::instrument(skip_all)]
     async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Option<()> {
         let id = (
             module.debug_identifier().unwrap_or_default(),
