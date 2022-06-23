@@ -2,11 +2,9 @@ use std::fs::File;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context;
-use apple_crash_report_parser::AppleCrashReport;
+use apple_crash_report_parser::{AppleCrashReport, ParseError};
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use sentry::SentryFutureExt;
 use symbolic::common::{Arch, CodeId, DebugId};
 
 use crate::sources::SourceConfig;
@@ -14,7 +12,7 @@ use crate::types::{
     CompleteObjectInfo, CompletedSymbolicationResponse, ObjectType, RawFrame, RawObjectInfo,
     RawStacktrace, RequestOptions, Scope, SystemInfo,
 };
-use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
 use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor, SymbolicationError};
@@ -117,24 +115,15 @@ impl SymbolicationActor {
                 crash_details,
             };
 
-            Ok((request, state))
+            Ok::<_, ParseError>((request, state))
         };
 
-        let future = async move {
-            CancelOnDrop::new(
-                self.cpu_pool
-                    .spawn(parse_future.bind_hub(sentry::Hub::current())),
-            )
-            .await
-            .context("Parse applecrashreport future cancelled")
-        };
-
-        let future = tokio::time::timeout(Duration::from_secs(1200), future);
+        let future = tokio::time::timeout(Duration::from_secs(1200), parse_future);
         let future = measure("parse_apple_crash_report", m::timed_result, None, future);
         future
             .await
             .map(|res| res.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))?
+            .unwrap_or(Err(SymbolicationError::Timeout))
     }
 
     pub(super) async fn do_process_apple_crash_report(

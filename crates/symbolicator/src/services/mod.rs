@@ -8,26 +8,13 @@
 //! state.
 //!
 //! The internal services require two separate asynchronous runtimes.
+//! (There is a third runtime dedicated to serving http requests)
 //! For regular scheduling and I/O-intensive work, services will use the `io_pool`.
 //! For CPU intensive workloads, services will use the `cpu_pool`.
 //!
-//! It is common for threadpools to be shared by multiple services and the
-//! application wants to generally separate services with CPU-intensive workloads from those with
-//! IO-heavy workloads.
-//!
-//! # Tokio 0.1 vs Tokio 1
-//!
-//! While symbolicator is transitioning, two runtimes are required. The [`Service`] to run in a
-//! `tokio 0.1` runtime, but from within a `tokio 1` context. To achieve this, either run from
-//! within a `tokio::main` or `tokio::test` context, or use `Runtime::enter` to register the Tokio
-//! runtime.
-//!
-//! The current division of runtimes is:
-//!
-//!  - The HTTP server uses `tokio 0.1`.
-//!  - Services use the HTTP server's runtime.
-//!  - The downloader uses the `tokio 1` runtime internally.
-//!  - Some CPU-intensive tasks are spawned on a `tokio 1` runtime.
+//! When a request comes in on the web pool, it is handed off to the `cpu_pool` for processing, which
+//! is primarily synchronous work in the best case (everything is cached).
+//! When file fetching is needed, that fetching will happen on the `io_pool`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -111,7 +98,6 @@ impl Service {
             symcaches,
             cficaches,
             caches.diagnostics,
-            io_pool,
             cpu_pool,
             config.max_concurrent_requests,
         );
