@@ -31,6 +31,7 @@ use crate::cache::{
     SharedCacheConfig,
 };
 use crate::services::download::MeasureSourceDownloadGuard;
+use crate::utils::futures::CancelOnDrop;
 use crate::utils::gcs::{self, GcsError};
 
 use super::cacher::CacheKey;
@@ -488,7 +489,7 @@ impl SharedCacheKey {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 enum SharedCacheBackend {
-    Gcs(GcsState),
+    Gcs(Arc<GcsState>),
     Fs(FilesystemSharedCacheConfig),
 }
 
@@ -503,7 +504,7 @@ impl SharedCacheBackend {
                     .await
                     .context("Failed to initialise GCS backend for shared cache")
                 {
-                    Ok(state) => Some(SharedCacheBackend::Gcs(state)),
+                    Ok(state) => Some(SharedCacheBackend::Gcs(Arc::new(state))),
                     Err(err) => {
                         sentry::capture_error(&*err);
                         None
@@ -567,6 +568,7 @@ impl AsRef<str> for CacheStoreReason {
 #[derive(Debug, Clone)]
 pub struct SharedCacheService {
     inner: Arc<RwLock<Option<InnerSharedCacheService>>>,
+    runtime: tokio::runtime::Handle,
 }
 
 #[derive(Debug)]
@@ -576,13 +578,14 @@ struct InnerSharedCacheService {
 }
 
 impl SharedCacheService {
-    pub async fn new(config: Option<SharedCacheConfig>) -> Self {
+    pub async fn new(config: Option<SharedCacheConfig>, runtime: tokio::runtime::Handle) -> Self {
         let inner = Arc::new(RwLock::new(None));
         let slf = Self {
             inner: inner.clone(),
+            runtime,
         };
         if let Some(cfg) = config {
-            tokio::spawn(Self::init(inner, cfg));
+            slf.runtime.spawn(Self::init(inner, cfg));
         }
         slf
     }
@@ -731,10 +734,7 @@ impl SharedCacheService {
     /// shared cache was not found nothing will have been written to `writer`.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
-    pub async fn fetch<W>(&self, key: &SharedCacheKey, writer: &mut W) -> bool
-    where
-        W: tokio::io::AsyncWrite + Unpin,
-    {
+    pub async fn fetch(&self, key: &SharedCacheKey, mut file: tokio::fs::File) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name().await;
         sentry::configure_scope(|scope| {
@@ -749,8 +749,16 @@ impl SharedCacheService {
         });
         let res = match self.inner.read().await.as_ref() {
             Some(inner) => match inner.backend.as_ref() {
-                SharedCacheBackend::Gcs(state) => state.fetch(key, writer).await,
-                SharedCacheBackend::Fs(cfg) => cfg.fetch(key, writer).await,
+                SharedCacheBackend::Gcs(state) => {
+                    let state = Arc::clone(state);
+                    let key = key.to_owned();
+                    let future = async move { state.fetch(&key, &mut file).await };
+
+                    CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())))
+                        .await
+                        .unwrap_or(Err(CacheError::ConnectTimeout))
+                }
+                SharedCacheBackend::Fs(cfg) => cfg.fetch(key, &mut file).await,
             },
             None => return false,
         };
@@ -852,7 +860,7 @@ impl SharedCacheService {
 #[cfg(test)]
 mod tests {
     use tempfile::NamedTempFile;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use uuid::Uuid;
 
     use crate::test::{self, TestGcsCredentials};
@@ -867,6 +875,10 @@ mod tests {
                 service_account_path: source.credentials_file,
             }
         }
+    }
+
+    fn tempfile() -> tokio::fs::File {
+        tokio::fs::File::from_std(tempfile::tempfile().unwrap())
     }
 
     async fn wait_init(service: &SharedCacheService) {
@@ -886,7 +898,7 @@ mod tests {
     #[tokio::test]
     async fn test_noop_fetch() {
         test::setup();
-        let svc = SharedCacheService::new(None).await;
+        let svc = SharedCacheService::new(None, tokio::runtime::Handle::current()).await;
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -895,16 +907,15 @@ mod tests {
                 scope: Scope::Global,
             },
         };
-        let mut writer = Vec::new();
 
-        let ret = svc.fetch(&key, &mut writer).await;
+        let ret = svc.fetch(&key, tempfile()).await;
         assert!(!ret);
     }
 
     #[tokio::test]
     async fn test_noop_store() {
         test::setup();
-        let svc = SharedCacheService::new(None).await;
+        let svc = SharedCacheService::new(None, tokio::runtime::Handle::current()).await;
         let key = SharedCacheKey {
             name: CacheName::Objects,
             version: 0,
@@ -945,20 +956,17 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg)).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
         wait_init(&svc).await;
 
         // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
-        let stdfile = temp_file.reopen().unwrap();
-        let mut file = File::from_std(stdfile);
+        let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, &mut file).await;
-
+        let ret = svc.fetch(&key, file).await;
         assert!(ret);
-        file.rewind().await.unwrap();
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await.unwrap();
+
+        let buf = std::fs::read(temp_file).unwrap();
         assert_eq!(buf, b"cache data");
     }
 
@@ -983,15 +991,17 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg)).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
         wait_init(&svc).await;
 
-        let mut writer = Vec::new();
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, &mut writer).await;
-
+        let ret = svc.fetch(&key, file).await;
         assert!(!ret);
-        assert_eq!(writer, b"");
+
+        let buf = std::fs::read(temp_file).unwrap();
+        assert_eq!(buf, b"");
     }
 
     #[tokio::test]
@@ -1016,7 +1026,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg)).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
         wait_init(&svc).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
@@ -1060,15 +1070,18 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg)).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
         wait_init(&svc).await;
 
-        let mut writer = Vec::new();
+        let dir = test::tempdir();
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, &mut writer).await;
-
+        let ret = svc.fetch(&key, file).await;
         assert!(!ret);
-        assert_eq!(writer, b"");
+
+        let buf = std::fs::read(temp_file).unwrap();
+        assert_eq!(buf, b"");
     }
 
     #[tokio::test]
@@ -1117,7 +1130,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg)).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
         wait_init(&svc).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
@@ -1135,12 +1148,13 @@ mod tests {
             recv.await.unwrap();
         }
 
-        let mut writer = Vec::new();
+        let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, &mut writer).await;
+        let ret = svc.fetch(&key, file).await;
+        assert!(!ret);
 
-        assert!(ret);
-        assert_eq!(writer, b"cache data");
+        let buf = std::fs::read(temp_file).unwrap();
+        assert_eq!(buf, b"cache data");
     }
 
     #[tokio::test]

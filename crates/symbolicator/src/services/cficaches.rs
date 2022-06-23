@@ -62,9 +62,6 @@ pub enum CfiCacheError {
 
     #[error("cficache building took too long")]
     Timeout,
-
-    #[error("computation was canceled internally")]
-    Canceled,
 }
 
 #[derive(Clone, Debug)]

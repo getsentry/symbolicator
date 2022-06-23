@@ -65,7 +65,9 @@ impl Service {
         let config = Arc::new(config);
 
         let downloader = DownloadService::new(&config);
-        let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()).await);
+        let shared_cache =
+            SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
+        let shared_cache = Arc::new(shared_cache);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)
@@ -75,9 +77,20 @@ impl Service {
             caches.objects,
             shared_cache.clone(),
             downloader.clone(),
+            io_pool.clone(),
         );
-        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
-        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
+        let bitcode = BitcodeService::new(
+            caches.auxdifs,
+            shared_cache.clone(),
+            downloader.clone(),
+            io_pool.clone(),
+        );
+        let il2cpp = Il2cppService::new(
+            caches.il2cpp,
+            shared_cache.clone(),
+            downloader,
+            io_pool.clone(),
+        );
         let symcaches = SymCacheActor::new(
             caches.symcaches,
             shared_cache.clone(),
@@ -102,7 +115,7 @@ impl Service {
             config.max_concurrent_requests,
         );
         let symbolication_taskmon = symbolication.symbolication_task_monitor();
-        tokio::spawn(async move {
+        io_pool.spawn(async move {
             for interval in symbolication_taskmon.intervals() {
                 record_task_metrics("symbolication", &interval);
                 tokio::time::sleep(Duration::from_secs(5)).await;

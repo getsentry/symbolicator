@@ -81,9 +81,6 @@ pub enum SymCacheError {
 
     #[error("symcache building took too long")]
     Timeout,
-
-    #[error("computation was canceled internally")]
-    Canceled,
 }
 
 #[derive(Clone, Debug)]
@@ -482,19 +479,30 @@ mod tests {
             ..Default::default()
         };
 
-        let cpu_pool = tokio::runtime::Handle::current();
+        let runtime = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(&config);
-        let shared_cache = Arc::new(SharedCacheService::new(None).await);
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
             shared_cache.clone(),
             downloader.clone(),
+            runtime.clone(),
         );
-        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
-        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
+        let bitcode = BitcodeService::new(
+            caches.auxdifs,
+            shared_cache.clone(),
+            downloader.clone(),
+            runtime.clone(),
+        );
+        let il2cpp = Il2cppService::new(
+            caches.il2cpp,
+            shared_cache.clone(),
+            downloader,
+            runtime.clone(),
+        );
 
         SymCacheActor::new(
             caches.symcaches,
@@ -502,7 +510,7 @@ mod tests {
             objects,
             bitcode,
             il2cpp,
-            cpu_pool,
+            runtime,
         )
     }
 

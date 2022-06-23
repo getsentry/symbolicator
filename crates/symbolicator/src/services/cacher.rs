@@ -335,13 +335,14 @@ impl<T: CacheItemRequest> Cacher<T> {
             version: T::VERSIONS.current,
             local_key: key.clone(),
         };
-        let dup_file = temp_file.reopen()?;
-        let mut temp_fd = tokio::fs::File::from_std(dup_file);
 
+        let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
         let shared_cache_hit = self
             .shared_cache_service
-            .fetch(&shared_cache_key, &mut temp_fd)
+            .fetch(&shared_cache_key, temp_fd)
             .await;
+
+        let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
 
         let status = match shared_cache_hit {
             true => {
@@ -693,8 +694,9 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let shared_cache = Arc::new(SharedCacheService::new(None).await);
-        let cacher = Cacher::new(cache, shared_cache, tokio::runtime::Handle::current());
+        let runtime = tokio::runtime::Handle::current();
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
+        let cacher = Cacher::new(cache, shared_cache, runtime);
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -736,8 +738,9 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let shared_cache = Arc::new(SharedCacheService::new(None).await);
-        let cacher = Cacher::new(cache, shared_cache, tokio::runtime::Handle::current());
+        let runtime = tokio::runtime::Handle::current();
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
+        let cacher = Cacher::new(cache, shared_cache, runtime);
 
         let request = TestCacheItem::new("0");
 

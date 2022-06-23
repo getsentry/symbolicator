@@ -184,9 +184,10 @@ impl Il2cppService {
         difs_cache: Cache,
         shared_cache_svc: Arc<SharedCacheService>,
         download_svc: Arc<DownloadService>,
+        runtime: tokio::runtime::Handle,
     ) -> Self {
         Self {
-            cache: Arc::new(Cacher::new(difs_cache, shared_cache_svc)),
+            cache: Arc::new(Cacher::new(difs_cache, shared_cache_svc, runtime)),
             download_svc,
         }
     }
