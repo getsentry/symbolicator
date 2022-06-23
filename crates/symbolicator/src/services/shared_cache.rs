@@ -1151,7 +1151,7 @@ mod tests {
         let file = File::from_std(temp_file.reopen().unwrap());
 
         let ret = svc.fetch(&key, file).await;
-        assert!(!ret);
+        assert!(ret);
 
         let buf = std::fs::read(temp_file).unwrap();
         assert_eq!(buf, b"cache data");
