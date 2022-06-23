@@ -453,6 +453,9 @@ async fn stackwalk(
         .get_stream::<MinidumpModuleList>()
         .context("Could not read module list stream")?
         .iter()
+    let modules: Vec<CompleteObjectInfo> = process_state
+        .modules
+        .by_addr()
         .map(|module| {
             let mut obj_info = object_info_from_minidump_module(ty, module);
 
@@ -478,7 +481,6 @@ async fn stackwalk(
             obj_info
         })
         .collect();
-    modules.sort_by_key(|m| m.raw.image_addr);
 
     Ok(StackWalkMinidumpResult {
         modules,
