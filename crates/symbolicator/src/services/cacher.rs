@@ -48,6 +48,9 @@ pub struct Cacher<T: CacheItemRequest> {
 
     /// A service used to communicate with the shared cache.
     shared_cache_service: Arc<SharedCacheService>,
+
+    /// The runtime that spawns the actual computation
+    runtime: tokio::runtime::Handle,
 }
 
 impl<T: CacheItemRequest> Clone for Cacher<T> {
@@ -57,16 +60,22 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
             config: self.config.clone(),
             current_computations: self.current_computations.clone(),
             shared_cache_service: Arc::clone(&self.shared_cache_service),
+            runtime: self.runtime.clone(),
         }
     }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache, shared_cache_service: Arc<SharedCacheService>) -> Self {
+    pub fn new(
+        config: Cache,
+        shared_cache_service: Arc<SharedCacheService>,
+        runtime: tokio::runtime::Handle,
+    ) -> Self {
         Cacher {
             config,
             shared_cache_service,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
+            runtime,
         }
     }
 
@@ -471,9 +480,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
 
-        // TODO: This spawns into the current_thread runtime of the caller. Consider more explicit
-        // resource allocation here to separate CPU intensive work from I/O work.
-        tokio::spawn(channel);
+        self.runtime.spawn(channel);
 
         receiver.shared()
     }
@@ -687,7 +694,7 @@ mod tests {
         )
         .unwrap();
         let shared_cache = Arc::new(SharedCacheService::new(None).await);
-        let cacher = Cacher::new(cache, shared_cache);
+        let cacher = Cacher::new(cache, shared_cache, tokio::runtime::Handle::current());
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -730,7 +737,7 @@ mod tests {
         )
         .unwrap();
         let shared_cache = Arc::new(SharedCacheService::new(None).await);
-        let cacher = Cacher::new(cache, shared_cache);
+        let cacher = Cacher::new(cache, shared_cache, tokio::runtime::Handle::current());
 
         let request = TestCacheItem::new("0");
 

@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use futures::prelude::*;
-use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use thiserror::Error;
@@ -20,7 +19,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::shared_cache::SharedCacheService;
@@ -72,7 +71,6 @@ pub enum CfiCacheError {
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: ObjectsActor,
-    threadpool: tokio::runtime::Handle,
 }
 
 impl CfiCacheActor {
@@ -80,12 +78,11 @@ impl CfiCacheActor {
         cache: Cache,
         shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
-        threadpool: tokio::runtime::Handle,
+        runtime: tokio::runtime::Handle,
     ) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc, runtime)),
             objects,
-            threadpool,
         }
     }
 }
@@ -132,7 +129,6 @@ struct FetchCfiCacheInternal {
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     candidates: AllObjectCandidates,
-    threadpool: tokio::runtime::Handle,
 }
 
 /// Extracts the Call Frame Information (CFI) from an object file.
@@ -141,7 +137,6 @@ struct FetchCfiCacheInternal {
 /// [`CfiCache`] format.
 #[tracing::instrument(skip_all)]
 async fn compute_cficache(
-    threadpool: tokio::runtime::Handle,
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     path: PathBuf,
@@ -159,22 +154,16 @@ async fn compute_cficache(
         return Ok(object.status().clone());
     }
 
-    let future = async move {
-        let status = if let Err(e) = write_cficache(&path, &*object) {
-            tracing::warn!("Could not write cficache: {}", e);
-            sentry::capture_error(&e);
+    let status = if let Err(e) = write_cficache(&path, &*object) {
+        tracing::warn!("Could not write cficache: {}", e);
+        sentry::capture_error(&e);
 
-            CacheStatus::Malformed(e.to_string())
-        } else {
-            CacheStatus::Positive
-        };
-
-        Ok(status)
+        CacheStatus::Malformed(e.to_string())
+    } else {
+        CacheStatus::Positive
     };
 
-    CancelOnDrop::new(threadpool.spawn(future.bind_hub(Hub::current())))
-        .await
-        .unwrap_or(Err(CfiCacheError::Canceled))
+    Ok(status)
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -189,7 +178,6 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
         let future = compute_cficache(
-            self.threadpool.clone(),
             self.objects_actor.clone(),
             self.meta_handle.clone(),
             path.to_owned(),
@@ -275,7 +263,6 @@ impl CfiCacheActor {
                         request,
                         objects_actor: self.objects.clone(),
                         meta_handle,
-                        threadpool: self.threadpool.clone(),
                         candidates: found_result.candidates,
                     })
                     .await
@@ -296,7 +283,7 @@ impl CfiCacheActor {
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
-    configure_scope(|scope| {
+    sentry::configure_scope(|scope| {
         object_handle.to_scope(scope);
     });
 

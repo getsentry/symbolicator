@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use anyhow::Error;
 use futures::future::BoxFuture;
-use sentry::{configure_scope, Hub, SentryFutureExt};
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use thiserror::Error;
@@ -22,7 +21,7 @@ use crate::sources::{FileType, SourceConfig};
 use crate::types::{
     AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
 };
-use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
@@ -93,7 +92,6 @@ pub struct SymCacheActor {
     objects: ObjectsActor,
     bitcode_svc: BitcodeService,
     il2cpp_svc: Il2cppService,
-    threadpool: tokio::runtime::Handle,
 }
 
 impl SymCacheActor {
@@ -103,14 +101,13 @@ impl SymCacheActor {
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         il2cpp_svc: Il2cppService,
-        threadpool: tokio::runtime::Handle,
+        runtime: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc, runtime)),
             objects,
             bitcode_svc,
             il2cpp_svc,
-            threadpool,
         }
     }
 }
@@ -168,9 +165,6 @@ struct FetchSymCacheInternal {
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
 
-    /// Thread pool on which to spawn the symcache computation.
-    threadpool: tokio::runtime::Handle,
-
     /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
     ///
     /// This needs to be returned back with the symcache result and is only being passed
@@ -193,7 +187,6 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-    threadpool: tokio::runtime::Handle,
 ) -> Result<CacheStatus, SymCacheError> {
     let object_handle = objects_actor
         .fetch(object_meta.clone())
@@ -209,21 +202,15 @@ async fn fetch_difs_and_compute_symcache(
         return Ok(object_handle.status().clone());
     }
 
-    let compute_future = async move {
-        let status = match write_symcache(&path, &*object_handle, secondary_sources) {
-            Ok(_) => CacheStatus::Positive,
-            Err(err) => {
-                tracing::warn!("Failed to write symcache: {}", err);
-                sentry::capture_error(&err);
-                CacheStatus::Malformed(err.to_string())
-            }
-        };
-        Ok(status)
+    let status = match write_symcache(&path, &*object_handle, secondary_sources) {
+        Ok(_) => CacheStatus::Positive,
+        Err(err) => {
+            tracing::warn!("Failed to write symcache: {}", err);
+            sentry::capture_error(&err);
+            CacheStatus::Malformed(err.to_string())
+        }
     };
-
-    CancelOnDrop::new(threadpool.spawn(compute_future.bind_hub(Hub::current())))
-        .await
-        .unwrap_or(Err(SymCacheError::Canceled))
+    Ok(status)
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -242,7 +229,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
             self.object_meta.clone(),
             self.objects_actor.clone(),
             self.secondary_sources.clone(),
-            self.threadpool.clone(),
         );
 
         let num_sources = self.request.sources.len().to_string().into();
@@ -373,7 +359,6 @@ impl SymCacheActor {
                         objects_actor: self.objects.clone(),
                         secondary_sources,
                         object_meta: handle,
-                        threadpool: self.threadpool.clone(),
                         candidates,
                     })
                     .await
@@ -399,7 +384,7 @@ fn write_symcache(
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
 ) -> Result<(), SymCacheError> {
-    configure_scope(|scope| {
+    sentry::configure_scope(|scope| {
         object_handle.to_scope(scope);
     });
 
