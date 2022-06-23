@@ -77,7 +77,7 @@ impl Service {
     ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let downloader = DownloadService::new(config.clone());
+        let downloader = DownloadService::new(&config);
         let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()).await);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches

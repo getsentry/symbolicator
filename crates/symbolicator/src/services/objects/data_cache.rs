@@ -345,13 +345,13 @@ mod tests {
         )
         .unwrap();
 
-        let config = Arc::new(Config {
+        let config = Config {
             connect_to_reserved_ips: true,
             max_download_timeout: Duration::from_millis(100),
             ..Config::default()
-        });
+        };
 
-        let download_svc = DownloadService::new(config);
+        let download_svc = DownloadService::new(&config);
         let shared_cache_svc = Arc::new(SharedCacheService::new(None).await);
         ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
     }
