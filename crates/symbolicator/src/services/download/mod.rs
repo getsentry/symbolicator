@@ -121,7 +121,7 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: &Config) -> Arc<Self> {
+    pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let trusted_client = crate::utils::http::create_client(config, true);
         let restricted_client = crate::utils::http::create_client(config, false);
 
@@ -132,7 +132,7 @@ impl DownloadService {
         } = *config;
         Arc::new(Self {
             max_download_timeout: config.max_download_timeout,
-            sentry: sentry::SentryDownloader::new(trusted_client, config),
+            sentry: sentry::SentryDownloader::new(trusted_client, runtime, config),
             http: http::HttpDownloader::new(
                 restricted_client.clone(),
                 connect_timeout,
@@ -478,7 +478,7 @@ mod tests {
             ..Config::default()
         };
 
-        let service = DownloadService::new(&config);
+        let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
         let download_status = service.download(file_source, dest).await.unwrap();
@@ -501,7 +501,7 @@ mod tests {
         };
 
         let config = Config::default();
-        let svc = DownloadService::new(&config);
+        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
             .list_files(source.clone(), FileType::all(), objid)
             .await

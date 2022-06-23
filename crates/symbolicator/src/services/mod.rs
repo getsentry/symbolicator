@@ -64,7 +64,7 @@ impl Service {
     ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let downloader = DownloadService::new(&config);
+        let downloader = DownloadService::new(&config, io_pool.clone());
         let shared_cache =
             SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
         let shared_cache = Arc::new(shared_cache);

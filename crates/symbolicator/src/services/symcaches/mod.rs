@@ -482,7 +482,7 @@ mod tests {
         let runtime = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(&config);
+        let downloader = DownloadService::new(&config, runtime.clone());
         let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
         let objects = ObjectsActor::new(
             caches.object_meta,
