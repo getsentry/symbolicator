@@ -8,7 +8,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
-use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
+use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
     FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile, SymbolProvider,
@@ -449,10 +449,6 @@ async fn stackwalk(
     // After stackwalking, `provider.cficaches` contains entries for exactly
     // those modules that were referenced by some stack frame in the minidump.
     let mut cficaches = provider.cficaches.into_inner();
-    let mut modules: Vec<CompleteObjectInfo> = minidump
-        .get_stream::<MinidumpModuleList>()
-        .context("Could not read module list stream")?
-        .iter()
     let modules: Vec<CompleteObjectInfo> = process_state
         .modules
         .by_addr()
