@@ -45,6 +45,16 @@ metrics:
   persistent volume, and `null` otherwise, which disables caching. **It is
   strictly recommended to configure caches in production!**
 - `bind`: Host and port for HTTP interface.
+- `bind_https`: Host and port for optional HTTPS interface.
+
+  Notes:
+  - HTTPS support is a Cargo feature, and needs to be enabled before the application is built:
+    - Edit `crates/symbolicator/Cargo.toml` and add `default = ["https"]` under `[features]`, then build the software.
+  - For HTTPS support, additionally paths to TLS certificate and key files need to be specified:
+    - `server_config`: web server configuration needed for serving over HTTPS.
+      - `https`: HTTPS configuration.
+        - `certificate_path`: Path to a TLS certificate file in PEM format.
+        - `key_path`: Path to a TLS key file in PEM format.
 - `logging`: Command line logging behavior.
     - `level`: Log level, defaults to `info`. Can be one of `off`, `error`,
       `warn`, `info`, `debug`, or `trace`.
