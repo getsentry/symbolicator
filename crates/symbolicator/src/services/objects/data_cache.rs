@@ -353,14 +353,8 @@ mod tests {
 
         let runtime = tokio::runtime::Handle::current();
         let download_svc = DownloadService::new(&config, runtime.clone());
-        let shared_cache_svc = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
-        ObjectsActor::new(
-            meta_cache,
-            data_cache,
-            shared_cache_svc,
-            download_svc,
-            runtime,
-        )
+        let shared_cache_svc = Arc::new(SharedCacheService::new(None, runtime).await);
+        ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
     }
 
     #[tokio::test]

@@ -98,10 +98,9 @@ impl SymCacheActor {
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         il2cpp_svc: Il2cppService,
-        runtime: tokio::runtime::Handle,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc, runtime)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
             bitcode_svc,
             il2cpp_svc,
@@ -489,29 +488,11 @@ mod tests {
             caches.objects,
             shared_cache.clone(),
             downloader.clone(),
-            runtime.clone(),
         );
-        let bitcode = BitcodeService::new(
-            caches.auxdifs,
-            shared_cache.clone(),
-            downloader.clone(),
-            runtime.clone(),
-        );
-        let il2cpp = Il2cppService::new(
-            caches.il2cpp,
-            shared_cache.clone(),
-            downloader,
-            runtime.clone(),
-        );
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
+        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
 
-        SymCacheActor::new(
-            caches.symcaches,
-            shared_cache,
-            objects,
-            bitcode,
-            il2cpp,
-            runtime,
-        )
+        SymCacheActor::new(caches.symcaches, shared_cache, objects, bitcode, il2cpp)
     }
 
     /// Tests that a symcache is regenerated when it was created without a BcSymbolMap

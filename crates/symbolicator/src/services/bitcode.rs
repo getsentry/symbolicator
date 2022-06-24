@@ -216,10 +216,9 @@ impl BitcodeService {
         difs_cache: Cache,
         shared_cache_svc: Arc<SharedCacheService>,
         download_svc: Arc<DownloadService>,
-        runtime: tokio::runtime::Handle,
     ) -> Self {
         Self {
-            cache: Arc::new(Cacher::new(difs_cache, shared_cache_svc, runtime)),
+            cache: Arc::new(Cacher::new(difs_cache, shared_cache_svc)),
             download_svc,
         }
     }

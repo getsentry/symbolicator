@@ -77,34 +77,17 @@ impl Service {
             caches.objects,
             shared_cache.clone(),
             downloader.clone(),
-            io_pool.clone(),
         );
-        let bitcode = BitcodeService::new(
-            caches.auxdifs,
-            shared_cache.clone(),
-            downloader.clone(),
-            io_pool.clone(),
-        );
-        let il2cpp = Il2cppService::new(
-            caches.il2cpp,
-            shared_cache.clone(),
-            downloader,
-            io_pool.clone(),
-        );
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
+        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
         let symcaches = SymCacheActor::new(
             caches.symcaches,
             shared_cache.clone(),
             objects.clone(),
             bitcode,
             il2cpp,
-            cpu_pool.clone(),
         );
-        let cficaches = CfiCacheActor::new(
-            caches.cficaches,
-            shared_cache,
-            objects.clone(),
-            cpu_pool.clone(),
-        );
+        let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache, objects.clone());
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),

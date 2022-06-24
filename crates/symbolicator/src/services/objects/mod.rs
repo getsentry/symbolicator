@@ -177,15 +177,10 @@ impl ObjectsActor {
         data_cache: Cache,
         shared_cache_svc: Arc<SharedCacheService>,
         download_svc: Arc<DownloadService>,
-        runtime: tokio::runtime::Handle,
     ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(
-                meta_cache,
-                Arc::clone(&shared_cache_svc),
-                runtime.clone(),
-            )),
-            data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc, runtime)),
+            meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
+            data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc)),
             download_svc,
         }
     }

@@ -75,10 +75,9 @@ impl CfiCacheActor {
         cache: Cache,
         shared_cache_svc: Arc<SharedCacheService>,
         objects: ObjectsActor,
-        runtime: tokio::runtime::Handle,
     ) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc, runtime)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
         }
     }
