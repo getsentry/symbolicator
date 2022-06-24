@@ -48,9 +48,11 @@ metrics:
 - `bind_https`: Host and port for optional HTTPS interface.
 
   Notes:
-  - HTTPS support is a Cargo feature, and needs to be enabled before the application is built:
-    - Edit `crates/symbolicator/Cargo.toml` and add `default = ["https"]` under `[features]`, then build the software.
-  - For HTTPS support, additionally paths to TLS certificate and key files need to be specified:
+  - HTTPS support is a Cargo feature, and needs to be enabled during building:
+    ```shell
+    cargo build --features https <other build options>
+    ```
+  - Additionally for HTTPS support, paths to TLS certificate and key files need to be specified in the configuration file:
     - `server_config`: web server configuration needed for serving over HTTPS.
       - `https`: HTTPS configuration.
         - `certificate_path`: Path to a TLS certificate file in PEM format.
