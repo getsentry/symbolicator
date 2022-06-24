@@ -72,7 +72,7 @@ RUN sentry-cli --version \
 
 FROM debian:stretch-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl ca-certificates gosu cabextract \
+    && apt-get install -y --no-install-recommends openssl ca-certificates gosu curl cabextract \
     && rm -rf /var/lib/apt/lists/*
 
 ENV \

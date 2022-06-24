@@ -1,13 +1,13 @@
 [package]
 name = "symbolicator"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
-apple-crash-report-parser = "0.4.2"
+apple-crash-report-parser = "0.5.0"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
 axum-server = { version = "0.4.0" }
@@ -27,8 +27,8 @@ ipnetwork = "0.19.0"
 jsonwebtoken = "8.1.0"
 lazy_static = "1.4.0"
 lru = "0.7.5"
-minidump = "0.10.3"
-minidump-processor = { version = "0.10.3", features = ["symbolic-syms"] }
+minidump = "0.11.0"
+minidump-processor = { version = "0.11.0", features = ["symbolic-syms"] }
 num_cpus = "1.13.0"
 parking_lot = "0.12.0"
 regex = "1.5.5"
@@ -36,15 +36,14 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 rusoto_core = "0.48.0"
 rusoto_credential = "0.48.0"
 rusoto_s3 = "0.48.0"
-sentry = { version = "0.25.0", features = ["anyhow", "debug-images", "log", "tracing"] }
-sentry-tower = { version = "0.25.0", features = ["http"] }
+sentry = { version = "0.27.0", features = ["anyhow", "debug-images", "log", "tracing"] }
+sentry-tower = { version = "0.27.0", features = ["http"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
 symbolicator-crash = { path = "../symbolicator-crash/", optional = true }
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["common-serde", "debuginfo", "demangle", "symcache"] }
-symbolic-minidump = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", default-features = false}
+symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp"] }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }

@@ -55,17 +55,9 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
         Cow::Borrowed(debug_file)
     };
     let debug_id = if ssqp_casing {
-        format!(
-            "{:x}{:X}",
-            debug_id.uuid().to_simple_ref(),
-            debug_id.appendix()
-        )
+        format!("{:x}{:X}", debug_id.uuid().as_simple(), debug_id.appendix())
     } else {
-        format!(
-            "{:X}{:x}",
-            debug_id.uuid().to_simple_ref(),
-            debug_id.appendix()
-        )
+        format!("{:X}{:x}", debug_id.uuid().as_simple(), debug_id.appendix())
     };
 
     Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
@@ -198,7 +190,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         }
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
-        FileType::Usym => Vec::new(),
+        FileType::Il2cpp => Vec::new(),
     }
 }
 
@@ -243,7 +235,7 @@ fn get_symstore_path(
             Some(format!(
                 "{}/mach-uuid-{}/{}",
                 code_file,
-                uuid.to_simple_ref(),
+                uuid.as_simple(),
                 code_file
             ))
         }
@@ -251,18 +243,12 @@ fn get_symstore_path(
             let uuid = get_mach_uuid(identifier)?;
             Some(format!(
                 "_.dwarf/mach-uuid-sym-{}/_.dwarf",
-                uuid.to_simple_ref()
+                uuid.as_simple()
             ))
         }
 
         FileType::Pdb => get_pdb_symstore_path(identifier, ssqp_casing),
         FileType::Pe => get_pe_symstore_path(identifier, ssqp_casing),
-
-        // Microsoft SymbolServer does not specify Breakpad.
-        FileType::Breakpad => None,
-
-        // Microsoft SymbolServer does not specify WASM.
-        FileType::WasmDebug | FileType::WasmCode => None,
 
         // source bundles are available through an extension for PE/PDB only.
         FileType::SourceBundle => {
@@ -278,14 +264,12 @@ fn get_symstore_path(
             Some(base_path)
         }
 
-        // Microsoft SymbolServer does not specify PropertyList.
+        // Microsoft SymbolServer does not specify the following file types:
+        FileType::Breakpad => None,
+        FileType::WasmDebug | FileType::WasmCode => None,
         FileType::UuidMap => None,
-
-        // Microsoft SymbolServer does not specify BCSymbolMap.
         FileType::BcSymbolMap => None,
-
-        // Microsoft SymbolServer does not specify Usym.
-        FileType::Usym => None,
+        FileType::Il2cpp => None,
     }
 }
 
@@ -331,25 +315,61 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::SourceBundle => None,
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
-        FileType::Usym => None,
+        FileType::Il2cpp => None,
     }
 }
 
-/// Returns the object type used to determine how to construct the ID for the unified symbol
-/// server.
+/// Constructs the ID for the unified symbol server.
 ///
 /// We prefer to use the file type as indicator for going back to the object
 /// type. If that is not possible, we use the object type that is stored on the
 /// identifier which might be unreliable.
-fn get_search_target_object_type(filetype: FileType, identifier: &ObjectId) -> ObjectType {
+fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow<str>> {
     match filetype {
-        FileType::Pe | FileType::Pdb => ObjectType::Pe,
-        FileType::MachCode | FileType::MachDebug | FileType::UuidMap | FileType::BcSymbolMap => {
-            ObjectType::Macho
+        // For these we fall back to the identifier's object type.
+        FileType::SourceBundle | FileType::Breakpad => {
+            let filetype = match identifier.object_type {
+                ObjectType::Elf => FileType::ElfCode,
+                ObjectType::Macho => FileType::MachCode,
+                ObjectType::Pe => FileType::Pe,
+                ObjectType::Wasm => FileType::WasmCode,
+                // guess we're out of luck.
+                ObjectType::Unknown => return None,
+            };
+            get_search_target_id(filetype, identifier)
         }
-        FileType::ElfCode | FileType::ElfDebug => ObjectType::Elf,
-        FileType::WasmDebug | FileType::WasmCode => ObjectType::Wasm,
-        FileType::SourceBundle | FileType::Breakpad | FileType::Usym => identifier.object_type,
+        // PEs and PDBs are indexed by the debug id in lowercase breakpad format
+        // always.  This is done because code IDs by themselves are not reliable
+        // enough for PEs and are only useful together with the file name which
+        // we do not want to encode.
+        FileType::Pe | FileType::Pdb => Some(Cow::Owned(
+            identifier.debug_id?.breakpad().to_string().to_lowercase(),
+        )),
+        // On mach we can always determine the code ID from the debug ID if the
+        // code ID is unavailable.  We apply the same rule to WASM files as well as
+        // auxiliary DIFs, as we
+        // suggest Uuids to be used as build ids.
+        FileType::MachCode
+        | FileType::MachDebug
+        | FileType::WasmDebug
+        | FileType::WasmCode
+        | FileType::UuidMap
+        | FileType::BcSymbolMap
+        | FileType::Il2cpp => {
+            if identifier.code_id.is_none() {
+                Some(Cow::Owned(
+                    identifier.debug_id?.uuid().as_simple().to_string(),
+                ))
+            } else {
+                Some(Cow::Borrowed(identifier.code_id.as_ref()?.as_str()))
+            }
+        }
+        // For ELF we always use the code ID.  If it's not available we can't actually
+        // find this file at all.  See symsorter which will never use the debug ID for
+        // such files.
+        FileType::ElfCode | FileType::ElfDebug => {
+            Some(Cow::Borrowed(identifier.code_id.as_ref()?.as_str()))
+        }
     }
 }
 
@@ -364,33 +384,11 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::SourceBundle => "sourcebundle",
         FileType::UuidMap => "uuidmap",
         FileType::BcSymbolMap => "bcsymbolmap",
-        FileType::Usym => "usym",
+        FileType::Il2cpp => "il2cpp",
     };
 
     // determine the ID we use for the path
-    let id = match get_search_target_object_type(filetype, identifier) {
-        // PEs and PDBs are indexed by the debug id in lowercase breakpad format
-        // always.  This is done because code IDs by themselves are not reliable
-        // enough for PEs and are only useful together with the file name which
-        // we do not want to encode.
-        ObjectType::Pe => Cow::Owned(identifier.debug_id?.breakpad().to_string().to_lowercase()),
-        // On mach we can always determine the code ID from the debug ID if the
-        // code ID is unavailable.  We apply the same rule to WASM files as we
-        // suggest Uuids to be used as build ids.
-        ObjectType::Macho | ObjectType::Wasm => {
-            if identifier.code_id.is_none() {
-                Cow::Owned(identifier.debug_id?.uuid().to_simple_ref().to_string())
-            } else {
-                Cow::Borrowed(identifier.code_id.as_ref()?.as_str())
-            }
-        }
-        // For ELF we always use the code ID.  If it's not available we can't actually
-        // find this file at all.  See symsorter which will never use the debug ID for
-        // such files.
-        ObjectType::Elf => Cow::Borrowed(identifier.code_id.as_ref()?.as_str()),
-        // Guess we're out of luck.
-        ObjectType::Unknown => return None,
-    };
+    let id = get_search_target_id(filetype, identifier)?;
 
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
 }

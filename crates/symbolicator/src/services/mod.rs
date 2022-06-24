@@ -42,6 +42,7 @@ pub mod bitcode;
 pub mod cacher;
 pub mod cficaches;
 pub mod download;
+pub mod il2cpp;
 mod minidump;
 pub mod objects;
 pub mod shared_cache;
@@ -51,6 +52,7 @@ pub mod symcaches;
 use self::bitcode::BitcodeService;
 use self::cficaches::CfiCacheActor;
 use self::download::DownloadService;
+use self::il2cpp::Il2cppService;
 use self::objects::ObjectsActor;
 use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
@@ -75,7 +77,7 @@ impl Service {
     ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let downloader = DownloadService::new(config.clone());
+        let downloader = DownloadService::new(&config);
         let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()).await);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
@@ -87,12 +89,14 @@ impl Service {
             shared_cache.clone(),
             downloader.clone(),
         );
-        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader);
+        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
+        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
         let symcaches = SymCacheActor::new(
             caches.symcaches,
             shared_cache.clone(),
             objects.clone(),
             bitcode,
+            il2cpp,
             cpu_pool.clone(),
         );
         let cficaches = CfiCacheActor::new(

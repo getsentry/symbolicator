@@ -1,9 +1,8 @@
-//! Service to retrieve Apple Bitcode Symbol Maps.
+//! Service for retrieving Unity il2cpp line mapping files.
 //!
-//! This service downloads and caches the `PList` and [`BcSymbolMap`] used to un-obfuscate
-//! debug symbols for obfuscated Apple bitcode builds.
+//! This service downloads and caches the [`LineMapping`] used to map
+//! generated C++ source files back to the original C# sources.
 
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Cursor, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -14,7 +13,7 @@ use anyhow::{Context, Error};
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
-use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
+use symbolic::il2cpp::LineMapping;
 use tempfile::tempfile_in;
 
 use crate::cache::{Cache, CacheStatus};
@@ -27,20 +26,20 @@ use crate::utils::futures::{m, measure};
 
 use super::shared_cache::SharedCacheService;
 
-/// Handle to a valid BCSymbolMap.
+/// Handle to a valid [`LineMapping`].
 ///
 /// While this handle points to the raw data, this data is guaranteed to be valid, you can
 /// only have this handle if a positive cache existed.
 #[derive(Debug, Clone)]
-pub struct BcSymbolMapHandle {
-    pub uuid: DebugId,
+pub struct Il2cppHandle {
+    pub debug_id: DebugId,
     pub data: ByteView<'static>,
 }
 
-impl BcSymbolMapHandle {
-    /// Parses the map from the handle.
-    pub fn bc_symbol_map(&self) -> Result<BcSymbolMap<'_>, Error> {
-        BcSymbolMap::parse(&self.data).context("Failed to parse BCSymbolMap")
+impl Il2cppHandle {
+    /// Parses the line mapping from the handle.
+    pub fn line_mapping(&self) -> Result<LineMapping, Error> {
+        LineMapping::parse(&self.data).ok_or_else(|| anyhow::anyhow!("Failed to parse LineMapping"))
     }
 }
 
@@ -48,28 +47,12 @@ impl BcSymbolMapHandle {
 ///
 /// This trait requires us to return a handle regardless of its cache status.
 /// This is this handle but we do not expose it outside of this module, see
-/// [`BcSymbolMapHandle`] for that.
+/// [`Il2cppHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
     status: CacheStatus,
-    uuid: DebugId,
+    debug_id: DebugId,
     data: ByteView<'static>,
-}
-
-/// The kinds of DIFs which are stored in the cache accessed from [`FetchFileRequest`].
-#[derive(Debug, Clone, Copy)]
-enum AuxDifKind {
-    BcSymbolMap,
-    UuidMap,
-}
-
-impl Display for AuxDifKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AuxDifKind::BcSymbolMap => write!(f, "BCSymbolMap"),
-            AuxDifKind::UuidMap => write!(f, "UuidMap"),
-        }
-    }
 }
 
 /// The interface to the [`Cacher`] service.
@@ -79,8 +62,7 @@ impl Display for AuxDifKind {
 struct FetchFileRequest {
     scope: Scope,
     file_source: RemoteDif,
-    uuid: DebugId,
-    kind: AuxDifKind,
+    debug_id: DebugId,
     download_svc: Arc<DownloadService>,
     cache: Arc<Cacher<FetchFileRequest>>,
 }
@@ -101,7 +83,7 @@ impl FetchFileRequest {
 
         match result {
             Ok(DownloadStatus::NotFound) => {
-                tracing::debug!("No auxiliary DIF file found for {}", cache_key);
+                tracing::debug!("No il2cpp linemapping file found for {}", cache_key);
                 return Ok(CacheStatus::Negative);
             }
             Err(e) => {
@@ -129,25 +111,11 @@ impl FetchFileRequest {
         decompressed.seek(SeekFrom::Start(0))?;
         let view = ByteView::map_file(decompressed)?;
 
-        match self.kind {
-            AuxDifKind::BcSymbolMap => {
-                if let Err(err) = BcSymbolMap::parse(&view) {
-                    let kind = self.kind.to_string();
-                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    tracing::debug!("Failed to parse bcsymbolmap: {}", err);
-                    return Ok(CacheStatus::Malformed(err.to_string()));
-                }
-            }
-            AuxDifKind::UuidMap => {
-                if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
-                    let kind = self.kind.to_string();
-                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
-                    tracing::debug!("Failed to parse plist: {}", err);
-                    return Ok(CacheStatus::Malformed(err.to_string()));
-                }
-            }
+        if LineMapping::parse(&view).is_none() {
+            metric!(counter("services.il2cpp.loaderrror") += 1);
+            tracing::debug!("Failed to parse il2cpp");
+            return Ok(CacheStatus::Malformed("Failed to parse il2cpp".to_string()));
         }
-
         // The file is valid, lets save it.
         let mut destination = File::create(path)?;
         let mut cursor = Cursor::new(&view);
@@ -178,7 +146,7 @@ impl CacheItemRequest for FetchFileRequest {
 
         let future = tokio::time::timeout(Duration::from_secs(1200), fut);
         let future = measure(
-            "auxdifs",
+            "il2cpp",
             m::timed_result,
             Some(("source_type", source_name)),
             future,
@@ -186,7 +154,7 @@ impl CacheItemRequest for FetchFileRequest {
         Box::pin(async move {
             future
                 .await
-                .map_err(|_| Error::msg("Timeout fetching aux DIF"))?
+                .map_err(|_| Error::msg("Timeout fetching il2cpp"))?
         })
     }
 
@@ -199,19 +167,19 @@ impl CacheItemRequest for FetchFileRequest {
     ) -> Self::Item {
         CacheHandle {
             status,
-            uuid: self.uuid,
+            debug_id: self.debug_id,
             data,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct BitcodeService {
+pub struct Il2cppService {
     cache: Arc<Cacher<FetchFileRequest>>,
     download_svc: Arc<DownloadService>,
 }
 
-impl BitcodeService {
+impl Il2cppService {
     pub fn new(
         difs_cache: Cache,
         shared_cache_svc: Arc<SharedCacheService>,
@@ -223,81 +191,49 @@ impl BitcodeService {
         }
     }
 
-    /// Returns a `BCSymbolMap` if one is found for the `uuid`.
-    pub async fn fetch_bcsymbolmap(
+    /// Returns a `LineMapping` if one is found for the `debug_id`.
+    pub async fn fetch_line_mapping(
         &self,
-        uuid: DebugId,
+        debug_id: DebugId,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-    ) -> Option<BcSymbolMapHandle> {
-        // First find the PList.
-        let plist_handle = self
-            .fetch_file_from_all_sources(uuid, AuxDifKind::UuidMap, scope.clone(), sources.clone())
-            .await?;
-
-        let uuid_mapping = UuidMapping::parse_plist(uuid, &plist_handle.data)
-            .context("Failed to parse plist")
-            .map_err(|err| {
-                tracing::warn!("{}: {:?}", err, err.source());
-                sentry::capture_error(&*err);
-                err
-            })
-            .ok()?;
-
-        // Next find the BCSymbolMap.
-        let symbolmap_handle = self
-            .fetch_file_from_all_sources(
-                uuid_mapping.original_uuid(),
-                AuxDifKind::BcSymbolMap,
-                scope,
-                sources,
-            )
-            .await?;
-
-        Some(BcSymbolMapHandle {
-            uuid: symbolmap_handle.uuid,
-            data: symbolmap_handle.data.clone(),
-        })
-    }
-
-    async fn fetch_file_from_all_sources(
-        &self,
-        uuid: DebugId,
-        dif_kind: AuxDifKind,
-        scope: Scope,
-        sources: Arc<[SourceConfig]>,
-    ) -> Option<Arc<CacheHandle>> {
+    ) -> Option<Il2cppHandle> {
         let jobs = sources.iter().map(|source| {
-            self.fetch_file_from_source_with_error(uuid, dif_kind, scope.clone(), source.clone())
+            self.fetch_file_from_source_with_error(debug_id, scope.clone(), source.clone())
                 .bind_hub(Hub::new_from_top(Hub::current()))
         });
         let results = future::join_all(jobs).await;
-        let mut ret = None;
+        let mut line_mapping_handle = None;
         for result in results {
             if result.is_some() {
-                ret = result;
+                line_mapping_handle = result;
             }
         }
-        ret
+
+        let line_mapping_handle = line_mapping_handle?;
+
+        Some(Il2cppHandle {
+            debug_id: line_mapping_handle.debug_id,
+            data: line_mapping_handle.data.clone(),
+        })
     }
 
     /// Wraps `fetch_file_from_source` in sentry error handling.
     async fn fetch_file_from_source_with_error(
         &self,
-        uuid: DebugId,
-        dif_kind: AuxDifKind,
+        debug_id: DebugId,
         scope: Scope,
         source: SourceConfig,
     ) -> Option<Arc<CacheHandle>> {
+        let _guard = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
-            scope.set_tag("auxdif.debugid", uuid);
-            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
-            scope.set_extra("auxdif.source", source.type_name().into());
+            scope.set_tag("il2cpp.debugid", debug_id);
+            scope.set_extra("il2cpp.source", source.type_name().into());
         });
         match self
-            .fetch_file_from_source(uuid, dif_kind, scope, source)
+            .fetch_file_from_source(debug_id, scope, source)
             .await
-            .context("Bitcode svc failed for single source")
+            .context("il2cpp svc failed for single source")
         {
             Ok(res) => res,
             Err(err) => {
@@ -311,18 +247,13 @@ impl BitcodeService {
     /// Fetches a file and returns the [`CacheHandle`] if found.
     async fn fetch_file_from_source(
         &self,
-        uuid: DebugId,
-        dif_kind: AuxDifKind,
+        debug_id: DebugId,
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
-        let file_type = match dif_kind {
-            AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
-            AuxDifKind::UuidMap => &[FileType::UuidMap],
-        };
         let file_sources = self
             .download_svc
-            .list_files(source, file_type, uuid.into())
+            .list_files(source, &[FileType::Il2cpp], debug_id.into())
             .await?;
 
         let fetch_jobs = file_sources.into_iter().map(|file_source| {
@@ -334,8 +265,7 @@ impl BitcodeService {
             let request = FetchFileRequest {
                 scope,
                 file_source,
-                uuid,
-                kind: dif_kind,
+                debug_id,
                 download_svc: self.download_svc.clone(),
                 cache: self.cache.clone(),
             };
@@ -353,7 +283,7 @@ impl BitcodeService {
                 Err(err) => {
                     let stderr: &dyn std::error::Error = (*err).as_ref();
                     let mut event = sentry::event_from_error(stderr);
-                    event.message = Some("Failure fetching auxiliary DIF file from source".into());
+                    event.message = Some("Failure fetching il2cpp file from source".into());
                     sentry::capture_event(event);
                 }
             }
