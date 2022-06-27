@@ -452,7 +452,7 @@ async fn stackwalk(
     let modules: Vec<CompleteObjectInfo> = process_state
         .modules
         .by_addr()
-        .map(|module| {
+        .filter_map(|module| {
             let mut obj_info = object_info_from_minidump_module(ty, module);
 
             let id = (
@@ -474,7 +474,14 @@ async fn stackwalk(
                 "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
             );
 
-            obj_info
+            // Only return modules that were used or have a debug id.
+            if obj_info.unwind_status != Some(ObjectFileStatus::Unused)
+                || obj_info.raw.debug_id.is_some()
+            {
+                Some(obj_info)
+            } else {
+                None
+            }
         })
         .collect();
 
