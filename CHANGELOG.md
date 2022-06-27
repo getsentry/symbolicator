@@ -12,6 +12,7 @@
 ### Features
 
 - Added an internal option to capture minidumps for hard crashes. This has to be enabled via the `_crash_db` config parameter. ([#795](https://github.com/getsentry/symbolicator/pull/795))
+- Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))
 
 ### Fixes
 

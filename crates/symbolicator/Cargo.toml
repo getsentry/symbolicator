@@ -10,6 +10,7 @@ anyhow = "1.0.57"
 apple-crash-report-parser = "0.5.0"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
+axum-server = { version = "0.4.0" }
 backtrace = "0.3.65"
 base64 = "0.13.0"
 cadence = "0.29.0"
@@ -63,3 +64,6 @@ reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", featur
 sha-1 = "0.10.0"
 test-assembler = "0.1.5"
 warp = "0.3.0"
+
+[features]
+https = ["axum-server/tls-rustls"]
