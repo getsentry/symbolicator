@@ -453,12 +453,17 @@ async fn stackwalk(
         .modules
         .by_addr()
         .filter_map(|module| {
-            let mut obj_info = object_info_from_minidump_module(ty, module);
-
             let id = (
                 module.debug_identifier().unwrap_or_default(),
                 module.base_address(),
             );
+
+            // Discard modules that weren't used and don't have a debug id.
+            if !cficaches.contains_key(&id) && module.debug_identifier().is_none() {
+                return None;
+            }
+
+            let mut obj_info = object_info_from_minidump_module(ty, module);
 
             obj_info.unwind_status = match cficaches.remove(&id) {
                 None => Some(ObjectFileStatus::Unused),
@@ -474,14 +479,7 @@ async fn stackwalk(
                 "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
             );
 
-            // Only return modules that were used or have a debug id.
-            if obj_info.unwind_status != Some(ObjectFileStatus::Unused)
-                || obj_info.raw.debug_id.is_some()
-            {
-                Some(obj_info)
-            } else {
-                None
-            }
+            Some(obj_info)
         })
         .collect();
 
