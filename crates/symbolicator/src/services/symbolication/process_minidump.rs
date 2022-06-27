@@ -563,8 +563,10 @@ impl SymbolicationActor {
                 modules,
                 mut stacktraces,
                 minidump_state,
-                ..
+                duration,
             } = result;
+
+            metric!(timer("minidump.stackwalk.duration") = duration);
 
             match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
                 Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(
