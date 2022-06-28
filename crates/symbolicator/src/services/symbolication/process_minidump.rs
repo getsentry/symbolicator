@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -6,9 +6,8 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::future;
 use minidump::system_info::Os;
-use minidump::MinidumpContext;
+use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
     FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile, SymbolProvider,
@@ -23,30 +22,26 @@ use symbolic::common::{Arch, ByteView};
 use tempfile::TempPath;
 
 use crate::cache::CacheStatus;
-use crate::services::cficaches::{CfiCacheError, CfiCacheFile, FetchCfiCache};
+use crate::services::cficaches::{CfiCacheActor, CfiCacheError, FetchCfiCache};
+use crate::services::download::ObjectId;
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::ObjectError;
 use crate::sources::SourceConfig;
 use crate::types::{
-    AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust,
-    ObjectFeatures, ObjectFileStatus, ObjectType, RawFrame, RawObjectInfo, RawStacktrace,
-    Registers, RequestOptions, Scope, SystemInfo,
+    AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFeatures,
+    ObjectFileStatus, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
+    RequestOptions, Scope, SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
-use super::{
-    object_id_from_object_info, StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
-    SymbolicationError,
-};
+use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor, SymbolicationError};
 
-type CfiCacheResult = (DebugId, Result<Arc<CfiCacheFile>, Arc<CfiCacheError>>);
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StackWalkMinidumpResult {
-    modules: Option<Vec<(DebugId, RawObjectInfo)>>,
-    missing_modules: Vec<DebugId>,
+    modules: Vec<CompleteObjectInfo>,
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: std::time::Duration,
@@ -130,81 +125,187 @@ impl MinidumpState {
         response.crash_reason = Some(self.crash_reason);
         response.assertion = Some(self.assertion);
     }
-
-    /// Returns the type of executable object that produced this minidump.
-    fn object_type(&self) -> ObjectType {
-        // Note that the names matched here are normalised by normalize_minidump_os_name().
-        match self.system_info.os_name.as_str() {
-            "Windows" => ObjectType::Pe,
-            "iOS" | "macOS" => ObjectType::Macho,
-            "Linux" | "Solaris" | "Android" => ObjectType::Elf,
-            _ => ObjectType::Unknown,
-        }
-    }
 }
 
+/// Loads a [`SymbolFile`] from the given `Path`.
+#[tracing::instrument(skip_all, fields(cfi_cache = %cfi_path.to_string_lossy()))]
+fn load_symbol_file(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
+    sentry::with_scope(
+        |scope| {
+            scope.set_extra(
+                "cfi_cache",
+                sentry::protocol::Value::String(cfi_path.to_string_lossy().to_string()),
+            )
+        },
+        || {
+            let bytes = ByteView::open(&cfi_path).map_err(|err| {
+                let stderr: &dyn std::error::Error = &err;
+                tracing::error!(stderr, "Error while reading cficache");
+                err
+            })?;
+
+            let cfi_cache = CfiCache::from_bytes(bytes)
+                // This mostly never happens since we already checked the files
+                // after downloading and they would have been tagged with
+                // CacheStatus::Malformed.
+                .map_err(|err| {
+                    let stderr: &dyn std::error::Error = &err;
+                    tracing::error!(stderr, "Error while loading cficache");
+                    err
+                })?;
+
+            if cfi_cache.as_slice().is_empty() {
+                anyhow::bail!("cficache is empty")
+            }
+
+            let symbol_file = SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(|err| {
+                let stderr: &dyn std::error::Error = &err;
+                tracing::error!(stderr, "Error while processing cficache");
+                err
+            })?;
+
+            Ok(symbol_file)
+        },
+    )
+}
+
+/// Processing information for a module that was referenced in a minidump.
+#[derive(Debug, Default)]
+struct CfiModule {
+    /// Combined features provided by all the DIFs we found for this module.
+    features: ObjectFeatures,
+    /// Status of the CFI or unwind information for this module.
+    cfi_status: ObjectFileStatus,
+    /// Call frame information for the module, loaded as a [`SymbolFile`].
+    symbol_file: Option<SymbolFile>,
+    /// The DIF object candidates for for this module.
+    cfi_candidates: AllObjectCandidates,
+}
+
+/// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
+/// CFI for stackwalking.
+///
+/// An instance of this type is always used to stackwalk one particular minidump.
 struct SymbolicatorSymbolProvider {
-    files: BTreeMap<DebugId, SymbolFile>,
-    missing_ids: RwLock<BTreeSet<DebugId>>,
+    /// The scope of the stackwalking request.
+    scope: Scope,
+    /// The sources from which to fetch CFI.
+    sources: Arc<[SourceConfig]>,
+    /// The object type of the minidump to stackwalk.
+    object_type: ObjectType,
+    /// The actor used for fetching CFI.
+    cficache_actor: CfiCacheActor,
+    /// An internal database of loaded CFI.
+    ///
+    /// The key consists of a module's debug identifier and base address.
+    cficaches: RwLock<HashMap<(DebugId, u64), CfiModule>>,
 }
 
 impl SymbolicatorSymbolProvider {
-    /// Load the CFI information from the cache.
-    ///
-    /// This reads the CFI caches from disk and returns them in a format suitable for the
-    /// processor to stackwalk.
-    pub fn new<'a, M: Iterator<Item = &'a (DebugId, PathBuf)>>(modules: M) -> Self {
+    pub fn new(
+        scope: Scope,
+        sources: Arc<[SourceConfig]>,
+        cficache_actor: CfiCacheActor,
+        object_type: ObjectType,
+    ) -> Self {
         Self {
-            files: modules
-                .filter_map(|(id, path)| Some((*id, Self::load(path)?)))
-                .collect(),
-
-            missing_ids: RwLock::new(BTreeSet::new()),
+            scope,
+            sources,
+            cficache_actor,
+            cficaches: Default::default(),
+            object_type,
         }
     }
 
-    fn load(cfi_path: &Path) -> Option<SymbolFile> {
-        sentry::with_scope(
-            |scope| {
-                scope.set_extra(
-                    "cfi_cache",
-                    sentry::protocol::Value::String(cfi_path.to_string_lossy().to_string()),
-                )
-            },
-            || {
-                let bytes = ByteView::open(cfi_path)
-                    .map_err(|err| {
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::error!(stderr, "Error while reading cficache");
-                    })
-                    .ok()?;
+    /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Option<()> {
+        let id = (
+            module.debug_identifier().unwrap_or_default(),
+            module.base_address(),
+        );
+        if self.cficaches.read().contains_key(&id) {
+            return Some(());
+        }
 
-                let cfi_cache = CfiCache::from_bytes(bytes)
-                    // This mostly never happens since we already checked the files
-                    // after downloading and they would have been tagged with
-                    // CacheStatus::Malformed.
-                    .map_err(|err| {
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::error!(stderr, "Error while loading cficache");
-                    })
-                    .ok()?;
+        if id.0.is_nil() {
+            // save a dummy "missing" CfiModule for this id.
+            let cfi_module = CfiModule {
+                cfi_status: ObjectFileStatus::Missing,
+                ..Default::default()
+            };
+            self.cficaches.write().insert(id, cfi_module);
+            return None;
+        }
 
-                if cfi_cache.as_slice().is_empty() {
-                    return None;
+        let sources = self.sources.clone();
+        let scope = self.scope.clone();
+
+        let identifier = ObjectId {
+            code_id: module.code_identifier(),
+            code_file: Some(module.code_file().into_owned()),
+            debug_id: module.debug_identifier(),
+            debug_file: module
+                .debug_file()
+                .map(|debug_file| debug_file.into_owned()),
+            object_type: self.object_type,
+        };
+
+        let cache_result = self
+            .cficache_actor
+            .fetch(FetchCfiCache {
+                object_type: self.object_type,
+                identifier,
+                sources,
+                scope,
+            })
+            .bind_hub(Hub::new_from_top(Hub::current()))
+            .await;
+
+        let cfi_module = match cache_result {
+            Ok(cfi_cache) => {
+                let cfi_status = match cfi_cache.status() {
+                    CacheStatus::Positive => ObjectFileStatus::Found,
+                    CacheStatus::Negative => ObjectFileStatus::Missing,
+                    CacheStatus::Malformed(details) => {
+                        let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                        let stderr: &dyn std::error::Error = &err;
+                        tracing::warn!(stderr, "Error while parsing cficache: {}", details);
+                        ObjectFileStatus::from(&err)
+                    }
+                    // If the cache entry is for a cache specific error, it must be
+                    // from a previous cficache conversion attempt.
+                    CacheStatus::CacheSpecificError(details) => {
+                        let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                        tracing::warn!("Cached error from parsing cficache: {}", details);
+                        ObjectFileStatus::from(&err)
+                    }
+                };
+                let symbol_file = match cfi_cache.status() {
+                    CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
+                    _ => None,
+                };
+                CfiModule {
+                    features: cfi_cache.features(),
+                    cfi_status,
+                    symbol_file,
+                    cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
                 }
+            }
 
-                SymbolFile::from_bytes(cfi_cache.as_slice())
-                    .map_err(|err| {
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::error!(stderr, "Error while processing cficache");
-                    })
-                    .ok()
-            },
-        )
-    }
+            Err(err) => {
+                let stderr: &dyn std::error::Error = &err;
+                tracing::debug!(stderr, "Error while fetching cficache");
 
-    fn missing_ids(self) -> Vec<DebugId> {
-        self.missing_ids.into_inner().into_iter().collect()
+                CfiModule {
+                    cfi_status: ObjectFileStatus::from(err.as_ref()),
+                    ..Default::default()
+                }
+            }
+        };
+
+        self.cficaches.write().insert(id, cfi_module);
+
+        Some(())
     }
 }
 
@@ -229,147 +330,34 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        let debug_id = module.debug_identifier()?;
-        match self.files.get(&debug_id) {
-            Some(file) => file.walk_frame(module, walker),
-            None => {
-                self.missing_ids.write().insert(debug_id);
-                None
-            }
-        }
+        self.load_cfi_module(module).await?;
+        let id = (module.debug_identifier()?, module.base_address());
+        self.cficaches
+            .read()
+            .get(&id)?
+            .symbol_file
+            .as_ref()?
+            .walk_frame(module, walker)
     }
 
     fn stats(&self) -> HashMap<String, SymbolStats> {
-        self.files
+        self.cficaches
+            .read()
             .iter()
-            .map(|(debug_id, sym)| {
+            .filter_map(|((debug_id, _), sym)| {
                 let stats = SymbolStats {
-                    symbol_url: sym.url.clone(), // TODO(ja): We could put our candidate URI here
+                    symbol_url: sym.symbol_file.as_ref()?.url.clone(), // TODO(ja): We could put our candidate URI here
                     loaded_symbols: true, // TODO(ja): Should we return `false` for not found?
                     corrupt_symbols: false,
                 };
 
-                (debug_id.to_string(), stats)
+                Some((debug_id.to_string(), stats))
             })
             .collect()
     }
 }
 
-/// A module which was referenced in a minidump and processing information for it.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-struct CfiModule {
-    /// Combined features provided by all the DIFs we found for this module.
-    features: ObjectFeatures,
-    /// Status of the CFI or unwind information for this module.
-    cfi_status: ObjectFileStatus,
-    /// Path to the CFI file in our cache, if there was a cache.
-    cfi_path: Option<PathBuf>,
-    /// The DIF object candidates for for this module.
-    cfi_candidates: AllObjectCandidates,
-    /// Indicates if the module was scanned during stack unwinding.
-    scanned: bool,
-    /// Indicates if the CFI for this module was consulted during stack unwinding.
-    cfi_used: bool,
-}
-
-/// The CFI modules referenced by a minidump for CFI processing.
-///
-/// This is continuously updated with [`CfiCacheResult`] from referenced modules that have not yet
-/// been fetched.  It contains the CFI cache status of the modules and allows loading the CFI from
-/// the caches for the correct minidump stackwalking.
-///
-/// It maintains the status of the object file availability itself as well as any features
-/// provided by it.  This can later be used to compile the required modules information
-/// needed for the final response on the JSON API.  See the [`ModuleListBuilder`] struct for
-/// this.
-#[derive(Clone, Debug)]
-struct CfiCacheModules {
-    /// We have to make sure to hold onto a reference to the CfiCacheFile,
-    /// to make sure it will not be evicted in the middle of reading it in the procspawn
-    cache_files: Vec<Arc<CfiCacheFile>>,
-    inner: BTreeMap<DebugId, CfiModule>,
-}
-
-impl CfiCacheModules {
-    /// Creates a new CFI cache entries for code modules.
-    fn new() -> Self {
-        Self {
-            cache_files: vec![],
-            inner: Default::default(),
-        }
-    }
-
-    /// Extend the CacheModules with the fetched caches represented by
-    /// [`CfiCacheResult`].
-    fn extend(&mut self, cfi_caches: Vec<CfiCacheResult>) {
-        self.cache_files.extend(
-            cfi_caches
-                .iter()
-                .filter_map(|(_, cache_result)| cache_result.as_ref().ok())
-                .map(Arc::clone),
-        );
-
-        let iter = cfi_caches.into_iter().map(|(code_id, cache_result)| {
-            let cfi_module = match cache_result {
-                Ok(cfi_cache) => {
-                    let cfi_status = match cfi_cache.status() {
-                        CacheStatus::Positive => ObjectFileStatus::Found,
-                        CacheStatus::Negative => ObjectFileStatus::Missing,
-                        CacheStatus::Malformed(details) => {
-                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            let stderr: &dyn std::error::Error = &err;
-                            tracing::warn!(stderr, "Error while parsing cficache: {}", details);
-                            ObjectFileStatus::from(&err)
-                        }
-                        // If the cache entry is for a cache specific error, it must be
-                        // from a previous cficache conversion attempt.
-                        CacheStatus::CacheSpecificError(details) => {
-                            let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                            tracing::warn!("Cached error from parsing cficache: {}", details);
-                            ObjectFileStatus::from(&err)
-                        }
-                    };
-                    let cfi_path = match cfi_cache.status() {
-                        CacheStatus::Positive => Some(cfi_cache.path().to_owned()),
-                        _ => None,
-                    };
-                    CfiModule {
-                        features: cfi_cache.features(),
-                        cfi_status,
-                        cfi_path,
-                        cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
-                        ..Default::default()
-                    }
-                }
-                Err(err) => {
-                    let stderr: &dyn std::error::Error = &err;
-                    tracing::debug!(stderr, "Error while fetching cficache");
-                    CfiModule {
-                        cfi_status: ObjectFileStatus::from(err.as_ref()),
-                        ..Default::default()
-                    }
-                }
-            };
-            (code_id, cfi_module)
-        });
-        self.inner.extend(iter)
-    }
-
-    /// Returns a mapping of module IDs to paths that can then be loaded inside a procspawn closure.
-    fn for_processing(&self) -> Vec<(DebugId, PathBuf)> {
-        self.inner
-            .iter()
-            .filter_map(|(id, module)| Some((*id, module.cfi_path.clone()?)))
-            .collect()
-    }
-
-    /// Returns the inner Map.
-    fn into_inner(self) -> BTreeMap<DebugId, CfiModule> {
-        self.inner
-    }
-}
-
-fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> RawObjectInfo {
+fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> CompleteObjectInfo {
     // Some modules are not objects but rather fonts or JIT areas or other mmapped files
     // which we don't care about.  These may not have complete information so map these to
     // our schema by converting to None when needed.
@@ -383,7 +371,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
         false => Some(code_file.into_owned()),
     };
 
-    RawObjectInfo {
+    CompleteObjectInfo::from(RawObjectInfo {
         ty,
         code_id,
         code_file,
@@ -394,37 +382,32 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
             0 => None,
             size => Some(size),
         },
-    }
+    })
 }
 
 async fn stackwalk(
-    cfi_caches: Vec<(DebugId, PathBuf)>,
+    cficaches: CfiCacheActor,
     minidump_path: PathBuf,
-    return_modules: bool,
+    scope: Scope,
+    sources: Arc<[SourceConfig]>,
 ) -> anyhow::Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
-    let provider = SymbolicatorSymbolProvider::new(cfi_caches.iter());
+    let system_info = minidump
+        .get_stream::<MinidumpSystemInfo>()
+        .map_err(|_| minidump_processor::ProcessError::MissingSystemInfo)?;
+    let ty = match system_info.os {
+        Os::Windows => ObjectType::Pe,
+        Os::MacOs | Os::Ios => ObjectType::Macho,
+        Os::Linux | Os::Solaris | Os::Android => ObjectType::Elf,
+        _ => ObjectType::Unknown,
+    };
+    let provider = SymbolicatorSymbolProvider::new(scope, sources, cficaches, ty);
     let process_state = minidump_processor::process_minidump(&minidump, &provider).await?;
     let duration = duration.elapsed();
 
     let minidump_state = MinidumpState::from_process_state(&process_state);
-    let object_type = minidump_state.object_type();
-
-    let missing_modules = provider.missing_ids();
-    let modules = return_modules.then(|| {
-        process_state
-            .modules
-            .iter()
-            .map(|module| {
-                (
-                    module.debug_identifier().unwrap_or_default(),
-                    object_info_from_minidump_module(object_type, module),
-                )
-            })
-            .collect()
-    });
 
     // Finally iterate through the threads and build the stacktraces to
     // return, marking modules as used when they are referenced by a frame.
@@ -461,170 +444,53 @@ async fn stackwalk(
         });
     }
 
+    // Start building the module list for the symbolication response.
+    // After stackwalking, `provider.cficaches` contains entries for exactly
+    // those modules that were referenced by some stack frame in the minidump.
+    let mut cficaches = provider.cficaches.into_inner();
+    let modules: Vec<CompleteObjectInfo> = process_state
+        .modules
+        .by_addr()
+        .filter_map(|module| {
+            let id = (
+                module.debug_identifier().unwrap_or_default(),
+                module.base_address(),
+            );
+
+            // Discard modules that weren't used and don't have a debug id.
+            if !cficaches.contains_key(&id) && module.debug_identifier().is_none() {
+                return None;
+            }
+
+            let mut obj_info = object_info_from_minidump_module(ty, module);
+
+            obj_info.unwind_status = match cficaches.remove(&id) {
+                None => Some(ObjectFileStatus::Unused),
+                Some(cfi_module) => {
+                    obj_info.features.merge(cfi_module.features);
+                    obj_info.candidates = cfi_module.cfi_candidates;
+                    Some(cfi_module.cfi_status)
+                }
+            };
+
+            metric!(
+                counter("symbolication.unwind_status") += 1,
+                "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
+            );
+
+            Some(obj_info)
+        })
+        .collect();
+
     Ok(StackWalkMinidumpResult {
         modules,
-        missing_modules,
         stacktraces,
         minidump_state,
         duration,
     })
 }
 
-/// Builder object to collect modules from the minidump.
-///
-/// This collects the modules found by the minidump processor and constructs the
-/// [`CompleteObjectInfo`] objects from them, which are used to eventually return the
-/// module list in the [`SymbolicateStacktraces`] object of the final JSON API response.
-///
-/// The builder requires marking modules that are referenced by stack frames.  This allows it to
-/// omit modules which do not look like real modules (i.e. modules which don't have a valid
-/// code or debug ID, they could be mmap'ed fonts or other such things) as long as they are
-/// not mapped to address ranges used by any frames in the stacktraces.
-struct ModuleListBuilder {
-    inner: Vec<(CompleteObjectInfo, bool)>,
-}
-
-impl ModuleListBuilder {
-    fn new(cfi_caches: CfiCacheModules, modules: Vec<(DebugId, RawObjectInfo)>) -> Self {
-        // Now build the CompletedObjectInfo for all modules
-        let cfi_caches = cfi_caches.into_inner();
-
-        let mut inner: Vec<(CompleteObjectInfo, bool)> = modules
-            .into_iter()
-            .map(|(id, raw_info)| {
-                let mut obj_info: CompleteObjectInfo = raw_info.into();
-
-                // If we loaded this module into the CFI cache, update the info object with
-                // this status.
-                match cfi_caches.get(&id) {
-                    None => {
-                        obj_info.unwind_status = None;
-                    }
-                    Some(cfi_module) => {
-                        obj_info.unwind_status = Some(cfi_module.cfi_status);
-                        obj_info.features.merge(cfi_module.features);
-                        obj_info.candidates = cfi_module.cfi_candidates.clone();
-                    }
-                }
-                (obj_info, false)
-            })
-            .collect();
-
-        // Sort by image address for binary search in `mark`.
-        inner.sort_by_key(|(info, _)| info.raw.image_addr);
-        Self { inner }
-    }
-
-    /// Finds the index of the module (for lookup in `self.modules`) that covers the gives `addr`.
-    fn find_module_index(&self, addr: u64) -> Option<usize> {
-        let search_index = self
-            .inner
-            .binary_search_by_key(&addr, |(info, _)| info.raw.image_addr.0);
-
-        let info_idx = match search_index {
-            Ok(index) => index,
-            Err(0) => return None,
-            Err(index) => index - 1,
-        };
-
-        let (info, _marked) = &self.inner[info_idx];
-        let HexValue(image_addr) = info.raw.image_addr;
-        let includes_addr = match info.raw.image_size {
-            Some(size) => addr < image_addr + size,
-            // If there is no image size, the image implicitly counts up to the next image. Because
-            // we know that the search address is somewhere in this range, we can mark it.
-            None => true,
-        };
-
-        if includes_addr {
-            Some(info_idx)
-        } else {
-            None
-        }
-    }
-
-    /// Walks all the `stacktraces`, marking modules as being referenced based on the frames addr.
-    fn process_stacktraces(&mut self, stacktraces: &[RawStacktrace]) {
-        for trace in stacktraces {
-            for frame in &trace.frames {
-                let addr = frame.instruction_addr.0;
-                let is_prewalked = frame.trust == FrameTrust::PreWalked;
-                self.mark_referenced(addr, is_prewalked);
-            }
-        }
-    }
-
-    /// Marks the module loaded at the given address as referenced.
-    ///
-    /// The respective module will always be included in the final list of modules.
-    pub fn mark_referenced(&mut self, addr: u64, is_prewalked: bool) {
-        let info_index = match self.find_module_index(addr) {
-            Some(idx) => idx,
-            None => return,
-        };
-
-        let (info, marked) = &mut self.inner[info_index];
-        *marked = true;
-
-        if info.unwind_status.is_none() && !is_prewalked {
-            info.unwind_status = Some(ObjectFileStatus::Missing);
-        }
-    }
-
-    /// Returns the modules list to be used in the symbolication response.
-    pub fn build(self) -> Vec<CompleteObjectInfo> {
-        self.inner
-            .into_iter()
-            .filter_map(|(mut info, marked)| {
-                let include = marked || info.raw.debug_id.is_some();
-                if !include {
-                    return None;
-                }
-                // Reset the unwind status to `unused` for all objects that were not being referenced
-                // in the final stack traces.
-                if !marked || info.unwind_status.is_none() {
-                    info.unwind_status = Some(ObjectFileStatus::Unused);
-                }
-                metric!(
-                    counter("symbolication.unwind_status") += 1,
-                    "status" => info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
-                );
-                Some(info)
-            })
-            .collect()
-    }
-}
-
 impl SymbolicationActor {
-    #[tracing::instrument(skip_all)]
-    async fn load_cfi_caches(
-        &self,
-        scope: Scope,
-        requests: &[(DebugId, &RawObjectInfo)],
-        sources: Arc<[SourceConfig]>,
-    ) -> Vec<CfiCacheResult> {
-        let futures = requests.iter().map(|(id, object_info)| {
-            let sources = sources.clone();
-            let scope = scope.clone();
-
-            async move {
-                let result = self
-                    .cficaches
-                    .fetch(FetchCfiCache {
-                        object_type: object_info.ty,
-                        identifier: object_id_from_object_info(object_info),
-                        sources,
-                        scope,
-                    })
-                    .await;
-                ((*id).to_owned(), result)
-            }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        future::join_all(futures).await
-    }
-
     /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
     fn maybe_persist_minidump(&self, minidump_file: TempPath) {
         if let Some(dir) = self.diagnostics_cache.cache_dir() {
@@ -664,76 +530,6 @@ impl SymbolicationActor {
         Ok(response)
     }
 
-    /// Iteratively stackwalks/processes the given `minidump_file`.
-    async fn stackwalk_minidump_iteratively(
-        &self,
-        scope: Scope,
-        minidump_path: &Path,
-        sources: Arc<[SourceConfig]>,
-        cfi_caches: &mut CfiCacheModules,
-    ) -> anyhow::Result<StackWalkMinidumpResult> {
-        let mut iterations = 0;
-
-        let mut modules: Option<HashMap<DebugId, RawObjectInfo>> = None;
-
-        let mut result = loop {
-            iterations += 1;
-
-            let mut result = {
-                let return_modules = modules.is_none();
-                let cfi_caches = cfi_caches.for_processing();
-                let minidump_path = minidump_path.to_path_buf();
-
-                let future = stackwalk(cfi_caches, minidump_path, return_modules)
-                    .bind_hub(sentry::Hub::current());
-                tokio::time::timeout(Duration::from_secs(60), self.cpu_pool.spawn(future))
-                    .await???
-            };
-
-            metric!(timer("minidump.stackwalk.duration") = result.duration);
-
-            let modules = match &modules {
-                Some(modules) => modules,
-                None => {
-                    let received_modules = std::mem::take(&mut result.modules);
-                    let received_modules =
-                        received_modules.unwrap_or_default().into_iter().collect();
-                    modules = Some(received_modules);
-                    modules.as_ref().expect("modules was just set")
-                }
-            };
-
-            // We put a hard limit of 5 iterations here.
-            // Previously, it was two, once scanning for referenced modules, then doing the stackwalk
-            if result.missing_modules.is_empty() || iterations >= 5 {
-                break result;
-            }
-
-            let missing_modules: Vec<(DebugId, &RawObjectInfo)> =
-                std::mem::take(&mut result.missing_modules)
-                    .into_iter()
-                    .filter_map(|id| modules.get(&id).map(|info| (id, info)))
-                    .collect();
-
-            let loaded_caches = self
-                .load_cfi_caches(scope.clone(), &missing_modules, sources.clone())
-                .await;
-
-            // break if no new cfi caches were successfully loaded
-            if loaded_caches.iter().all(|(_, result)| match result {
-                Err(_) => true,
-                Ok(cfi_cache_file) => cfi_cache_file.status() != &CacheStatus::Positive,
-            }) {
-                break result;
-            }
-            cfi_caches.extend(loaded_caches);
-        };
-
-        result.modules = modules.map(|modules| modules.into_iter().collect());
-        metric!(time_raw("minidump.stackwalk.iterations") = iterations);
-        Ok(result)
-    }
-
     #[tracing::instrument(skip_all)]
     async fn do_stackwalk_minidump(
         &self,
@@ -747,13 +543,11 @@ impl SymbolicationActor {
             tracing::debug!("Processing minidump ({} bytes)", len);
             metric!(time_raw("minidump.upload.size") = len);
 
-            let mut cfi_caches = CfiCacheModules::new();
-
-            let future = self.stackwalk_minidump_iteratively(
+            let future = stackwalk(
+                self.cficaches.clone(),
+                minidump_file.to_path_buf(),
                 scope.clone(),
-                &minidump_file,
                 sources.clone(),
-                &mut cfi_caches,
             );
 
             let result = match future.await {
@@ -768,8 +562,10 @@ impl SymbolicationActor {
                 modules,
                 mut stacktraces,
                 minidump_state,
-                ..
+                duration,
             } = result;
+
+            metric!(timer("minidump.stackwalk.duration") = duration);
 
             match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
                 Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(
@@ -780,13 +576,8 @@ impl SymbolicationActor {
                 _ => (),
             }
 
-            // Start building the module list for the symbolication response.
-            let mut module_builder =
-                ModuleListBuilder::new(cfi_caches, modules.unwrap_or_default());
-            module_builder.process_stacktraces(&stacktraces);
-
             let request = SymbolicateStacktraces {
-                modules: module_builder.build(),
+                modules,
                 scope,
                 sources,
                 origin: StacktraceOrigin::Minidump,
@@ -867,14 +658,9 @@ mod tests {
 
     use tempfile::NamedTempFile;
 
-    use super::*;
     use crate::services::symbolication::tests::setup_service;
     use crate::test;
-    use crate::types::Scope;
-    use crate::types::{
-        CompleteObjectInfo, ObjectFileStatus, ObjectType, RawObjectInfo, RequestOptions,
-    };
-    use crate::utils::hex::HexValue;
+    use crate::types::{RequestOptions, Scope};
 
     macro_rules! assert_snapshot {
         ($e:expr) => {
@@ -884,122 +670,6 @@ mod tests {
                 )
             });
         }
-    }
-
-    fn create_object_info(has_id: bool, addr: u64, size: Option<u64>) -> CompleteObjectInfo {
-        let mut info: CompleteObjectInfo = RawObjectInfo {
-            ty: ObjectType::Elf,
-            code_id: None,
-            code_file: None,
-            debug_id: Some(uuid::Uuid::new_v4().to_string()).filter(|_| has_id),
-            debug_file: None,
-            image_addr: HexValue(addr),
-            image_size: size,
-        }
-        .into();
-        info.unwind_status = Some(ObjectFileStatus::Unused);
-        info
-    }
-
-    #[test]
-    fn test_code_module_builder_empty() {
-        let modules: Vec<CompleteObjectInfo> = vec![];
-
-        let valid = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        }
-        .build();
-        assert_eq!(valid, modules);
-    }
-
-    #[test]
-    fn test_code_module_builder_valid() {
-        let modules = vec![
-            create_object_info(true, 0x1000, Some(0x1000)),
-            create_object_info(true, 0x3000, Some(0x1000)),
-        ];
-
-        let valid = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        }
-        .build();
-        assert_eq!(valid, modules);
-    }
-
-    #[test]
-    fn test_code_module_builder_unreferenced() {
-        let valid_object = create_object_info(true, 0x1000, Some(0x1000));
-        let modules = vec![
-            valid_object.clone(),
-            create_object_info(false, 0x3000, Some(0x1000)),
-        ];
-
-        let valid = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        }
-        .build();
-        assert_eq!(valid, vec![valid_object]);
-    }
-
-    #[test]
-    fn test_code_module_builder_referenced() {
-        let modules = vec![
-            create_object_info(true, 0x1000, Some(0x1000)),
-            create_object_info(false, 0x3000, Some(0x1000)),
-        ];
-
-        let mut builder = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        };
-        builder.mark_referenced(0x3500, false);
-        let valid = builder.build();
-        assert_eq!(valid, modules);
-    }
-
-    #[test]
-    fn test_code_module_builder_miss_first() {
-        let modules = vec![
-            create_object_info(false, 0x1000, Some(0x1000)),
-            create_object_info(false, 0x3000, Some(0x1000)),
-        ];
-
-        let mut builder = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        };
-        builder.mark_referenced(0xfff, false);
-        let valid = builder.build();
-        assert_eq!(valid, vec![]);
-    }
-
-    #[test]
-    fn test_code_module_builder_gap() {
-        let modules = vec![
-            create_object_info(false, 0x1000, Some(0x1000)),
-            create_object_info(false, 0x3000, Some(0x1000)),
-        ];
-
-        let mut builder = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        };
-        builder.mark_referenced(0x2800, false); // in the gap between both modules
-        let valid = builder.build();
-        assert_eq!(valid, vec![]);
-    }
-
-    #[test]
-    fn test_code_module_builder_implicit_size() {
-        let valid_object = create_object_info(false, 0x1000, None);
-        let modules = vec![
-            valid_object.clone(),
-            create_object_info(false, 0x3000, None),
-        ];
-
-        let mut builder = ModuleListBuilder {
-            inner: modules.iter().map(|m| (m.clone(), false)).collect(),
-        };
-        builder.mark_referenced(0x2800, false); // in the gap between both modules
-        let valid = builder.build();
-        assert_eq!(valid, vec![valid_object]);
     }
 
     macro_rules! stackwalk_minidump {
