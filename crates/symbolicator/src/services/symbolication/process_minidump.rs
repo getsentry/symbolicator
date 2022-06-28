@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
