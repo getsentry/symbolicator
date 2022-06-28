@@ -397,7 +397,7 @@ async fn stackwalk(
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
     let system_info = minidump
         .get_stream::<MinidumpSystemInfo>()
-        .context("Could not read system info stream")?;
+        .map_err(|_| minidump_processor::ProcessError::MissingSystemInfo)?;
     let ty = match system_info.os {
         Os::Windows => ObjectType::Pe,
         Os::MacOs | Os::Ios => ObjectType::Macho,
