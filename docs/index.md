@@ -45,6 +45,18 @@ metrics:
   persistent volume, and `null` otherwise, which disables caching. **It is
   strictly recommended to configure caches in production!**
 - `bind`: Host and port for HTTP interface.
+- `bind_https`: Host and port for optional HTTPS interface.
+
+  Notes:
+  - HTTPS support is a Cargo feature, and needs to be enabled during building:
+    ```shell
+    cargo build --features https <other build options>
+    ```
+  - Additionally for HTTPS support, paths to TLS certificate and key files need to be specified in the configuration file:
+    - `server_config`: web server configuration needed for serving over HTTPS.
+      - `https`: HTTPS configuration.
+        - `certificate_path`: Path to a TLS certificate file in PEM format.
+        - `key_path`: Path to a TLS key file in PEM format.
 - `logging`: Command line logging behavior.
     - `level`: Log level, defaults to `info`. Can be one of `off`, `error`,
       `warn`, `info`, `debug`, or `trace`.

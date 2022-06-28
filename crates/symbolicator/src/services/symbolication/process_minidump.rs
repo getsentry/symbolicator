@@ -4,11 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
-use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
+use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
     FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile, SymbolProvider,
@@ -397,7 +396,7 @@ async fn stackwalk(
     let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
     let system_info = minidump
         .get_stream::<MinidumpSystemInfo>()
-        .context("Could not read system info stream")?;
+        .map_err(|_| minidump_processor::ProcessError::MissingSystemInfo)?;
     let ty = match system_info.os {
         Os::Windows => ObjectType::Pe,
         Os::MacOs | Os::Ios => ObjectType::Macho,
@@ -449,17 +448,21 @@ async fn stackwalk(
     // After stackwalking, `provider.cficaches` contains entries for exactly
     // those modules that were referenced by some stack frame in the minidump.
     let mut cficaches = provider.cficaches.into_inner();
-    let mut modules: Vec<CompleteObjectInfo> = minidump
-        .get_stream::<MinidumpModuleList>()
-        .context("Could not read module list stream")?
-        .iter()
-        .map(|module| {
-            let mut obj_info = object_info_from_minidump_module(ty, module);
-
+    let modules: Vec<CompleteObjectInfo> = process_state
+        .modules
+        .by_addr()
+        .filter_map(|module| {
             let id = (
                 module.debug_identifier().unwrap_or_default(),
                 module.base_address(),
             );
+
+            // Discard modules that weren't used and don't have a debug id.
+            if !cficaches.contains_key(&id) && module.debug_identifier().is_none() {
+                return None;
+            }
+
+            let mut obj_info = object_info_from_minidump_module(ty, module);
 
             obj_info.unwind_status = match cficaches.remove(&id) {
                 None => Some(ObjectFileStatus::Unused),
@@ -475,10 +478,9 @@ async fn stackwalk(
                 "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
             );
 
-            obj_info
+            Some(obj_info)
         })
         .collect();
-    modules.sort_by_key(|m| m.raw.image_addr);
 
     Ok(StackWalkMinidumpResult {
         modules,
@@ -560,8 +562,10 @@ impl SymbolicationActor {
                 modules,
                 mut stacktraces,
                 minidump_state,
-                ..
+                duration,
             } = result;
+
+            metric!(timer("minidump.stackwalk.duration") = duration);
 
             match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
                 Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(

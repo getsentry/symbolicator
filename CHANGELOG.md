@@ -6,6 +6,11 @@
 
 - Use Unity il2cpp line mapping files in symcache creation ([#831](https://github.com/getsentry/symbolicator/pull/831))
 - Read thread names from minidumps and Apple crash reports ([#834](https://github.com/getsentry/symbolicator/pull/834))
+- Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))
+
+### Internal
+
+- Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
 
 ### Internal
 
