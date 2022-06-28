@@ -44,7 +44,6 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
     diagnostics_cache: crate::cache::Cache,
-    io_pool: tokio::runtime::Handle,
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
     max_concurrent_requests: Option<usize>,
@@ -59,7 +58,6 @@ impl SymbolicationActor {
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         diagnostics_cache: crate::cache::Cache,
-        io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
         max_concurrent_requests: Option<usize>,
     ) -> Self {
@@ -68,7 +66,6 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             diagnostics_cache,
-            io_pool,
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             max_concurrent_requests,
@@ -263,7 +260,7 @@ impl SymbolicationActor {
         }
         .bind_hub(hub);
 
-        self.io_pool
+        self.cpu_pool
             .spawn(self.symbolication_taskmon.instrument(request_future));
 
         Ok(request_id)
@@ -277,7 +274,6 @@ impl fmt::Debug for SymbolicationActor {
             .field("symcaches", &self.symcaches)
             .field("cficaches", &self.cficaches)
             .field("diagnostics_cache", &self.diagnostics_cache)
-            .field("io_pool", &self.io_pool)
             .field("cpu_pool", &self.cpu_pool)
             .field("requests", &self.requests)
             .field("max_concurrent_requests", &self.max_concurrent_requests)

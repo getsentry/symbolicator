@@ -1,8 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context;
-use sentry::SentryFutureExt;
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 
@@ -12,7 +10,7 @@ use crate::types::{
     FrameTrust, ObjectFileStatus, ObjectType, RawFrame, RawStacktrace, Registers, RequestOptions,
     Scope, Signal, SymbolicatedFrame,
 };
-use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
 use super::module_lookup::ModuleLookup;
@@ -61,69 +59,54 @@ impl SymbolicationActor {
             .fetch_symcaches(self.symcaches.clone(), &stacktraces)
             .await;
 
-        let future = async move {
-            let mut metrics = StacktraceMetrics::default();
-            let stacktraces: Vec<_> = stacktraces
-                .into_iter()
-                .map(|trace| symbolicate_stacktrace(trace, &module_lookup, &mut metrics, signal))
-                .collect();
-
-            (module_lookup, stacktraces, metrics)
-        };
-
-        let (mut module_lookup, mut stacktraces, metrics) =
-            CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
-                .await
-                .context("Symbolication future cancelled")?;
+        let mut metrics = StacktraceMetrics::default();
+        let mut stacktraces: Vec<_> = stacktraces
+            .into_iter()
+            .map(|trace| symbolicate_stacktrace(trace, &module_lookup, &mut metrics, signal))
+            .collect();
 
         module_lookup
             .fetch_sources(self.objects.clone(), &stacktraces)
             .await;
 
-        let future = async move {
-            let debug_sessions = module_lookup.prepare_debug_sessions();
+        let debug_sessions = module_lookup.prepare_debug_sessions();
 
-            for trace in &mut stacktraces {
-                for frame in &mut trace.frames {
-                    let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                        (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
-                        _ => continue,
-                    };
+        for trace in &mut stacktraces {
+            for frame in &mut trace.frames {
+                let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
+                    (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                    _ => continue,
+                };
 
-                    let result = module_lookup.get_context_lines(
-                        &debug_sessions,
-                        frame.raw.instruction_addr.0,
-                        frame.raw.addr_mode,
-                        abs_path,
-                        lineno,
-                        5,
-                    );
+                let result = module_lookup.get_context_lines(
+                    &debug_sessions,
+                    frame.raw.instruction_addr.0,
+                    frame.raw.addr_mode,
+                    abs_path,
+                    lineno,
+                    5,
+                );
 
-                    if let Some((pre_context, context_line, post_context)) = result {
-                        frame.raw.pre_context = pre_context;
-                        frame.raw.context_line = Some(context_line);
-                        frame.raw.post_context = post_context;
-                    }
+                if let Some((pre_context, context_line, post_context)) = result {
+                    frame.raw.pre_context = pre_context;
+                    frame.raw.context_line = Some(context_line);
+                    frame.raw.post_context = post_context;
                 }
             }
-            // explicitly drop this, so it does not borrow `module_lookup` anymore.
-            drop(debug_sessions);
+        }
+        // explicitly drop this, so it does not borrow `module_lookup` anymore.
+        drop(debug_sessions);
 
-            // bring modules back into the original order
-            let modules = module_lookup.into_inner();
-            record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
+        // bring modules back into the original order
+        let modules = module_lookup.into_inner();
+        record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
 
-            CompletedSymbolicationResponse {
-                signal,
-                stacktraces,
-                modules,
-                ..Default::default()
-            }
-        };
-
-        CancelOnDrop::new(self.cpu_pool.spawn(future.bind_hub(sentry::Hub::current())))
-            .await
-            .context("Source lookup future cancelled")
+        Ok(CompletedSymbolicationResponse {
+            signal,
+            stacktraces,
+            modules,
+            ..Default::default()
+        })
     }
 }
 

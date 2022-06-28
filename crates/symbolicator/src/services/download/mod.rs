@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
 use thiserror::Error;
@@ -15,7 +16,7 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 use crate::cache::CacheStatus;
-use crate::utils::futures::{self as future_utils, m, measure};
+use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
 use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
@@ -111,6 +112,7 @@ pub enum DownloadStatus {
 /// rate limits and the concurrency it uses.
 #[derive(Debug)]
 pub struct DownloadService {
+    runtime: tokio::runtime::Handle,
     max_download_timeout: Duration,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
@@ -121,7 +123,7 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: &Config) -> Arc<Self> {
+    pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let trusted_client = crate::utils::http::create_client(config, true);
         let restricted_client = crate::utils::http::create_client(config, false);
 
@@ -131,8 +133,9 @@ impl DownloadService {
             ..
         } = *config;
         Arc::new(Self {
+            runtime: runtime.clone(),
             max_download_timeout: config.max_download_timeout,
-            sentry: sentry::SentryDownloader::new(trusted_client, config),
+            sentry: sentry::SentryDownloader::new(trusted_client, runtime, config),
             http: http::HttpDownloader::new(
                 restricted_client.clone(),
                 connect_timeout,
@@ -195,17 +198,20 @@ impl DownloadService {
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
     pub async fn download(
-        &self,
+        self: Arc<Self>,
         source: RemoteDif,
         destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
-        let job = self.dispatch_download(&source, destination);
+        let slf = self.clone();
+        let destination = destination.to_path_buf();
+        let job = async move { slf.dispatch_download(&source, &destination).await };
+        let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
 
         match job.await {
-            Ok(result) => result,
-            Err(_) => Err(DownloadError::Canceled),
+            Ok(Ok(result)) => result,
+            _ => Err(DownloadError::Canceled),
         }
     }
 
@@ -478,7 +484,7 @@ mod tests {
             ..Config::default()
         };
 
-        let service = DownloadService::new(&config);
+        let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
         let download_status = service.download(file_source, dest).await.unwrap();
@@ -501,7 +507,7 @@ mod tests {
         };
 
         let config = Config::default();
-        let svc = DownloadService::new(&config);
+        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
             .list_files(source.clone(), FileType::all(), objid)
             .await

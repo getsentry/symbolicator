@@ -8,26 +8,13 @@
 //! state.
 //!
 //! The internal services require two separate asynchronous runtimes.
+//! (There is a third runtime dedicated to serving http requests)
 //! For regular scheduling and I/O-intensive work, services will use the `io_pool`.
 //! For CPU intensive workloads, services will use the `cpu_pool`.
 //!
-//! It is common for threadpools to be shared by multiple services and the
-//! application wants to generally separate services with CPU-intensive workloads from those with
-//! IO-heavy workloads.
-//!
-//! # Tokio 0.1 vs Tokio 1
-//!
-//! While symbolicator is transitioning, two runtimes are required. The [`Service`] to run in a
-//! `tokio 0.1` runtime, but from within a `tokio 1` context. To achieve this, either run from
-//! within a `tokio::main` or `tokio::test` context, or use `Runtime::enter` to register the Tokio
-//! runtime.
-//!
-//! The current division of runtimes is:
-//!
-//!  - The HTTP server uses `tokio 0.1`.
-//!  - Services use the HTTP server's runtime.
-//!  - The downloader uses the `tokio 1` runtime internally.
-//!  - Some CPU-intensive tasks are spawned on a `tokio 1` runtime.
+//! When a request comes in on the web pool, it is handed off to the `cpu_pool` for processing, which
+//! is primarily synchronous work in the best case (everything is cached).
+//! When file fetching is needed, that fetching will happen on the `io_pool`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -77,8 +64,10 @@ impl Service {
     ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let downloader = DownloadService::new(&config);
-        let shared_cache = Arc::new(SharedCacheService::new(config.shared_cache.clone()).await);
+        let downloader = DownloadService::new(&config, io_pool.clone());
+        let shared_cache =
+            SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
+        let shared_cache = Arc::new(shared_cache);
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)
@@ -97,26 +86,19 @@ impl Service {
             objects.clone(),
             bitcode,
             il2cpp,
-            cpu_pool.clone(),
         );
-        let cficaches = CfiCacheActor::new(
-            caches.cficaches,
-            shared_cache,
-            objects.clone(),
-            cpu_pool.clone(),
-        );
+        let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache, objects.clone());
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
             caches.diagnostics,
-            io_pool,
             cpu_pool,
             config.max_concurrent_requests,
         );
         let symbolication_taskmon = symbolication.symbolication_task_monitor();
-        tokio::spawn(async move {
+        io_pool.spawn(async move {
             for interval in symbolication_taskmon.intervals() {
                 record_task_metrics("symbolication", &interval);
                 tokio::time::sleep(Duration::from_secs(5)).await;

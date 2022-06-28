@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 use reqwest::{header, StatusCode};
+use sentry::SentryFutureExt;
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
@@ -22,7 +23,7 @@ use super::{
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils};
+use crate::utils::futures::{self as future_utils, CancelOnDrop};
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -87,10 +88,14 @@ pub enum SentryError {
 
     #[error("bad status code from Sentry: {0}")]
     BadStatusCode(StatusCode),
+
+    #[error("failed joining task")]
+    JoinTask(#[from] tokio::task::JoinError),
 }
 
 pub struct SentryDownloader {
     client: reqwest::Client,
+    runtime: tokio::runtime::Handle,
     index_cache: Mutex<SentryIndexCache>,
     cache_duration: Duration,
     connect_timeout: Duration,
@@ -107,7 +112,7 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client, config: &Config) -> Self {
+    pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
         // The Sentry cache index should expire as soon as we attempt to retry negative caches.
         let cache_duration = if config.cache_dir.is_some() {
             config
@@ -120,6 +125,7 @@ impl SentryDownloader {
         };
         Self {
             client,
+            runtime,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
             cache_duration,
             connect_timeout: config.connect_timeout,
@@ -129,11 +135,10 @@ impl SentryDownloader {
 
     /// Make a request to sentry, parse the result as a JSON SearchResult list.
     async fn fetch_sentry_json(
-        &self,
+        client: &reqwest::Client,
         query: &SearchQuery,
     ) -> Result<Vec<SearchResult>, SentryError> {
-        let mut request = self
-            .client
+        let mut request = client
             .get(query.index_url.clone())
             .bearer_auth(&query.token)
             .header("Accept-Encoding", "identity")
@@ -172,7 +177,19 @@ impl SentryDownloader {
             "Fetching list of Sentry debug files from {}",
             &query.index_url
         );
-        let entries = future_utils::retry(|| self.fetch_sentry_json(&query)).await?;
+
+        let entries = {
+            let client = self.client.clone();
+            let query = query.clone();
+            let future = async move {
+                future_utils::retry(|| Self::fetch_sentry_json(&client, &query)).await
+            };
+
+            let future =
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
+
+            future.await.map_err(SentryError::JoinTask)??
+        };
 
         if self.cache_duration > Duration::from_secs(0) {
             self.index_cache

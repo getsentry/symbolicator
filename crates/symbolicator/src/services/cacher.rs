@@ -326,13 +326,14 @@ impl<T: CacheItemRequest> Cacher<T> {
             version: T::VERSIONS.current,
             local_key: key.clone(),
         };
-        let dup_file = temp_file.reopen()?;
-        let mut temp_fd = tokio::fs::File::from_std(dup_file);
 
+        let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
         let shared_cache_hit = self
             .shared_cache_service
-            .fetch(&shared_cache_key, &mut temp_fd)
+            .fetch(&shared_cache_key, temp_fd)
             .await;
+
+        let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
 
         let status = match shared_cache_hit {
             true => {
@@ -471,8 +472,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
         .bind_hub(Hub::new_from_top(Hub::current()));
 
-        // TODO: This spawns into the current_thread runtime of the caller. Consider more explicit
-        // resource allocation here to separate CPU intensive work from I/O work.
+        // These computations are spawned on the current runtime, which in all cases is the CPU-pool.
         tokio::spawn(channel);
 
         receiver.shared()
@@ -686,7 +686,8 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let shared_cache = Arc::new(SharedCacheService::new(None).await);
+        let runtime = tokio::runtime::Handle::current();
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
         let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("some_cache_key");
@@ -729,7 +730,8 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let shared_cache = Arc::new(SharedCacheService::new(None).await);
+        let runtime = tokio::runtime::Handle::current();
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
         let cacher = Cacher::new(cache, shared_cache);
 
         let request = TestCacheItem::new("0");

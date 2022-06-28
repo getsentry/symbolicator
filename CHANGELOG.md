@@ -12,6 +12,10 @@
 
 - Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
 
+### Internal
+
+- Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
+
 ## 0.5.1
 
 ### Features
