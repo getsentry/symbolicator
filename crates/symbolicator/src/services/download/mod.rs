@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
 use thiserror::Error;
@@ -17,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 use aws_smithy_http;
 
 use crate::cache::CacheStatus;
-use crate::utils::futures::{self as future_utils, m, measure};
+use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
 use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
@@ -115,7 +116,8 @@ pub enum DownloadStatus {
 /// rate limits and the concurrency it uses.
 #[derive(Debug)]
 pub struct DownloadService {
-    config: Arc<Config>,
+    runtime: tokio::runtime::Handle,
+    max_download_timeout: Duration,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
@@ -125,9 +127,9 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: Arc<Config>) -> Arc<Self> {
-        let trusted_client = crate::utils::http::create_client(&config, true);
-        let restricted_client = crate::utils::http::create_client(&config, false);
+    pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
+        let trusted_client = crate::utils::http::create_client(config, true);
+        let restricted_client = crate::utils::http::create_client(config, false);
 
         let Config {
             connect_timeout,
@@ -135,12 +137,9 @@ impl DownloadService {
             ..
         } = *config;
         Arc::new(Self {
-            config,
-            sentry: sentry::SentryDownloader::new(
-                trusted_client,
-                connect_timeout,
-                streaming_timeout,
-            ),
+            runtime: runtime.clone(),
+            max_download_timeout: config.max_download_timeout,
+            sentry: sentry::SentryDownloader::new(trusted_client, runtime, config),
             http: http::HttpDownloader::new(
                 restricted_client.clone(),
                 connect_timeout,
@@ -203,17 +202,20 @@ impl DownloadService {
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
     pub async fn download(
-        &self,
+        self: Arc<Self>,
         source: RemoteDif,
         destination: &Path,
     ) -> Result<DownloadStatus, DownloadError> {
-        let job = self.dispatch_download(&source, destination);
-        let job = tokio::time::timeout(self.config.max_download_timeout, job);
+        let slf = self.clone();
+        let destination = destination.to_path_buf();
+        let job = async move { slf.dispatch_download(&source, &destination).await };
+        let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
+        let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
 
         match job.await {
-            Ok(result) => result,
-            Err(_) => Err(DownloadError::Canceled),
+            Ok(Ok(result)) => result,
+            _ => Err(DownloadError::Canceled),
         }
     }
 
@@ -236,9 +238,7 @@ impl DownloadService {
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
-                let job = self
-                    .sentry
-                    .list_files(cfg, object_id, filetypes, &self.config);
+                let job = self.sentry.list_files(cfg, object_id, filetypes);
                 let job = tokio::time::timeout(Duration::from_secs(30), job);
                 let job = measure("service.download.list_files", m::timed_result, None, job);
 
@@ -483,12 +483,12 @@ mod tests {
             _ => panic!("unexpected source"),
         };
 
-        let config = Arc::new(Config {
+        let config = Config {
             connect_to_reserved_ips: true,
             ..Config::default()
-        });
+        };
 
-        let service = DownloadService::new(config);
+        let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
         let download_status = service.download(file_source, dest).await.unwrap();
@@ -510,8 +510,8 @@ mod tests {
             object_type: ObjectType::Pe,
         };
 
-        let config = Arc::new(Config::default());
-        let svc = DownloadService::new(config);
+        let config = Config::default();
+        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
             .list_files(source.clone(), FileType::all(), objid)
             .await

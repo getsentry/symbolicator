@@ -286,6 +286,10 @@ pub struct RawStacktrace {
     #[serde(default)]
     pub thread_id: Option<u64>,
 
+    /// The name of the thread.
+    #[serde(default)]
+    pub thread_name: Option<String>,
+
     /// `true` if this thread triggered the report. Usually indicates that this trace crashed.
     #[serde(default)]
     pub is_requesting: Option<bool>,
@@ -441,6 +445,9 @@ pub struct CompleteStacktrace {
     /// ID of thread that had this stacktrace. Returned when a minidump was processed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<u64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_name: Option<String>,
 
     /// If a dump was produced as a result of a crash, this will point to the thread that crashed.
     /// If the dump was produced by user code without crashing, and the dump contains extended

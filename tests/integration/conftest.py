@@ -94,7 +94,7 @@ class SymbolicatorRunner(threading.Thread):
         self._proc.kill()
 
     def run(self):
-        port_re = re.compile(r"Starting server on [0-9.]+:([0-9]+)")
+        port_re = re.compile(r"Starting HTTP server on [0-9.]+:([0-9]+)")
         line = self._proc.stdout.readline()
         while line:
             print(line, end="", file=sys.stderr)

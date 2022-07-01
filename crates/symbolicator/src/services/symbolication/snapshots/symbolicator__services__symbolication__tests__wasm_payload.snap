@@ -1,8 +1,7 @@
 ---
 source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 2431
+assertion_line: 1474
 expression: response.unwrap()
-
 ---
 status: completed
 stacktraces:
@@ -15,7 +14,7 @@ stacktraces:
         symbol: internal_func
         sym_addr: "0x8b"
         function: internal_func
-        filename: src/lib.rs
+        filename: lib.rs
         abs_path: /Users/mitsuhiko/Development/wasm-example/simple/src/lib.rs
         lineno: 19
 modules:

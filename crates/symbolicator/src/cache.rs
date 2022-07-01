@@ -190,6 +190,7 @@ pub enum CacheName {
     Objects,
     ObjectMeta,
     Auxdifs,
+    Il2cpp,
     Symcaches,
     Cficaches,
     Diagnostics,
@@ -201,6 +202,7 @@ impl AsRef<str> for CacheName {
             Self::Objects => "objects",
             Self::ObjectMeta => "object_meta",
             Self::Auxdifs => "auxdifs",
+            Self::Il2cpp => "il2cpp",
             Self::Symcaches => "symcaches",
             Self::Cficaches => "cficaches",
             Self::Diagnostics => "diagnostics",
@@ -492,6 +494,8 @@ pub struct Caches {
     pub object_meta: Cache,
     /// Caches for auxiliary DIF files, used by [`crate::services::bitcode::BitcodeService`].
     pub auxdifs: Cache,
+    /// Caches for il2cpp line mapping files, used by [`crate::services::il2cpp::Il2cppService`].
+    pub il2cpp: Cache,
     /// Caches for [`symbolic::symcache::SymCache`], used by
     /// [`crate::services::symcaches::SymCacheActor`].
     pub symcaches: Cache,
@@ -540,6 +544,16 @@ impl Caches {
                 let path = config.cache_dir("auxdifs");
                 Cache::from_config(
                     CacheName::Auxdifs,
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.downloaded.into(),
+                    max_lazy_redownloads.clone(),
+                )?
+            },
+            il2cpp: {
+                let path = config.cache_dir("il2cpp");
+                Cache::from_config(
+                    CacheName::Il2cpp,
                     path,
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
@@ -599,6 +613,7 @@ impl Caches {
             objects,
             object_meta,
             auxdifs,
+            il2cpp,
             symcaches,
             cficaches,
             diagnostics,
@@ -613,6 +628,7 @@ impl Caches {
             cficaches.cleanup(),
             diagnostics.cleanup(),
             auxdifs.cleanup(),
+            il2cpp.cleanup(),
         ];
 
         let mut first_error = None;

@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 use reqwest::{header, StatusCode};
+use sentry::SentryFutureExt;
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
@@ -22,7 +23,7 @@ use super::{
 use crate::config::Config;
 use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
-use crate::utils::futures::{self as future_utils};
+use crate::utils::futures::{self as future_utils, CancelOnDrop};
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -87,11 +88,16 @@ pub enum SentryError {
 
     #[error("bad status code from Sentry: {0}")]
     BadStatusCode(StatusCode),
+
+    #[error("failed joining task")]
+    JoinTask(#[from] tokio::task::JoinError),
 }
 
 pub struct SentryDownloader {
     client: reqwest::Client,
+    runtime: tokio::runtime::Handle,
     index_cache: Mutex<SentryIndexCache>,
+    cache_duration: Duration,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
@@ -106,26 +112,33 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(
-        client: reqwest::Client,
-        connect_timeout: Duration,
-        streaming_timeout: Duration,
-    ) -> Self {
+    pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
+        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
+        let cache_duration = if config.cache_dir.is_some() {
+            config
+                .caches
+                .downloaded
+                .retry_misses_after
+                .unwrap_or_else(|| Duration::from_secs(0))
+        } else {
+            Duration::from_secs(0)
+        };
         Self {
             client,
+            runtime,
             index_cache: Mutex::new(SentryIndexCache::new(100_000)),
-            connect_timeout,
-            streaming_timeout,
+            cache_duration,
+            connect_timeout: config.connect_timeout,
+            streaming_timeout: config.streaming_timeout,
         }
     }
 
     /// Make a request to sentry, parse the result as a JSON SearchResult list.
     async fn fetch_sentry_json(
-        &self,
+        client: &reqwest::Client,
         query: &SearchQuery,
     ) -> Result<Vec<SearchResult>, SentryError> {
-        let mut request = self
-            .client
+        let mut request = client
             .get(query.index_url.clone())
             .bearer_auth(&query.token)
             .header("Accept-Encoding", "identity")
@@ -153,21 +166,9 @@ impl SentryDownloader {
     async fn cached_sentry_search(
         &self,
         query: SearchQuery,
-        config: &Config,
     ) -> Result<Vec<SearchResult>, DownloadError> {
-        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
-        let cache_duration = if config.cache_dir.is_some() {
-            config
-                .caches
-                .downloaded
-                .retry_misses_after
-                .unwrap_or_else(|| Duration::from_secs(0))
-        } else {
-            Duration::from_secs(0)
-        };
-
         if let Some((created, entries)) = self.index_cache.lock().get(&query) {
-            if created.elapsed() < cache_duration {
+            if created.elapsed() < self.cache_duration {
                 return Ok(entries.clone());
             }
         }
@@ -176,9 +177,21 @@ impl SentryDownloader {
             "Fetching list of Sentry debug files from {}",
             &query.index_url
         );
-        let entries = future_utils::retry(|| self.fetch_sentry_json(&query)).await?;
 
-        if cache_duration > Duration::from_secs(0) {
+        let entries = {
+            let client = self.client.clone();
+            let query = query.clone();
+            let future = async move {
+                future_utils::retry(|| Self::fetch_sentry_json(&client, &query)).await
+            };
+
+            let future =
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
+
+            future.await.map_err(SentryError::JoinTask)??
+        };
+
+        if self.cache_duration > Duration::from_secs(0) {
             self.index_cache
                 .lock()
                 .put(query, (Instant::now(), entries.clone()));
@@ -192,7 +205,6 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: ObjectId,
         file_types: &[FileType],
-        config: &Config,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
         // paginate at 20 results so we get away with this for now.
@@ -214,17 +226,17 @@ impl SentryDownloader {
         index_url.query_pairs_mut().extend_pairs(
             file_types
                 .iter()
-                .filter_map(|file_type| match file_type {
-                    FileType::UuidMap => Some("uuidmap"),
-                    FileType::BcSymbolMap => Some("bcsymbolmap"),
-                    FileType::Pe => Some("pe"),
-                    FileType::Pdb => Some("pdb"),
-                    FileType::MachDebug | FileType::MachCode => Some("macho"),
-                    FileType::ElfDebug | FileType::ElfCode => Some("elf"),
-                    FileType::WasmDebug | FileType::WasmCode => Some("wasm"),
-                    FileType::Breakpad => Some("breakpad"),
-                    FileType::SourceBundle => Some("sourcebundle"),
-                    FileType::Usym => None,
+                .map(|file_type| match file_type {
+                    FileType::UuidMap => "uuidmap",
+                    FileType::BcSymbolMap => "bcsymbolmap",
+                    FileType::Pe => "pe",
+                    FileType::Pdb => "pdb",
+                    FileType::MachDebug | FileType::MachCode => "macho",
+                    FileType::ElfDebug | FileType::ElfCode => "elf",
+                    FileType::WasmDebug | FileType::WasmCode => "wasm",
+                    FileType::Breakpad => "breakpad",
+                    FileType::SourceBundle => "sourcebundle",
+                    FileType::Il2cpp => "il2cpp",
                 })
                 .map(|val| ("file_formats", val)),
         );
@@ -240,7 +252,7 @@ impl SentryDownloader {
             token: source.token.clone(),
         };
 
-        let search = self.cached_sentry_search(query, config).await?;
+        let search = self.cached_sentry_search(query).await?;
         let file_ids = search
             .into_iter()
             .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
