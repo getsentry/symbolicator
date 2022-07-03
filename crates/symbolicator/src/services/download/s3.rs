@@ -101,7 +101,7 @@ impl S3Downloader {
         }
     }
 
-    async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<aws_sdk_s3::client::Client> {
+    async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<Client> {
         if let Some(client) = {
             let mut container = self.client_cache.lock();
             let val = container.get(&*key).cloned();
@@ -152,7 +152,7 @@ impl S3Downloader {
         &self,
         provider: P,
         region: Region,
-    ) -> aws_sdk_s3::client::Client {
+    ) -> Client {
         let shared_config = aws_config::from_env()
             .credentials_provider(provider)
             .region(region)
