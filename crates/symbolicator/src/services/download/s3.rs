@@ -197,12 +197,12 @@ impl S3Downloader {
                         println!("ERROR: ConstructionFailure: {:?}", err);
                         Err(DownloadError::Canceled)
                     }
-                    TimeoutError(err) => {
-                        println!("ERROR: TimeoutError: {:?}", err);
-                        Err(DownloadError::Canceled)
-                    }
                     DispatchFailure(err) => {
                         println!("ERROR: DispatchFailure: {:?}", err);
+                        Err(DownloadError::Canceled)
+                    }
+                    TimeoutError(err) => {
+                        println!("ERROR: TimeoutError: {:?}", err);
                         Err(DownloadError::Canceled)
                     }
                     ResponseError { err, raw: _ } => {
