@@ -9,6 +9,7 @@ license = "MIT"
 anyhow = "1.0.57"
 aws-config = "0.15.0"
 aws-types = { version = "0.15.0", features = ["hardcoded-credentials"] }
+aws-sdk-ec2 = "0.15.0"
 aws-sdk-s3 = "0.15.0"
 aws-smithy-http = "0.45.0"
 apple-crash-report-parser = "0.5.0"
@@ -17,6 +18,7 @@ axum = { version = "0.5.4", features = ["multipart"] }
 axum-server = { version = "0.4.0" }
 backtrace = "0.3.65"
 base64 = "0.13.0"
+cached = "0.36.0"
 cadence = "0.29.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.15.0"

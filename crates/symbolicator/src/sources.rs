@@ -6,13 +6,14 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use cached::proc_macro::cached;
 use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 
 use crate::types::{Glob, ObjectId, ObjectType};
 use crate::utils::paths;
 
-// use aws_sdk_s3::Region;
+use aws_sdk_ec2::Client;
 
 use aws_types::region::Region;
 /// An identifier for DIF sources.
@@ -126,6 +127,23 @@ pub struct FilesystemSourceConfig {
     pub files: CommonSourceConfig,
 }
 
+#[cached]
+async fn aws_regions() -> Vec<aws_sdk_ec2::model::Region> {
+    let runtime = tokio::runtime::Runtime::new().expect("Unable to create a runtime");
+    runtime.block_on(async {
+        let shared_config = aws_config::from_env().load().await;
+        let client = Client::new(&shared_config);
+        client
+            .describe_regions()
+            .send()
+            .await
+            .expect("Unable to describe EC2 regions")
+            .regions()
+            .unwrap()
+            .to_vec()
+    })
+}
+
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
 fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
 where
@@ -148,30 +166,12 @@ where
             E: serde::de::Error,
         {
             // aws-sdk-rust does not validate region strings
-            const AWS_REGIONS: [&str; 21] = [
-                "ap-east-1",
-                "ap-northeast-1",
-                "ap-northeast-2",
-                "ap-south-1",
-                "ap-southeast-1",
-                "ap-southeast-2",
-                "ca-central-1",
-                "cn-north-1",
-                "cn-northwest-1",
-                "eu-central-1",
-                "eu-north-1",
-                "eu-west-1",
-                "eu-west-2",
-                "eu-west-3",
-                "sa-east-1",
-                "us-east-1",
-                "us-east-2",
-                "us-gov-east-1",
-                "us-gov-west-1",
-                "us-west-1",
-                "us-west-2",
-            ];
-            let pos = AWS_REGIONS.iter().position(|&x| x == value);
+            let runtime = tokio::runtime::Runtime::new().expect("Unable to create a runtime");
+            let regions = runtime.block_on(aws_regions());
+
+            let pos = regions
+                .iter()
+                .position(|x| x.region_name().unwrap() == value);
             match pos {
                 Some(_) => Ok(Region::new(String::from(value))),
                 None => Err(E::custom(format!("unknown region: {}", value))),
