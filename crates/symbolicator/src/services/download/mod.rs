@@ -56,7 +56,7 @@ pub enum DownloadError {
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
     #[error("aws-sdk: failed to fetch data from S3")]
-    S3SDK(#[from] aws_smithy_http::byte_stream::Error),
+    S3Sdk(#[from] aws_smithy_http::byte_stream::Error),
     #[error("missing permissions for file")]
     Permissions,
     /// Typically means the initial HEAD request received a non-200, non-400 response.

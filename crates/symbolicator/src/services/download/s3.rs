@@ -243,7 +243,7 @@ impl S3Downloader {
                 tracing::debug!("Empty response from s3:{}{}", bucket, &key);
                 return Ok(DownloadStatus::NotFound);
             }
-            Some(_) => response.body.map_err(DownloadError::S3SDK),
+            Some(_) => response.body.map_err(DownloadError::S3Sdk),
         };
 
         super::download_stream(&source, stream, destination, timeout).await
