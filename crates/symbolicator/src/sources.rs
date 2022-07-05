@@ -128,7 +128,7 @@ pub struct FilesystemSourceConfig {
 }
 
 #[cached]
-async fn aws_regions() -> Vec<aws_sdk_ec2::model::Region> {
+fn aws_regions() -> Vec<aws_sdk_ec2::model::Region> {
     let runtime = tokio::runtime::Runtime::new().expect("Unable to create a runtime");
     runtime.block_on(async {
         let shared_config = aws_config::from_env().load().await;
@@ -166,10 +166,7 @@ where
             E: serde::de::Error,
         {
             // aws-sdk-rust does not validate region strings
-            let runtime = tokio::runtime::Runtime::new().expect("Unable to create a runtime");
-            let regions = runtime.block_on(aws_regions());
-
-            let pos = regions
+            let pos = aws_regions()
                 .iter()
                 .position(|x| x.region_name().unwrap() == value);
             match pos {
