@@ -139,7 +139,7 @@ fn aws_regions() -> Vec<aws_sdk_ec2::model::Region> {
             .await
             .expect("Unable to describe EC2 regions")
             .regions()
-            .unwrap()
+            .expect("Unable to unwrap EC2 regions")
             .to_vec()
     })
 }
