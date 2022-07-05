@@ -106,7 +106,6 @@ impl S3Downloader {
         if let Some(client) = {
             let mut container = self.client_cache.lock();
             let val = container.get(&*key).cloned();
-            drop(container);
             val
         } {
             metric!(counter("source.s3.client.cached") += 1);
