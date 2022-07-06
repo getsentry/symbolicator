@@ -12,11 +12,10 @@ on:
 
 jobs:
   native:
-    # TODO update after it moves to a custom repo
-    uses: getsentry/sentry-unity/.github/workflows/submodule-updater.yml@127562f3adfdb83714e68fb3f66e210f87f51fa4
+    uses: getsentry/github-workflows/.github/workflows/updater.yml@v1
     with:
       path: crates/symbolicator-crash/sentry-native
       name: Native SDK
     secrets:
-      # TODO provide a custom API token to have the CI triggered
+      # If a custom token is used instead, a CI would be triggered on a created PR.
       api_token: ${{ github.token }}
