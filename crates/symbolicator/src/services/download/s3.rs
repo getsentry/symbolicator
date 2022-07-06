@@ -234,15 +234,15 @@ impl S3Downloader {
             }
         };
 
-        let content_length = u32::try_from(response.content_length).ok();
-        let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
+        let truncated_content_length = u32::try_from(response.content_length).ok();
+        let timeout =
+            truncated_content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
 
-        let stream = match content_length {
-            Some(0) | None => {
-                tracing::debug!("Empty response from s3:{}{}", bucket, &key);
-                return Ok(DownloadStatus::NotFound);
-            }
-            Some(_) => response.body.map_err(DownloadError::S3Sdk),
+        let stream = if response.content_length == 0 {
+            tracing::debug!("Empty response from s3:{}{}", bucket, &key);
+            return Ok(DownloadStatus::NotFound);
+        } else {
+            response.body.map_err(DownloadError::S3Sdk)
         };
 
         super::download_stream(&source, stream, destination, timeout).await
