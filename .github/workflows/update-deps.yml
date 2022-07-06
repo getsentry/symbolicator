@@ -1,0 +1,16 @@
+name: Update Dependencies
+
+on:
+  # Run every Monday at 3am.
+  schedule:
+    - cron: '0 3 * * 1'
+
+jobs:
+  native:
+    uses: getsentry/github-workflows/.github/workflows/updater.yml@v1
+    with:
+      path: crates/symbolicator-crash/sentry-native
+      name: Native SDK
+    secrets:
+      # If a custom token is used instead, a CI would be triggered on a created PR.
+      api_token: ${{ github.token }}
