@@ -335,6 +335,7 @@ impl SymCacheActor {
                             tracing::trace!("Fetching line mapping");
                             self.il2cpp_svc
                                 .fetch_line_mapping(
+                                    handle.object_id(),
                                     debug_id,
                                     handle.scope().clone(),
                                     request.sources.clone(),
