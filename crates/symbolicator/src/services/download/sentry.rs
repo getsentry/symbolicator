@@ -203,7 +203,7 @@ impl SentryDownloader {
     pub async fn list_files(
         &self,
         source: Arc<SentrySourceConfig>,
-        object_id: ObjectId,
+        object_id: &ObjectId,
         file_types: &[FileType],
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
