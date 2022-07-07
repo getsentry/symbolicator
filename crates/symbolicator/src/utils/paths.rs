@@ -328,7 +328,6 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
     match filetype {
         // For these we fall back to the identifier's object type.
         FileType::SourceBundle | FileType::Breakpad | FileType::Il2cpp => {
-            dbg!(filetype, identifier);
             let filetype = match identifier.object_type {
                 ObjectType::Elf => FileType::ElfCode,
                 ObjectType::Macho => FileType::MachCode,
