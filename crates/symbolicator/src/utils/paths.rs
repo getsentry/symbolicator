@@ -327,7 +327,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow<str>> {
     match filetype {
         // For these we fall back to the identifier's object type.
-        FileType::SourceBundle | FileType::Breakpad => {
+        FileType::SourceBundle | FileType::Breakpad | FileType::Il2cpp => {
             let filetype = match identifier.object_type {
                 ObjectType::Elf => FileType::ElfCode,
                 ObjectType::Macho => FileType::MachCode,
@@ -347,15 +347,13 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
         )),
         // On mach we can always determine the code ID from the debug ID if the
         // code ID is unavailable.  We apply the same rule to WASM files as well as
-        // auxiliary DIFs, as we
-        // suggest Uuids to be used as build ids.
+        // auxiliary DIFs, as we suggest Uuids to be used as build ids.
         FileType::MachCode
         | FileType::MachDebug
         | FileType::WasmDebug
         | FileType::WasmCode
         | FileType::UuidMap
-        | FileType::BcSymbolMap
-        | FileType::Il2cpp => {
+        | FileType::BcSymbolMap => {
             if identifier.code_id.is_none() {
                 Some(Cow::Owned(
                     identifier.debug_id?.uuid().as_simple().to_string(),

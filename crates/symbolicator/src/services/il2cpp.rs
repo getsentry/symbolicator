@@ -24,6 +24,7 @@ use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 
+use super::download::ObjectId;
 use super::shared_cache::SharedCacheService;
 
 /// Handle to a valid [`LineMapping`].
@@ -194,13 +195,19 @@ impl Il2cppService {
     /// Returns a `LineMapping` if one is found for the `debug_id`.
     pub async fn fetch_line_mapping(
         &self,
+        object_id: &ObjectId,
         debug_id: DebugId,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Option<Il2cppHandle> {
         let jobs = sources.iter().map(|source| {
-            self.fetch_file_from_source_with_error(debug_id, scope.clone(), source.clone())
-                .bind_hub(Hub::new_from_top(Hub::current()))
+            self.fetch_file_from_source_with_error(
+                object_id,
+                debug_id,
+                scope.clone(),
+                source.clone(),
+            )
+            .bind_hub(Hub::new_from_top(Hub::current()))
         });
         let results = future::join_all(jobs).await;
         let mut line_mapping_handle = None;
@@ -221,6 +228,7 @@ impl Il2cppService {
     /// Wraps `fetch_file_from_source` in sentry error handling.
     async fn fetch_file_from_source_with_error(
         &self,
+        object_id: &ObjectId,
         debug_id: DebugId,
         scope: Scope,
         source: SourceConfig,
@@ -231,7 +239,7 @@ impl Il2cppService {
             scope.set_extra("il2cpp.source", source.type_name().into());
         });
         match self
-            .fetch_file_from_source(debug_id, scope, source)
+            .fetch_file_from_source(object_id, debug_id, scope, source)
             .await
             .context("il2cpp svc failed for single source")
         {
@@ -247,13 +255,14 @@ impl Il2cppService {
     /// Fetches a file and returns the [`CacheHandle`] if found.
     async fn fetch_file_from_source(
         &self,
+        object_id: &ObjectId,
         debug_id: DebugId,
         scope: Scope,
         source: SourceConfig,
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
         let file_sources = self
             .download_svc
-            .list_files(source, &[FileType::Il2cpp], &debug_id.into())
+            .list_files(source, &[FileType::Il2cpp], object_id)
             .await?;
 
         let fetch_jobs = file_sources.into_iter().map(|file_source| {
