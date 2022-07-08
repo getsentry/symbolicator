@@ -230,7 +230,7 @@ impl DownloadService {
         &self,
         source: SourceConfig,
         filetypes: &[FileType],
-        object_id: ObjectId,
+        object_id: &ObjectId,
     ) -> Result<Vec<RemoteDif>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
@@ -509,7 +509,7 @@ mod tests {
         let config = Config::default();
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
-            .list_files(source.clone(), FileType::all(), objid)
+            .list_files(source.clone(), FileType::all(), &objid)
             .await
             .unwrap();
 

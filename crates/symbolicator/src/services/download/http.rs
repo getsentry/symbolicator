@@ -150,12 +150,12 @@ impl HttpDownloader {
         &self,
         source: Arc<HttpSourceConfig>,
         filetypes: &[FileType],
-        object_id: ObjectId,
+        object_id: &ObjectId,
     ) -> Vec<RemoteDif> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
-            object_id: &object_id,
+            object_id,
             layout: source.files.layout,
             next: Vec::new(),
         }
