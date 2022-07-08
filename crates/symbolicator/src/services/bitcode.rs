@@ -322,7 +322,7 @@ impl BitcodeService {
         };
         let file_sources = self
             .download_svc
-            .list_files(source, file_type, uuid.into())
+            .list_files(source, file_type, &uuid.into())
             .await?;
 
         let fetch_jobs = file_sources.into_iter().map(|file_source| {

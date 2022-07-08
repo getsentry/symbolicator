@@ -262,7 +262,7 @@ impl Il2cppService {
     ) -> Result<Option<Arc<CacheHandle>>, Error> {
         let file_sources = self
             .download_svc
-            .list_files(source, &[FileType::Il2cpp], object_id.clone())
+            .list_files(source, &[FileType::Il2cpp], object_id)
             .await?;
 
         let fetch_jobs = file_sources.into_iter().map(|file_source| {

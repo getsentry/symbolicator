@@ -259,12 +259,12 @@ impl S3Downloader {
         &self,
         source: Arc<S3SourceConfig>,
         filetypes: &[FileType],
-        object_id: ObjectId,
+        object_id: &ObjectId,
     ) -> Vec<RemoteDif> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
-            object_id: &object_id,
+            object_id,
             layout: source.files.layout,
             next: Vec::new(),
         }
@@ -430,7 +430,7 @@ mod tests {
             object_type: ObjectType::Macho,
         };
 
-        let list = downloader.list_files(source, &[FileType::MachDebug], object_id);
+        let list = downloader.list_files(source, &[FileType::MachDebug], &object_id);
         assert_eq!(list.len(), 1);
 
         assert!(list[0]
