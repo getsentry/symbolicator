@@ -10,8 +10,8 @@ use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
-    FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile, SymbolProvider,
-    SymbolStats,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
+    SymbolProvider, SymbolStats,
 };
 use parking_lot::RwLock;
 use sentry::types::DebugId;
@@ -354,6 +354,14 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
                 Some((debug_id.to_string(), stats))
             })
             .collect()
+    }
+
+    async fn get_file_path(
+        &self,
+        _module: &(dyn Module + Sync),
+        _kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        Err(FileError::NotFound)
     }
 }
 
