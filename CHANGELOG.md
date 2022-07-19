@@ -11,6 +11,7 @@
 ### Internal
 
 - Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
+- Deduplicate SymbolFile computations in SymbolicatorSymbolProvider ([#856](https://github.com/getsentry/symbolicator/pull/856))
 
 ## 0.5.1
 
