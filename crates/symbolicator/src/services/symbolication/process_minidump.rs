@@ -186,7 +186,7 @@ struct CfiModule {
     cfi_candidates: AllObjectCandidates,
 }
 
-type SymbolFileComputation = Shared<oneshot::Receiver<Option<()>>>;
+type SymbolFileComputation = Shared<oneshot::Receiver<()>>;
 
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
 /// CFI for stackwalking.
@@ -329,7 +329,7 @@ impl SymbolicatorSymbolProvider {
 
                     cficaches.write().insert(id, cfi_module);
 
-                    sender.send(Some(())).unwrap();
+                    sender.send(()).unwrap();
                 });
                 let receiver = receiver.shared();
                 running_computations.insert(id, receiver.clone());
@@ -337,7 +337,7 @@ impl SymbolicatorSymbolProvider {
             }
         };
 
-        computation.await.ok().flatten()
+        computation.await.ok()
     }
 }
 
