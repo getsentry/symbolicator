@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::channel::oneshot;
 use futures::future::Shared;
-use futures::lock::Mutex;
 use futures::FutureExt;
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
@@ -17,7 +16,7 @@ use minidump_processor::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
     SymbolProvider, SymbolStats,
 };
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
@@ -204,7 +203,7 @@ struct SymbolicatorSymbolProvider {
     /// An internal database of loaded CFI.
     ///
     /// The key consists of a module's debug identifier and base address.
-    cficaches: Arc<RwLock<HashMap<(DebugId, u64), CfiModule>>>,
+    cficaches: RwLock<HashMap<(DebugId, u64), CfiModule>>,
     running_computations: Mutex<HashMap<(DebugId, u64), SymbolFileComputation>>,
 }
 
@@ -226,13 +225,13 @@ impl SymbolicatorSymbolProvider {
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Option<()> {
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) {
         let id = (
             module.debug_identifier().unwrap_or_default(),
             module.base_address(),
         );
         if self.cficaches.read().contains_key(&id) {
-            return Some(());
+            return;
         }
 
         if id.0.is_nil() {
@@ -242,14 +241,19 @@ impl SymbolicatorSymbolProvider {
                 ..Default::default()
             };
             self.cficaches.write().insert(id, cfi_module);
-            return None;
+            return;
         }
 
-        let mut running_computations = self.running_computations.lock().await;
-        let computation = match running_computations.get(&id) {
-            Some(computation) => computation.clone(),
+        // Check if there is already a CFI cache/symbol file computation in progress for this module.
+        // If not, start it and save it in `running_computations`.
+        let maybe_computation = self.running_computations.lock().get(&id).cloned();
+        match maybe_computation {
+            Some(computation) => computation.await.expect("sender was dropped prematurely"),
             None => {
                 let (sender, receiver) = oneshot::channel();
+                self.running_computations
+                    .lock()
+                    .insert(id, receiver.shared());
 
                 let sources = self.sources.clone();
                 let scope = self.scope.clone();
@@ -275,69 +279,54 @@ impl SymbolicatorSymbolProvider {
                     .bind_hub(Hub::new_from_top(Hub::current()))
                     .await;
 
-                let cficaches = self.cficaches.clone();
-
-                tokio::spawn(async move {
-                    let cfi_module = match cache_result {
-                        Ok(cfi_cache) => {
-                            let cfi_status = match cfi_cache.status() {
-                                CacheStatus::Positive => ObjectFileStatus::Found,
-                                CacheStatus::Negative => ObjectFileStatus::Missing,
-                                CacheStatus::Malformed(details) => {
-                                    let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                                    let stderr: &dyn std::error::Error = &err;
-                                    tracing::warn!(
-                                        stderr,
-                                        "Error while parsing cficache: {}",
-                                        details
-                                    );
-                                    ObjectFileStatus::from(&err)
-                                }
-                                // If the cache entry is for a cache specific error, it must be
-                                // from a previous cficache conversion attempt.
-                                CacheStatus::CacheSpecificError(details) => {
-                                    let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                                    tracing::warn!(
-                                        "Cached error from parsing cficache: {}",
-                                        details
-                                    );
-                                    ObjectFileStatus::from(&err)
-                                }
-                            };
-                            let symbol_file = match cfi_cache.status() {
-                                CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
-                                _ => None,
-                            };
-                            CfiModule {
-                                features: cfi_cache.features(),
-                                cfi_status,
-                                symbol_file,
-                                cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
+                let cfi_module = match cache_result {
+                    Ok(cfi_cache) => {
+                        let cfi_status = match cfi_cache.status() {
+                            CacheStatus::Positive => ObjectFileStatus::Found,
+                            CacheStatus::Negative => ObjectFileStatus::Missing,
+                            CacheStatus::Malformed(details) => {
+                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                                let stderr: &dyn std::error::Error = &err;
+                                tracing::warn!(stderr, "Error while parsing cficache: {}", details);
+                                ObjectFileStatus::from(&err)
                             }
-                        }
-
-                        Err(err) => {
-                            let stderr: &dyn std::error::Error = &err;
-                            tracing::debug!(stderr, "Error while fetching cficache");
-
-                            CfiModule {
-                                cfi_status: ObjectFileStatus::from(err.as_ref()),
-                                ..Default::default()
+                            // If the cache entry is for a cache specific error, it must be
+                            // from a previous cficache conversion attempt.
+                            CacheStatus::CacheSpecificError(details) => {
+                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                                tracing::warn!("Cached error from parsing cficache: {}", details);
+                                ObjectFileStatus::from(&err)
                             }
+                        };
+                        let symbol_file = match cfi_cache.status() {
+                            CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
+                            _ => None,
+                        };
+                        CfiModule {
+                            features: cfi_cache.features(),
+                            cfi_status,
+                            symbol_file,
+                            cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
                         }
-                    };
+                    }
 
-                    cficaches.write().insert(id, cfi_module);
+                    Err(err) => {
+                        let stderr: &dyn std::error::Error = &err;
+                        tracing::debug!(stderr, "Error while fetching cficache");
 
-                    sender.send(()).unwrap();
-                });
-                let receiver = receiver.shared();
-                running_computations.insert(id, receiver.clone());
-                receiver
+                        CfiModule {
+                            cfi_status: ObjectFileStatus::from(err.as_ref()),
+                            ..Default::default()
+                        }
+                    }
+                };
+
+                self.cficaches.write().insert(id, cfi_module);
+
+                // Ignore error if receiver was dropped
+                let _ = sender.send(());
             }
-        };
-
-        computation.await.ok()
+        }
     }
 }
 
@@ -362,7 +351,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        self.load_cfi_module(module).await?;
+        self.load_cfi_module(module).await;
         let id = (module.debug_identifier()?, module.base_address());
         self.cficaches
             .read()
@@ -487,7 +476,7 @@ async fn stackwalk(
     // Start building the module list for the symbolication response.
     // After stackwalking, `provider.cficaches` contains entries for exactly
     // those modules that were referenced by some stack frame in the minidump.
-    let mut cficaches = Arc::try_unwrap(provider.cficaches).unwrap().into_inner();
+    let mut cficaches = provider.cficaches.into_inner();
     let modules: Vec<CompleteObjectInfo> = process_state
         .modules
         .by_addr()
