@@ -204,6 +204,7 @@ struct SymbolicatorSymbolProvider {
     ///
     /// The key consists of a module's debug identifier and base address.
     cficaches: RwLock<HashMap<(DebugId, u64), CfiModule>>,
+    /// A map of in-progress `SymbolFile` computations.
     running_computations: Mutex<HashMap<(DebugId, u64), SymbolFileComputation>>,
 }
 
