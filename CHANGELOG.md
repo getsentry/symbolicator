@@ -8,6 +8,14 @@
 - Read thread names from minidumps and Apple crash reports ([#834](https://github.com/getsentry/symbolicator/pull/834))
 - Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))
 
+### Fixes
+
+- Update symbolic and increase the SymCache version for the following fixes: ([#857](https://github.com/getsentry/symbolicator/pull/857))
+  - fixed problems with DWARF functions that have the same line records for different inline hierarchy
+  - fixed problems with PDB where functions have line records that don't belong to them
+  - fixed problems with PDB/DWARF when parent functions don't have matching line records
+  - using a new TypeFormatter for PDB that can pretty-print function arguments
+
 ### Internal
 
 - Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
