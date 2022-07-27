@@ -15,6 +15,7 @@
   - fixed problems with PDB where functions have line records that don't belong to them
   - fixed problems with PDB/DWARF when parent functions don't have matching line records
   - using a new TypeFormatter for PDB that can pretty-print function arguments
+- Extract the correct `code_id` from iOS minidumps. ([#858](https://github.com/getsentry/symbolicator/pull/858))
 
 ### Internal
 

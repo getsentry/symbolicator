@@ -304,9 +304,9 @@ dependencies = [
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "584af26b74c7b64a6cf20798655a638f165d2105f81aacfd776d76dcea3dd0f1"
+checksum = "ee10a6053feab29697493384fe1ebba20d8a04026c61c01d190d4a8a209919b4"
 dependencies = [
  "async-trait",
  "circular",
@@ -1632,9 +1632,9 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da4b7fdfc068933c051797602c2c786d54b73d33f94323d9748da0b39ebbe47"
+checksum = "97e4a2c8dfedf6a1a38606a66fee98992f131275952807653b4e946b6c6df7c1"
 dependencies = [
  "debugid",
  "encoding",
@@ -1651,9 +1651,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a134e10507b4352836be67e13cfa06e7881df5b4e091999e75c05eb449dc6985"
+checksum = "6b9068d69b22ad946d18cb1769ab27172f44e12bf48cc18d7232fb48ba2c2ee9"
 dependencies = [
  "bitflags",
  "debugid",
@@ -1667,13 +1667,14 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d8c2ef860970cb4eb6b12e568c22639b83ecf5692ffc6f47f2ffa87127965a7"
+checksum = "eb03b7921bfdf0cda03fefcbadd7a3301ae14dea3ccf8d29d7bba32c9c78a2d5"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
  "debugid",
+ "futures-util",
  "memmap2",
  "minidump",
  "minidump-common",
@@ -2292,9 +2293,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "534cfe58d6a18cc17120fbf4635d53d14691c1fe4d951064df9bd326178d7d5a"
+checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
 dependencies = [
  "bitflags",
 ]
