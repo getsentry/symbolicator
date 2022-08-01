@@ -7,6 +7,9 @@
 - Use Unity il2cpp line mapping files in symcache creation ([#831](https://github.com/getsentry/symbolicator/pull/831))
 - Read thread names from minidumps and Apple crash reports ([#834](https://github.com/getsentry/symbolicator/pull/834))
 - Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))
+- Bump Native SDK to v0.4.18 ([#852](https://github.com/getsentry/symbolicator/pull/852))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0418)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.4.17-2-gbd56100...0.4.18)
 
 ### Fixes
 
