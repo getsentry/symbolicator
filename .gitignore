@@ -8,6 +8,7 @@
 __pycache__
 
 # Local testing
+.env
 /local.yml
 /cache/
 /symbols/
