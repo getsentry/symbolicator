@@ -16,6 +16,7 @@
   - fixed problems with PDB/DWARF when parent functions don't have matching line records
   - using a new TypeFormatter for PDB that can pretty-print function arguments
 - Extract the correct `code_id` from iOS minidumps. ([#858](https://github.com/getsentry/symbolicator/pull/858))
+- Fetch/use CFI for modules that only have a CodeId. ([#860](https://github.com/getsentry/symbolicator/pull/860))
 
 ### Internal
 

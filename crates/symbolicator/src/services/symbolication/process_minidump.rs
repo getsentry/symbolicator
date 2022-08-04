@@ -14,14 +14,13 @@ use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
-    SymbolProvider, SymbolStats,
+    SymbolProvider,
 };
 use parking_lot::{Mutex, RwLock};
-use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::cfi::CfiCache;
-use symbolic::common::{Arch, ByteView};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use tempfile::TempPath;
 
 use crate::cache::CacheStatus;
@@ -187,6 +186,25 @@ struct CfiModule {
 
 type SymbolFileComputation = Shared<oneshot::Receiver<()>>;
 
+/// The Key that is used for looking up the [`Module`] in the per-stackwalk CFI / computation cache.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct LookupKey {
+    code_id: Option<CodeId>,
+    debug_id: Option<DebugId>,
+    base_addr: u64,
+}
+
+impl LookupKey {
+    /// Creates a new lookup key for the given [`Module`].
+    fn new(module: &(dyn Module)) -> Self {
+        Self {
+            code_id: module.code_identifier(),
+            debug_id: module.debug_identifier(),
+            base_addr: module.base_address(),
+        }
+    }
+}
+
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
 /// CFI for stackwalking.
 ///
@@ -203,9 +221,9 @@ struct SymbolicatorSymbolProvider {
     /// An internal database of loaded CFI.
     ///
     /// The key consists of a module's debug identifier and base address.
-    cficaches: RwLock<HashMap<(DebugId, u64), CfiModule>>,
+    cficaches: RwLock<HashMap<LookupKey, CfiModule>>,
     /// A map of in-progress `SymbolFile` computations.
-    running_computations: Mutex<HashMap<(DebugId, u64), SymbolFileComputation>>,
+    running_computations: Mutex<HashMap<LookupKey, SymbolFileComputation>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -226,43 +244,30 @@ impl SymbolicatorSymbolProvider {
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) {
-        let id = (
-            module.debug_identifier().unwrap_or_default(),
-            module.base_address(),
-        );
-        if self.cficaches.read().contains_key(&id) {
-            return;
-        }
-
-        if id.0.is_nil() {
-            // save a dummy "missing" CfiModule for this id.
-            let cfi_module = CfiModule {
-                cfi_status: ObjectFileStatus::Missing,
-                ..Default::default()
-            };
-            self.cficaches.write().insert(id, cfi_module);
-            return;
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> LookupKey {
+        let key = LookupKey::new(module);
+        if self.cficaches.read().contains_key(&key) {
+            return key;
         }
 
         // Check if there is already a CFI cache/symbol file computation in progress for this module.
         // If not, start it and save it in `running_computations`.
-        let maybe_computation = self.running_computations.lock().get(&id).cloned();
+        let maybe_computation = self.running_computations.lock().get(&key).cloned();
         match maybe_computation {
             Some(computation) => computation.await.expect("sender was dropped prematurely"),
             None => {
                 let (sender, receiver) = oneshot::channel();
                 self.running_computations
                     .lock()
-                    .insert(id, receiver.shared());
+                    .insert(key.clone(), receiver.shared());
 
                 let sources = self.sources.clone();
                 let scope = self.scope.clone();
 
                 let identifier = ObjectId {
-                    code_id: module.code_identifier(),
+                    code_id: key.code_id.clone(),
                     code_file: Some(module.code_file().into_owned()),
-                    debug_id: module.debug_identifier(),
+                    debug_id: key.debug_id,
                     debug_file: module
                         .debug_file()
                         .map(|debug_file| debug_file.into_owned()),
@@ -322,12 +327,14 @@ impl SymbolicatorSymbolProvider {
                     }
                 };
 
-                self.cficaches.write().insert(id, cfi_module);
+                self.cficaches.write().insert(key.clone(), cfi_module);
 
                 // Ignore error if receiver was dropped
                 let _ = sender.send(());
             }
         }
+
+        key
     }
 }
 
@@ -352,30 +359,13 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        self.load_cfi_module(module).await;
-        let id = (module.debug_identifier()?, module.base_address());
+        let key = self.load_cfi_module(module).await;
         self.cficaches
             .read()
-            .get(&id)?
+            .get(&key)?
             .symbol_file
             .as_ref()?
             .walk_frame(module, walker)
-    }
-
-    fn stats(&self) -> HashMap<String, SymbolStats> {
-        self.cficaches
-            .read()
-            .iter()
-            .filter_map(|((debug_id, _), sym)| {
-                let stats = SymbolStats {
-                    symbol_url: sym.symbol_file.as_ref()?.url.clone(), // TODO(ja): We could put our candidate URI here
-                    loaded_symbols: true, // TODO(ja): Should we return `false` for not found?
-                    corrupt_symbols: false,
-                };
-
-                Some((debug_id.to_string(), stats))
-            })
-            .collect()
     }
 
     async fn get_file_path(
@@ -482,19 +472,16 @@ async fn stackwalk(
         .modules
         .by_addr()
         .filter_map(|module| {
-            let id = (
-                module.debug_identifier().unwrap_or_default(),
-                module.base_address(),
-            );
+            let key = LookupKey::new(module);
 
             // Discard modules that weren't used and don't have a debug id.
-            if !cficaches.contains_key(&id) && module.debug_identifier().is_none() {
+            if !cficaches.contains_key(&key) && module.debug_identifier().is_none() {
                 return None;
             }
 
             let mut obj_info = object_info_from_minidump_module(ty, module);
 
-            obj_info.unwind_status = match cficaches.remove(&id) {
+            obj_info.unwind_status = match cficaches.remove(&key) {
                 None => Some(ObjectFileStatus::Unused),
                 Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);
