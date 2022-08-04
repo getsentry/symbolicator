@@ -2194,6 +2194,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
+ "symbolic-common",
 ]
 
 [[package]]
