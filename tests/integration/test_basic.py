@@ -62,8 +62,8 @@ def _make_successful_result(filtered=False):
         {
             "status": "symbolicated",
             "lineno": 0,
-            "function": "@BaseThreadInitThunk@12",
-            "symbol": "@BaseThreadInitThunk@12",
+            "function": "BaseThreadInitThunk",
+            "symbol": "BaseThreadInitThunk",
             "sym_addr": "0x749e8630",
         }
     )
