@@ -42,10 +42,12 @@ use super::shared_cache::SharedCacheService;
 ///
 /// # Version History
 ///
+/// - `2`: Allow underflow in Win-x64 CFI which allows loading registers from outside the stack frame.
+///
 /// - `1`: Generate higher fidelity CFI for Win-x64 binaries.
 const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[0],
+    current: 2,
+    fallbacks: &[1, 0],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
