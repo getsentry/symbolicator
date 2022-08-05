@@ -62,8 +62,8 @@ def _make_successful_result(filtered=False):
         {
             "status": "symbolicated",
             "lineno": 0,
-            "function": "@BaseThreadInitThunk@12",
-            "symbol": "@BaseThreadInitThunk@12",
+            "function": "BaseThreadInitThunk",
+            "symbol": "BaseThreadInitThunk",
             "sym_addr": "0x749e8630",
         }
     )
@@ -226,7 +226,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
 
             (symcache,) = (
                 cache_dir_param.join("symcaches")
-                .join("2")
+                .join("3")
                 .join(stored_in_scope)
                 .listdir()
             )
