@@ -1,5 +1,19 @@
-# Symbolicator listens on port `3021` by default.
+# Symbolicator listens on port `3021` by default, which you can override like so:
+# bind: 0.0.0.0:3022
+
+# Increase the default download timeouts a bit to avoid download errors on slow
+# internet connections:
+max_download_timeout: 300s
+streaming_timeout: 600s
+
+# We want to cache to the local `./cache` directory:
 cache_dir: cache
+
+# If you want to see more detailed logging, change this to `trace`:
+logging:
+  level: error
+
+# Configure some default symbol sources:
 sources:
   # You can use symsorter to correctly sort symbols into the local filesystem source:
   # `cargo run --release --package symsorter -- --output symbols $source_dir`
@@ -9,6 +23,15 @@ sources:
     layout: { type: "unified" }
     is_public: true
 
+  # In order to download debug files on demand directly from upstream sentry:
+  - id: sentry:project
+    type: sentry
+    # Put the correct organization and project slug in the URL:
+    url: https://sentry.io/api/0/projects/{organization_slug}/{project_slug}/files/dsyms/
+    # You can use a personal auth token here that needs to have at least `project:read` permissions.
+    # Create a new token here: https://sentry.io/settings/account/api/auth-tokens/
+    token: ...
+
   # More public symbol servers be found here:
   # https://github.com/getsentry/sentry/blob/06265eed51c7f884b571bf55fe05312591ea146b/src/sentry/conf/server.py#L1894
   - id: sentry:microsoft
@@ -17,3 +40,6 @@ sources:
     layout: { type: "symstore" }
     filters: { filetypes: ["pdb", "pe"] }
     is_public: true
+
+  # Sentry employees can find other non-public symbol servers here:
+  # https://github.com/getsentry/getsentry/blob/54c52e5d844be11f7dda9c76fd05adb4bb11ae16/getsentry/conf/settings/prod.py#L624-L701
