@@ -1,5 +1,6 @@
 //! Tool to run Minidumps or Sentry Events through a local Symbolicator.
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -8,6 +9,12 @@ use ::reqwest::blocking::multipart;
 use reqwest::blocking as reqwest;
 use serde_json::{to_string, Map, Value};
 use structopt::StructOpt;
+use symbolic_common::split_path;
+
+#[path = "../../symbolicator/src/utils/hex.rs"]
+mod hex;
+
+use hex::HexValue;
 
 /// Runs Minidumps or Sentry Events through Symbolicator.
 #[derive(Debug, StructOpt)]
@@ -24,6 +31,10 @@ struct Cli {
     /// Whether to include DIF candidate information.
     #[structopt(short, long)]
     dif_candidates: bool,
+
+    /// Pretty-print the crashing thread in a human readable format.
+    #[structopt(short, long)]
+    pretty: bool,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -31,6 +42,7 @@ fn main() -> Result<(), anyhow::Error> {
         input,
         symbolicator,
         dif_candidates,
+        pretty,
     } = Cli::from_args();
 
     let client = reqwest::Client::new();
@@ -70,7 +82,77 @@ fn main() -> Result<(), anyhow::Error> {
         req.json(&json).send()
     };
 
-    req?.copy_to(&mut std::io::stdout())?;
+    if pretty {
+        let payload: event::Payload = req?.json()?;
+        let module_addr_by_code_file: HashMap<_, _> = payload
+            .modules
+            .into_iter()
+            .filter_map(|module| {
+                Some((
+                    module.code_file?,
+                    module
+                        .image_addr
+                        .and_then(|addr| addr.parse::<HexValue>().ok())?
+                        .0,
+                ))
+            })
+            .collect();
+
+        let crashing_thread = payload.stacktraces.into_iter().find(|s| s.is_requesting);
+
+        if let Some(thread) = crashing_thread {
+            let mut frames = thread.frames.into_iter().peekable();
+            while let Some(frame) = frames.next() {
+                let is_inline = frame.instruction_addr.as_ref()
+                    == frames
+                        .peek()
+                        .and_then(|next_frame| next_frame.instruction_addr.as_ref());
+                let trust = if is_inline {
+                    "inline"
+                } else {
+                    frame.trust.as_deref().unwrap()
+                };
+
+                let instruction_addr = frame
+                    .instruction_addr
+                    .and_then(|addr| addr.parse::<HexValue>().ok())
+                    .unwrap()
+                    .0;
+
+                print!("{trust:<8} {instruction_addr:#018x}");
+
+                if let Some(module_file) = frame.package {
+                    let module_addr = module_addr_by_code_file[&module_file];
+                    let module_file = split_path(&module_file).1;
+                    let module_rel_addr = instruction_addr - module_addr;
+
+                    print!(" {:<30}", format!("{module_file:} +{module_rel_addr:#x}"));
+                }
+
+                if let Some(func) = frame.function.or(frame.symbol) {
+                    print!(" {func}");
+
+                    if let Some(sym_addr) = frame
+                        .sym_addr
+                        .and_then(|addr| addr.parse::<HexValue>().ok())
+                    {
+                        let sym_rel_addr = instruction_addr - sym_addr.0;
+
+                        print!(" +{sym_rel_addr:#x}");
+                    }
+                }
+
+                if let Some(file) = frame.filename {
+                    let line = frame.lineno.unwrap_or(0);
+                    print!(" ({file}:{line})");
+                }
+
+                println!();
+            }
+        }
+    } else {
+        req?.copy_to(&mut std::io::stdout())?;
+    }
 
     Ok(())
 }
@@ -118,6 +200,12 @@ mod event {
         })
     }
 
+    #[derive(Deserialize, Serialize)]
+    pub struct Payload {
+        pub modules: Vec<Image>,
+        pub stacktraces: Vec<Stacktrace>,
+    }
+
     #[derive(Deserialize)]
     pub struct Event {
         debug_meta: DebugMeta,
@@ -131,24 +219,24 @@ mod event {
     }
 
     #[derive(Deserialize, Serialize)]
-    struct Image {
+    pub struct Image {
         #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-        ty: Option<String>,
+        pub ty: Option<String>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
-        image_addr: Option<String>,
+        pub image_addr: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        image_size: Option<u64>,
+        pub image_size: Option<u64>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
-        code_id: Option<String>,
+        pub code_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        code_file: Option<String>,
+        pub code_file: Option<String>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
-        debug_id: Option<String>,
+        pub debug_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        debug_file: Option<String>,
+        pub debug_file: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -172,23 +260,31 @@ mod event {
     }
 
     #[derive(Deserialize, Serialize)]
-    struct Stacktrace {
-        frames: Vec<Frame>,
+    pub struct Stacktrace {
+        pub frames: Vec<Frame>,
+        #[serde(default)]
+        pub is_requesting: bool,
     }
 
     #[derive(Deserialize, Serialize)]
-    struct Frame {
+    pub struct Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
-        function: Option<String>,
+        pub function: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        symbol: Option<String>,
+        pub symbol: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        package: Option<String>,
+        pub package: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        instruction_addr: Option<String>,
+        pub instruction_addr: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        addr_mode: Option<String>,
+        pub addr_mode: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        trust: Option<String>,
+        pub trust: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub sym_addr: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub filename: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub lineno: Option<u32>,
     }
 }
