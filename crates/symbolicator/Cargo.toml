@@ -19,7 +19,7 @@ console = "0.15.0"
 filetime = "0.2.16"
 flate2 = "1.0.23"
 futures = "0.3.12"
-gcp_auth = { git = "https://github.com/getsentry/gcp_auth", branch = "sentry-main" }
+gcp_auth = "0.6.1"
 glob = "0.3.0"
 hostname = "0.3.1"
 humantime-serde = "1.1.1"
@@ -32,7 +32,7 @@ minidump-processor = "0.14.0"
 num_cpus = "1.13.0"
 parking_lot = "0.12.0"
 regex = "1.5.5"
-reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
+reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
 rusoto_core = "0.48.0"
 rusoto_credential = "0.48.0"
 rusoto_s3 = "0.48.0"
@@ -43,7 +43,7 @@ serde_json = "1.0.81"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
 symbolicator-crash = { path = "../symbolicator-crash/", optional = true }
-symbolic = { git = "https://github.com/getsentry/symbolic", branch = "fix/demangle-fixes", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp"] }
+symbolic = { version = "9.1.0", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp"] }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
@@ -60,7 +60,7 @@ zstd = "0.11.1"
 
 [dev-dependencies]
 insta = { version = "1.14.0", features = ["redactions"] }
-reqwest = { git = "https://github.com/jan-auer/reqwest", tag = "v0.11.0", features = ["multipart"] }
+reqwest = { version = "0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
 test-assembler = "0.1.5"
 warp = "0.3.0"

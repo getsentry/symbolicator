@@ -20,9 +20,24 @@ inherits = "release"
 incremental = true
 codegen-units = 256
 
+[patch.crates-io]
+# This patch adds an `ip_filter` able to filter out internal IP addresses in DNS resolution
+reqwest = { git = "https://github.com/getsentry/reqwest", branch = "restricted-connector" }
+
+# This patch adds limited "templated lambdas" demangling support
+cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches" }
+
+# This patch adds more logging and support for http connections
+gcp_auth = { git = "https://github.com/getsentry/gcp_auth", branch = "sentry-main" }
+
+
 # For local development: uncomment the following three lines (and adjust the path if necessary)
 # to use a local symbolic checkout everywhere.
+# This only works for the very specific crate listed here, and not for its dependency tree.
+# Alternatively, the whole dependency tree can be changed at once by putting this line into
+# `crates/symbolicator/Cargo.toml`:
+# symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 # See also https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html
-# [patch."https://github.com/getsentry/symbolic"]
+# [patch.crates-io]
 # symbolic = { path = "../symbolic/symbolic" }
 # symbolic-minidump = { path = "../symbolic/symbolic-minidump" }
