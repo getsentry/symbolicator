@@ -213,7 +213,7 @@ async fn fetch_difs_and_compute_symcache(
         return Ok(object_handle.status().clone());
     }
 
-    let status = match write_symcache(&path, &*object_handle, secondary_sources) {
+    let status = match write_symcache(&path, &object_handle, secondary_sources) {
         Ok(_) => CacheStatus::Positive,
         Err(err) => {
             tracing::warn!("Failed to write symcache: {}", err);
