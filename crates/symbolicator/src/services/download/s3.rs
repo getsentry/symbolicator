@@ -103,7 +103,7 @@ impl S3Downloader {
 
     fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
         let mut container = self.client_cache.lock();
-        if let Some(client) = container.get(&*key) {
+        if let Some(client) = container.get(key) {
             metric!(counter("source.s3.client.cached") += 1);
             client.clone()
         } else {

@@ -156,7 +156,7 @@ async fn compute_cficache(
         return Ok(object.status().clone());
     }
 
-    let status = if let Err(e) = write_cficache(&path, &*object) {
+    let status = if let Err(e) = write_cficache(&path, &object) {
         tracing::warn!("Could not write cficache: {}", e);
         sentry::capture_error(&e);
 
