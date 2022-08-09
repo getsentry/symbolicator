@@ -20,7 +20,7 @@ const MARKER_BCSYMBOLMAP: u32 = 1 << 0;
 const MARKER_IL2CPP: u32 = 1 << 1;
 
 /// This is the markers that are being embedded into, and read from, a SymCache file.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct SymCacheMarkers {
     markers: u32,
 }
