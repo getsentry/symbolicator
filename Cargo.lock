@@ -206,7 +206,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object 0.29.0",
+ "object",
  "rustc-demangle",
 ]
 
@@ -1014,7 +1014,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "time 0.3.12",
+ "time 0.3.13",
  "tokio",
  "url",
  "which",
@@ -1048,7 +1048,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22030e2c5a68ec659fde1e949a745124b48e6fa8b045b7ed5bd1fe4ccc5c4e5d"
 dependencies = [
  "fallible-iterator",
- "indexmap",
  "stable_deref_trait",
 ]
 
@@ -1587,7 +1586,7 @@ dependencies = [
  "range-map",
  "scroll",
  "thiserror",
- "time 0.3.12",
+ "time 0.3.13",
  "tracing",
  "uuid",
 ]
@@ -1803,16 +1802,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "object"
-version = "0.28.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e42c982f2d955fac81dd7e1d0e1426a7d702acd9c98d19ab01083a6a0328c424"
-dependencies = [
- "flate2",
- "memchr",
 ]
 
 [[package]]
@@ -2731,25 +2720,25 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "time 0.3.12",
+ "time 0.3.13",
  "url",
  "uuid",
 ]
 
 [[package]]
 name = "serde"
-version = "1.0.142"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e590c437916fb6b221e1d00df6e3294f3fccd70ca7e92541c475d6ed6ef5fee2"
+checksum = "53e8e5d5b70924f74ff5c6d64d9a5acd91422117c60f48c4e07855238a254553"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.142"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34b5b8d809babe02f538c2cfec6f2c1ed10804c0e5a6a041a049a4f5588ccc2e"
+checksum = "d3d8e8de557aee63c26b85b947f5e59b690d0454c753f3adeb5cd7835ab88391"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2867,7 +2856,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.15",
  "thiserror",
- "time 0.3.12",
+ "time 0.3.13",
 ]
 
 [[package]]
@@ -2999,9 +2988,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc7cb9f92456814241cca5984dac2ef4deced2bedd8ed2cbd7ae2e1a74f86af6"
+checksum = "88dc71d44a86d4ae9e3c9b6d36c6c3664f19afe1b863f1563548c69969596b43"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -3013,9 +3002,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e940c2b9dffac8a624b43b71918c5ff677db6952fa6f74d967272a32ea71e6f"
+checksum = "888e41d514ec9632121c0d5cf87df20e4486129117608a582c92e1f378d37f9f"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3024,9 +3013,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87e4ba9eec41633b820fe1d1a2db3c51a6c00992ed6858300b645bef2f2d7ddb"
+checksum = "3e555b2c3ebd97b963c8a3e94ce5e5137ba42da4a26687f81c700d8de1c997f0"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3037,9 +3026,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89a8a9e8a09332209e8d6541b7b5d19f072a8587ec5c1ecd52800c7104c9645d"
+checksum = "5be6fd1cf9ae6cbcc162b19199da2e2e10e9944d58bf8e32226eeadbad5303de"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3068,9 +3057,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4da73cc082fa227dfa279dbff0393d9a67d390a8232a929af2732cbc48e66dc"
+checksum = "71a1425bccf0a24c68c9faea6c4f1f84b4865a3dd5976454d8a796c80216e38a"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3081,26 +3070,21 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec9d472a0f5c14e4b38d05ffe07bae829687a9c46c05dfe2c49ce029f6adfb20"
+checksum = "179a82ef0b185eaf8c97dccd32859c299eefd4ff3c9c48da7f002e6b211e07d7"
 dependencies = [
- "anyhow",
- "gimli",
  "indexmap",
- "object 0.28.4",
- "scroll",
  "serde_json",
  "symbolic-common",
  "symbolic-debuginfo",
- "thiserror",
 ]
 
 [[package]]
 name = "symbolic-symcache"
-version = "9.1.0"
+version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a004b2797535e231d27c612baa2ffa1f4005e7787584f959fdf1cbfdcf66d06d"
+checksum = "362385aa2245eeb8ebbe0391c45bb929a53d1cdf37c09564500472f86a6c0dc8"
 dependencies = [
  "dmsort",
  "fnv",
@@ -3334,12 +3318,11 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.12"
+version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74b7cc93fc23ba97fde84f7eea56c55d1ba183f495c6715defdfc7b9cb8c870f"
+checksum = "db76ff9fa4b1458b3c7f077f3ff9887394058460d21e634355b273aaf11eea45"
 dependencies = [
  "itoa",
- "js-sys",
  "libc",
  "num_threads",
  "serde",
@@ -3599,7 +3582,7 @@ dependencies = [
  "sharded-slab",
  "smallvec",
  "thread_local",
- "time 0.3.12",
+ "time 0.3.13",
  "tracing",
  "tracing-core",
  "tracing-log",
