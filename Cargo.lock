@@ -57,9 +57,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.60"
+version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c794e162a5eff65c72ef524dfe393eb923c354e350bb78b9c7383df13f3bc142"
+checksum = "508b352bb5c066aac251f6daf6b36eccd03e8a88e8081cd44959ea277a3af9a8"
 dependencies = [
  "backtrace",
 ]
@@ -539,15 +539,6 @@ name = "core-foundation-sys"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
-
-[[package]]
-name = "cpp_demangle"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eeaa953eaad386a53111e47172c2fedba671e5684c8dd601a5f474f4f118710f"
-dependencies = [
- "cfg-if 1.0.0",
-]
 
 [[package]]
 name = "cpp_demangle"
@@ -1370,9 +1361,9 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.41"
+version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1779539f58004e5dba1c1f093d44325ebeb244bfc04b791acdc0aaeca9c04570"
+checksum = "9512e544c25736b82aebbd2bf739a47c8a1c935dfcc3a6adcde10e35cd3cd468"
 dependencies = [
  "android_system_properties",
  "core-foundation",
@@ -1419,9 +1410,9 @@ dependencies = [
 
 [[package]]
 name = "insta"
-version = "1.18.1"
+version = "1.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a2bbec77f9472e4ed0cf9be1de622f0dc84d5af96599e3b625e569ef92aaed0"
+checksum = "57a9aec10c9a062ef0454fd49ebaefa59239f836d1b30891d9cc2289978dd970"
 dependencies = [
  "console",
  "linked-hash-map",
@@ -2839,7 +2830,7 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "sentry"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "httpdate",
  "reqwest 0.11.11",
@@ -2857,7 +2848,7 @@ dependencies = [
 [[package]]
 name = "sentry-anyhow"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "anyhow",
  "sentry-backtrace",
@@ -2867,7 +2858,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "backtrace",
  "once_cell",
@@ -2878,7 +2869,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "hostname",
  "libc",
@@ -2890,7 +2881,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "build_id",
  "findshlibs",
@@ -2907,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "findshlibs",
  "once_cell",
@@ -2917,7 +2908,7 @@ dependencies = [
 [[package]]
 name = "sentry-log"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "log",
  "sentry-core",
@@ -2926,7 +2917,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -2935,7 +2926,7 @@ dependencies = [
 [[package]]
 name = "sentry-tower"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "http",
  "pin-project",
@@ -2948,7 +2939,7 @@ dependencies = [
 [[package]]
 name = "sentry-tracing"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "sentry-core",
  "tracing-core",
@@ -2958,7 +2949,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#bdf0f17795f2de2dfe103ec7189669d4008e124e"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
  "debugid",
  "getrandom",
@@ -3321,7 +3312,7 @@ version = "9.1.0"
 source = "git+https://github.com/getsentry/symbolic?branch=fix/demangle-fixes#f8bec4059ae87ef572c859ab573fd552bd1a8345"
 dependencies = [
  "cc",
- "cpp_demangle 0.3.5 (git+https://github.com/Swatinem/cpp_demangle?branch=sentry-patches)",
+ "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
  "symbolic-common 9.1.0",
@@ -3333,7 +3324,6 @@ version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71a1425bccf0a24c68c9faea6c4f1f84b4865a3dd5976454d8a796c80216e38a"
 dependencies = [
- "cpp_demangle 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-demangle",
  "symbolic-common 9.1.1",
 ]
