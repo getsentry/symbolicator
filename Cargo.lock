@@ -1361,12 +1361,12 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.42"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9512e544c25736b82aebbd2bf739a47c8a1c935dfcc3a6adcde10e35cd3cd468"
+checksum = "808cf7d67cf4a22adc5be66e75ebdf769b3f2ea032041437a7061f97a63dad4b"
 dependencies = [
  "android_system_properties",
- "core-foundation",
+ "core-foundation-sys",
  "js-sys",
  "wasm-bindgen",
  "winapi",
@@ -1524,9 +1524,9 @@ checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
 name = "libc"
-version = "0.2.129"
+version = "0.2.131"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64de3cc433455c14174d42e554d4027ee631c4d046d43e3ecc6efc4636cdc7a7"
+checksum = "04c3b4822ccebfa39c02fc03d1534441b22ead323fa0f48bb7ddd8e6ba076a40"
 
 [[package]]
 name = "libloading"
@@ -1642,9 +1642,9 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "memmap2"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a79b39c93a7a5a27eeaf9a23b5ff43f1b9e0ad6b1cdd441140ae53c35613fc7"
+checksum = "8e2e4455be2010e8c5e77f0d10234b30f3a636a5305725609b5a71ad00d22577"
 dependencies = [
  "libc",
 ]
@@ -2830,14 +2830,14 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 [[package]]
 name = "sentry"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "httpdate",
  "reqwest 0.11.11",
  "sentry-anyhow",
  "sentry-backtrace",
  "sentry-contexts",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
  "sentry-debug-images",
  "sentry-log",
  "sentry-panic",
@@ -2848,33 +2848,33 @@ dependencies = [
 [[package]]
 name = "sentry-anyhow"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "anyhow",
  "sentry-backtrace",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
 ]
 
 [[package]]
 name = "sentry-backtrace"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "backtrace",
  "once_cell",
  "regex",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
 ]
 
 [[package]]
 name = "sentry-contexts"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "hostname",
  "libc",
  "rustc_version 0.4.0",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
  "uname",
 ]
 
@@ -2883,12 +2883,24 @@ name = "sentry-core"
 version = "0.27.0"
 source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
 dependencies = [
+ "once_cell",
+ "rand",
+ "sentry-types 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=master)",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sentry-core"
+version = "0.27.0"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
+dependencies = [
  "build_id",
  "findshlibs",
  "once_cell",
  "pprof",
  "rand",
- "sentry-types",
+ "sentry-types 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
  "serde",
  "serde_json",
  "sys-info",
@@ -2898,29 +2910,29 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "findshlibs",
  "once_cell",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
 ]
 
 [[package]]
 name = "sentry-log"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "log",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
 ]
 
 [[package]]
 name = "sentry-panic"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "sentry-backtrace",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
 ]
 
 [[package]]
@@ -2930,7 +2942,7 @@ source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#0992040
 dependencies = [
  "http",
  "pin-project",
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=master)",
  "tower-layer",
  "tower-service",
  "url",
@@ -2939,9 +2951,9 @@ dependencies = [
 [[package]]
 name = "sentry-tracing"
 version = "0.27.0"
-source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
- "sentry-core",
+ "sentry-core 0.27.0 (git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist)",
  "tracing-core",
  "tracing-subscriber",
 ]
@@ -2950,6 +2962,22 @@ dependencies = [
 name = "sentry-types"
 version = "0.27.0"
 source = "git+https://github.com/getsentry/sentry-rust.git?branch=master#09920401da6f05ec49d2e1ea71c21003c608abfd"
+dependencies = [
+ "debugid",
+ "getrandom",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time 0.3.13",
+ "url",
+ "uuid 1.1.2",
+]
+
+[[package]]
+name = "sentry-types"
+version = "0.27.0"
+source = "git+https://github.com/getsentry/sentry-rust.git?branch=viglia/fix/remove-profiler-blocklist#249adcf2391c9705a9e2be7ed63419129b32c055"
 dependencies = [
  "debugid",
  "getrandom",
