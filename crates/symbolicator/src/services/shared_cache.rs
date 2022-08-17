@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context as _, Error, Result};
 use futures::{Future, TryStreamExt};
-use gcp_auth::Token;
+use gcp_auth::{AuthenticationManager, CustomServiceAccount, Token};
 use reqwest::{Body, Client, StatusCode};
 use sentry::protocol::Context;
 use sentry::{Hub, SentryFutureExt};
@@ -55,7 +55,7 @@ enum CacheError {
 struct GcsState {
     config: GcsSharedCacheConfig,
     client: Client,
-    auth_manager: gcp_auth::AuthenticationManager,
+    auth_manager: AuthenticationManager,
 }
 
 impl fmt::Debug for GcsState {
@@ -87,16 +87,19 @@ where
 impl GcsState {
     pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
         let auth_manager = match config.service_account_path {
-            Some(ref path) => gcp_auth::from_credentials_file(&path).await?,
+            Some(ref path) => {
+                let service_account = CustomServiceAccount::from_file(path)?;
+                AuthenticationManager::from(service_account)
+            }
             None => {
                 // For fresh k8s pods the GKE metadata server may not accept connections
-                // yet, we we need to retry this for a bit.
+                // yet, so we need to retry this for a bit.
                 const MAX_DELAY: Duration = Duration::from_secs(60);
                 const RETRY_INTERVAL: Duration = Duration::from_millis(500);
                 let start = Instant::now();
                 loop {
                     let future = async move {
-                        gcp_auth::init()
+                        AuthenticationManager::new()
                             .await
                             .context("Failed to initialise authentication token")
                     };
@@ -111,10 +114,9 @@ impl GcsState {
                             let remaining = MAX_DELAY - start.elapsed();
                             tracing::warn!("Error initialising GCS authentication token: {}", &err);
                             match err.downcast_ref::<gcp_auth::Error>() {
-                                Some(gcp_auth::Error::NoAuthMethod(custom, gcloud, svc, user)) => {
+                                Some(gcp_auth::Error::NoAuthMethod(gcloud, svc, user)) => {
                                     tracing::error!(
-                                        "No GCP auth: custom: {}, gcloud: {}, svc: {}, user: {}",
-                                        custom,
+                                        "No GCP auth: gcloud: {}, svc: {}, user: {}",
                                         gcloud,
                                         svc,
                                         user,
