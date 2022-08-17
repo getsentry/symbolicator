@@ -17,6 +17,7 @@ debug = 1
 # iteration times.
 # You can compile/run this with: `cargo run --profile local -- --config local.yml run`
 inherits = "release"
+debug = false
 incremental = true
 codegen-units = 256
 
