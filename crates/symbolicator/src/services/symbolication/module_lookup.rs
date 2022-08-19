@@ -7,6 +7,7 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
+use crate::services::ppdb_caches::PortablePdbCacheFile;
 use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheFile};
 use crate::sources::{FileType, SourceConfig};
 use crate::types::{
@@ -17,14 +18,20 @@ use crate::utils::addr::AddrMode;
 use super::object_id_from_object_info;
 
 #[derive(Debug, Clone)]
-pub struct SymCacheLookupResult<'a> {
+pub enum CacheFile {
+    SymCache(Arc<SymCacheFile>),
+    PpdbCache(Arc<PortablePdbCacheFile>),
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheLookupResult<'a> {
     pub module_index: usize,
     pub object_info: &'a CompleteObjectInfo,
-    pub symcache: Option<&'a SymCacheFile>,
+    pub cache: Option<&'a CacheFile>,
     pub relative_addr: Option<u64>,
 }
 
-impl<'a> SymCacheLookupResult<'a> {
+impl<'a> CacheLookupResult<'a> {
     /// The preferred [`AddrMode`] for this lookup.
     ///
     /// For the symbolicated frame, we generally switch to absolute reporting of addresses. This is
@@ -53,7 +60,7 @@ pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 struct ModuleEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
-    symcache: Option<Arc<SymCacheFile>>,
+    cache: Option<CacheFile>,
     source_object: Option<SourceObject>,
 }
 
@@ -75,7 +82,7 @@ impl ModuleLookup {
             .map(|(module_index, object_info)| ModuleEntry {
                 module_index,
                 object_info,
-                symcache: None,
+                cache: None,
                 source_object: None,
             })
             .collect();
@@ -131,8 +138,8 @@ impl ModuleLookup {
         let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
-                if let Some(SymCacheLookupResult { module_index, .. }) =
-                    self.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
+                if let Some(CacheLookupResult { module_index, .. }) =
+                    self.lookup_cache(frame.instruction_addr.0, frame.addr_mode)
                 {
                     referenced_objects.insert(module_index);
                 }
@@ -186,7 +193,7 @@ impl ModuleLookup {
                     entry.object_info.candidates.merge(symcache.candidates());
                 }
 
-                entry.symcache = symcache;
+                entry.cache = symcache.map(CacheFile::SymCache);
                 entry.object_info.debug_status = status;
             }
         }
@@ -266,20 +273,16 @@ impl ModuleLookup {
     }
 
     /// Look up the corresponding SymCache based on the instruction `addr`.
-    pub fn lookup_symcache(
-        &self,
-        addr: u64,
-        addr_mode: AddrMode,
-    ) -> Option<SymCacheLookupResult<'_>> {
+    pub fn lookup_cache(&self, addr: u64, addr_mode: AddrMode) -> Option<CacheLookupResult<'_>> {
         self.get_module_by_addr(addr, addr_mode).map(|entry| {
             let relative_addr = match addr_mode {
                 AddrMode::Abs => entry.object_info.abs_to_rel_addr(addr),
                 AddrMode::Rel(_) => Some(addr),
             };
-            SymCacheLookupResult {
+            CacheLookupResult {
                 module_index: entry.module_index,
                 object_info: &entry.object_info,
-                symcache: entry.symcache.as_deref(),
+                cache: entry.cache.as_ref(),
                 relative_addr,
             }
         })

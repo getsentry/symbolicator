@@ -190,6 +190,7 @@ fn map_apple_binary_image(image: apple_crash_report_parser::BinaryImage) -> Comp
             0 => None,
             size => Some(size),
         },
+        checksum: None,
     };
 
     raw_info.into()

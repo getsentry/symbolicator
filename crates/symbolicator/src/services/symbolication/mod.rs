@@ -469,6 +469,7 @@ mod tests {
                 image_size: Some(4096),
                 code_file: None,
                 debug_file: None,
+                checksum: None,
             })],
             options: RequestOptions {
                 dif_candidates: true,
@@ -725,14 +726,15 @@ mod tests {
             debug_file: None,
             image_addr: HexValue(42),
             image_size: Some(0),
+            checksum: None,
         });
 
         let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));
 
-        let lookup_result = lookup.lookup_symcache(43, AddrMode::Abs).unwrap();
+        let lookup_result = lookup.lookup_cache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);
         assert_eq!(lookup_result.object_info, &info);
-        assert!(lookup_result.symcache.is_none());
+        assert!(lookup_result.cache.is_none());
     }
 
     #[tokio::test]

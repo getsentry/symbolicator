@@ -174,6 +174,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
                     Some(path) => path,
                     None => return vec![],
                 },
+                ObjectType::DotnetPdb => todo!(),
                 ObjectType::Unknown => return vec![],
             };
             primary_path.push_str(".src.zip");
@@ -333,6 +334,7 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
                 ObjectType::Macho => FileType::MachCode,
                 ObjectType::Pe => FileType::Pe,
                 ObjectType::Wasm => FileType::WasmCode,
+                ObjectType::DotnetPdb => todo!(),
                 // guess we're out of luck.
                 ObjectType::Unknown => return None,
             };

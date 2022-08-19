@@ -3106,6 +3106,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolic-ppdb"
+version = "9.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51a2dc4f4b0e98f70167d69203768bb1d19f2fc3c7a198d6f23867311eedf27a"
+dependencies = [
+ "indexmap",
+ "leb128",
+ "symbolic-common",
+ "thiserror",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
 name = "symbolic-symcache"
 version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3164,6 +3178,7 @@ dependencies = [
  "sha-1",
  "structopt",
  "symbolic",
+ "symbolic-ppdb",
  "symbolicator-crash",
  "tempfile",
  "test-assembler",
@@ -4152,6 +4167,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "332f188cc1bcf1fe1064b8c58d150f497e697f49774aa846f2dc949d9a25f236"
+dependencies = [
+ "byteorder",
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0fbc82b82efe24da867ee52e015e58178684bd9dd64c34e66bdf21da2582a9f"
+dependencies = [
+ "proc-macro2",
+ "syn",
+ "synstructure",
 ]
 
 [[package]]

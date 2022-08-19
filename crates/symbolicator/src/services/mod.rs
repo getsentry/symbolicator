@@ -32,6 +32,7 @@ pub mod download;
 pub mod il2cpp;
 mod minidump;
 pub mod objects;
+pub mod ppdb_caches;
 pub mod shared_cache;
 pub mod symbolication;
 pub mod symcaches;

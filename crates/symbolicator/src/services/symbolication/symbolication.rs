@@ -4,6 +4,8 @@ use std::time::Duration;
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 
+use crate::services::ppdb_caches::PortablePdbCacheFile;
+use crate::services::symcaches::SymCacheFile;
 use crate::sources::SourceConfig;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
@@ -13,7 +15,7 @@ use crate::types::{
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
-use super::module_lookup::ModuleLookup;
+use super::module_lookup::{CacheFile, CacheLookupResult, ModuleLookup};
 use super::{SymbolicationActor, SymbolicationError};
 
 impl SymbolicationActor {
@@ -150,30 +152,74 @@ fn symbolicate_frame(
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
-        .lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
+        .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
         .ok_or(FrameStatus::UnknownImage)?;
 
     frame.package = lookup_result.object_info.raw.code_file.clone();
-    if lookup_result.symcache.is_none() {
-        if lookup_result.object_info.debug_status == ObjectFileStatus::Malformed {
-            return Err(FrameStatus::Malformed);
-        } else {
-            return Err(FrameStatus::Missing);
-        }
-    }
 
-    tracing::trace!("Loading symcache");
-    let symcache = match lookup_result
-        .symcache
-        .as_ref()
-        .expect("symcache should always be available at this point")
-        .parse()
-    {
+    match lookup_result.cache {
+        Some(CacheFile::SymCache(symcache)) => {
+            symbolicate_native_frame(symcache, lookup_result, registers, signal, frame, index)
+        }
+        Some(CacheFile::PpdbCache(ppdbcache)) => symbolicate_dotnet_frame(ppdbcache, frame, index),
+        None if lookup_result.object_info.debug_status == ObjectFileStatus::Malformed => {
+            Err(FrameStatus::Malformed)
+        }
+        None => Err(FrameStatus::Missing),
+    }
+}
+
+fn symbolicate_dotnet_frame(
+    ppdbcache: &PortablePdbCacheFile,
+    frame: &RawFrame,
+    index: usize,
+) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
+    tracing::trace!("Loading ppdbcache");
+    let ppdbcache = match ppdbcache.parse() {
         Ok(Some(x)) => x,
         Ok(None) => return Err(FrameStatus::Missing),
         Err(_) => return Err(FrameStatus::Malformed),
     };
 
+    // TODO: Add a new error variant for this?
+    let function_index = frame.function_index.ok_or(FrameStatus::MissingSymbol)?;
+    let il_offset = frame.instruction_addr.0 as u32;
+
+    let line_info = ppdbcache
+        .lookup(function_index, il_offset)
+        .ok_or(FrameStatus::MissingSymbol)?;
+
+    let abs_path = line_info.file_name;
+    let filename = split_path(abs_path).1;
+    let result = SymbolicatedFrame {
+        status: FrameStatus::Symbolicated,
+        original_index: Some(index),
+        raw: RawFrame {
+            lang: Some(line_info.file_lang),
+            filename: Some(filename.to_string()),
+            abs_path: Some(abs_path.to_string()),
+            lineno: Some(line_info.line),
+            ..frame.clone()
+        },
+    };
+
+    Ok(vec![result])
+}
+
+fn symbolicate_native_frame(
+    symcache: &SymCacheFile,
+    lookup_result: CacheLookupResult,
+    registers: &Registers,
+    signal: Option<Signal>,
+    frame: &RawFrame,
+    index: usize,
+) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
+    tracing::trace!("Loading symcache");
+    let symcache = match symcache.parse() {
+        Ok(Some(x)) => x,
+        Ok(None) => return Err(FrameStatus::Missing),
+        Err(_) => return Err(FrameStatus::Malformed),
+    };
     // get the relative caller address
     let relative_addr = if let Some(addr) = lookup_result.relative_addr {
         // heuristics currently are only supported when we can work with absolute addresses.
@@ -197,15 +243,15 @@ fn symbolicate_frame(
                 .ip_register_value(ip_register_value)
                 .caller_address();
             lookup_result
-                .object_info
-                .abs_to_rel_addr(absolute_caller_addr)
-                .ok_or_else(|| {
-                    tracing::warn!(
-                            "Underflow when trying to subtract image start addr from caller address after heuristics"
-                        );
-                    metric!(counter("relative_addr.underflow") += 1);
-                    FrameStatus::MissingSymbol
-                })?
+        .object_info
+        .abs_to_rel_addr(absolute_caller_addr)
+        .ok_or_else(|| {
+            tracing::warn!(
+                    "Underflow when trying to subtract image start addr from caller address after heuristics"
+                );
+            metric!(counter("relative_addr.underflow") += 1);
+            FrameStatus::MissingSymbol
+        })?
         } else {
             addr
         }
@@ -214,16 +260,13 @@ fn symbolicate_frame(
         metric!(counter("relative_addr.underflow") += 1);
         return Err(FrameStatus::MissingSymbol);
     };
-
     tracing::trace!("Symbolicating {:#x}", relative_addr);
     let mut rv = vec![];
-
     // The symbol addr only makes sense for the outermost top-level function, and not its inlinees.
     // We keep track of it while iterating and only set it for the last frame,
     // which is the top-level function.
     let mut sym_addr = None;
     let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
-
     for source_location in symcache.lookup(relative_addr) {
         let abs_path = source_location
             .file()
@@ -272,6 +315,7 @@ fn symbolicate_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
+                function_index: frame.function_index,
                 symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
@@ -296,15 +340,12 @@ fn symbolicate_frame(
             },
         });
     }
-
     if let Some(last_frame) = rv.last_mut() {
         last_frame.raw.sym_addr = sym_addr;
     }
-
     if rv.is_empty() {
         return Err(FrameStatus::MissingSymbol);
     }
-
     Ok(rv)
 }
 

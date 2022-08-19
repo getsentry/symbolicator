@@ -179,6 +179,10 @@ pub struct RawFrame {
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
+    /// TODO
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function_index: Option<u32>,
+
     /// The path to the [module](RawObjectInfo) this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
@@ -340,6 +344,10 @@ pub struct RawObjectInfo {
     /// The size is infered from the module list if not specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
+
+    /// Checksum of the file's contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
 }
 
 /// The type of an object file.
@@ -350,6 +358,7 @@ pub enum ObjectType {
     Macho,
     Pe,
     Wasm,
+    DotnetPdb,
     Unknown,
 }
 
@@ -362,6 +371,7 @@ impl FromStr for ObjectType {
             "macho" => ObjectType::Macho,
             "pe" => ObjectType::Pe,
             "wasm" => ObjectType::Wasm,
+            "dotnetpdb" => ObjectType::DotnetPdb,
             _ => ObjectType::Unknown,
         })
     }
@@ -384,6 +394,7 @@ impl fmt::Display for ObjectType {
             ObjectType::Macho => write!(f, "macho"),
             ObjectType::Pe => write!(f, "pe"),
             ObjectType::Wasm => write!(f, "wasm"),
+            ObjectType::DotnetPdb => write!(f, "dotnetpdb"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
     }
