@@ -6,19 +6,21 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use futures::channel::oneshot;
+use futures::future::Shared;
+use futures::FutureExt;
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
-    FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile, SymbolProvider,
-    SymbolStats,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
+    SymbolProvider,
 };
-use parking_lot::RwLock;
-use sentry::types::DebugId;
+use parking_lot::{Mutex, RwLock};
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::cfi::CfiCache;
-use symbolic::common::{Arch, ByteView};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use tempfile::TempPath;
 
 use crate::cache::CacheStatus;
@@ -182,6 +184,27 @@ struct CfiModule {
     cfi_candidates: AllObjectCandidates,
 }
 
+type SymbolFileComputation = Shared<oneshot::Receiver<()>>;
+
+/// The Key that is used for looking up the [`Module`] in the per-stackwalk CFI / computation cache.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct LookupKey {
+    code_id: Option<CodeId>,
+    debug_id: Option<DebugId>,
+    base_addr: u64,
+}
+
+impl LookupKey {
+    /// Creates a new lookup key for the given [`Module`].
+    fn new(module: &(dyn Module)) -> Self {
+        Self {
+            code_id: module.code_identifier(),
+            debug_id: module.debug_identifier(),
+            base_addr: module.base_address(),
+        }
+    }
+}
+
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
 /// CFI for stackwalking.
 ///
@@ -198,7 +221,9 @@ struct SymbolicatorSymbolProvider {
     /// An internal database of loaded CFI.
     ///
     /// The key consists of a module's debug identifier and base address.
-    cficaches: RwLock<HashMap<(DebugId, u64), CfiModule>>,
+    cficaches: RwLock<HashMap<LookupKey, CfiModule>>,
+    /// A map of in-progress `SymbolFile` computations.
+    running_computations: Mutex<HashMap<LookupKey, SymbolFileComputation>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -212,100 +237,104 @@ impl SymbolicatorSymbolProvider {
             scope,
             sources,
             cficache_actor,
-            cficaches: Default::default(),
             object_type,
+            cficaches: Default::default(),
+            running_computations: Default::default(),
         }
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Option<()> {
-        let id = (
-            module.debug_identifier().unwrap_or_default(),
-            module.base_address(),
-        );
-        if self.cficaches.read().contains_key(&id) {
-            return Some(());
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> LookupKey {
+        let key = LookupKey::new(module);
+        if self.cficaches.read().contains_key(&key) {
+            return key;
         }
 
-        if id.0.is_nil() {
-            // save a dummy "missing" CfiModule for this id.
-            let cfi_module = CfiModule {
-                cfi_status: ObjectFileStatus::Missing,
-                ..Default::default()
-            };
-            self.cficaches.write().insert(id, cfi_module);
-            return None;
-        }
+        // Check if there is already a CFI cache/symbol file computation in progress for this module.
+        // If not, start it and save it in `running_computations`.
+        let maybe_computation = self.running_computations.lock().get(&key).cloned();
+        match maybe_computation {
+            Some(computation) => computation.await.expect("sender was dropped prematurely"),
+            None => {
+                let (sender, receiver) = oneshot::channel();
+                self.running_computations
+                    .lock()
+                    .insert(key.clone(), receiver.shared());
 
-        let sources = self.sources.clone();
-        let scope = self.scope.clone();
+                let sources = self.sources.clone();
+                let scope = self.scope.clone();
 
-        let identifier = ObjectId {
-            code_id: module.code_identifier(),
-            code_file: Some(module.code_file().into_owned()),
-            debug_id: module.debug_identifier(),
-            debug_file: module
-                .debug_file()
-                .map(|debug_file| debug_file.into_owned()),
-            object_type: self.object_type,
-        };
+                let identifier = ObjectId {
+                    code_id: key.code_id.clone(),
+                    code_file: Some(module.code_file().into_owned()),
+                    debug_id: key.debug_id,
+                    debug_file: module
+                        .debug_file()
+                        .map(|debug_file| debug_file.into_owned()),
+                    object_type: self.object_type,
+                };
 
-        let cache_result = self
-            .cficache_actor
-            .fetch(FetchCfiCache {
-                object_type: self.object_type,
-                identifier,
-                sources,
-                scope,
-            })
-            .bind_hub(Hub::new_from_top(Hub::current()))
-            .await;
+                let cache_result = self
+                    .cficache_actor
+                    .fetch(FetchCfiCache {
+                        object_type: self.object_type,
+                        identifier,
+                        sources,
+                        scope,
+                    })
+                    .bind_hub(Hub::new_from_top(Hub::current()))
+                    .await;
 
-        let cfi_module = match cache_result {
-            Ok(cfi_cache) => {
-                let cfi_status = match cfi_cache.status() {
-                    CacheStatus::Positive => ObjectFileStatus::Found,
-                    CacheStatus::Negative => ObjectFileStatus::Missing,
-                    CacheStatus::Malformed(details) => {
-                        let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                let cfi_module = match cache_result {
+                    Ok(cfi_cache) => {
+                        let cfi_status = match cfi_cache.status() {
+                            CacheStatus::Positive => ObjectFileStatus::Found,
+                            CacheStatus::Negative => ObjectFileStatus::Missing,
+                            CacheStatus::Malformed(details) => {
+                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                                let stderr: &dyn std::error::Error = &err;
+                                tracing::warn!(stderr, "Error while parsing cficache: {}", details);
+                                ObjectFileStatus::from(&err)
+                            }
+                            // If the cache entry is for a cache specific error, it must be
+                            // from a previous cficache conversion attempt.
+                            CacheStatus::CacheSpecificError(details) => {
+                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
+                                tracing::warn!("Cached error from parsing cficache: {}", details);
+                                ObjectFileStatus::from(&err)
+                            }
+                        };
+                        let symbol_file = match cfi_cache.status() {
+                            CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
+                            _ => None,
+                        };
+                        CfiModule {
+                            features: cfi_cache.features(),
+                            cfi_status,
+                            symbol_file,
+                            cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
+                        }
+                    }
+
+                    Err(err) => {
                         let stderr: &dyn std::error::Error = &err;
-                        tracing::warn!(stderr, "Error while parsing cficache: {}", details);
-                        ObjectFileStatus::from(&err)
-                    }
-                    // If the cache entry is for a cache specific error, it must be
-                    // from a previous cficache conversion attempt.
-                    CacheStatus::CacheSpecificError(details) => {
-                        let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                        tracing::warn!("Cached error from parsing cficache: {}", details);
-                        ObjectFileStatus::from(&err)
+                        tracing::debug!(stderr, "Error while fetching cficache");
+
+                        CfiModule {
+                            cfi_status: ObjectFileStatus::from(err.as_ref()),
+                            ..Default::default()
+                        }
                     }
                 };
-                let symbol_file = match cfi_cache.status() {
-                    CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
-                    _ => None,
-                };
-                CfiModule {
-                    features: cfi_cache.features(),
-                    cfi_status,
-                    symbol_file,
-                    cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
-                }
+
+                self.cficaches.write().insert(key.clone(), cfi_module);
+
+                // Ignore error if receiver was dropped
+                let _ = sender.send(());
             }
+        }
 
-            Err(err) => {
-                let stderr: &dyn std::error::Error = &err;
-                tracing::debug!(stderr, "Error while fetching cficache");
-
-                CfiModule {
-                    cfi_status: ObjectFileStatus::from(err.as_ref()),
-                    ..Default::default()
-                }
-            }
-        };
-
-        self.cficaches.write().insert(id, cfi_module);
-
-        Some(())
+        key
     }
 }
 
@@ -330,30 +359,21 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        self.load_cfi_module(module).await?;
-        let id = (module.debug_identifier()?, module.base_address());
+        let key = self.load_cfi_module(module).await;
         self.cficaches
             .read()
-            .get(&id)?
+            .get(&key)?
             .symbol_file
             .as_ref()?
             .walk_frame(module, walker)
     }
 
-    fn stats(&self) -> HashMap<String, SymbolStats> {
-        self.cficaches
-            .read()
-            .iter()
-            .filter_map(|((debug_id, _), sym)| {
-                let stats = SymbolStats {
-                    symbol_url: sym.symbol_file.as_ref()?.url.clone(), // TODO(ja): We could put our candidate URI here
-                    loaded_symbols: true, // TODO(ja): Should we return `false` for not found?
-                    corrupt_symbols: false,
-                };
-
-                Some((debug_id.to_string(), stats))
-            })
-            .collect()
+    async fn get_file_path(
+        &self,
+        _module: &(dyn Module + Sync),
+        _kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        Err(FileError::NotFound)
     }
 }
 
@@ -452,19 +472,16 @@ async fn stackwalk(
         .modules
         .by_addr()
         .filter_map(|module| {
-            let id = (
-                module.debug_identifier().unwrap_or_default(),
-                module.base_address(),
-            );
+            let key = LookupKey::new(module);
 
             // Discard modules that weren't used and don't have a debug id.
-            if !cficaches.contains_key(&id) && module.debug_identifier().is_none() {
+            if !cficaches.contains_key(&key) && module.debug_identifier().is_none() {
                 return None;
             }
 
             let mut obj_info = object_info_from_minidump_module(ty, module);
 
-            obj_info.unwind_status = match cficaches.remove(&id) {
+            obj_info.unwind_status = match cficaches.remove(&key) {
                 None => Some(ObjectFileStatus::Unused),
                 Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);

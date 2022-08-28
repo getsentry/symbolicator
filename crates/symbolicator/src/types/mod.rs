@@ -164,7 +164,7 @@ fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
 }
 
 /// An unsymbolicated frame from a symbolication request.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RawFrame {
     /// Controls the addressing mode for [`instruction_addr`](Self::instruction_addr) and
     /// [`sym_addr`](Self::sym_addr).
@@ -237,7 +237,7 @@ pub struct RawFrame {
 /// pointer and thus detected frame, especially if there was not enough Call Frame
 /// Information available.  Frames that were detected by scanning may contain dubious
 /// information.
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum FrameTrust {
     /// Unknown.
@@ -280,7 +280,7 @@ impl From<minidump_processor::FrameTrust> for FrameTrust {
 }
 
 /// A stack trace containing unsymbolicated stack frames.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RawStacktrace {
     /// The OS-dependent identifier of the thread.
     #[serde(default)]

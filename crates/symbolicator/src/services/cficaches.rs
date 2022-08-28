@@ -39,9 +39,15 @@ use super::shared_cache::SharedCacheService;
 ///
 /// In case a symbolic update increased its own internal format version, bump the
 /// cficache file version as described above, and update the static assertion.
+///
+/// # Version History
+///
+/// - `2`: Allow underflow in Win-x64 CFI which allows loading registers from outside the stack frame.
+///
+/// - `1`: Generate higher fidelity CFI for Win-x64 binaries.
 const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 0,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1, 0],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
@@ -150,7 +156,7 @@ async fn compute_cficache(
         return Ok(object.status().clone());
     }
 
-    let status = if let Err(e) = write_cficache(&path, &*object) {
+    let status = if let Err(e) = write_cficache(&path, &object) {
         tracing::warn!("Could not write cficache: {}", e);
         sentry::capture_error(&e);
 

@@ -7,11 +7,29 @@
 - Use Unity il2cpp line mapping files in symcache creation ([#831](https://github.com/getsentry/symbolicator/pull/831))
 - Read thread names from minidumps and Apple crash reports ([#834](https://github.com/getsentry/symbolicator/pull/834))
 - Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))
+- Bump Native SDK to v0.5.0 ([#865](https://github.com/getsentry/symbolicator/pull/865))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#050)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.4.17-2-gbd56100...0.5.0)
 - Migrate from rusoto to aws-sdk-rust ([#849](https://github.com/getsentry/symbolicator/pull/849))
+
+### Fixes
+
+- Update symbolic and increase the SymCache version for the following fixes: ([#857](https://github.com/getsentry/symbolicator/pull/857))
+  - fixed problems with DWARF functions that have the same line records for different inline hierarchy
+  - fixed problems with PDB where functions have line records that don't belong to them
+  - fixed problems with PDB/DWARF when parent functions don't have matching line records
+  - using a new TypeFormatter for PDB that can pretty-print function arguments
+- Update symbolic and increase CFI/SymCache versions for the following fixes: ([#861](https://github.com/getsentry/symbolicator/pull/
+  861))
+  - Allow underflow in Win-x64 CFI which allows loading registers from outside the stack frame.
+  - Another round of SymCache fixes as followup to the above.
+- Extract the correct `code_id` from iOS minidumps. ([#858](https://github.com/getsentry/symbolicator/pull/858))
+- Fetch/use CFI for modules that only have a CodeId. ([#860](https://github.com/getsentry/symbolicator/pull/860))
 
 ### Internal
 
 - Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
+- Deduplicate SymbolFile computations in SymbolicatorSymbolProvider ([#856](https://github.com/getsentry/symbolicator/pull/856))
 
 ## 0.5.1
 

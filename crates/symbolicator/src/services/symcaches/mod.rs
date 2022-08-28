@@ -46,9 +46,24 @@ mod markers;
 ///
 /// In case a symbolic update increased its own internal format version, bump the
 /// symcache file version as described above, and update the static assertion.
+///
+/// # Version History
+///
+/// - `3`: Another round of fixes in symcache generation:
+///        - fixes problems with split inlinees and inlinees appearing twice in the call chain
+///        - undecorate Windows C-decorated symbols in symcaches
+///
+/// - `2`: Tons of fixes/improvements in symcache generation:
+///        - fixed problems with DWARF functions that have the
+///          same line records for different inline hierarchy
+///        - fixed problems with PDB where functions have line records that don't belong to them
+///        - fixed problems with PDB/DWARF when parent functions don't have matching line records
+///        - using a new TypeFormatter for PDB that can pretty-print function arguments
+///
+/// - `1`: New binary format based on instruction addr lookup.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[0],
+    current: 3,
+    fallbacks: &[2, 1, 0],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 7);
 
@@ -198,7 +213,7 @@ async fn fetch_difs_and_compute_symcache(
         return Ok(object_handle.status().clone());
     }
 
-    let status = match write_symcache(&path, &*object_handle, secondary_sources) {
+    let status = match write_symcache(&path, &object_handle, secondary_sources) {
         Ok(_) => CacheStatus::Positive,
         Err(err) => {
             tracing::warn!("Failed to write symcache: {}", err);
@@ -331,6 +346,7 @@ impl SymCacheActor {
                             tracing::trace!("Fetching line mapping");
                             self.il2cpp_svc
                                 .fetch_line_mapping(
+                                    handle.object_id(),
                                     debug_id,
                                     handle.scope().clone(),
                                     request.sources.clone(),

@@ -87,7 +87,7 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<
 /// Invoke a callback with the current statsd client.
 ///
 /// If statsd is not configured the callback is not invoked. For the most part
-/// the [`metric!`] macro should be used instead.
+/// the [`metric!`](crate::metric) macro should be used instead.
 #[inline(always)]
 pub fn with_client<F, R>(f: F) -> R
 where
@@ -96,7 +96,7 @@ where
 {
     CURRENT_CLIENT.with(|client| {
         if let Some(client) = client {
-            f(&*client)
+            f(client)
         } else {
             Default::default()
         }
