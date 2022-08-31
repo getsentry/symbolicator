@@ -246,8 +246,8 @@ pub struct Cache {
     /// Options intended to be user-configurable.
     cache_config: CacheConfig,
 
-    /// The maximum number of lazy refreshes of this cache.
-    max_lazy_refreshes: Arc<AtomicIsize>,
+    /// A queue for lazy refreshes of this cache.
+    lazy_refresh_queue: Arc<barbados::Queue>,
 }
 
 impl Cache {
@@ -256,7 +256,7 @@ impl Cache {
         cache_dir: Option<PathBuf>,
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
-        max_lazy_refreshes: Arc<AtomicIsize>,
+        lazy_refresh_queue: Arc<barbados::Queue>,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -267,7 +267,7 @@ impl Cache {
             tmp_dir,
             start_time: SystemTime::now(),
             cache_config,
-            max_lazy_refreshes,
+            lazy_refresh_queue,
         })
     }
 
@@ -279,8 +279,8 @@ impl Cache {
         self.cache_dir.as_deref()
     }
 
-    pub fn max_lazy_refreshes(&self) -> Arc<AtomicIsize> {
-        self.max_lazy_refreshes.clone()
+    pub fn lazy_refresh_queue(&self) -> &barbados::Queue {
+        &self.lazy_refresh_queue
     }
 
     pub fn cleanup(&self) -> Result<()> {

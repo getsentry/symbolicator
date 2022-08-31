@@ -502,28 +502,30 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
                 metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
 
-                // We count down towards zero, and if we reach or surpass it, we will short circuit here.
-                // Doing the short-circuiting here means we don't create a channel at all, and don't
-                // put it into `current_computations`.
-                let max_lazy_refreshes = self.config.max_lazy_refreshes();
-                if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
-                    max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-
-                    metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
-                    // This error is purely here to satisfy the return type, it should not show
-                    // up anywhere, as lazy computation will not unwrap the error.
-                    let result = Err(Arc::new(
+                let computation = self.clone().compute(request, key.clone(), is_refresh);
+                let channel = if is_refresh {
+                    let receiver = self.config.lazy_refresh_queue().enqueue(computation);
+                    let receiver = match receiver {
+                        Ok(receiver) => receiver,
+                        Err(_) => {
+                            metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
+                            // This error is purely here to satisfy the return type, it should not show
+                            // up anywhere, as lazy computation will not unwrap the error.
+                            let result = Err(Arc::new(
                         Error::new(
                             ErrorKind::Other,
                             "maximum number of lazy recomputations reached; aborting cache computation",
                         )
                         .into(),
                     ));
-                    return Box::pin(async { result });
-                }
+                            return Box::pin(async { result });
+                        }
+                    };
+                    receiver.shared()
+                } else {
+                    self.create_channel(key.clone(), computation, is_refresh)
+                };
 
-                let computation = self.clone().compute(request, key.clone(), is_refresh);
-                let channel = self.create_channel(key.clone(), computation, is_refresh);
                 let evicted = current_computations.insert(key, channel.clone());
                 debug_assert!(evicted.is_none());
                 channel
