@@ -22,7 +22,7 @@ use sentry::{Hub, SentryFutureExt};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{oneshot, RwLock};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
@@ -527,15 +527,13 @@ impl SharedCacheBackend {
     }
 }
 
-/// Message to send upload tasks across the [`InnerSharedCacheService::upload_queue_tx`].
+/// Message to send upload tasks across the [`InnerSharedCacheService::queue`].
 #[derive(Debug)]
 struct UploadMessage {
     /// The cache key to store the data at.
     key: SharedCacheKey,
     /// The [`File`] to read the cache data from.
     src: File,
-    /// A channel to notify completion of storage.
-    done_tx: oneshot::Sender<()>,
     /// The reason to store this item.
     reason: CacheStoreReason,
 }
@@ -573,10 +571,18 @@ pub struct SharedCacheService {
     runtime: tokio::runtime::Handle,
 }
 
-#[derive(Debug)]
 struct InnerSharedCacheService {
     backend: Arc<SharedCacheBackend>,
-    upload_queue_tx: mpsc::Sender<UploadMessage>,
+    queue: barbados::Queue,
+}
+
+impl fmt::Debug for InnerSharedCacheService {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InnerSharedCacheService")
+            .field("backend", &self.backend)
+            .field("queue", &"<barbados::Queue>")
+            .finish()
+    }
 }
 
 impl SharedCacheService {
@@ -584,71 +590,36 @@ impl SharedCacheService {
         let inner = Arc::new(RwLock::new(None));
         let slf = Self {
             inner: inner.clone(),
-            runtime,
+            runtime: runtime.clone(),
         };
         if let Some(cfg) = config {
-            slf.runtime.spawn(Self::init(inner, cfg));
+            slf.runtime.spawn(Self::init(runtime, inner, cfg));
         }
         slf
     }
 
-    async fn init(inner: Arc<RwLock<Option<InnerSharedCacheService>>>, config: SharedCacheConfig) {
-        let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
+    async fn init(
+        runtime: tokio::runtime::Handle,
+        inner: Arc<RwLock<Option<InnerSharedCacheService>>>,
+        config: SharedCacheConfig,
+    ) {
         if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
             let backend = Arc::new(backend);
-            tokio::spawn(
-                Self::upload_worker(rx, backend.clone(), config.max_concurrent_uploads)
-                    .bind_hub(Hub::new_from_top(Hub::current())),
-            );
-            *inner.write().await = Some(InnerSharedCacheService {
-                backend,
-                upload_queue_tx: tx,
-            });
-        }
-    }
 
-    /// Long running task managing concurrent uploads to the shared cache.
-    async fn upload_worker(
-        mut work_rx: mpsc::Receiver<UploadMessage>,
-        backend: Arc<SharedCacheBackend>,
-        max_concurrent_uploads: usize,
-    ) {
-        let (done_tx, mut done_rx) = mpsc::channel::<()>(max_concurrent_uploads);
-        let mut uploads_counter = max_concurrent_uploads;
-        loop {
-            tokio::select! {
-                Some(message) = work_rx.recv(), if uploads_counter > 0 => {
-                    uploads_counter -= 1;
-                    tokio::spawn(
-                        Self::single_uploader(done_tx.clone(), backend.clone(), message)
-                            .bind_hub(Hub::new_from_top(Hub::current()))
-                    );
-                    let uploads_in_flight: u64 = (max_concurrent_uploads - uploads_counter) as u64;
-                    metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight);
-                }
-                Some(_) = done_rx.recv() => {
-                    uploads_counter += 1;
-                }
-                else => break,
-            }
+            let queue = barbados::Queue::new(
+                runtime,
+                config.max_concurrent_uploads,
+                Some(config.max_upload_queue_size),
+            );
+            *inner.write().await = Some(InnerSharedCacheService { backend, queue });
         }
-        tracing::info!("Shared cache upload worker terminated");
     }
 
     /// Does a single upload to the shared cache backend.
     ///
     /// Handles metrics and error reporting.
-    async fn single_uploader(
-        done_tx: mpsc::Sender<()>,
-        backend: Arc<SharedCacheBackend>,
-        message: UploadMessage,
-    ) {
-        let UploadMessage {
-            key,
-            src,
-            done_tx: complete_tx,
-            reason,
-        } = message;
+    async fn single_uploader(backend: Arc<SharedCacheBackend>, message: UploadMessage) {
+        let UploadMessage { key, src, reason } = message;
 
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
@@ -705,18 +676,6 @@ impl SharedCacheService {
                 );
             }
         }
-
-        // Tell the work coordinator we're done.
-        done_tx.send(()).await.unwrap_or_else(|err| {
-            let stderr: &dyn std::error::Error = &err;
-            tracing::error!(
-                stderr,
-                "Shared cache single_uploader failed to send done message",
-            );
-        });
-
-        // Tell the original work submitter we're done, if they dropped this we don't care.
-        complete_tx.send(()).ok();
     }
 
     /// Returns the name of the backend configured.
@@ -835,24 +794,35 @@ impl SharedCacheService {
         let inner_guard = self.inner.read().await;
         match inner_guard.as_ref() {
             Some(inner) => {
-                metric!(
-                    gauge("services.shared_cache.uploads_queue_capacity") =
-                        inner.upload_queue_tx.capacity() as u64
+                let done = inner.queue.enqueue(
+                    Self::single_uploader(
+                        inner.backend.clone(),
+                        UploadMessage { key, src, reason },
+                    )
+                    .bind_hub(Hub::new_from_top(Hub::current())),
                 );
-                let (done_tx, done_rx) = oneshot::channel::<()>();
-                inner
-                    .upload_queue_tx
-                    .try_send(UploadMessage {
-                        key,
-                        src,
-                        done_tx,
-                        reason,
-                    })
-                    .unwrap_or_else(|_| {
+                match done {
+                    Ok(receiver) => {
+                        let stats = inner.queue.stats();
+                        // TODO: `barbados` does not notify us directly about a change in active workers
+                        metric!(
+                            gauge("services.shared_cache.uploads_in_flight") =
+                                stats.active_workers as u64
+                        );
+                        if let Some(capacity) = stats.queue_capacity.map(|c| c - stats.queue_len) {
+                            metric!(
+                                gauge("services.shared_cache.uploads_queue_capacity") =
+                                    capacity as u64
+                            );
+                        }
+                        Some(receiver)
+                    }
+                    Err(_) => {
                         metric!(counter("services.shared_cache.store.dropped") += 1);
                         tracing::error!("Shared cache upload queue full");
-                    });
-                Some(done_rx)
+                        None
+                    }
+                }
             }
             None => None,
         }

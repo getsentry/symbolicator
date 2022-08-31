@@ -12,6 +12,7 @@ async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
 axum-server = { version = "0.4.0" }
 backtrace = "0.3.65"
+barbados = { git = "https://github.com/getsentry/barbados" }
 base64 = "0.13.0"
 cadence = "0.29.0"
 chrono = { version = "0.4.19", features = ["serde"] }
