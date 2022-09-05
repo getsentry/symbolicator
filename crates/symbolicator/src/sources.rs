@@ -202,7 +202,7 @@ impl Default for AwsCredentialsProvider {
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(deserialize_with = "deserialize_region")]
-    pub region: aws_types::region::Region,
+    pub region: Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
     #[serde(default)]
