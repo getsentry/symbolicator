@@ -25,7 +25,7 @@ use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, Re
 use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
 use crate::types::ObjectId;
 
-type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<aws_sdk_s3::client::Client>>;
+type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<Client>>;
 
 /// Maximum number of cached S3 clients.
 ///
