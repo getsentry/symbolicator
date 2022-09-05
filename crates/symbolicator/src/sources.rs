@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use url::Url;
 
 use crate::types::{Glob, ObjectId, ObjectType};
@@ -43,7 +43,7 @@ impl fmt::Display for SourceId {
 /// Sources provide the ability to download Download Information Files (DIF).
 /// Their configuration is a combination of the location of the source plus any
 /// required authentication etc.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
     /// Sentry debug files endpoint.
@@ -124,6 +124,13 @@ pub struct FilesystemSourceConfig {
     pub files: CommonSourceConfig,
 }
 
+fn serialize_region<S>(region: &Region, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str((&region).as_ref())
+}
+
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
 fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
 where
@@ -198,10 +205,13 @@ impl Default for AwsCredentialsProvider {
 }
 
 /// Amazon S3 authorization information.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
-    #[serde(deserialize_with = "deserialize_region")]
+    #[serde(
+        deserialize_with = "deserialize_region",
+        serialize_with = "serialize_region"
+    )]
     pub region: Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
@@ -267,7 +277,7 @@ pub struct GcsSourceConfig {
 }
 
 /// Configuration for S3 symbol buckets.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceConfig {
     /// Unique source identifier.
     pub id: SourceId,
