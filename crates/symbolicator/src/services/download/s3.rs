@@ -10,13 +10,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aws_config::meta::credentials::provide_credentials_fn;
-use aws_config::meta::credentials::LazyCachingCredentialsProvider;
+use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
 use aws_sdk_s3::error::GetObjectErrorKind;
 use aws_sdk_s3::types::SdkError::{ConstructionFailure, DispatchFailure};
 use aws_sdk_s3::types::SdkError::{ResponseError, ServiceError, TimeoutError};
-use aws_sdk_s3::{Client, Region};
-use aws_types::credentials::ProvideCredentials;
-use aws_types::Credentials;
+use aws_sdk_s3::Client;
+use aws_types::credentials::{Credentials, ProvideCredentials};
+use aws_types::region::Region;
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 
