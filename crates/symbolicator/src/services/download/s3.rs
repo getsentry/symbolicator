@@ -189,40 +189,44 @@ impl S3Downloader {
 
         let response = match request.await {
             Ok(Ok(response)) => response,
-            Ok(Err(err0)) => {
-                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err0);
-                return match &err0 {
-                    ConstructionFailure(err) => {
-                        println!("ERROR: ConstructionFailure: {:?}", err);
+            Ok(Err(err)) => {
+                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
+                return match &err {
+                    ConstructionFailure(err1) => {
+                        println!("ERROR: ConstructionFailure: {:?}", err1);
                         Err(DownloadError::Canceled)
                     }
-                    DispatchFailure(err) => {
-                        println!("ERROR: DispatchFailure: {:?}", err);
+                    DispatchFailure(err1) => {
+                        println!("ERROR: DispatchFailure: {:?}", err1);
                         Err(DownloadError::Canceled)
                     }
-                    TimeoutError(err) => {
-                        println!("ERROR: TimeoutError: {:?}", err);
+                    TimeoutError(err1) => {
+                        println!("ERROR: TimeoutError: {:?}", err1);
                         Err(DownloadError::Canceled)
                     }
-                    ResponseError { err, raw: _ } => {
-                        println!("ERROR: ResponseError: {:?}", err);
+                    ResponseError { err: err1, raw: _ } => {
+                        println!("ERROR: ResponseError: {:?}", err1);
                         Err(DownloadError::Canceled)
                     }
                     ServiceError { err: err1, raw: _ } => {
                         println!("ServiceError: {:?}", &err1);
                         match &err1.kind {
-                            GetObjectErrorKind::NoSuchKey(err) => {
-                                println!("ERROR: NoSuchKey: {:?}", &err)
+                            GetObjectErrorKind::NoSuchKey(err2) => {
+                                println!("ERROR: NoSuchKey: {:?}", &err2);
                             }
-                            GetObjectErrorKind::InvalidObjectState(err) => {
-                                println!("ERROR: InvalidObjectState: {:?}", &err);
+                            GetObjectErrorKind::InvalidObjectState(err2) => {
+                                println!("ERROR: InvalidObjectState: {:?}", &err2);
                             }
-                            GetObjectErrorKind::Unhandled(err) => {
-                                println!("ERROR: Unhandled: {:?}", &err)
+                            GetObjectErrorKind::Unhandled(err2) => {
+                                println!("ERROR: Unhandled: {:?}", &err2);
+                                println!(
+                                    "bucket={:?}, key={:?}, source_key={:?}",
+                                    &bucket, &key, &source_key
+                                );
                             }
                             _ => println!("ERROR: other GetObjectErrorKind: {:?}", &err1.kind),
                         };
-                        Err(DownloadError::S3(err0.into()))
+                        Err(DownloadError::S3(err.into()))
                     }
                 };
             }
