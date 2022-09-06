@@ -187,8 +187,7 @@ impl S3Downloader {
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response0 = request.await;
-        let response = match response0 {
+        let response = match request.await {
             Ok(Ok(response)) => response,
             Ok(Err(err0)) => {
                 tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err0);
