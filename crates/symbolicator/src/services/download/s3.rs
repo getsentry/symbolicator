@@ -183,7 +183,7 @@ impl S3Downloader {
             .key(key.clone())
             .send();
 
-        let source = RemoteDif::from(file_source);
+        let source = RemoteDif::from(file_source.clone());
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
