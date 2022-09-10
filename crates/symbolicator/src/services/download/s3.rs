@@ -148,9 +148,9 @@ impl S3Downloader {
         }
     }
 
-    async fn create_s3_client<P: ProvideCredentials + Send + Sync + 'static>(
+    async fn create_s3_client(
         &self,
-        provider: P,
+        provider: impl ProvideCredentials + Send + Sync + 'static,
         region: Region,
     ) -> Client {
         let shared_config = aws_config::from_env()
