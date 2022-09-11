@@ -7,10 +7,10 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
-aws-config = "0.47.0"
-aws-types = { version = "0.47.0", features = ["hardcoded-credentials"] }
-aws-sdk-s3 = "0.17.0"
-aws-smithy-http = "0.47.0"
+aws-config = "0.48.0"
+aws-types = { version = "0.48.0", features = ["hardcoded-credentials"] }
+aws-sdk-s3 = "0.18.0"
+aws-smithy-http = "0.48.0"
 apple-crash-report-parser = "0.5.0"
 async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
