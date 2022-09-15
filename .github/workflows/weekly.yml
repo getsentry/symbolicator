@@ -22,22 +22,15 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
-          components: clippy
+      - name: Install rust stable toolchain
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${{ matrix.rust }} --profile minimal --component clippy
+          rustup default ${{ matrix.rust }}
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-features --workspace --tests --examples -- -D clippy::all
+      - run: cargo clippy --all-features --workspace --tests --examples -- -D clippy::all
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --all-features
+      - run: cargo test --workspace --all-features
 
   weekly-audit:
     name: Audit
