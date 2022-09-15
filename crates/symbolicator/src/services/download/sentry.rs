@@ -25,6 +25,9 @@ use crate::sources::SentrySourceConfig;
 use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, CancelOnDrop};
 
+/// Maximum number of cached Sentry `list_files` requests.
+const SENTRY_INDEX_CACHE_SIZE: usize = 100_000;
+
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct SentryRemoteDif {
@@ -126,7 +129,9 @@ impl SentryDownloader {
         Self {
             client,
             runtime,
-            index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            index_cache: Mutex::new(SentryIndexCache::new(
+                SENTRY_INDEX_CACHE_SIZE.try_into().unwrap(),
+            )),
             cache_duration,
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,

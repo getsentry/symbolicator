@@ -95,7 +95,7 @@ impl S3Downloader {
     pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
         Self {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
-            client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
+            client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE.try_into().unwrap())),
             connect_timeout,
             streaming_timeout,
         }
