@@ -26,7 +26,7 @@ humantime-serde = "1.1.1"
 ipnetwork = "0.20.0"
 jsonwebtoken = "8.1.0"
 lazy_static = "1.4.0"
-lru = "0.7.5"
+lru = "0.8.0"
 minidump = "0.14.0"
 minidump-processor = "0.14.0"
 num_cpus = "1.13.0"
@@ -42,8 +42,8 @@ serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
-symbolicator-crash = { path = "../symbolicator-crash/", optional = true }
 symbolic = { version = "9.1.2", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp"] }
+symbolicator-crash = { path = "../symbolicator-crash/", optional = true }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }

@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use sentry_tower::{NewSentryLayer, SentryHttpLayer};
@@ -33,7 +34,11 @@ pub fn create_app(service: Service) -> Router {
         .layer(axum::extract::Extension(service))
         .layer(NewSentryLayer::new_from_top())
         .layer(SentryHttpLayer::with_transaction())
-        .layer(MetricsLayer);
+        .layer(MetricsLayer)
+        .layer(DefaultBodyLimit::disable());
+    // XXX: Adding a limit would lead to a confusing trait error that I don't know how to solve:
+    // > the trait `tower_service::Service<axum::http::Request<http_body::limited::Limited<_>>>` is not implemented for `Route`
+    // .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)) // ~100MB;
     Router::new()
         .route("/proxy/*path", get(proxy).head(proxy))
         .route("/requests/:request_id", get(requests))

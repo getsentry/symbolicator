@@ -76,7 +76,7 @@ impl GcsDownloader {
         streaming_timeout: std::time::Duration,
     ) -> Self {
         Self {
-            token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE)),
+            token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE.try_into().unwrap())),
             client,
             connect_timeout,
             streaming_timeout,
