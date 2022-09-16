@@ -39,27 +39,18 @@ jobs:
         run: flake8 tests
 
       - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt, clippy
-          override: true
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
 
       - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v2
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-features --workspace --tests --examples
+        run: cargo clippy --all-features --workspace --tests --examples
 
   unit-test:
     name: Unit Tests
@@ -74,20 +65,15 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal
 
       - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v2
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --all-features --locked
+        run: cargo test --workspace --all-features --locked
         env:
           SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL }}
           SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY }}
@@ -108,14 +94,12 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal
 
       - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v2
 
       - name: Build rust
         run: cargo build --locked
@@ -168,14 +152,12 @@ jobs:
           python-version: 3.8
 
       - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal
 
       - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v2
 
       - name: Build Symbolicator
         run: cargo build --locked
@@ -185,8 +167,7 @@ jobs:
 
       - name: Run Sentry's Symbolicator integration tests
         working-directory: sentry
-        run: |
-          make test-symbolicator
+        run: make test-symbolicator
 
   doc-comments:
     name: Rust doc comments
@@ -203,20 +184,14 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rust-docs
-          override: true
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal --component rust-docs
 
       - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
+        uses: swatinem/rust-cache@v2
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --workspace --all-features --document-private-items --no-deps
+      - run: cargo doc --workspace --all-features --document-private-items --no-deps
 
   docs:
     name: Build docs
@@ -253,18 +228,16 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly-2022-01-14
-          components: llvm-tools-preview
-          override: true
+      - name: Install rust stable toolchain
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
 
       - uses: taiki-e/install-action@cargo-llvm-cov
 
-      - run: cargo llvm-cov --all-features --workspace --doctests --lcov --output-path lcov.info
+      - run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
       - uses: codecov/codecov-action@e156083f13aff6830c92fc5faa23505779fbf649
         with:
