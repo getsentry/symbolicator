@@ -448,7 +448,7 @@ impl Iterator for SourceLocationIter<'_> {
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }

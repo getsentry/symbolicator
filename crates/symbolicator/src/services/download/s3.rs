@@ -3,7 +3,6 @@
 //! Specifically this supports the [`S3SourceConfig`] source.
 
 use std::any::type_name;
-use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
@@ -237,9 +236,10 @@ impl S3Downloader {
             }
         };
 
-        let truncated_content_length = u32::try_from(response.content_length).ok();
-        let timeout =
-            truncated_content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
+        let timeout = Some(content_length_timeout(
+            response.content_length(),
+            self.streaming_timeout,
+        ));
 
         let stream = if response.content_length == 0 {
             tracing::debug!("Empty response from s3:{}{}", bucket, &key);
