@@ -50,7 +50,7 @@ pub enum DownloadError {
     #[error("failed to fetch data from GCS")]
     Gcs(#[from] crate::utils::gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
-    Sentry(#[from] sentry::SentryError),
+    Sentry(sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
     #[error("S3 error code: {1} (http status: {0})")]
@@ -62,6 +62,19 @@ pub enum DownloadError {
     Rejected(StatusCode),
     #[error("failed to fetch object: {0}")]
     CachedError(String),
+}
+
+impl From<sentry::SentryError> for DownloadError {
+    fn from(err: sentry::SentryError) -> Self {
+        if matches!(
+            err,
+            sentry::SentryError::BadStatusCode(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
+        ) {
+            DownloadError::Permissions
+        } else {
+            DownloadError::Sentry(err)
+        }
+    }
 }
 
 impl DownloadError {
