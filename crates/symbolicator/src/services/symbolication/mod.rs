@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError};
 use crate::services::objects::ObjectsActor;
+use crate::services::ppdb_caches::{PortablePdbCacheActor, PortablePdbCacheError};
 use crate::services::symcaches::{SymCacheActor, SymCacheError};
 use crate::sources::SourceConfig;
 use crate::types::{
@@ -43,6 +44,7 @@ pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
+    ppdb_caches: PortablePdbCacheActor,
     diagnostics_cache: crate::cache::Cache,
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
@@ -57,6 +59,7 @@ impl SymbolicationActor {
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
+        ppdb_caches: PortablePdbCacheActor,
         diagnostics_cache: crate::cache::Cache,
         cpu_pool: tokio::runtime::Handle,
         max_concurrent_requests: Option<usize>,
@@ -65,6 +68,7 @@ impl SymbolicationActor {
             objects,
             symcaches,
             cficaches,
+            ppdb_caches,
             diagnostics_cache,
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
@@ -387,6 +391,27 @@ impl From<&SymCacheError> for ObjectFileStatus {
                 // `capture_error` further down in the callstack, it
                 // should be explicitly handled here as a
                 // SymCacheError variant.
+                sentry::capture_error(e);
+                ObjectFileStatus::Other
+            }
+        }
+    }
+}
+
+impl From<&PortablePdbCacheError> for ObjectFileStatus {
+    fn from(e: &PortablePdbCacheError) -> ObjectFileStatus {
+        match e {
+            PortablePdbCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
+            // nb: Timeouts during download are also caught by Fetching
+            PortablePdbCacheError::Timeout => ObjectFileStatus::Timeout,
+            PortablePdbCacheError::Malformed => ObjectFileStatus::Malformed,
+            PortablePdbCacheError::PortablePdbParsing(_) => ObjectFileStatus::Malformed,
+            _ => {
+                // Just in case we didn't handle an error properly,
+                // capture it here. If an error was captured with
+                // `capture_error` further down in the callstack, it
+                // should be explicitly handled here as a
+                // PortablePdbCacheError variant.
                 sentry::capture_error(e);
                 ObjectFileStatus::Other
             }

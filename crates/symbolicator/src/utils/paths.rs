@@ -192,6 +192,8 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
         FileType::Il2cpp => Vec::new(),
+        // TODO: figure this out
+        FileType::PortablePdb => Vec::new(),
     }
 }
 
@@ -271,6 +273,8 @@ fn get_symstore_path(
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
         FileType::Il2cpp => None,
+        // TODO: figure this out
+        FileType::PortablePdb => None,
     }
 }
 
@@ -317,6 +321,8 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
         FileType::Il2cpp => None,
+        // TODO: figure this out
+        FileType::PortablePdb => None,
     }
 }
 
@@ -370,6 +376,8 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
         FileType::ElfCode | FileType::ElfDebug => {
             Some(Cow::Borrowed(identifier.code_id.as_ref()?.as_str()))
         }
+        // TODO: figure this out
+        FileType::PortablePdb => None,
     }
 }
 
@@ -385,6 +393,7 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
         FileType::UuidMap => "uuidmap",
         FileType::BcSymbolMap => "bcsymbolmap",
         FileType::Il2cpp => "il2cpp",
+        FileType::PortablePdb => "portablepdb",
     };
 
     // determine the ID we use for the path

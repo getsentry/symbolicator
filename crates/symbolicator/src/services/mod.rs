@@ -42,6 +42,7 @@ use self::cficaches::CfiCacheActor;
 use self::download::DownloadService;
 use self::il2cpp::Il2cppService;
 use self::objects::ObjectsActor;
+use self::ppdb_caches::PortablePdbCacheActor;
 use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
@@ -88,12 +89,15 @@ impl Service {
             bitcode,
             il2cpp,
         );
-        let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache, objects.clone());
+        let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache.clone(), objects.clone());
+        let ppdb_caches =
+            PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache, objects.clone());
 
         let symbolication = SymbolicationActor::new(
             objects.clone(),
             symcaches,
             cficaches,
+            ppdb_caches,
             caches.diagnostics,
             cpu_pool,
             config.max_concurrent_requests,

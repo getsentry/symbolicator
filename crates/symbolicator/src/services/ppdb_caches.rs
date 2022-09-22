@@ -1,8 +1,9 @@
 use futures::future::BoxFuture;
 use symbolic::common::ByteView;
-use symbolic_ppdb::PortablePdbCache;
+use symbolic_ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 
-use std::io;
+use std::fs::File;
+use std::io::{self, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,11 +12,16 @@ use thiserror::Error;
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::objects::ObjectError;
+use crate::sources::{FileType, SourceConfig};
 use crate::types::{AllObjectCandidates, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
+use crate::utils::sentry::ConfigureScope;
 
 use super::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
-use super::objects::{ObjectMetaHandle, ObjectsActor};
+use super::download::ObjectId;
+use super::objects::{
+    FindObject, FoundObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+};
 use super::shared_cache::SharedCacheService;
 
 /// The supported ppdb_cache versions.
@@ -50,6 +56,9 @@ pub enum PortablePdbCacheError {
     #[error("failed to parse symcache")]
     Parsing(#[source] symbolic_ppdb::CacheError),
 
+    #[error("failed to parse portable pdb")]
+    PortablePdbParsing(#[source] ObjectError),
+
     #[error("failed to write symcache")]
     Writing(#[source] symbolic_ppdb::CacheError),
 
@@ -81,6 +90,19 @@ impl PortablePdbCacheFile {
             CacheStatus::CacheSpecificError(_) => Err(PortablePdbCacheError::Malformed),
         }
     }
+
+    /// Returns the list of DIFs which were searched for this symcache.
+    pub fn candidates(&self) -> &AllObjectCandidates {
+        &self.candidates
+    }
+}
+
+/// Information for fetching the symbols for this ppdb cache
+#[derive(Debug, Clone)]
+pub struct FetchPortablePdbCache {
+    pub identifier: ObjectId,
+    pub sources: Arc<[SourceConfig]>,
+    pub scope: Scope,
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +120,41 @@ impl PortablePdbCacheActor {
         Self {
             ppdb_caches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
+        }
+    }
+
+    pub async fn fetch(
+        &self,
+        request: FetchPortablePdbCache,
+    ) -> Result<Arc<PortablePdbCacheFile>, Arc<PortablePdbCacheError>> {
+        let FoundObject { meta, candidates } = self
+            .objects
+            .find(FindObject {
+                filetypes: &[FileType::PortablePdb],
+                identifier: request.identifier.clone(),
+                sources: request.sources.clone(),
+                scope: request.scope.clone(),
+                purpose: ObjectPurpose::Debug,
+            })
+            .await
+            .map_err(|e| Arc::new(PortablePdbCacheError::Fetching(e)))?;
+
+        match meta {
+            Some(handle) => {
+                self.ppdb_caches
+                    .compute_memoized(FetchPortablePdbCacheInternal {
+                        request,
+                        objects_actor: self.objects.clone(),
+                        object_meta: handle,
+                        candidates,
+                    })
+                    .await
+            }
+            None => Ok(Arc::new(PortablePdbCacheFile {
+                data: ByteView::from_slice(b""),
+                status: CacheStatus::Negative,
+                candidates,
+            })),
         }
     }
 }
@@ -213,4 +270,42 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
             candidates,
         }
     }
+}
+
+/// Computes and writes the ppdb cache.
+///
+/// It is assumed that the `object_handle` contains a positive cache.
+#[tracing::instrument(skip_all)]
+fn write_ppdb_cache(
+    path: &Path,
+    object_handle: &ObjectHandle,
+) -> Result<(), PortablePdbCacheError> {
+    sentry::configure_scope(|scope| {
+        object_handle.to_scope(scope);
+    });
+
+    let portable_pdb = object_handle
+        .parse_ppdb()
+        .map_err(PortablePdbCacheError::PortablePdbParsing)?
+        .unwrap();
+
+    tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key());
+
+    let mut converter = PortablePdbCacheConverter::new();
+
+    converter
+        .process_portable_pdb(&portable_pdb)
+        .map_err(PortablePdbCacheError::Writing)?;
+
+    let file = File::create(&path)?;
+    let mut writer = BufWriter::new(file);
+    converter
+        .serialize(&mut writer)
+        .map_err(PortablePdbCacheError::Io)?;
+
+    let file = writer.into_inner().map_err(io::Error::from)?;
+
+    file.sync_all()?;
+
+    Ok(())
 }

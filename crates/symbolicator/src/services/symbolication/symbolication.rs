@@ -58,7 +58,11 @@ impl SymbolicationActor {
 
         let mut module_lookup = ModuleLookup::new(scope, sources, modules.into_iter());
         module_lookup
-            .fetch_symcaches(self.symcaches.clone(), &stacktraces)
+            .fetch_caches(
+                self.symcaches.clone(),
+                self.ppdb_caches.clone(),
+                &stacktraces,
+            )
             .await;
 
         let mut metrics = StacktraceMetrics::default();
@@ -161,7 +165,9 @@ fn symbolicate_frame(
         Some(CacheFile::SymCache(symcache)) => {
             symbolicate_native_frame(symcache, lookup_result, registers, signal, frame, index)
         }
-        Some(CacheFile::PpdbCache(ppdbcache)) => symbolicate_dotnet_frame(ppdbcache, frame, index),
+        Some(CacheFile::PortablePdbCache(ppdbcache)) => {
+            symbolicate_dotnet_frame(ppdbcache, frame, index)
+        }
         None if lookup_result.object_info.debug_status == ObjectFileStatus::Malformed => {
             Err(FrameStatus::Malformed)
         }
