@@ -234,6 +234,7 @@ impl ModuleLookup {
                 };
 
                 entry.object_info.arch = Default::default();
+                entry.object_info.debug_status = status;
 
                 match cache {
                     Some(CacheFile::SymCache(ref symcache)) => {
@@ -249,7 +250,7 @@ impl ModuleLookup {
                     None => {}
                 }
 
-                entry.object_info.debug_status = status;
+                entry.cache = cache;
             }
         }
     }
