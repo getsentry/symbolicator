@@ -2158,7 +2158,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic-common",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3028,12 +3028,21 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 [[package]]
 name = "symbolic"
 version = "9.1.4"
+dependencies = [
+ "symbolic-common 9.1.4",
+ "symbolic-debuginfo 9.1.4",
+ "symbolic-ppdb",
+]
+
+[[package]]
+name = "symbolic"
+version = "9.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a25d209528aa05da204db74a60a04c3a7afd2b36c51c252eaf58b2b7e0cdf4a8"
 dependencies = [
  "symbolic-cfi",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "symbolic-demangle",
  "symbolic-il2cpp",
  "symbolic-symcache",
@@ -3045,9 +3054,20 @@ version = "9.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90f6c104c6d37db19853e41b7dced3a5d28ec9bf55a722f6893c844931460185"
 dependencies = [
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
+]
+
+[[package]]
+name = "symbolic-common"
+version = "9.1.4"
+dependencies = [
+ "debugid",
+ "memmap2",
+ "serde",
+ "stable_deref_trait",
+ "uuid",
 ]
 
 [[package]]
@@ -3061,6 +3081,35 @@ dependencies = [
  "serde",
  "stable_deref_trait",
  "uuid",
+]
+
+[[package]]
+name = "symbolic-debuginfo"
+version = "9.1.4"
+dependencies = [
+ "bitvec",
+ "dmsort",
+ "elementtree",
+ "elsa",
+ "fallible-iterator",
+ "flate2",
+ "gimli",
+ "goblin",
+ "lazy_static",
+ "lazycell",
+ "nom",
+ "nom-supreme",
+ "parking_lot 0.12.1",
+ "pdb-addr2line",
+ "regex",
+ "scroll",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "symbolic-common 9.1.4",
+ "thiserror",
+ "wasmparser",
+ "zip",
 ]
 
 [[package]]
@@ -3088,7 +3137,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "wasmparser",
  "zip",
@@ -3104,7 +3153,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3115,8 +3164,19 @@ checksum = "f241a432cc325fd6324d6b34c991cd00b67b5b036d8d81d1406de5e610c8556f"
 dependencies = [
  "indexmap",
  "serde_json",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "symbolic-ppdb"
+version = "9.1.4"
+dependencies = [
+ "indexmap",
+ "symbolic-common 9.1.4",
+ "thiserror",
+ "uuid",
+ "watto",
 ]
 
 [[package]]
@@ -3126,8 +3186,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "438d1b2f67a390fd1f899030254e70d9fc9a52746e77f814c8840344effc5e33"
 dependencies = [
  "indexmap",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-debuginfo 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "symbolic-il2cpp",
  "thiserror",
  "tracing",
@@ -3175,7 +3235,7 @@ dependencies = [
  "serde_yaml",
  "sha-1 0.10.0",
  "structopt",
- "symbolic",
+ "symbolic 9.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "symbolicator-crash",
  "tempfile",
  "test-assembler",
@@ -3215,7 +3275,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic",
+ "symbolic 9.1.4",
  "walkdir",
  "zip",
  "zstd",
@@ -4018,6 +4078,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b62c8d843f4423efee314dc75a1049886deba3214f7e7f9ff0e4e58b4d618581"
 dependencies = [
  "indexmap",
+]
+
+[[package]]
+name = "watto"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6746b5315e417144282a047ebb82260d45c92d09bf653fa9ec975e3809be942b"
+dependencies = [
+ "leb128",
+ "thiserror",
 ]
 
 [[package]]

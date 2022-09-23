@@ -12,6 +12,7 @@ use serde::Serialize;
 use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
+use symbolic::ppdb::PortablePdb;
 use walkdir::WalkDir;
 use zip::ZipArchive;
 use zstd::stream::copy_encode;
@@ -81,7 +82,7 @@ pub struct BundleMeta {
     pub debug_ids: Vec<String>,
 }
 
-fn process_file(
+fn process_object_file(
     sort_config: &SortConfig,
     bv: ByteView<'static>,
     filename: String,
@@ -165,6 +166,91 @@ fn process_file(
     Ok(rv)
 }
 
+fn process_ppdb_file(
+    sort_config: &SortConfig,
+    bv: ByteView<'static>,
+    filename: String,
+) -> Result<Option<String>> {
+    macro_rules! maybe_ignore_error {
+        ($expr:expr) => {
+            match $expr {
+                Ok(value) => value,
+                Err(err) => {
+                    if RunConfig::get().ignore_errors {
+                        eprintln!(
+                            "{}: ignored error {} ({})",
+                            style("error").red().bold(),
+                            err,
+                            style(filename).cyan(),
+                        );
+                        return Ok(None);
+                    } else {
+                        return Err(err).context(format!("failed to process file {}", filename));
+                    }
+                }
+            }
+        };
+    }
+
+    let compression_level = match sort_config.compression_level {
+        0 => 0,
+        1 => 3,
+        2 => 10,
+        3 => 19,
+        _ => 22,
+    };
+    let portable_pdb = maybe_ignore_error!(PortablePdb::parse(&bv));
+    let pdb_id = portable_pdb
+        .pdb_id()
+        .ok_or_else(|| anyhow!("failed to generate debug identifier"));
+    let unified_id = maybe_ignore_error!(pdb_id)
+        .breakpad()
+        .to_string()
+        .to_lowercase();
+
+    let root = &RunConfig::get().output;
+
+    let new_filename = root.join(format!(
+        "{}/{}/debuginfo",
+        &unified_id[..2],
+        &unified_id[2..]
+    ));
+
+    fs::create_dir_all(new_filename.parent().unwrap())?;
+
+    if let Some(bundle_id) = &sort_config.bundle_id {
+        let refs_path = new_filename.parent().unwrap().join("refs");
+        fs::create_dir_all(&refs_path)?;
+        fs::write(&refs_path.join(bundle_id), b"")?;
+    }
+
+    let meta = DebugIdMeta {
+        name: Some(filename.clone()),
+        arch: None,
+        file_format: None,
+    };
+
+    fs::write(
+        &new_filename.parent().unwrap().join("meta"),
+        &serde_json::to_vec(&meta)?,
+    )?;
+
+    log!(
+        "{} ({}) -> {}",
+        style(&filename).dim(),
+        style("portable pdb").yellow(),
+        style(new_filename.display()).cyan(),
+    );
+    let mut out = fs::File::create(&new_filename)?;
+
+    if compression_level > 0 {
+        copy_encode(bv.as_ref(), &mut out, compression_level)?;
+    } else {
+        io::copy(&mut bv.as_ref(), &mut out)?;
+    }
+    Ok(Some(unified_id))
+}
+
 fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
     let mut source_bundles_created = 0;
     let source_candidates = Mutex::new(HashMap::<String, Option<PathBuf>>::new());
@@ -194,7 +280,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                     let bv = ByteView::read(zip_file)?;
                     if Archive::peek(&bv) != FileFormat::Unknown {
                         debug_ids.lock().unwrap().extend(
-                            process_file(sort_config, bv, name)?
+                            process_object_file(sort_config, bv, name)?
                                 .into_iter()
                                 .map(|x| x.0),
                         );
@@ -203,7 +289,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
 
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
-                for (unified_id, object_kind) in process_file(
+                for (unified_id, object_kind) in process_object_file(
                     sort_config,
                     bv,
                     path.file_name().unwrap().to_string_lossy().to_string(),
@@ -218,6 +304,14 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                             source_candidates.insert(unified_id.clone(), Some(path.to_path_buf()));
                         }
                     }
+                    debug_ids.lock().unwrap().push(unified_id);
+                }
+            } else if PortablePdb::peek(&bv) {
+                if let Some(unified_id) = process_ppdb_file(
+                    sort_config,
+                    bv,
+                    path.file_name().unwrap().to_string_lossy().to_string(),
+                )? {
                     debug_ids.lock().unwrap().push(unified_id);
                 }
             }
@@ -239,7 +333,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
                     None => return Ok(0),
                 };
 
-                let processed_objects = process_file(
+                let processed_objects = process_object_file(
                     sort_config,
                     source_bundle,
                     path.file_name().unwrap().to_string_lossy().to_string(),
