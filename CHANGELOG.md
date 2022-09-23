@@ -10,6 +10,7 @@
 - Bump Native SDK to v0.5.0 ([#865](https://github.com/getsentry/symbolicator/pull/865))
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#050)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.4.17-2-gbd56100...0.5.0)
+- Add Portable PDB support to symsorter. ([#884](https://github.com/getsentry/symbolicator/pull/884))
 
 ### Fixes
 
