@@ -1,4 +1,4 @@
-FROM getsentry/sentry-cli:1 AS sentry-cli
+FROM getsentry/sentry-cli:2 AS sentry-cli
 FROM rust:slim-bullseye AS symbolicator-build
 
 WORKDIR /work
