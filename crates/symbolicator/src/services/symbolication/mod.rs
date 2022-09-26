@@ -794,4 +794,55 @@ mod tests {
         let request = get_symbolication_request(vec![symbol_server.pending_source]);
         assert!(symbolication.symbolicate_stacktraces(request).is_err());
     }
+
+    #[tokio::test]
+    async fn test_dotnet_integration() -> anyhow::Result<()> {
+        let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
+        let source = test::local_source();
+
+        // its not wasm, but that is the easiest to write tests because of relative
+        // addressing ;-)
+        let modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[
+              {
+                "type":"dotnetpdb",
+                "debug_file":"integration.pdb",
+                "debug_id":"0c1033f78632492e91c6c314b72e1920e60b819d"
+              }
+            ]"#,
+        )?;
+
+        let stacktraces = serde_json::from_str(
+            r#"[
+              {
+                "frames":[
+                  {
+                    "instruction_addr":10,
+                    "function_index":6,
+                    "addr_mode":"rel:0"
+                  }
+                ]
+              }
+            ]"#,
+        )?;
+
+        let request = SymbolicateStacktraces {
+            modules: modules.into_iter().map(From::from).collect(),
+            stacktraces,
+            signal: None,
+            origin: StacktraceOrigin::Symbolicate,
+            sources: Arc::new([source]),
+            scope: Default::default(),
+            options: RequestOptions {
+                dif_candidates: true,
+            },
+        };
+
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
+
+        assert_snapshot!(response.unwrap());
+        Ok(())
+    }
 }

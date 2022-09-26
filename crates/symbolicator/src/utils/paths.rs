@@ -174,7 +174,8 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
                     Some(path) => path,
                     None => return vec![],
                 },
-                ObjectType::DotnetPdb => todo!(),
+                // TODO: figure this out
+                ObjectType::DotnetPdb => return vec![],
                 ObjectType::Unknown => return vec![],
             };
             primary_path.push_str(".src.zip");
@@ -193,7 +194,9 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         FileType::BcSymbolMap => Vec::new(),
         FileType::Il2cpp => Vec::new(),
         // TODO: figure this out
-        FileType::PortablePdb => Vec::new(),
+        FileType::PortablePdb => get_pdb_symstore_path(identifier, false)
+            .into_iter()
+            .collect(),
     }
 }
 
@@ -385,15 +388,16 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
     // determine the suffix and object type
     let suffix = match filetype {
         FileType::ElfCode | FileType::MachCode | FileType::Pe | FileType::WasmCode => "executable",
-        FileType::ElfDebug | FileType::MachDebug | FileType::Pdb | FileType::WasmDebug => {
-            "debuginfo"
-        }
+        FileType::ElfDebug
+        | FileType::MachDebug
+        | FileType::Pdb
+        | FileType::WasmDebug
+        | FileType::PortablePdb => "debuginfo",
         FileType::Breakpad => "breakpad",
         FileType::SourceBundle => "sourcebundle",
         FileType::UuidMap => "uuidmap",
         FileType::BcSymbolMap => "bcsymbolmap",
         FileType::Il2cpp => "il2cpp",
-        FileType::PortablePdb => "portablepdb",
     };
 
     // determine the ID we use for the path
