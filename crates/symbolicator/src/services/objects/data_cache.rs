@@ -19,7 +19,7 @@ use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
-use symbolic_ppdb::PortablePdb;
+use symbolic::ppdb::PortablePdb;
 use tempfile::tempfile_in;
 use tempfile::NamedTempFile;
 

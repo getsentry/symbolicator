@@ -244,6 +244,7 @@ impl ModuleLookup {
                     }
 
                     Some(CacheFile::PortablePdbCache(ref ppdb_cache)) => {
+                        entry.object_info.features.merge(ppdb_cache.features());
                         entry.object_info.candidates.merge(ppdb_cache.candidates());
                     }
 

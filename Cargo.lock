@@ -2157,7 +2157,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic-common",
+ "symbolic-common 9.1.4",
 ]
 
 [[package]]
@@ -3018,10 +3018,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e615680e415ddd25876cb34b40d90cf92011ae7e37d6a829f4dc341f19da0c32"
 dependencies = [
  "symbolic-cfi",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
+ "symbolic-debuginfo 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
  "symbolic-demangle",
  "symbolic-il2cpp",
+ "symbolic-ppdb 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
  "symbolic-symcache",
 ]
 
@@ -3031,8 +3032,8 @@ version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92a25e8af18f2579fdf29fae869d135f50453b3dccb3f6b30788d118d4ac7693"
 dependencies = [
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
+ "symbolic-debuginfo 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
  "thiserror",
 ]
 
@@ -3041,6 +3042,28 @@ name = "symbolic-common"
 version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "800963ba330b09a2ae4a4f7c6392b81fbc2784099a98c1eac68c3437aa9382b2"
+dependencies = [
+ "debugid",
+ "memmap2",
+ "stable_deref_trait",
+ "uuid",
+]
+
+[[package]]
+name = "symbolic-common"
+version = "9.2.0"
+dependencies = [
+ "debugid",
+ "memmap2",
+ "serde",
+ "stable_deref_trait",
+ "uuid",
+]
+
+[[package]]
+name = "symbolic-common"
+version = "9.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object#b29653f59f44c372ae4ca92e283217b3789afe30"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3074,7 +3097,39 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common",
+ "symbolic-common 9.2.0",
+ "symbolic-ppdb 9.2.0",
+ "thiserror",
+ "wasmparser",
+ "zip",
+]
+
+[[package]]
+name = "symbolic-debuginfo"
+version = "9.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object#b29653f59f44c372ae4ca92e283217b3789afe30"
+dependencies = [
+ "bitvec",
+ "dmsort",
+ "elementtree",
+ "elsa",
+ "fallible-iterator",
+ "flate2",
+ "gimli",
+ "goblin",
+ "lazy_static",
+ "lazycell",
+ "nom",
+ "nom-supreme",
+ "parking_lot 0.12.1",
+ "pdb-addr2line",
+ "regex",
+ "scroll",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
+ "symbolic-ppdb 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
  "thiserror",
  "wasmparser",
  "zip",
@@ -3090,7 +3145,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
 ]
 
 [[package]]
@@ -3101,22 +3156,31 @@ checksum = "a407425fc385e0ef63f22aff6f067e1f9b5da69028ecbb1a932bfe60a126472d"
 dependencies = [
  "indexmap",
  "serde_json",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
+ "symbolic-debuginfo 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
 ]
 
 [[package]]
 name = "symbolic-ppdb"
-version = "9.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c32f451d62ce5695dfca76a707b7faaf17e75be6e4ca910e11a14ee7d8dbab2"
+version = "9.2.0"
 dependencies = [
  "indexmap",
- "leb128",
- "symbolic-common",
+ "symbolic-common 9.2.0",
  "thiserror",
  "uuid",
- "zerocopy",
+ "watto",
+]
+
+[[package]]
+name = "symbolic-ppdb"
+version = "9.2.0"
+source = "git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object#b29653f59f44c372ae4ca92e283217b3789afe30"
+dependencies = [
+ "indexmap",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
+ "thiserror",
+ "uuid",
+ "watto",
 ]
 
 [[package]]
@@ -3126,8 +3190,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba56e5a231422bb4f3486daa511a0ac39b89ad9f4d133021c4c2f0619ce0f2fd"
 dependencies = [
  "indexmap",
- "symbolic-common",
- "symbolic-debuginfo",
+ "symbolic-common 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
+ "symbolic-debuginfo 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
  "symbolic-il2cpp",
  "thiserror",
  "tracing",
@@ -3177,8 +3241,7 @@ dependencies = [
  "serde_yaml",
  "sha-1",
  "structopt",
- "symbolic",
- "symbolic-ppdb",
+ "symbolic 9.2.0 (git+https://github.com/getsentry/symbolic?branch=feat/ppdb-object)",
  "symbolicator-crash",
  "tempfile",
  "test-assembler",
@@ -3218,7 +3281,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic",
+ "symbolic 9.2.0",
  "walkdir",
  "zip",
  "zstd",
@@ -4167,27 +4230,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
-]
-
-[[package]]
-name = "zerocopy"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "332f188cc1bcf1fe1064b8c58d150f497e697f49774aa846f2dc949d9a25f236"
-dependencies = [
- "byteorder",
- "zerocopy-derive",
-]
-
-[[package]]
-name = "zerocopy-derive"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0fbc82b82efe24da867ee52e015e58178684bd9dd64c34e66bdf21da2582a9f"
-dependencies = [
- "proc-macro2",
- "syn",
- "synstructure",
 ]
 
 [[package]]

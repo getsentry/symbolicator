@@ -799,7 +799,7 @@ mod tests {
     async fn test_dotnet_integration() -> anyhow::Result<()> {
         let (service, _cache_dir) = setup_service().await;
         let symbolication = service.symbolication();
-        let source = test::local_source();
+        let (_srv, source) = test::symbol_server();
 
         // its not wasm, but that is the easiest to write tests because of relative
         // addressing ;-)
@@ -820,6 +820,26 @@ mod tests {
                   {
                     "instruction_addr":10,
                     "function_index":6,
+                    "addr_mode":"rel:0"
+                  },
+                  {
+                    "instruction_addr":6,
+                    "function_index":5,
+                    "addr_mode":"rel:0"
+                  },
+                  {
+                    "instruction_addr":0,
+                    "function_index":3,
+                    "addr_mode":"rel:0"
+                  },
+                  {
+                    "instruction_addr":0,
+                    "function_index":2,
+                    "addr_mode":"rel:0"
+                  },
+                  {
+                    "instruction_addr":45,
+                    "function_index":1,
                     "addr_mode":"rel:0"
                   }
                 ]

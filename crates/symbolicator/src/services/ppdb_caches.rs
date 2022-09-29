@@ -1,6 +1,6 @@
 use futures::future::BoxFuture;
 use symbolic::common::ByteView;
-use symbolic_ppdb::{PortablePdbCache, PortablePdbCacheConverter};
+use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 
 use std::fs::File;
 use std::io::{self, BufWriter};
@@ -13,7 +13,7 @@ use thiserror::Error;
 use crate::cache::{Cache, CacheStatus};
 use crate::services::objects::ObjectError;
 use crate::sources::{FileType, SourceConfig};
-use crate::types::{AllObjectCandidates, ObjectUseInfo, Scope};
+use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
@@ -54,13 +54,13 @@ pub enum PortablePdbCacheError {
     Fetching(#[source] ObjectError),
 
     #[error("failed to parse symcache")]
-    Parsing(#[source] symbolic_ppdb::CacheError),
+    Parsing(#[source] symbolic::ppdb::CacheError),
 
     #[error("failed to parse portable pdb")]
     PortablePdbParsing(#[source] ObjectError),
 
     #[error("failed to write symcache")]
-    Writing(#[source] symbolic_ppdb::CacheError),
+    Writing(#[source] symbolic::ppdb::CacheError),
 
     #[error("malformed symcache file")]
     Malformed,
@@ -73,12 +73,13 @@ pub struct PortablePdbCacheFile {
     data: ByteView<'static>,
     status: CacheStatus,
     candidates: AllObjectCandidates,
+    features: ObjectFeatures,
 }
 
 impl PortablePdbCacheFile {
     pub fn parse(
         &self,
-    ) -> Result<Option<symbolic_ppdb::PortablePdbCache<'_>>, PortablePdbCacheError> {
+    ) -> Result<Option<symbolic::ppdb::PortablePdbCache<'_>>, PortablePdbCacheError> {
         match &self.status {
             CacheStatus::Positive => Ok(Some(
                 PortablePdbCache::parse(&self.data).map_err(PortablePdbCacheError::Parsing)?,
@@ -91,9 +92,14 @@ impl PortablePdbCacheFile {
         }
     }
 
-    /// Returns the list of DIFs which were searched for this symcache.
+    /// Returns the list of DIFs which were searched for this ppdb cache.
     pub fn candidates(&self) -> &AllObjectCandidates {
         &self.candidates
+    }
+
+    /// Returns the features of the object file this ppdb cache was constructed from.
+    pub fn features(&self) -> ObjectFeatures {
+        self.features
     }
 }
 
@@ -154,6 +160,7 @@ impl PortablePdbCacheActor {
                 data: ByteView::from_slice(b""),
                 status: CacheStatus::Negative,
                 candidates,
+                features: ObjectFeatures::default(),
             })),
         }
     }
@@ -268,6 +275,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
             data,
             status,
             candidates,
+            features: self.object_meta.features(),
         }
     }
 }

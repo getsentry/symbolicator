@@ -34,7 +34,7 @@ pub enum ObjectError {
     NoTempDir,
     Malformed,
     Parsing(debuginfo::ObjectError),
-    PortablePdbParsing(symbolic_ppdb::FormatError),
+    PortablePdbParsing(symbolic::ppdb::FormatError),
     Caching(Arc<ObjectError>),
     Timeout,
 }
@@ -119,8 +119,8 @@ impl From<debuginfo::ObjectError> for ObjectError {
     }
 }
 
-impl From<symbolic_ppdb::FormatError> for ObjectError {
-    fn from(source: symbolic_ppdb::FormatError) -> Self {
+impl From<symbolic::ppdb::FormatError> for ObjectError {
+    fn from(source: symbolic::ppdb::FormatError) -> Self {
         Self::PortablePdbParsing(source)
     }
 }
