@@ -19,7 +19,6 @@ use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
-use symbolic::ppdb::PortablePdb;
 use tempfile::tempfile_in;
 use tempfile::NamedTempFile;
 
@@ -75,18 +74,6 @@ impl ObjectHandle {
         // actually invoking it.
         match &self.status {
             CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
-            CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(
-                DownloadError::from_cache(&self.status)
-                    .unwrap_or_else(|| DownloadError::CachedError(message.clone())),
-            )),
-        }
-    }
-
-    pub fn parse_ppdb(&self) -> Result<Option<PortablePdb<'_>>, ObjectError> {
-        match &self.status {
-            CacheStatus::Positive => Ok(Some(PortablePdb::parse(&self.data)?)),
             CacheStatus::Negative => Ok(None),
             CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
             CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(

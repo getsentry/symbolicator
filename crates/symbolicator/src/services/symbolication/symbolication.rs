@@ -273,6 +273,7 @@ fn symbolicate_native_frame(
     // which is the top-level function.
     let mut sym_addr = None;
     let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
+
     for source_location in symcache.lookup(relative_addr) {
         let abs_path = source_location
             .file()

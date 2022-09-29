@@ -1,5 +1,6 @@
 use futures::future::BoxFuture;
 use symbolic::common::ByteView;
+use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 
 use std::fs::File;
@@ -53,16 +54,16 @@ pub enum PortablePdbCacheError {
     #[error("failed to download object")]
     Fetching(#[source] ObjectError),
 
-    #[error("failed to parse symcache")]
+    #[error("failed to parse ppdb cache")]
     Parsing(#[source] symbolic::ppdb::CacheError),
 
     #[error("failed to parse portable pdb")]
     PortablePdbParsing(#[source] ObjectError),
 
-    #[error("failed to write symcache")]
+    #[error("failed to write ppdb cache")]
     Writing(#[source] symbolic::ppdb::CacheError),
 
-    #[error("malformed symcache file")]
+    #[error("malformed ppdb cache file")]
     Malformed,
 
     #[error("symcache building took too long")]
@@ -292,17 +293,18 @@ fn write_ppdb_cache(
         object_handle.to_scope(scope);
     });
 
-    let portable_pdb = object_handle
-        .parse_ppdb()
-        .map_err(PortablePdbCacheError::PortablePdbParsing)?
-        .unwrap();
+    let ppdb_obj = match object_handle.parse() {
+        Ok(Some(Object::PortablePdb(ppdb_obj))) => ppdb_obj,
+        Ok(Some(_) | None) => panic!("object handle does not contain a valid portable pdb object"),
+        Err(e) => return Err(PortablePdbCacheError::PortablePdbParsing(e)),
+    };
 
     tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key());
 
     let mut converter = PortablePdbCacheConverter::new();
 
     converter
-        .process_portable_pdb(&portable_pdb)
+        .process_portable_pdb(ppdb_obj.portable_pdb())
         .map_err(PortablePdbCacheError::Writing)?;
 
     let file = File::create(&path)?;

@@ -34,7 +34,6 @@ pub enum ObjectError {
     NoTempDir,
     Malformed,
     Parsing(debuginfo::ObjectError),
-    PortablePdbParsing(symbolic::ppdb::FormatError),
     Caching(Arc<ObjectError>),
     Timeout,
 }
@@ -49,7 +48,6 @@ impl fmt::Display for ObjectError {
             ObjectError::NoTempDir => write!(f, "unable to get directory for tempfiles")?,
             ObjectError::Malformed => write!(f, "malformed object file")?,
             ObjectError::Parsing(_) => write!(f, "failed to parse object")?,
-            ObjectError::PortablePdbParsing(_) => write!(f, "failed to parse portable pdb")?,
             ObjectError::Caching(_) => write!(f, "failed to look into cache")?,
             ObjectError::Timeout => write!(f, "object download took too long")?,
         }
@@ -88,7 +86,6 @@ impl std::error::Error for ObjectError {
             ObjectError::NoTempDir => None,
             ObjectError::Malformed => None,
             ObjectError::Parsing(ref source) => Some(source),
-            ObjectError::PortablePdbParsing(ref source) => Some(source),
             ObjectError::Caching(ref source) => Some(source.as_ref()),
             ObjectError::Timeout => None,
         }
@@ -116,12 +113,6 @@ impl From<serde_json::Error> for ObjectError {
 impl From<debuginfo::ObjectError> for ObjectError {
     fn from(source: debuginfo::ObjectError) -> Self {
         Self::Parsing(source)
-    }
-}
-
-impl From<symbolic::ppdb::FormatError> for ObjectError {
-    fn from(source: symbolic::ppdb::FormatError) -> Self {
-        Self::PortablePdbParsing(source)
     }
 }
 
