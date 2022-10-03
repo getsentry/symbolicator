@@ -13,6 +13,7 @@
 - Use `rust:bullseye-slim` as base image for docker container builder. ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Use `debian:bullseye-slim` as base image for docker container runner. ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Use jemalloc as global allocater (for Rust and C). ([#885](https://github.com/getsentry/symbolicator/pull/885))
+- Update symbolic and increase SymCache Version to `4` which now uses a LEB128-prefixed string table. ([#886](https://github.com/getsentry/symbolicator/pull/886))
 
 ### Fixes
 
