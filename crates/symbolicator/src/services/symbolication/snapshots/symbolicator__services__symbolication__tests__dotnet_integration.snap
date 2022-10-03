@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 865
+assertion_line: 870
 expression: response.unwrap()
 ---
 status: completed
@@ -9,7 +9,8 @@ stacktraces:
       - status: symbolicated
         original_index: 0
         addr_mode: "rel:0"
-        instruction_addr: "0xa"
+        instruction_addr: "0x0"
+        il_offset: "0xa"
         function_index: 6
         lang: csharp
         filename: Program.cs
@@ -18,7 +19,8 @@ stacktraces:
       - status: symbolicated
         original_index: 1
         addr_mode: "rel:0"
-        instruction_addr: "0x6"
+        instruction_addr: "0x0"
+        il_offset: "0x6"
         function_index: 5
         lang: csharp
         filename: Program.cs
@@ -28,6 +30,7 @@ stacktraces:
         original_index: 2
         addr_mode: "rel:0"
         instruction_addr: "0x0"
+        il_offset: "0x0"
         function_index: 3
         lang: csharp
         filename: Program.cs
@@ -37,6 +40,7 @@ stacktraces:
         original_index: 3
         addr_mode: "rel:0"
         instruction_addr: "0x0"
+        il_offset: "0x0"
         function_index: 2
         lang: csharp
         filename: Program.cs
@@ -45,7 +49,8 @@ stacktraces:
       - status: symbolicated
         original_index: 4
         addr_mode: "rel:0"
-        instruction_addr: "0x2d"
+        instruction_addr: "0x0"
+        il_offset: "0x2d"
         function_index: 1
         lang: csharp
         filename: Program.cs

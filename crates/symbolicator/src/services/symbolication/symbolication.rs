@@ -189,7 +189,7 @@ fn symbolicate_dotnet_frame(
 
     // TODO: Add a new error variant for this?
     let function_index = frame.function_index.ok_or(FrameStatus::MissingSymbol)?;
-    let il_offset = frame.instruction_addr.0 as u32;
+    let il_offset = frame.il_offset.unwrap_or_default().0 as u32;
 
     let line_info = ppdbcache
         .lookup(function_index, il_offset)
@@ -322,6 +322,7 @@ fn symbolicate_native_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
+                il_offset: None,
                 function_index: frame.function_index,
                 symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {

@@ -818,27 +818,32 @@ mod tests {
               {
                 "frames":[
                   {
-                    "instruction_addr":10,
+                    "instruction_addr": 0,
+                    "il_offset":10,
                     "function_index":6,
                     "addr_mode":"rel:0"
                   },
                   {
-                    "instruction_addr":6,
+                    "instruction_addr": 0,
+                    "il_offset":6,
                     "function_index":5,
                     "addr_mode":"rel:0"
                   },
                   {
-                    "instruction_addr":0,
+                    "instruction_addr": 0,
+                    "il_offset":0,
                     "function_index":3,
                     "addr_mode":"rel:0"
                   },
                   {
-                    "instruction_addr":0,
+                    "instruction_addr": 0,
+                    "il_offset":0,
                     "function_index":2,
                     "addr_mode":"rel:0"
                   },
                   {
-                    "instruction_addr":45,
+                    "instruction_addr": 0,
+                    "il_offset":45,
                     "function_index":1,
                     "addr_mode":"rel:0"
                   }

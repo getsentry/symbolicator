@@ -179,6 +179,10 @@ pub struct RawFrame {
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
+    /// TODO: Type, name, doc
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub il_offset: Option<HexValue>,
+
     /// TODO
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub function_index: Option<u32>,
