@@ -13,6 +13,7 @@
 - Use `rust:bullseye-slim` as base image for docker container builder. ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Use `debian:bullseye-slim` as base image for docker container runner. ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Use jemalloc as global allocater (for Rust and C). ([#885](https://github.com/getsentry/symbolicator/pull/885))
+- Clean up empty cache directories. ([#887](https://github.com/getsentry/symbolicator/pull/887))
 
 ### Fixes
 
