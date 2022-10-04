@@ -306,8 +306,7 @@ impl Cache {
 
         let mut is_empty = true;
         for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
+            let path = entry?.path();
             if path.is_dir() {
                 let mut dir_is_empty = self.cleanup_directory_recursive(&path)?;
                 if dir_is_empty {
@@ -454,7 +453,7 @@ impl Cache {
                             |scope| scope.set_extra("path", path.display().to_string().into()),
                             || tracing::error!("Failed to create cache directory: {:?}", e),
                         );
-                        if retries >= MAX_RETRIES {
+                        if retries > MAX_RETRIES {
                             return Err(e);
                         }
                         continue;
@@ -467,7 +466,7 @@ impl Cache {
                                 |scope| scope.set_extra("path", path.display().to_string().into()),
                                 || tracing::error!("Failed to create cache file: {:?}", e),
                             );
-                            if retries >= MAX_RETRIES {
+                            if retries > MAX_RETRIES {
                                 return Err(e);
                             }
                             continue;

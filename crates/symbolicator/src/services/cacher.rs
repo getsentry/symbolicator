@@ -392,7 +392,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             |scope| scope.set_extra("path", parent.display().to_string().into()),
                             || tracing::error!("Failed to create cache directory: {:?}", e),
                         );
-                        if retries >= MAX_RETRIES {
+                        if retries > MAX_RETRIES {
                             return Err(e.into());
                         }
                         continue;
@@ -407,7 +407,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             },
                             || tracing::error!("Failed to create cache file: {:?}", err),
                         );
-                        if retries >= MAX_RETRIES {
+                        if retries > MAX_RETRIES {
                             return Err(err.into());
                         }
                         continue;
