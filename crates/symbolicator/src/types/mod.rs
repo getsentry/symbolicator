@@ -182,6 +182,9 @@ pub struct RawFrame {
     /// This frame's offset, in bytes, into its function's Intermediate Language stream.
     ///
     /// This is used for dotnet symbolication.
+    ///
+    /// NOTE: Potentially we could reuse `instruction_addr` for this, we're leaving it like
+    /// this for now for the sake of clarity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub il_offset: Option<HexValue>,
 
