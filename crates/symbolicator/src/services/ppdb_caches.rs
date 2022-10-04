@@ -48,7 +48,7 @@ const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
 pub enum PortablePdbCacheError {
-    #[error("failed to write symcache")]
+    #[error("failed to write ppdb cache")]
     Io(#[from] io::Error),
 
     #[error("failed to download object")]
@@ -66,7 +66,7 @@ pub enum PortablePdbCacheError {
     #[error("malformed ppdb cache file")]
     Malformed,
 
-    #[error("symcache building took too long")]
+    #[error("ppdb cache building took too long")]
     Timeout,
 }
 #[derive(Debug, Clone)]
@@ -169,7 +169,7 @@ impl PortablePdbCacheActor {
 
 #[derive(Clone, Debug)]
 struct FetchPortablePdbCacheInternal {
-    /// The external request, as passed into [`SymCacheActor::fetch`].
+    /// The external request, as passed into [`PortablePdbCacheActor::fetch`].
     request: FetchPortablePdbCache,
 
     /// The objects actor, used to fetch original DIF objects from.
@@ -181,7 +181,7 @@ struct FetchPortablePdbCacheInternal {
     /// The object candidates from which [`FetchPortablePdbCacheInternal::object_meta`] was chosen.
     ///
     /// This needs to be returned back with the symcache result and is only being passed
-    /// through here as callers to the SymCacheActer want to have this info.
+    /// through here as callers to the PortablePdbCacheActer want to have this info.
     candidates: AllObjectCandidates,
 }
 
@@ -192,7 +192,7 @@ struct FetchPortablePdbCacheInternal {
 /// threadpool.
 ///
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
-/// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
+/// [`FetchPortablePdbCacheInternal`] but outside of the trait so it can be written as async/await
 /// code.
 #[tracing::instrument(name = "compute_ppdb_cache", skip_all)]
 async fn fetch_difs_and_compute_ppdb_cache(

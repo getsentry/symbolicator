@@ -179,11 +179,15 @@ pub struct RawFrame {
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
-    /// TODO: Type, name, doc
+    /// This frame's offset, in bytes, into its function's Intermediate Language stream.
+    ///
+    /// This is used for dotnet symbolication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub il_offset: Option<HexValue>,
 
-    /// TODO
+    /// The index of the frame's function in the Portable PDB method table.
+    ///
+    /// This is used for dotnet symbolication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub function_index: Option<u32>,
 
