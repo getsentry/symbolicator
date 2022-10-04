@@ -174,8 +174,17 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
                     Some(path) => path,
                     None => return vec![],
                 },
-                // TODO: figure this out
-                ObjectType::DotnetPdb => return vec![],
+                // TODO: is it correct to use the same logic as for pe here?
+                ObjectType::DotnetPdb => {
+                    if let Some(mut base_path) = get_pdb_symstore_path(identifier, false) {
+                        if let Some(cutoff) = base_path.rfind('.') {
+                            base_path.truncate(cutoff);
+                        }
+                        base_path
+                    } else {
+                        return vec![];
+                    }
+                }
                 ObjectType::Unknown => return vec![],
             };
             primary_path.push_str(".src.zip");
@@ -190,10 +199,12 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
             rv.push(primary_path);
             rv
         }
+
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
         FileType::Il2cpp => Vec::new(),
-        // TODO: figure this out
+
+        // TODO: is it correct to use the same logic as for pe here?
         FileType::PortablePdb => get_pdb_symstore_path(identifier, false)
             .into_iter()
             .collect(),
@@ -276,8 +287,8 @@ fn get_symstore_path(
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
         FileType::Il2cpp => None,
-        // TODO: figure this out
-        FileType::PortablePdb => None,
+        // TODO: is it correct to use the same logic as for pdb here?
+        FileType::PortablePdb => get_pdb_symstore_path(identifier, ssqp_casing),
     }
 }
 
@@ -311,7 +322,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::MachCode | FileType::MachDebug => None,
 
         // PDB and PE are not supported
-        FileType::Pdb | FileType::Pe => None,
+        FileType::Pdb | FileType::Pe | FileType::PortablePdb => None,
 
         // WASM is not supported
         FileType::WasmDebug | FileType::WasmCode => None,
@@ -324,8 +335,6 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
         FileType::Il2cpp => None,
-        // TODO: figure this out
-        FileType::PortablePdb => None,
     }
 }
 
@@ -349,13 +358,15 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
             };
             get_search_target_id(filetype, identifier)
         }
+
         // PEs and PDBs are indexed by the debug id in lowercase breakpad format
         // always.  This is done because code IDs by themselves are not reliable
         // enough for PEs and are only useful together with the file name which
         // we do not want to encode.
-        FileType::Pe | FileType::Pdb => Some(Cow::Owned(
+        FileType::Pe | FileType::Pdb | FileType::PortablePdb => Some(Cow::Owned(
             identifier.debug_id?.breakpad().to_string().to_lowercase(),
         )),
+
         // On mach we can always determine the code ID from the debug ID if the
         // code ID is unavailable.  We apply the same rule to WASM files as well as
         // auxiliary DIFs, as we suggest Uuids to be used as build ids.
@@ -379,8 +390,6 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
         FileType::ElfCode | FileType::ElfDebug => {
             Some(Cow::Borrowed(identifier.code_id.as_ref()?.as_str()))
         }
-        // TODO: figure this out
-        FileType::PortablePdb => None,
     }
 }
 
