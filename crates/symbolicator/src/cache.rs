@@ -318,7 +318,7 @@ impl Cache {
                         dir_is_empty = false;
                     }
                 }
-                is_empty = is_empty && dir_is_empty;
+                is_empty &= dir_is_empty;
             } else {
                 match self.try_cleanup_path(&path) {
                     Err(e) => {
@@ -327,7 +327,7 @@ impl Cache {
                             || tracing::error!("Failed to clean cache file: {:?}", e),
                         );
                     }
-                    Ok(file_removed) => is_empty = is_empty && file_removed,
+                    Ok(file_removed) => is_empty &= file_removed,
                 }
             }
         }
