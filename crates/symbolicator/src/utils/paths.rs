@@ -156,7 +156,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
 
         FileType::SourceBundle => {
             let mut primary_path = match identifier.object_type {
-                ObjectType::Pe => {
+                ObjectType::Pe | ObjectType::DotnetPdb => {
                     if let Some(mut base_path) = get_pdb_symstore_path(identifier, false) {
                         if let Some(cutoff) = base_path.rfind('.') {
                             base_path.truncate(cutoff);
@@ -174,19 +174,9 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
                     Some(path) => path,
                     None => return vec![],
                 },
-                // TODO: is it correct to use the same logic as for pe here?
-                ObjectType::DotnetPdb => {
-                    if let Some(mut base_path) = get_pdb_symstore_path(identifier, false) {
-                        if let Some(cutoff) = base_path.rfind('.') {
-                            base_path.truncate(cutoff);
-                        }
-                        base_path
-                    } else {
-                        return vec![];
-                    }
-                }
                 ObjectType::Unknown => return vec![],
             };
+
             primary_path.push_str(".src.zip");
             let mut rv = vec![];
             if let Some(mut breakpad_path) = get_breakpad_path(identifier) {
@@ -203,8 +193,6 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
         FileType::Il2cpp => Vec::new(),
-
-        // TODO: is it correct to use the same logic as for pe here?
         FileType::PortablePdb => get_pdb_symstore_path(identifier, false)
             .into_iter()
             .collect(),
@@ -265,6 +253,7 @@ fn get_symstore_path(
         }
 
         FileType::Pdb => get_pdb_symstore_path(identifier, ssqp_casing),
+        FileType::PortablePdb => get_pdb_symstore_path(identifier, ssqp_casing),
         FileType::Pe => get_pe_symstore_path(identifier, ssqp_casing),
 
         // source bundles are available through an extension for PE/PDB only.
@@ -287,8 +276,6 @@ fn get_symstore_path(
         FileType::UuidMap => None,
         FileType::BcSymbolMap => None,
         FileType::Il2cpp => None,
-        // TODO: is it correct to use the same logic as for pdb here?
-        FileType::PortablePdb => get_pdb_symstore_path(identifier, ssqp_casing),
     }
 }
 
@@ -352,7 +339,7 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
                 ObjectType::Macho => FileType::MachCode,
                 ObjectType::Pe => FileType::Pe,
                 ObjectType::Wasm => FileType::WasmCode,
-                ObjectType::DotnetPdb => todo!(),
+                ObjectType::DotnetPdb => FileType::PortablePdb,
                 // guess we're out of luck.
                 ObjectType::Unknown => return None,
             };
