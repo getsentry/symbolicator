@@ -320,7 +320,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             return Ok(item);
         }
 
-        let temp_file = self.tempfile()?;
+        let mut temp_file = self.tempfile()?;
         let shared_cache_key = SharedCacheKey {
             name: self.config.name(),
             version: T::VERSIONS.current,
@@ -379,8 +379,42 @@ impl<T: CacheItemRequest> Cacher<T> {
                         "no parent directory to persist item",
                     )
                 })?;
-                fs::create_dir_all(parent).await?;
-                temp_file.persist(&cache_path).map_err(|x| x.error)?;
+
+                // The `cleanup` process could potentially remove the parent directories we are
+                // operating in, so be defensive here and retry the fs operations.
+                const MAX_RETRIES: usize = 2;
+                let mut retries = 0;
+                loop {
+                    retries += 1;
+
+                    if let Err(e) = fs::create_dir_all(parent).await {
+                        sentry::with_scope(
+                            |scope| scope.set_extra("path", parent.display().to_string().into()),
+                            || tracing::error!("Failed to create cache directory: {:?}", e),
+                        );
+                        if retries > MAX_RETRIES {
+                            return Err(e.into());
+                        }
+                        continue;
+                    }
+
+                    if let Err(e) = temp_file.persist(&cache_path) {
+                        temp_file = e.file;
+                        let err = e.error;
+                        sentry::with_scope(
+                            |scope| {
+                                scope.set_extra("path", cache_path.display().to_string().into())
+                            },
+                            || tracing::error!("Failed to create cache file: {:?}", err),
+                        );
+                        if retries > MAX_RETRIES {
+                            return Err(err.into());
+                        }
+                        continue;
+                    }
+
+                    break;
+                }
 
                 metric!(
                     counter(&format!("caches.{}.file.write", self.config.name())) += 1,
