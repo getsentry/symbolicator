@@ -266,8 +266,10 @@ fn symbolicate_native_frame(
         metric!(counter("relative_addr.underflow") += 1);
         return Err(FrameStatus::MissingSymbol);
     };
+
     tracing::trace!("Symbolicating {:#x}", relative_addr);
     let mut rv = vec![];
+
     // The symbol addr only makes sense for the outermost top-level function, and not its inlinees.
     // We keep track of it while iterating and only set it for the last frame,
     // which is the top-level function.
@@ -322,7 +324,7 @@ fn symbolicate_native_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
-                il_offset: None,
+                il_offset: frame.il_offset,
                 function_index: frame.function_index,
                 symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {
@@ -348,12 +350,15 @@ fn symbolicate_native_frame(
             },
         });
     }
+
     if let Some(last_frame) = rv.last_mut() {
         last_frame.raw.sym_addr = sym_addr;
     }
+
     if rv.is_empty() {
         return Err(FrameStatus::MissingSymbol);
     }
+
     Ok(rv)
 }
 

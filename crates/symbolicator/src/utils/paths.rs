@@ -149,6 +149,9 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         FileType::Pe => get_pe_symstore_path(identifier, false)
             .into_iter()
             .collect(),
+        FileType::PortablePdb => get_pdb_symstore_path(identifier, false)
+            .into_iter()
+            .collect(),
 
         // Breakpad has its own layout similar to Microsoft Symbol Server
         // See: https://github.com/google/breakpad/blob/79ba6a494fb2097b39f76fe6a4b4b4f407e32a02/src/processor/simple_symbol_supplier.cc
@@ -193,9 +196,6 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
         FileType::Il2cpp => Vec::new(),
-        FileType::PortablePdb => get_pdb_symstore_path(identifier, false)
-            .into_iter()
-            .collect(),
     }
 }
 
