@@ -191,6 +191,10 @@ pub struct RawFrame {
     /// The index of the frame's function in the Portable PDB method table.
     ///
     /// This is used for dotnet symbolication.
+    ///
+    /// NOTE: While the concept of a "function index" also exists in WASM,
+    /// we don't need it for symbolication. The instruction address is enough
+    /// to get the information we need from a WASM debug file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub function_index: Option<u32>,
 
