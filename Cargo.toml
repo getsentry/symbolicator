@@ -39,4 +39,3 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 # See also https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html
 # [patch.crates-io]
 # symbolic = { path = "../symbolic/symbolic" }
-# symbolic-minidump = { path = "../symbolic/symbolic-minidump" }

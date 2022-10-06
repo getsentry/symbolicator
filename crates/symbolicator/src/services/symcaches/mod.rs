@@ -49,6 +49,8 @@ mod markers;
 ///
 /// # Version History
 ///
+/// - `4`: An updated symbolic symcache that uses a LEB128 prefixed string table.
+///
 /// - `3`: Another round of fixes in symcache generation:
 ///        - fixes problems with split inlinees and inlinees appearing twice in the call chain
 ///        - undecorate Windows C-decorated symbols in symcaches
@@ -62,10 +64,10 @@ mod markers;
 ///
 /// - `1`: New binary format based on instruction addr lookup.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[],
+    current: 4,
+    fallbacks: &[3],
 };
-static_assert!(symbolic::symcache::SYMCACHE_VERSION == 7);
+static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
