@@ -179,15 +179,6 @@ pub struct RawFrame {
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
-    /// This frame's offset, in bytes, into its function's Intermediate Language stream.
-    ///
-    /// This is used for dotnet symbolication.
-    ///
-    /// NOTE: Potentially we could reuse `instruction_addr` for this, we're leaving it like
-    /// this for now for the sake of clarity.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub il_offset: Option<HexValue>,
-
     /// The index of the frame's function in the Portable PDB method table.
     ///
     /// This is used for dotnet symbolication.
@@ -196,7 +187,7 @@ pub struct RawFrame {
     /// we don't need it for symbolication. The instruction address is enough
     /// to get the information we need from a WASM debug file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub function_index: Option<u32>,
+    pub function_id: Option<HexValue>,
 
     /// The path to the [module](RawObjectInfo) this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -373,7 +364,7 @@ pub enum ObjectType {
     Macho,
     Pe,
     Wasm,
-    DotnetPdb,
+    PeDotnet,
     Unknown,
 }
 
@@ -385,8 +376,8 @@ impl FromStr for ObjectType {
             "elf" => ObjectType::Elf,
             "macho" => ObjectType::Macho,
             "pe" => ObjectType::Pe,
+            "pe_dotnet" => ObjectType::PeDotnet,
             "wasm" => ObjectType::Wasm,
-            "dotnetpdb" => ObjectType::DotnetPdb,
             _ => ObjectType::Unknown,
         })
     }
@@ -408,8 +399,8 @@ impl fmt::Display for ObjectType {
             ObjectType::Elf => write!(f, "elf"),
             ObjectType::Macho => write!(f, "macho"),
             ObjectType::Pe => write!(f, "pe"),
+            ObjectType::PeDotnet => write!(f, "pe_dotnet"),
             ObjectType::Wasm => write!(f, "wasm"),
-            ObjectType::DotnetPdb => write!(f, "dotnetpdb"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
     }

@@ -159,7 +159,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
 
         FileType::SourceBundle => {
             let mut primary_path = match identifier.object_type {
-                ObjectType::Pe | ObjectType::DotnetPdb => {
+                ObjectType::Pe | ObjectType::PeDotnet => {
                     if let Some(mut base_path) = get_pdb_symstore_path(identifier, false) {
                         if let Some(cutoff) = base_path.rfind('.') {
                             base_path.truncate(cutoff);
@@ -339,7 +339,7 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
                 ObjectType::Macho => FileType::MachCode,
                 ObjectType::Pe => FileType::Pe,
                 ObjectType::Wasm => FileType::WasmCode,
-                ObjectType::DotnetPdb => FileType::PortablePdb,
+                ObjectType::PeDotnet => FileType::PortablePdb,
                 // guess we're out of luck.
                 ObjectType::Unknown => return None,
             };

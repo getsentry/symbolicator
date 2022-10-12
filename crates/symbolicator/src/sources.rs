@@ -492,7 +492,7 @@ impl FileType {
                 FileType::ElfDebug,
             ],
             ObjectType::Wasm => &[FileType::WasmCode, FileType::WasmDebug],
-            ObjectType::DotnetPdb => &[FileType::PortablePdb],
+            ObjectType::PeDotnet => &[FileType::PortablePdb],
             _ => Self::all(),
         }
     }

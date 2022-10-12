@@ -178,7 +178,7 @@ impl ModuleLookup {
                 Some(
                     async move {
                         match object_type {
-                            ObjectType::DotnetPdb => {
+                            ObjectType::PeDotnet => {
                                 let request = FetchPortablePdbCache {
                                     identifier,
                                     sources,
