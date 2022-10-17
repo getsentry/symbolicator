@@ -4,7 +4,7 @@
 
 ### Features
 
-- Use Portable PDB files for dotnet symbolication ([#883](https://github.com/getsentry/symbolicator/pull/883))
+- Use Portable PDB files for .NET event symbolication ([#883](https://github.com/getsentry/symbolicator/pull/883))
 - Use Unity il2cpp line mapping files in symcache creation ([#831](https://github.com/getsentry/symbolicator/pull/831))
 - Read thread names from minidumps and Apple crash reports ([#834](https://github.com/getsentry/symbolicator/pull/834))
 - Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))
@@ -14,6 +14,7 @@
 - Use `rust:bullseye-slim` as base image for docker container builder. ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Use `debian:bullseye-slim` as base image for docker container runner. ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Use jemalloc as global allocater (for Rust and C). ([#885](https://github.com/getsentry/symbolicator/pull/885))
+- Clean up empty cache directories. ([#887](https://github.com/getsentry/symbolicator/pull/887))
 - Update symbolic and increase SymCache Version to `4` which now uses a LEB128-prefixed string table. ([#886](https://github.com/getsentry/symbolicator/pull/886))
 
 ### Fixes
