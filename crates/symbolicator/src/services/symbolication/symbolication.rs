@@ -249,15 +249,15 @@ fn symbolicate_native_frame(
                 .ip_register_value(ip_register_value)
                 .caller_address();
             lookup_result
-        .object_info
-        .abs_to_rel_addr(absolute_caller_addr)
-        .ok_or_else(|| {
-            tracing::warn!(
-                    "Underflow when trying to subtract image start addr from caller address after heuristics"
-                );
-            metric!(counter("relative_addr.underflow") += 1);
-            FrameStatus::MissingSymbol
-        })?
+                .object_info
+                .abs_to_rel_addr(absolute_caller_addr)
+                .ok_or_else(|| {
+                    tracing::warn!(
+                            "Underflow when trying to subtract image start addr from caller address after heuristics"
+                        );
+                    metric!(counter("relative_addr.underflow") += 1);
+                    FrameStatus::MissingSymbol
+                })?
         } else {
             addr
         }
