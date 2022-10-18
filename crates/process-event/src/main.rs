@@ -234,6 +234,8 @@ mod event {
         pub debug_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub debug_file: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub debug_checksum: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -274,9 +276,7 @@ mod event {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub instruction_addr: Option<HexValue>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub il_offset: Option<HexValue>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub function_index: Option<u32>,
+        pub function_id: Option<HexValue>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub addr_mode: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
