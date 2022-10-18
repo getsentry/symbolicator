@@ -242,6 +242,7 @@ impl SentryDownloader {
                     FileType::Breakpad => "breakpad",
                     FileType::SourceBundle => "sourcebundle",
                     FileType::Il2cpp => "il2cpp",
+                    FileType::PortablePdb => "portablepdb",
                 })
                 .map(|val| ("file_formats", val)),
         );

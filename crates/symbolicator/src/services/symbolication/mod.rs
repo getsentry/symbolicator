@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError};
 use crate::services::objects::ObjectsActor;
+use crate::services::ppdb_caches::{PortablePdbCacheActor, PortablePdbCacheError};
 use crate::services::symcaches::{SymCacheActor, SymCacheError};
 use crate::sources::SourceConfig;
 use crate::types::{
@@ -43,6 +44,7 @@ pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
+    ppdb_caches: PortablePdbCacheActor,
     diagnostics_cache: crate::cache::Cache,
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
@@ -57,6 +59,7 @@ impl SymbolicationActor {
         objects: ObjectsActor,
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
+        ppdb_caches: PortablePdbCacheActor,
         diagnostics_cache: crate::cache::Cache,
         cpu_pool: tokio::runtime::Handle,
         max_concurrent_requests: Option<usize>,
@@ -65,6 +68,7 @@ impl SymbolicationActor {
             objects,
             symcaches,
             cficaches,
+            ppdb_caches,
             diagnostics_cache,
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
@@ -394,6 +398,27 @@ impl From<&SymCacheError> for ObjectFileStatus {
     }
 }
 
+impl From<&PortablePdbCacheError> for ObjectFileStatus {
+    fn from(e: &PortablePdbCacheError) -> ObjectFileStatus {
+        match e {
+            PortablePdbCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
+            // nb: Timeouts during download are also caught by Fetching
+            PortablePdbCacheError::Timeout => ObjectFileStatus::Timeout,
+            PortablePdbCacheError::Malformed => ObjectFileStatus::Malformed,
+            PortablePdbCacheError::PortablePdbParsing(_) => ObjectFileStatus::Malformed,
+            _ => {
+                // Just in case we didn't handle an error properly,
+                // capture it here. If an error was captured with
+                // `capture_error` further down in the callstack, it
+                // should be explicitly handled here as a
+                // PortablePdbCacheError variant.
+                sentry::capture_error(e);
+                ObjectFileStatus::Other
+            }
+        }
+    }
+}
+
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
         debug_id: match object_info.debug_id.as_deref() {
@@ -469,6 +494,7 @@ mod tests {
                 image_size: Some(4096),
                 code_file: None,
                 debug_file: None,
+                checksum: None,
             })],
             options: RequestOptions {
                 dif_candidates: true,
@@ -725,14 +751,15 @@ mod tests {
             debug_file: None,
             image_addr: HexValue(42),
             image_size: Some(0),
+            checksum: None,
         });
 
         let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));
 
-        let lookup_result = lookup.lookup_symcache(43, AddrMode::Abs).unwrap();
+        let lookup_result = lookup.lookup_cache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);
         assert_eq!(lookup_result.object_info, &info);
-        assert!(lookup_result.symcache.is_none());
+        assert!(lookup_result.cache.is_none());
     }
 
     #[tokio::test]
@@ -766,5 +793,74 @@ mod tests {
 
         let request = get_symbolication_request(vec![symbol_server.pending_source]);
         assert!(symbolication.symbolicate_stacktraces(request).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_dotnet_integration() -> anyhow::Result<()> {
+        let (service, _cache_dir) = setup_service().await;
+        let symbolication = service.symbolication();
+        let (_srv, source) = test::symbol_server();
+
+        let modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[
+              {
+                "type":"pe_dotnet",
+                "debug_file":"integration.pdb",
+                "debug_id":"0c1033f78632492e91c6c314b72e1920e60b819d"
+              }
+            ]"#,
+        )?;
+
+        let stacktraces = serde_json::from_str(
+            r#"[
+              {
+                "frames":[
+                  {
+                    "instruction_addr": 10,
+                    "function_id": 6,
+                    "addr_mode":"rel:0"
+                  },
+                  {
+                    "instruction_addr": 6,
+                    "function_id": 5,
+                    "addr_mode": "rel:0"
+                  },
+                  {
+                    "instruction_addr": 0,
+                    "function_id": 3,
+                    "addr_mode": "rel:0"
+                  },
+                  {
+                    "instruction_addr": 0,
+                    "function_id": 2,
+                    "addr_mode": "rel:0"
+                  },
+                  {
+                    "instruction_addr": 45,
+                    "function_id": 1,
+                    "addr_mode": "rel:0"
+                  }
+                ]
+              }
+            ]"#,
+        )?;
+
+        let request = SymbolicateStacktraces {
+            modules: modules.into_iter().map(From::from).collect(),
+            stacktraces,
+            signal: None,
+            origin: StacktraceOrigin::Symbolicate,
+            sources: Arc::new([source]),
+            scope: Default::default(),
+            options: RequestOptions {
+                dif_candidates: true,
+            },
+        };
+
+        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
+        let response = symbolication.get_response(request_id, None).await;
+
+        assert_snapshot!(response.unwrap());
+        Ok(())
     }
 }

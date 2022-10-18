@@ -113,11 +113,7 @@ fn main() -> Result<(), anyhow::Error> {
                     frame.trust.as_deref().unwrap()
                 };
 
-                let instruction_addr = frame
-                    .instruction_addr
-                    .and_then(|addr| addr.parse::<HexValue>().ok())
-                    .unwrap()
-                    .0;
+                let instruction_addr = frame.instruction_addr.unwrap().0;
 
                 print!("{trust:<8} {instruction_addr:#018x}");
 
@@ -158,6 +154,7 @@ fn main() -> Result<(), anyhow::Error> {
 }
 
 mod event {
+    use super::HexValue;
     use serde::{Deserialize, Serialize};
 
     /// Brings a Sentry JSON into the form suitable for Symbolicator.
@@ -237,6 +234,8 @@ mod event {
         pub debug_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub debug_file: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub debug_checksum: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -275,7 +274,9 @@ mod event {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub package: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub instruction_addr: Option<String>,
+        pub instruction_addr: Option<HexValue>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub function_id: Option<HexValue>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub addr_mode: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]

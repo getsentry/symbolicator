@@ -430,6 +430,8 @@ pub enum FileType {
     /// This file maps from C++ source locations to the original C# source location it was transpiled from.
     #[serde(rename = "il2cpp")]
     Il2cpp,
+    #[serde(rename = "portablepdb")]
+    PortablePdb,
 }
 
 impl FileType {
@@ -450,6 +452,7 @@ impl FileType {
             SourceBundle,
             UuidMap,
             BcSymbolMap,
+            PortablePdb,
         ]
     }
 
@@ -489,6 +492,7 @@ impl FileType {
                 FileType::ElfDebug,
             ],
             ObjectType::Wasm => &[FileType::WasmCode, FileType::WasmDebug],
+            ObjectType::PeDotnet => &[FileType::PortablePdb],
             _ => Self::all(),
         }
     }
@@ -510,6 +514,7 @@ impl AsRef<str> for FileType {
             FileType::UuidMap => "uuidmap",
             FileType::BcSymbolMap => "bcsymbolmap",
             FileType::Il2cpp => "il2cpp",
+            FileType::PortablePdb => "portablepdb",
         }
     }
 }

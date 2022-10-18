@@ -149,6 +149,9 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
         FileType::Pe => get_pe_symstore_path(identifier, false)
             .into_iter()
             .collect(),
+        FileType::PortablePdb => get_pdb_symstore_path(identifier, false)
+            .into_iter()
+            .collect(),
 
         // Breakpad has its own layout similar to Microsoft Symbol Server
         // See: https://github.com/google/breakpad/blob/79ba6a494fb2097b39f76fe6a4b4b4f407e32a02/src/processor/simple_symbol_supplier.cc
@@ -156,7 +159,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
 
         FileType::SourceBundle => {
             let mut primary_path = match identifier.object_type {
-                ObjectType::Pe => {
+                ObjectType::Pe | ObjectType::PeDotnet => {
                     if let Some(mut base_path) = get_pdb_symstore_path(identifier, false) {
                         if let Some(cutoff) = base_path.rfind('.') {
                             base_path.truncate(cutoff);
@@ -176,6 +179,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
                 },
                 ObjectType::Unknown => return vec![],
             };
+
             primary_path.push_str(".src.zip");
             let mut rv = vec![];
             if let Some(mut breakpad_path) = get_breakpad_path(identifier) {
@@ -188,6 +192,7 @@ fn get_native_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
             rv.push(primary_path);
             rv
         }
+
         FileType::UuidMap => Vec::new(),
         FileType::BcSymbolMap => Vec::new(),
         FileType::Il2cpp => Vec::new(),
@@ -248,6 +253,7 @@ fn get_symstore_path(
         }
 
         FileType::Pdb => get_pdb_symstore_path(identifier, ssqp_casing),
+        FileType::PortablePdb => get_pdb_symstore_path(identifier, ssqp_casing),
         FileType::Pe => get_pe_symstore_path(identifier, ssqp_casing),
 
         // source bundles are available through an extension for PE/PDB only.
@@ -303,7 +309,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
         FileType::MachCode | FileType::MachDebug => None,
 
         // PDB and PE are not supported
-        FileType::Pdb | FileType::Pe => None,
+        FileType::Pdb | FileType::Pe | FileType::PortablePdb => None,
 
         // WASM is not supported
         FileType::WasmDebug | FileType::WasmCode => None,
@@ -333,18 +339,21 @@ fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow
                 ObjectType::Macho => FileType::MachCode,
                 ObjectType::Pe => FileType::Pe,
                 ObjectType::Wasm => FileType::WasmCode,
+                ObjectType::PeDotnet => FileType::PortablePdb,
                 // guess we're out of luck.
                 ObjectType::Unknown => return None,
             };
             get_search_target_id(filetype, identifier)
         }
+
         // PEs and PDBs are indexed by the debug id in lowercase breakpad format
         // always.  This is done because code IDs by themselves are not reliable
         // enough for PEs and are only useful together with the file name which
         // we do not want to encode.
-        FileType::Pe | FileType::Pdb => Some(Cow::Owned(
+        FileType::Pe | FileType::Pdb | FileType::PortablePdb => Some(Cow::Owned(
             identifier.debug_id?.breakpad().to_string().to_lowercase(),
         )),
+
         // On mach we can always determine the code ID from the debug ID if the
         // code ID is unavailable.  We apply the same rule to WASM files as well as
         // auxiliary DIFs, as we suggest Uuids to be used as build ids.
@@ -375,9 +384,11 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
     // determine the suffix and object type
     let suffix = match filetype {
         FileType::ElfCode | FileType::MachCode | FileType::Pe | FileType::WasmCode => "executable",
-        FileType::ElfDebug | FileType::MachDebug | FileType::Pdb | FileType::WasmDebug => {
-            "debuginfo"
-        }
+        FileType::ElfDebug
+        | FileType::MachDebug
+        | FileType::Pdb
+        | FileType::WasmDebug
+        | FileType::PortablePdb => "debuginfo",
         FileType::Breakpad => "breakpad",
         FileType::SourceBundle => "sourcebundle",
         FileType::UuidMap => "uuidmap",

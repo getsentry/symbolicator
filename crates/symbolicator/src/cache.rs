@@ -193,6 +193,7 @@ pub enum CacheName {
     Il2cpp,
     Symcaches,
     Cficaches,
+    PpdbCaches,
     Diagnostics,
 }
 
@@ -205,6 +206,7 @@ impl AsRef<str> for CacheName {
             Self::Il2cpp => "il2cpp",
             Self::Symcaches => "symcaches",
             Self::Cficaches => "cficaches",
+            Self::PpdbCaches => "ppdb_caches",
             Self::Diagnostics => "diagnostics",
         }
     }
@@ -551,6 +553,7 @@ pub struct Caches {
     pub symcaches: Cache,
     /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
     pub cficaches: Cache,
+    pub ppdb_caches: Cache,
     /// Store for diagnostics data symbolicator failed to process, used by
     /// [`crate::services::symbolication::SymbolicationActor`].
     pub diagnostics: Cache,
@@ -627,6 +630,16 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                    max_lazy_recomputations.clone(),
+                )?
+            },
+            ppdb_caches: {
+                let path = config.cache_dir("ppdb_caches");
+                Cache::from_config(
+                    CacheName::PpdbCaches,
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
                     max_lazy_recomputations,
                 )?
             },
@@ -666,6 +679,7 @@ impl Caches {
             il2cpp,
             symcaches,
             cficaches,
+            ppdb_caches,
             diagnostics,
         } = &self;
 
@@ -679,6 +693,7 @@ impl Caches {
             diagnostics.cleanup(),
             auxdifs.cleanup(),
             il2cpp.cleanup(),
+            ppdb_caches.cleanup(),
         ];
 
         let mut first_error = None;

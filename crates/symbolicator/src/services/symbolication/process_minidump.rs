@@ -402,6 +402,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
             0 => None,
             size => Some(size),
         },
+        checksum: None,
     })
 }
 

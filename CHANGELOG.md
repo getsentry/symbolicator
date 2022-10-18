@@ -4,6 +4,7 @@
 
 ### Features
 
+- Use Portable PDB files for .NET event symbolication ([#883](https://github.com/getsentry/symbolicator/pull/883))
 - Use Unity il2cpp line mapping files in symcache creation ([#831](https://github.com/getsentry/symbolicator/pull/831))
 - Read thread names from minidumps and Apple crash reports ([#834](https://github.com/getsentry/symbolicator/pull/834))
 - Add support for serving web requests using HTTPS ([#829](https://github.com/getsentry/symbolicator/pull/829))

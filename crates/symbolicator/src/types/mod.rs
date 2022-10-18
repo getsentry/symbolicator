@@ -179,6 +179,16 @@ pub struct RawFrame {
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
+    /// The index of the frame's function in the Portable PDB method table.
+    ///
+    /// This is used for dotnet symbolication.
+    ///
+    /// NOTE: While the concept of a "function index" also exists in WASM,
+    /// we don't need it for symbolication. The instruction address is enough
+    /// to get the information we need from a WASM debug file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function_id: Option<HexValue>,
+
     /// The path to the [module](RawObjectInfo) this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
@@ -340,6 +350,10 @@ pub struct RawObjectInfo {
     /// The size is infered from the module list if not specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
+
+    /// Checksum of the file's contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
 }
 
 /// The type of an object file.
@@ -350,6 +364,7 @@ pub enum ObjectType {
     Macho,
     Pe,
     Wasm,
+    PeDotnet,
     Unknown,
 }
 
@@ -361,6 +376,7 @@ impl FromStr for ObjectType {
             "elf" => ObjectType::Elf,
             "macho" => ObjectType::Macho,
             "pe" => ObjectType::Pe,
+            "pe_dotnet" => ObjectType::PeDotnet,
             "wasm" => ObjectType::Wasm,
             _ => ObjectType::Unknown,
         })
@@ -383,6 +399,7 @@ impl fmt::Display for ObjectType {
             ObjectType::Elf => write!(f, "elf"),
             ObjectType::Macho => write!(f, "macho"),
             ObjectType::Pe => write!(f, "pe"),
+            ObjectType::PeDotnet => write!(f, "pe_dotnet"),
             ObjectType::Wasm => write!(f, "wasm"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
