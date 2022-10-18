@@ -2247,7 +2247,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic-common 9.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-common 9.2.1",
 ]
 
 [[package]]
@@ -3113,18 +3113,18 @@ version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e615680e415ddd25876cb34b40d90cf92011ae7e37d6a829f4dc341f19da0c32"
 dependencies = [
- "symbolic-common 9.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "symbolic-debuginfo 9.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-common 9.2.1",
+ "symbolic-debuginfo 9.2.1",
 ]
 
 [[package]]
 name = "symbolic"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "symbolic-cfi",
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
- "symbolic-debuginfo 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
+ "symbolic-debuginfo 10.0.0",
  "symbolic-demangle",
  "symbolic-il2cpp",
  "symbolic-ppdb",
@@ -3133,11 +3133,11 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
- "symbolic-debuginfo 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
+ "symbolic-debuginfo 10.0.0",
  "thiserror",
 ]
 
@@ -3156,8 +3156,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3191,7 +3191,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common 9.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic-common 9.2.1",
  "thiserror",
  "wasmparser",
  "zip",
@@ -3199,8 +3199,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3221,7 +3221,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
  "symbolic-ppdb",
  "thiserror",
  "wasmparser",
@@ -3230,34 +3230,34 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "cc",
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
 ]
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "indexmap",
  "serde_json",
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
- "symbolic-debuginfo 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
+ "symbolic-debuginfo 10.0.0",
 ]
 
 [[package]]
 name = "symbolic-ppdb"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "indexmap",
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
  "thiserror",
  "uuid",
  "watto",
@@ -3265,12 +3265,12 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "9.2.1"
-source = "git+https://github.com/getsentry/symbolic#1f71f156ecf93c261d4328ab9050f20a08df5bdd"
+version = "10.0.0"
+source = "git+https://github.com/getsentry/symbolic#6cde462818c2219416c15bf434dabe4c5e9f3ccf"
 dependencies = [
  "indexmap",
- "symbolic-common 9.2.1 (git+https://github.com/getsentry/symbolic)",
- "symbolic-debuginfo 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic-common 10.0.0",
+ "symbolic-debuginfo 10.0.0",
  "symbolic-il2cpp",
  "thiserror",
  "tracing",
@@ -3320,7 +3320,7 @@ dependencies = [
  "serde_yaml",
  "sha-1",
  "structopt",
- "symbolic 9.2.1 (git+https://github.com/getsentry/symbolic)",
+ "symbolic 10.0.0",
  "symbolicator-crash",
  "tempfile",
  "test-assembler",
@@ -3360,7 +3360,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic 9.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "symbolic 9.2.1",
  "walkdir",
  "zip",
  "zstd",

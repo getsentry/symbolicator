@@ -42,7 +42,7 @@ serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
-symbolic = { version = "9.2.1", git = "https://github.com/getsentry/symbolic", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp", "ppdb"] }
+symbolic = { version = "10.0.0", git = "https://github.com/getsentry/symbolic", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp", "ppdb"] }
 symbolicator-crash = { path = "../symbolicator-crash/", optional = true }
 tempfile = "3.2.0"
 thiserror = "1.0.31"

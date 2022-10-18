@@ -801,12 +801,10 @@ mod tests {
         let symbolication = service.symbolication();
         let (_srv, source) = test::symbol_server();
 
-        // its not wasm, but that is the easiest to write tests because of relative
-        // addressing ;-)
         let modules: Vec<RawObjectInfo> = serde_json::from_str(
             r#"[
               {
-                "type":"dotnetpdb",
+                "type":"pe_dotnet",
                 "debug_file":"integration.pdb",
                 "debug_id":"0c1033f78632492e91c6c314b72e1920e60b819d"
               }
@@ -818,34 +816,29 @@ mod tests {
               {
                 "frames":[
                   {
-                    "instruction_addr": 0,
-                    "il_offset":10,
-                    "function_index":6,
+                    "instruction_addr": 10,
+                    "function_id": 6,
                     "addr_mode":"rel:0"
                   },
                   {
-                    "instruction_addr": 0,
-                    "il_offset":6,
-                    "function_index":5,
-                    "addr_mode":"rel:0"
+                    "instruction_addr": 6,
+                    "function_id": 5,
+                    "addr_mode": "rel:0"
                   },
                   {
                     "instruction_addr": 0,
-                    "il_offset":0,
-                    "function_index":3,
-                    "addr_mode":"rel:0"
+                    "function_id": 3,
+                    "addr_mode": "rel:0"
                   },
                   {
                     "instruction_addr": 0,
-                    "il_offset":0,
-                    "function_index":2,
-                    "addr_mode":"rel:0"
+                    "function_id": 2,
+                    "addr_mode": "rel:0"
                   },
                   {
-                    "instruction_addr": 0,
-                    "il_offset":45,
-                    "function_index":1,
-                    "addr_mode":"rel:0"
+                    "instruction_addr": 45,
+                    "function_id": 1,
+                    "addr_mode": "rel:0"
                   }
                 ]
               }
