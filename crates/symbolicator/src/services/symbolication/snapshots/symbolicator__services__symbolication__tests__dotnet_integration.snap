@@ -65,7 +65,7 @@ modules:
     image_addr: "0x0"
     candidates:
       - source: local
-        location: "http://localhost:<port>/download/integration.pdb/0C1033F78632492E91C6C314B72E1920e60b819d/integration.pdb"
+        location: "http://localhost:<port>/download/integration.pdb/0C1033F78632492E91C6C314B72E1920ffffffff/integration.pdb"
         download:
           status: ok
           features:
