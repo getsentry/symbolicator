@@ -54,10 +54,19 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
     } else {
         Cow::Borrowed(debug_file)
     };
-    let debug_id = if ssqp_casing {
-        format!("{:x}{:X}", debug_id.uuid().as_simple(), debug_id.appendix())
+
+    let appendix = if identifier.object_type == ObjectType::PeDotnet {
+        // The `Age` part of Portable PDB files is being replaced by `u32::MAX` as per:
+        // https://github.com/dotnet/symstore/blob/main/docs/specs/SSQP_Key_Conventions.md#portable-pdb-signature
+        u32::MAX
     } else {
-        format!("{:X}{:x}", debug_id.uuid().as_simple(), debug_id.appendix())
+        debug_id.appendix()
+    };
+
+    let debug_id = if ssqp_casing {
+        format!("{:x}{:X}", debug_id.uuid().as_simple(), appendix)
+    } else {
+        format!("{:X}{:x}", debug_id.uuid().as_simple(), appendix)
     };
 
     Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
