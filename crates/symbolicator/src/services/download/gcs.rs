@@ -9,8 +9,8 @@ use futures::prelude::*;
 use parking_lot::Mutex;
 use reqwest::{header, Client, StatusCode};
 
-use crate::sources::{FileType, GcsSourceConfig, GcsSourceKey};
-use crate::types::ObjectId;
+use symbolicator_sources::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
+
 use crate::utils::gcs::{self, request_new_token, GcsError, GcsToken};
 
 use super::locations::SourceLocation;
@@ -216,9 +216,9 @@ mod tests {
     use super::super::locations::SourceLocation;
     use super::*;
 
-    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
+    use symbolicator_sources::{CommonSourceConfig, DirectoryLayoutType, ObjectType, SourceId};
+
     use crate::test;
-    use crate::types::ObjectType;
 
     use sha1::{Digest as _, Sha1};
 

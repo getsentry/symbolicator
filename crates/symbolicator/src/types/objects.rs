@@ -2,9 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use symbolicator_sources::SourceId;
+
 use crate::cache::CacheStatus;
 use crate::services::download::RemoteDifUri;
-use crate::sources::SourceId;
 
 use super::ObjectFeatures;
 

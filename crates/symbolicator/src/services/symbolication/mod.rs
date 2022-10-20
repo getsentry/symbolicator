@@ -13,14 +13,15 @@ use sentry::SentryFutureExt;
 use tempfile::TempPath;
 use thiserror::Error;
 
+use symbolicator_sources::{ObjectId, SourceConfig};
+
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::{PortablePdbCacheActor, PortablePdbCacheError};
 use crate::services::symcaches::{SymCacheActor, SymCacheError};
-use crate::sources::SourceConfig;
 use crate::types::{
-    CompletedSymbolicationResponse, ObjectFileStatus, ObjectId, RawObjectInfo, RequestId,
-    RequestOptions, Scope, SymbolicationResponse,
+    CompletedSymbolicationResponse, ObjectFileStatus, RawObjectInfo, RequestId, RequestOptions,
+    Scope, SymbolicationResponse,
 };
 use crate::utils::futures::CallOnDrop;
 
@@ -439,11 +440,13 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
 mod tests {
     use super::*;
 
+    use symbolicator_sources::ObjectType;
+
     use crate::config::Config;
     use crate::services::symbolication::module_lookup::ModuleLookup;
     use crate::services::Service;
     use crate::test::{self, fixture};
-    use crate::types::{CompleteObjectInfo, ObjectType, RawFrame, RawStacktrace};
+    use crate::types::{CompleteObjectInfo, RawFrame, RawStacktrace};
     use crate::utils::addr::AddrMode;
     use crate::utils::hex::HexValue;
 

@@ -17,17 +17,19 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
-use symbolic::common::ByteView;
-use symbolic::debuginfo::{Archive, Object};
 use tempfile::tempfile_in;
 use tempfile::NamedTempFile;
+
+use symbolic::common::ByteView;
+use symbolic::debuginfo::{Archive, Object};
+use symbolicator_sources::ObjectId;
 
 use crate::cache::CacheStatus;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
 use crate::services::download::DownloadService;
 use crate::services::download::RemoteDif;
 use crate::services::download::{DownloadError, DownloadStatus};
-use crate::types::{ObjectId, Scope};
+use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
@@ -221,7 +223,7 @@ async fn fetch_file(
         let object_opt = archive
             .objects()
             .filter_map(Result::ok)
-            .find(|object| object_id.match_object(object));
+            .find(|object| object_matches_id(object, &object_id));
 
         let object = match object_opt {
             Some(object) => object,
@@ -246,6 +248,32 @@ async fn fetch_file(
     }
 
     Ok(CacheStatus::Positive)
+}
+
+/// Validates that the object matches expected identifiers.
+fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
+    if let Some(ref debug_id) = id.debug_id {
+        let parsed_id = object.debug_id();
+
+        // Microsoft symbol server sometimes stores updated files with a more recent
+        // (=higher) age, but resolves it for requests with lower ages as well. Thus, we
+        // need to check whether the parsed debug file fullfills the *miniumum* age bound.
+        // For example:
+        // `4A236F6A0B3941D1966B41A4FC77738C2` is reported as
+        // `4A236F6A0B3941D1966B41A4FC77738C4` from the server.
+        //                                  ^
+        return parsed_id.uuid() == debug_id.uuid() && parsed_id.appendix() >= debug_id.appendix();
+    }
+
+    if let Some(ref code_id) = id.code_id {
+        if let Some(ref object_code_id) = object.code_id() {
+            if object_code_id != code_id {
+                return false;
+            }
+        }
+    }
+
+    true
 }
 
 impl CacheItemRequest for FetchFileDataRequest {
@@ -314,13 +342,14 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use symbolicator_sources::FileType;
+
     use crate::cache::{Cache, CacheName, CacheStatus};
     use crate::config::{CacheConfig, CacheConfigs, Config};
     use crate::services::download::{DownloadError, DownloadService};
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::services::shared_cache::SharedCacheService;
-    use crate::sources::FileType;
     use crate::test::{self, tempdir};
 
     use symbolic::common::DebugId;

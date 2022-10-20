@@ -11,8 +11,9 @@ use sentry::types::Dsn;
 use serde::{de, Deserialize, Deserializer};
 use tracing::level_filters::LevelFilter;
 
+use symbolicator_sources::SourceConfig;
+
 use crate::cache::SharedCacheConfig;
-use crate::sources::SourceConfig;
 
 /// Controls the log format
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]

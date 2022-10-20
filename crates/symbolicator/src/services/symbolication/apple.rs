@@ -5,12 +5,13 @@ use std::time::Duration;
 use apple_crash_report_parser::{AppleCrashReport, ParseError};
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use symbolic::common::{Arch, CodeId, DebugId};
 
-use crate::sources::SourceConfig;
+use symbolic::common::{Arch, CodeId, DebugId};
+use symbolicator_sources::{ObjectType, SourceConfig};
+
 use crate::types::{
-    CompleteObjectInfo, CompletedSymbolicationResponse, ObjectType, RawFrame, RawObjectInfo,
-    RawStacktrace, RequestOptions, Scope, SystemInfo,
+    CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawObjectInfo, RawStacktrace,
+    RequestOptions, Scope, SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;

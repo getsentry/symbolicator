@@ -1,25 +1,24 @@
-use futures::future::BoxFuture;
-use symbolic::common::ByteView;
-use symbolic::debuginfo::Object;
-use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
-
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use thiserror::Error;
+
+use symbolic::common::ByteView;
+use symbolic::debuginfo::Object;
+use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
+use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::objects::ObjectError;
-use crate::sources::{FileType, SourceConfig};
 use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
-use super::download::ObjectId;
 use super::objects::{
     FindObject, FoundObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };

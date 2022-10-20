@@ -1,0 +1,19 @@
+[package]
+name = "symbolicator-sources"
+publish = false
+version = "0.5.1"
+authors = ["Sentry <hello@getsentry.com>"]
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+glob = "0.3.0"
+lazy_static = "1.4.0"
+rusoto_core = "0.48.0"
+serde = { version = "1.0.137", features = ["derive", "rc"] }
+symbolic = "10.0.0"
+url = { version = "2.2.0", features = ["serde"] }
+
+[dev-dependencies]
+insta = { version = "1.18.0", features = ["redactions", "yaml"] }
+serde_yaml = "0.8.15"

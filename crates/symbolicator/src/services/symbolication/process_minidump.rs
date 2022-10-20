@@ -19,20 +19,20 @@ use minidump_processor::{
 use parking_lot::{Mutex, RwLock};
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
+use tempfile::TempPath;
+
 use symbolic::cfi::CfiCache;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId};
-use tempfile::TempPath;
+use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::CacheStatus;
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError, FetchCfiCache};
-use crate::services::download::ObjectId;
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::ObjectError;
-use crate::sources::SourceConfig;
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFeatures,
-    ObjectFileStatus, ObjectType, RawFrame, RawObjectInfo, RawStacktrace, Registers,
-    RequestOptions, Scope, SystemInfo,
+    ObjectFileStatus, RawFrame, RawObjectInfo, RawStacktrace, Registers, RequestOptions, Scope,
+    SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;

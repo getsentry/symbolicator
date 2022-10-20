@@ -11,12 +11,12 @@ use futures::prelude::*;
 use reqwest::{header, Client, StatusCode};
 use url::Url;
 
+use symbolicator_sources::{FileType, HttpSourceConfig, ObjectId};
+
 use super::{
     content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation,
     USER_AGENT,
 };
-use crate::sources::{FileType, HttpSourceConfig};
-use crate::types::ObjectId;
 
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -169,7 +169,8 @@ mod tests {
     use super::super::locations::SourceLocation;
     use super::*;
 
-    use crate::sources::SourceConfig;
+    use symbolicator_sources::SourceConfig;
+
     use crate::test;
 
     #[tokio::test]

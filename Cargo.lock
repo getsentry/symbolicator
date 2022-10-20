@@ -3261,7 +3261,6 @@ dependencies = [
  "flate2",
  "futures",
  "gcp_auth",
- "glob",
  "hostname",
  "humantime-serde",
  "insta",
@@ -3288,6 +3287,7 @@ dependencies = [
  "structopt",
  "symbolic",
  "symbolicator-crash",
+ "symbolicator-sources",
  "tempfile",
  "test-assembler",
  "thiserror",
@@ -3311,6 +3311,20 @@ version = "0.5.1"
 dependencies = [
  "bindgen",
  "cmake",
+]
+
+[[package]]
+name = "symbolicator-sources"
+version = "0.5.1"
+dependencies = [
+ "glob",
+ "insta",
+ "lazy_static",
+ "rusoto_core",
+ "serde",
+ "serde_yaml",
+ "symbolic",
+ "url",
 ]
 
 [[package]]
