@@ -40,3 +40,34 @@ where
         todo!()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::fs;
+    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_move_open_file() {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open("foo.txt")
+            .await
+            .unwrap();
+
+        dbg!(&file);
+
+        fs::rename("foo.txt", "bar.txt").await.unwrap();
+        dbg!(&file);
+
+        file.write_all("foo renamed bar".as_bytes()).await.unwrap();
+
+        fs::remove_file("bar.txt").await.unwrap();
+        dbg!(&file);
+
+        file.rewind().await.unwrap();
+        file.write_all("bar deleted".as_bytes()).await.unwrap();
+    }
+}
