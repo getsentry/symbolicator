@@ -464,6 +464,7 @@ pub fn get_directory_paths(
     paths
 }
 
+/// Parses a symstore path into a possible [`FileType`] and an [`ObjectId`].
 pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
     let mut split = path.splitn(4, '/');
     // Skip the leading / that the path contains
@@ -548,6 +549,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
     }
 }
 
+/// Checks whether an [`ObjectId`] matches any of the [`Glob`] patterns.
 pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
     fn canonicalize_path(s: &str) -> String {
         s.replace('\\', "/")

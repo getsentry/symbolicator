@@ -21,11 +21,13 @@ pub struct SourceId(String);
 
 // For now we allow this to be unused, some tests use these already.
 impl SourceId {
+    /// Creates a new [`SourceId`].
     #[allow(unused)]
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
+    /// Deref the [`SourceId`] to a `&str`.
     #[allow(unused)]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -70,6 +72,7 @@ impl SourceConfig {
         }
     }
 
+    /// Name of this source.
     pub fn type_name(&self) -> &'static str {
         match *self {
             SourceConfig::Sentry(..) => "sentry",
@@ -107,6 +110,7 @@ pub struct HttpSourceConfig {
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
 
+    /// Configuration common to all sources.
     #[serde(flatten)]
     pub files: CommonSourceConfig,
 }
@@ -120,6 +124,7 @@ pub struct FilesystemSourceConfig {
     /// Path to symbol directory.
     pub path: PathBuf,
 
+    /// Configuration common to all sources.
     #[serde(flatten)]
     pub files: CommonSourceConfig,
 }
@@ -166,7 +171,9 @@ where
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AwsCredentialsProvider {
+    /// Static Credentials
     Static,
+    /// Credentials derived from the container.
     Container,
 }
 
@@ -241,6 +248,7 @@ pub struct GcsSourceConfig {
     #[serde(flatten)]
     pub source_key: Arc<GcsSourceKey>,
 
+    /// Configuration common to all sources.
     #[serde(flatten)]
     pub files: CommonSourceConfig,
 }
@@ -262,6 +270,7 @@ pub struct S3SourceConfig {
     #[serde(flatten)]
     pub source_key: Arc<S3SourceKey>,
 
+    /// Configuration common to all sources.
     #[serde(flatten)]
     pub files: CommonSourceConfig,
 }
@@ -281,6 +290,7 @@ pub struct CommonSourceConfig {
 }
 
 impl CommonSourceConfig {
+    /// Creates a config with the given [`DirectoryLayoutType`]
     pub fn with_layout(layout_type: DirectoryLayoutType) -> Self {
         Self {
             layout: DirectoryLayout {
@@ -311,6 +321,7 @@ pub struct SourceFilters {
 }
 
 impl SourceFilters {
+    /// Whether the [`ObjectId`] / [`FileType`] combination is allowed on this source.
     pub fn is_allowed(&self, object_id: &ObjectId, filetype: FileType) -> bool {
         (self.filetypes.is_empty() || self.filetypes.contains(&filetype))
             && paths::matches_path_patterns(object_id, &self.path_patterns)
@@ -366,11 +377,15 @@ pub enum DirectoryLayoutType {
     Unified,
 }
 
+/// Casing of filenames on the symbol server
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FilenameCasing {
+    /// Default casing depending on layout type.
     Default,
+    /// Uppercase filenames.
     Uppercase,
+    /// Lowercase filenames.
     Lowercase,
 }
 

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::ObjectType;
 
+/// Different file types that can be fetched from symbol sources.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileType {
@@ -9,6 +10,9 @@ pub enum FileType {
     Pe,
     /// Windows/PDB debug files
     Pdb,
+    /// Portable PDB files used for .NET
+    #[serde(rename = "portablepdb")]
+    PortablePdb,
     /// Macos/Mach debug files
     MachDebug,
     /// Macos/Mach code files
@@ -51,8 +55,6 @@ pub enum FileType {
     /// This file maps from C++ source locations to the original C# source location it was transpiled from.
     #[serde(rename = "il2cpp")]
     Il2cpp,
-    #[serde(rename = "portablepdb")]
-    PortablePdb,
 }
 
 impl FileType {

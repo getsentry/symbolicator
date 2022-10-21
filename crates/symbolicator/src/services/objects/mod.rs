@@ -124,7 +124,6 @@ impl From<debuginfo::ObjectError> for ObjectError {
 /// along some errors, so we use this wrapper.
 ///
 /// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
-/// [`SourceId`]: crate::sources::SourceId
 /// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Debug)]
 struct CacheLookupError {

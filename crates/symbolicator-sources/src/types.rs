@@ -7,6 +7,7 @@ use std::str::FromStr;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use symbolic::common::{split_path, CodeId, DebugId};
 
+/// A Wrapper around [`glob::Pattern`] that allows de/serialization.
 #[derive(Debug, Clone)]
 pub struct Glob(pub glob::Pattern);
 
@@ -37,15 +38,21 @@ impl Deref for Glob {
     }
 }
 
-/// The type of an object file.
+/// The type of an executable object file.
 #[derive(Serialize, Clone, Copy, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ObjectType {
+    /// ELF Object.
     Elf,
+    /// Mach-O Object.
     Macho,
+    /// Portable Executable.
     Pe,
+    /// A WASM executable.
     Wasm,
+    /// Portable Executable containing .NET code, which has a Portable PDB companion.
     PeDotnet,
+    /// Unknown Object.
     Unknown,
 }
 
@@ -94,8 +101,6 @@ impl Default for ObjectType {
 }
 
 /// Information to find an object in external sources and also internal cache.
-///
-/// See [`ObjectId::match_object`] for how these can be compared.
 #[derive(Debug, Clone, Default)]
 pub struct ObjectId {
     /// Identifier of the code file.
@@ -124,10 +129,12 @@ impl From<DebugId> for ObjectId {
 }
 
 impl ObjectId {
+    /// Basename of the `code_file` field.
     pub fn code_file_basename(&self) -> Option<&str> {
         Some(split_path(self.code_file.as_ref()?).1)
     }
 
+    /// Basename of the `debug_file` field.
     pub fn debug_file_basename(&self) -> Option<&str> {
         Some(split_path(self.debug_file.as_ref()?).1)
     }

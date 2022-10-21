@@ -27,7 +27,7 @@ use super::sentry::SentryRemoteDif;
 /// It is essentially a `/`-separated string. This is currently used by all sources other than
 /// [`SentrySourceConfig`]. This may change in the future.
 ///
-/// [`SentrySourceConfig`]: crate::sources::SentrySourceConfig
+/// [`SentrySourceConfig`]: symbolicator_sources::SentrySourceConfig
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct SourceLocation(String);
 
@@ -92,7 +92,7 @@ impl fmt::Display for SourceLocation {
 /// information to retrieve the DIF from its source.  The file could be any DIF type: an
 /// auxiliary DIF or an object file.
 ///
-/// [`SourceConfig`]: crate::sources::SourceConfig
+/// [`SourceConfig`]: symbolicator_sources::SourceConfig
 #[derive(Debug, Clone)]
 pub enum RemoteDif {
     Sentry(SentryRemoteDif),
