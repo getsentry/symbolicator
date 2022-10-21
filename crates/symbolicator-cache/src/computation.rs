@@ -83,6 +83,7 @@ where
         // We drop the lock right before the await.
         // We then re-lock if we need to refresh and loop around.
         // The lock is thus not held across an await point.
+        // See https://github.com/rust-lang/rust-clippy/issues/9683
         #![allow(clippy::await_holding_lock)]
 
         let mut computations = self.computations.lock().unwrap();
