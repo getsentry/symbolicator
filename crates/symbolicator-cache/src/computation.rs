@@ -3,9 +3,10 @@ use std::future::Future;
 use std::hash::Hash;
 use std::pin::Pin;
 use std::sync::Mutex;
-use std::time::Instant;
 
 use futures::{future, FutureExt};
+
+use crate::time::Instant;
 
 /// This trait signals the [`ComputationCache`] when to refresh its entries.
 pub trait RefreshAfter {
@@ -117,7 +118,8 @@ where
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::Duration;
+
+    use crate::time::{self, Duration};
 
     use super::*;
 
@@ -136,7 +138,7 @@ mod tests {
     async fn test_refresh() {
         let calls = AtomicUsize::default();
         let cache = ComputationCache::new(tokio::runtime::Handle::current(), move |_key: ()| {
-            let refresh_after = Some(Instant::now() + Duration::from_millis(20));
+            let refresh_after = Some(Instant::now() + Duration::from_millis(10));
             let inner = calls.fetch_add(1, Ordering::Relaxed);
             async move {
                 RefreshesAfter {
@@ -146,14 +148,14 @@ mod tests {
             }
         });
 
+        time::pause();
         let res = futures::join!(cache.get(()), cache.get(()), cache.get(()));
         assert_eq!((res.0.inner, res.1.inner, res.2.inner), (0, 0, 0));
 
-        // XXX: this might be a bit flaky due to timings
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        time::advance(Duration::from_millis(5)).await;
         assert_eq!(cache.get(()).await.inner, 0);
 
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        time::advance(Duration::from_millis(10)).await;
 
         let res = futures::join!(cache.get(()), cache.get(()));
         assert_eq!((res.0.inner, res.1.inner), (1, 1));

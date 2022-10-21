@@ -12,3 +12,9 @@ mod computation;
 
 pub use computation::*;
 // pub use fscache::*;
+
+#[cfg(any(test, feature = "test"))]
+pub(crate) use tokio::time;
+
+#[cfg(not(any(test, feature = "test")))]
+pub(crate) use std::time;
