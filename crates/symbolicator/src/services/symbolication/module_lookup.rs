@@ -3,18 +3,19 @@ use std::sync::Arc;
 
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
+use thiserror::Error;
+
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
-use thiserror::Error;
+use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
     FetchPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError, PortablePdbCacheFile,
 };
 use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
-use crate::sources::{FileType, SourceConfig};
 use crate::types::{
-    CompleteObjectInfo, CompleteStacktrace, ObjectFileStatus, ObjectType, RawStacktrace, Scope,
+    CompleteObjectInfo, CompleteStacktrace, ObjectFileStatus, RawStacktrace, Scope,
 };
 use crate::utils::addr::AddrMode;
 

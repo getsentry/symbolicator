@@ -20,7 +20,6 @@ filetime = "0.2.16"
 flate2 = "1.0.23"
 futures = "0.3.12"
 gcp_auth = "0.7.3"
-glob = "0.3.0"
 hostname = "0.3.1"
 humantime-serde = "1.1.1"
 ipnetwork = "0.20.0"
@@ -43,7 +42,8 @@ serde_json = "1.0.81"
 serde_yaml = "0.8.15"
 structopt = "0.3.21"
 symbolic = { version = "10.0.0", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp", "ppdb"] }
-symbolicator-crash = { path = "../symbolicator-crash/", optional = true }
+symbolicator-crash = { path = "../symbolicator-crash", optional = true }
+symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }

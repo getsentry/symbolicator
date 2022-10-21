@@ -12,16 +12,17 @@ use std::time::Duration;
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 use reqwest::StatusCode;
+use rusoto_core::credential::ProvideAwsCredentials;
+use rusoto_core::region::Region;
 use rusoto_core::RusotoError;
 use rusoto_s3::{GetObjectError, S3};
 
-use rusoto_core::credential::ProvideAwsCredentials;
-use rusoto_core::region::Region;
+use symbolicator_sources::{
+    AwsCredentialsProvider, FileType, ObjectId, S3SourceConfig, S3SourceKey,
+};
 
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
-use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
-use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 
@@ -275,13 +276,14 @@ impl S3Downloader {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use std::path::Path;
 
-    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
-    use crate::test;
-    use crate::types::ObjectType;
+    use symbolicator_sources::{CommonSourceConfig, DirectoryLayoutType, ObjectType, SourceId};
 
-    use super::*;
+    use crate::test;
+
     use rusoto_s3::S3Client;
     use sha1::{Digest as _, Sha1};
 

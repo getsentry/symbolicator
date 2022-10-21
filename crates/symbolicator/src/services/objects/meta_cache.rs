@@ -13,14 +13,15 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use futures::future::BoxFuture;
+
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
+use symbolicator_sources::{ObjectId, SourceId};
 
 use crate::cache::CacheStatus;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
-use crate::sources::SourceId;
-use crate::types::{ObjectFeatures, ObjectId, Scope};
+use crate::types::{ObjectFeatures, Scope};
 
 use super::{FetchFileDataRequest, ObjectError};
 

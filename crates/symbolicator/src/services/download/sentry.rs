@@ -16,13 +16,13 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
+use symbolicator_sources::{ObjectId, SentrySourceConfig};
+
 use super::{
     content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
     USER_AGENT,
 };
 use crate::config::Config;
-use crate::sources::SentrySourceConfig;
-use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, CancelOnDrop};
 
 /// Maximum number of cached Sentry `list_files` requests.
@@ -342,7 +342,7 @@ impl SentryDownloader {
 mod tests {
     use super::*;
 
-    use crate::sources::SourceId;
+    use symbolicator_sources::SourceId;
 
     #[test]
     fn test_download_url() {

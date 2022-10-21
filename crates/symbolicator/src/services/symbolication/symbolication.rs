@@ -3,14 +3,14 @@ use std::time::Duration;
 
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
+use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::services::ppdb_caches::PortablePdbCacheFile;
 use crate::services::symcaches::SymCacheFile;
-use crate::sources::SourceConfig;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, ObjectFileStatus, ObjectType, RawFrame, RawStacktrace, Registers, RequestOptions,
-    Scope, Signal, SymbolicatedFrame,
+    FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, RequestOptions, Scope,
+    Signal, SymbolicatedFrame,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;

@@ -7,13 +7,14 @@ use std::sync::Arc;
 use backtrace::Backtrace;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
+
 use symbolic::debuginfo;
+use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::cacher::Cacher;
 use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
-use crate::sources::{FileType, SourceConfig, SourceId};
-use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectId, Scope};
+use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
 use data_cache::FetchFileDataRequest;
 use meta_cache::FetchFileMetaRequest;
@@ -123,7 +124,6 @@ impl From<debuginfo::ObjectError> for ObjectError {
 /// along some errors, so we use this wrapper.
 ///
 /// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
-/// [`SourceId`]: crate::sources::SourceId
 /// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Debug)]
 struct CacheLookupError {

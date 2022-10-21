@@ -1,15 +1,16 @@
+use std::io::Cursor;
+use std::sync::Arc;
+
 use anyhow::Context;
 use axum::body::Body;
 use axum::extract;
 use axum::http::{Method, Request, Response, StatusCode};
 
-use std::io::Cursor;
-use std::sync::Arc;
+use symbolicator_sources::parse_symstore_path;
 
 use crate::services::objects::{FindObject, ObjectHandle, ObjectPurpose};
 use crate::services::Service;
 use crate::types::Scope;
-use crate::utils::paths::parse_symstore_path;
 
 use super::ResponseError;
 

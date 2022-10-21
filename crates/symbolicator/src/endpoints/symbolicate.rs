@@ -2,9 +2,10 @@ use axum::extract;
 use axum::response::Json;
 use serde::Deserialize;
 
+use symbolicator_sources::SourceConfig;
+
 use crate::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 use crate::services::Service;
-use crate::sources::SourceConfig;
 use crate::types::{
     RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
 };

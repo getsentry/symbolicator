@@ -15,9 +15,13 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+use symbolicator_sources::get_directory_paths;
+pub use symbolicator_sources::{
+    DirectoryLayout, FileType, ObjectId, ObjectType, SourceConfig, SourceFilters,
+};
+
 use crate::cache::CacheStatus;
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
-use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
 mod gcs;
@@ -27,8 +31,6 @@ mod s3;
 mod sentry;
 
 use crate::config::Config;
-pub use crate::sources::{DirectoryLayout, FileType, SourceConfig, SourceFilters};
-pub use crate::types::ObjectId;
 pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
 
 /// HTTP User-Agent string to use.
@@ -467,15 +469,14 @@ fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Dura
 #[cfg(test)]
 mod tests {
     use symbolic::common::{CodeId, DebugId, Uuid};
+    use symbolicator_sources::{ObjectType, SourceConfig};
 
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
     use super::http::HttpRemoteDif;
     use super::*;
 
-    use crate::sources::SourceConfig;
     use crate::test;
-    use crate::types::ObjectType;
 
     #[tokio::test]
     async fn test_download() {

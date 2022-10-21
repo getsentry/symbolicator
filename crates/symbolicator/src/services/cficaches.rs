@@ -6,19 +6,18 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use futures::prelude::*;
+use thiserror::Error;
+
 use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
-use thiserror::Error;
+use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
-use crate::sources::{FileType, SourceConfig};
-use crate::types::{
-    AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
-};
+use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
