@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
-use crate::sources::GcsSourceKey;
+use symbolicator_sources::GcsSourceKey;
 
 /// A JWT token usable for GCS.
 #[derive(Debug)]

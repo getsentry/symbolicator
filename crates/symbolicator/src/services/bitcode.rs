@@ -13,14 +13,15 @@ use std::time::Duration;
 use anyhow::{Context, Error};
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
+use tempfile::tempfile_in;
+
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
-use tempfile::tempfile_in;
+use symbolicator_sources::{FileType, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
-use crate::sources::{FileType, SourceConfig};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};

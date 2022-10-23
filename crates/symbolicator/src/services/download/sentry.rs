@@ -16,14 +16,17 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
+use symbolicator_sources::{ObjectId, SentrySourceConfig};
+
 use super::{
     content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
     USER_AGENT,
 };
 use crate::config::Config;
-use crate::sources::SentrySourceConfig;
-use crate::types::ObjectId;
 use crate::utils::futures::{self as future_utils, CancelOnDrop};
+
+/// Maximum number of cached Sentry `list_files` requests.
+const SENTRY_INDEX_CACHE_SIZE: usize = 100_000;
 
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -126,7 +129,9 @@ impl SentryDownloader {
         Self {
             client,
             runtime,
-            index_cache: Mutex::new(SentryIndexCache::new(100_000)),
+            index_cache: Mutex::new(SentryIndexCache::new(
+                SENTRY_INDEX_CACHE_SIZE.try_into().unwrap(),
+            )),
             cache_duration,
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,
@@ -237,6 +242,7 @@ impl SentryDownloader {
                     FileType::Breakpad => "breakpad",
                     FileType::SourceBundle => "sourcebundle",
                     FileType::Il2cpp => "il2cpp",
+                    FileType::PortablePdb => "portablepdb",
                 })
                 .map(|val| ("file_formats", val)),
         );
@@ -336,7 +342,7 @@ impl SentryDownloader {
 mod tests {
     use super::*;
 
-    use crate::sources::SourceId;
+    use symbolicator_sources::SourceId;
 
     #[test]
     fn test_download_url() {

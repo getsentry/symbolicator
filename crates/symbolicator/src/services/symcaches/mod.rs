@@ -6,9 +6,11 @@ use std::time::Duration;
 
 use anyhow::Error;
 use futures::future::BoxFuture;
+use thiserror::Error;
+
 use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
-use thiserror::Error;
+use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus};
 use crate::services::bitcode::BitcodeService;
@@ -17,10 +19,7 @@ use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
 };
-use crate::sources::{FileType, SourceConfig};
-use crate::types::{
-    AllObjectCandidates, ObjectFeatures, ObjectId, ObjectType, ObjectUseInfo, Scope,
-};
+use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
@@ -49,6 +48,8 @@ mod markers;
 ///
 /// # Version History
 ///
+/// - `4`: An updated symbolic symcache that uses a LEB128 prefixed string table.
+///
 /// - `3`: Another round of fixes in symcache generation:
 ///        - fixes problems with split inlinees and inlinees appearing twice in the call chain
 ///        - undecorate Windows C-decorated symbols in symcaches
@@ -62,10 +63,10 @@ mod markers;
 ///
 /// - `1`: New binary format based on instruction addr lookup.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[2, 1, 0],
+    current: 4,
+    fallbacks: &[3],
 };
-static_assert!(symbolic::symcache::SYMCACHE_VERSION == 7);
+static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
@@ -476,10 +477,10 @@ mod tests {
     use crate::config::{CacheConfigs, Config};
     use crate::services::bitcode::BitcodeService;
     use crate::services::DownloadService;
-    use crate::sources::{
+    use crate::test::{self, fixture};
+    use symbolicator_sources::{
         CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceConfig, SourceId,
     };
-    use crate::test::{self, fixture};
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.

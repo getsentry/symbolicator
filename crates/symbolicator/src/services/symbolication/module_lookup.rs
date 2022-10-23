@@ -3,12 +3,17 @@ use std::sync::Arc;
 
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
+use thiserror::Error;
+
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
+use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
-use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheFile};
-use crate::sources::{FileType, SourceConfig};
+use crate::services::ppdb_caches::{
+    FetchPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError, PortablePdbCacheFile,
+};
+use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, ObjectFileStatus, RawStacktrace, Scope,
 };
@@ -16,15 +21,29 @@ use crate::utils::addr::AddrMode;
 
 use super::object_id_from_object_info;
 
+#[derive(Debug, Error)]
+pub enum CacheFileError {
+    #[error(transparent)]
+    SymCache(#[from] Arc<SymCacheError>),
+    #[error(transparent)]
+    PortablePdbCache(#[from] Arc<PortablePdbCacheError>),
+}
+
 #[derive(Debug, Clone)]
-pub struct SymCacheLookupResult<'a> {
+pub enum CacheFile {
+    SymCache(Arc<SymCacheFile>),
+    PortablePdbCache(Arc<PortablePdbCacheFile>),
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheLookupResult<'a> {
     pub module_index: usize,
     pub object_info: &'a CompleteObjectInfo,
-    pub symcache: Option<&'a SymCacheFile>,
+    pub cache: Option<&'a CacheFile>,
     pub relative_addr: Option<u64>,
 }
 
-impl<'a> SymCacheLookupResult<'a> {
+impl<'a> CacheLookupResult<'a> {
     /// The preferred [`AddrMode`] for this lookup.
     ///
     /// For the symbolicated frame, we generally switch to absolute reporting of addresses. This is
@@ -53,7 +72,7 @@ pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 struct ModuleEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
-    symcache: Option<Arc<SymCacheFile>>,
+    cache: Option<CacheFile>,
     source_object: Option<SourceObject>,
 }
 
@@ -75,7 +94,7 @@ impl ModuleLookup {
             .map(|(module_index, object_info)| ModuleEntry {
                 module_index,
                 object_info,
-                symcache: None,
+                cache: None,
                 source_object: None,
             })
             .collect();
@@ -123,16 +142,17 @@ impl ModuleLookup {
 
     /// Fetches all the SymCaches for the modules referenced by the `stacktraces`.
     #[tracing::instrument(skip_all)]
-    pub async fn fetch_symcaches(
+    pub async fn fetch_caches(
         &mut self,
         symcache_actor: SymCacheActor,
+        ppdb_cache_actor: PortablePdbCacheActor,
         stacktraces: &[RawStacktrace],
     ) {
         let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
-                if let Some(SymCacheLookupResult { module_index, .. }) =
-                    self.lookup_symcache(frame.instruction_addr.0, frame.addr_mode)
+                if let Some(CacheLookupResult { module_index, .. }) =
+                    self.lookup_cache(frame.instruction_addr.0, frame.addr_mode)
                 {
                     referenced_objects.insert(module_index);
                 }
@@ -149,45 +169,90 @@ impl ModuleLookup {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
                     return None;
                 }
-
                 let symcache_actor = symcache_actor.clone();
-                let request = FetchSymCache {
-                    object_type: entry.object_info.raw.ty,
-                    identifier: object_id_from_object_info(&entry.object_info.raw),
-                    sources: self.sources.clone(),
-                    scope: self.scope.clone(),
-                };
+                let ppdb_cache_actor = ppdb_cache_actor.clone();
+                let identifier = object_id_from_object_info(&entry.object_info.raw);
+                let sources = self.sources.clone();
+                let scope = self.scope.clone();
+                let object_type = entry.object_info.raw.ty;
 
                 Some(
                     async move {
-                        let symcache_result = symcache_actor.fetch(request).await;
-                        (idx, symcache_result)
+                        match object_type {
+                            ObjectType::PeDotnet => {
+                                let request = FetchPortablePdbCache {
+                                    identifier,
+                                    sources,
+                                    scope,
+                                };
+
+                                let ppdb_cache_result = match ppdb_cache_actor.fetch(request).await
+                                {
+                                    Ok(ppdb_cache) => Ok(CacheFile::PortablePdbCache(ppdb_cache)),
+                                    Err(e) => Err(e.as_ref().into()),
+                                };
+
+                                (idx, ppdb_cache_result)
+                            }
+                            _ => {
+                                let request = FetchSymCache {
+                                    object_type,
+                                    identifier,
+                                    sources,
+                                    scope,
+                                };
+
+                                let symcache_result = match symcache_actor.fetch(request).await {
+                                    Ok(symcache) => Ok(CacheFile::SymCache(symcache)),
+                                    Err(e) => Err(e.as_ref().into()),
+                                };
+
+                                (idx, symcache_result)
+                            }
+                        }
                     }
                     .bind_hub(Hub::new_from_top(Hub::current())),
                 )
             });
 
-        for (idx, symcache_result) in future::join_all(futures).await {
+        for (idx, cache_result) in future::join_all(futures).await {
             if let Some(entry) = self.modules.get_mut(idx) {
-                let (symcache, status) = match symcache_result {
-                    Ok(symcache) => match symcache.parse() {
-                        Ok(Some(_)) => (Some(symcache), ObjectFileStatus::Found),
-                        Ok(None) => (Some(symcache), ObjectFileStatus::Missing),
-                        Err(e) => (None, (&e).into()),
+                let (cache, status) = match cache_result {
+                    Ok(cache) => match cache {
+                        CacheFile::SymCache(ref symcache) => match symcache.parse() {
+                            Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
+                            Ok(None) => (Some(cache), ObjectFileStatus::Missing),
+                            Err(e) => (None, (&e).into()),
+                        },
+
+                        CacheFile::PortablePdbCache(ref ppdb_cache) => match ppdb_cache.parse() {
+                            Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
+                            Ok(None) => (Some(cache), ObjectFileStatus::Missing),
+                            Err(e) => (None, (&e).into()),
+                        },
                     },
-                    Err(e) => (None, (&*e).into()),
+                    Err(e) => (None, e),
                 };
 
                 entry.object_info.arch = Default::default();
+                entry.object_info.debug_status = status;
 
-                if let Some(ref symcache) = symcache {
-                    entry.object_info.arch = symcache.arch();
-                    entry.object_info.features.merge(symcache.features());
-                    entry.object_info.candidates.merge(symcache.candidates());
+                match cache {
+                    Some(CacheFile::SymCache(ref symcache)) => {
+                        entry.object_info.arch = symcache.arch();
+                        entry.object_info.features.merge(symcache.features());
+                        entry.object_info.candidates.merge(symcache.candidates());
+                    }
+
+                    Some(CacheFile::PortablePdbCache(ref ppdb_cache)) => {
+                        entry.object_info.features.merge(ppdb_cache.features());
+                        entry.object_info.candidates.merge(ppdb_cache.candidates());
+                    }
+
+                    None => {}
                 }
 
-                entry.symcache = symcache;
-                entry.object_info.debug_status = status;
+                entry.cache = cache;
             }
         }
     }
@@ -266,20 +331,16 @@ impl ModuleLookup {
     }
 
     /// Look up the corresponding SymCache based on the instruction `addr`.
-    pub fn lookup_symcache(
-        &self,
-        addr: u64,
-        addr_mode: AddrMode,
-    ) -> Option<SymCacheLookupResult<'_>> {
+    pub fn lookup_cache(&self, addr: u64, addr_mode: AddrMode) -> Option<CacheLookupResult<'_>> {
         self.get_module_by_addr(addr, addr_mode).map(|entry| {
             let relative_addr = match addr_mode {
                 AddrMode::Abs => entry.object_info.abs_to_rel_addr(addr),
                 AddrMode::Rel(_) => Some(addr),
             };
-            SymCacheLookupResult {
+            CacheLookupResult {
                 module_index: entry.module_index,
                 object_info: &entry.object_info,
-                symcache: entry.symcache.as_deref(),
+                cache: entry.cache.as_ref(),
                 relative_addr,
             }
         })

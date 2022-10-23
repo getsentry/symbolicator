@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use tokio::fs;
 
+use symbolicator_sources::{FileType, FilesystemSourceConfig, ObjectId};
+
 use super::locations::SourceLocation;
 use super::{DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
-use crate::sources::{FileType, FilesystemSourceConfig};
-use crate::types::ObjectId;
 
 /// Filesystem-specific [`RemoteDif`].
 #[derive(Debug, Clone)]

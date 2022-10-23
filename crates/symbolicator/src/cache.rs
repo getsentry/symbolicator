@@ -1,7 +1,7 @@
 //! Core logic for cache files. Used by `crate::services::common::cache`.
 
 use core::fmt;
-use std::fs::{read_dir, remove_file};
+use std::fs::{read_dir, remove_dir, remove_file};
 use std::io::{self, Read, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
@@ -193,6 +193,7 @@ pub enum CacheName {
     Il2cpp,
     Symcaches,
     Cficaches,
+    PpdbCaches,
     Diagnostics,
 }
 
@@ -205,6 +206,7 @@ impl AsRef<str> for CacheName {
             Self::Il2cpp => "il2cpp",
             Self::Symcaches => "symcaches",
             Self::Cficaches => "cficaches",
+            Self::PpdbCaches => "ppdb_caches",
             Self::Diagnostics => "diagnostics",
         }
     }
@@ -285,48 +287,68 @@ impl Cache {
 
     pub fn cleanup(&self) -> Result<()> {
         tracing::info!("Cleaning up cache: {}", self.name);
-        let cache_dir = self.cache_dir.clone().ok_or_else(|| {
+        let cache_dir = self.cache_dir.as_ref().ok_or_else(|| {
             anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
 
-        let mut directories = vec![cache_dir];
-        while !directories.is_empty() {
-            let directory = directories.pop().unwrap();
-
-            let entries = match catch_not_found(|| read_dir(directory))? {
-                Some(x) => x,
-                None => {
-                    tracing::warn!("Directory not found");
-                    return Ok(());
-                }
-            };
-
-            for entry in entries {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    directories.push(path.to_owned());
-                } else if let Err(e) = self.try_cleanup_path(&path) {
-                    sentry::with_scope(
-                        |scope| scope.set_extra("path", path.display().to_string().into()),
-                        || tracing::error!("Failed to clean cache file: {:?}", e),
-                    );
-                }
-            }
-        }
+        self.cleanup_directory_recursive(cache_dir)?;
 
         Ok(())
     }
 
-    fn try_cleanup_path(&self, path: &Path) -> Result<()> {
+    /// Cleans up the directory recursively, returning `true` if the directory is left empty after cleanup.
+    fn cleanup_directory_recursive(&self, directory: &Path) -> Result<bool> {
+        let entries = match catch_not_found(|| read_dir(directory))? {
+            Some(x) => x,
+            None => {
+                tracing::warn!("Directory not found: {}", directory.display());
+                return Ok(true);
+            }
+        };
+
+        let mut is_empty = true;
+        for entry in entries {
+            let path = entry?.path();
+            if path.is_dir() {
+                let mut dir_is_empty = self.cleanup_directory_recursive(&path)?;
+                if dir_is_empty {
+                    if let Err(e) = remove_dir(&path) {
+                        sentry::with_scope(
+                            |scope| scope.set_extra("path", path.display().to_string().into()),
+                            || tracing::error!("Failed to clean cache directory: {:?}", e),
+                        );
+                        dir_is_empty = false;
+                    }
+                }
+                is_empty &= dir_is_empty;
+            } else {
+                match self.try_cleanup_path(&path) {
+                    Err(e) => {
+                        sentry::with_scope(
+                            |scope| scope.set_extra("path", path.display().to_string().into()),
+                            || tracing::error!("Failed to clean cache file: {:?}", e),
+                        );
+                    }
+                    Ok(file_removed) => is_empty &= file_removed,
+                }
+            }
+        }
+
+        Ok(is_empty)
+    }
+
+    /// Tries to clean up the file at `path`, returning `true` if it was removed.
+    fn try_cleanup_path(&self, path: &Path) -> Result<bool> {
         tracing::trace!("Checking {}", path.display());
         anyhow::ensure!(path.is_file(), "not a file");
         if catch_not_found(|| self.check_expiry(path))?.is_none() {
             tracing::debug!("Removing {}", path.display());
             catch_not_found(|| remove_file(path))?;
+
+            return Ok(true);
         }
 
-        Ok(())
+        Ok(false)
     }
 
     /// Validate cache expiration of path. If cache should not be used,
@@ -421,8 +443,38 @@ impl Cache {
     pub fn tempfile(&self) -> io::Result<NamedTempFile> {
         match self.tmp_dir {
             Some(ref path) => {
-                std::fs::create_dir_all(path)?;
-                Ok(tempfile::Builder::new().prefix("tmp").tempfile_in(path)?)
+                // The `cleanup` process could potentially remove the parent directories we are
+                // operating in, so be defensive here and retry the fs operations.
+                const MAX_RETRIES: usize = 2;
+                let mut retries = 0;
+                loop {
+                    retries += 1;
+
+                    if let Err(e) = std::fs::create_dir_all(path) {
+                        sentry::with_scope(
+                            |scope| scope.set_extra("path", path.display().to_string().into()),
+                            || tracing::error!("Failed to create cache directory: {:?}", e),
+                        );
+                        if retries > MAX_RETRIES {
+                            return Err(e);
+                        }
+                        continue;
+                    }
+
+                    match tempfile::Builder::new().prefix("tmp").tempfile_in(path) {
+                        Ok(temp_file) => return Ok(temp_file),
+                        Err(e) => {
+                            sentry::with_scope(
+                                |scope| scope.set_extra("path", path.display().to_string().into()),
+                                || tracing::error!("Failed to create cache file: {:?}", e),
+                            );
+                            if retries > MAX_RETRIES {
+                                return Err(e);
+                            }
+                            continue;
+                        }
+                    }
+                }
             }
             None => Ok(NamedTempFile::new()?),
         }
@@ -501,6 +553,7 @@ pub struct Caches {
     pub symcaches: Cache,
     /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
     pub cficaches: Cache,
+    pub ppdb_caches: Cache,
     /// Store for diagnostics data symbolicator failed to process, used by
     /// [`crate::services::symbolication::SymbolicationActor`].
     pub diagnostics: Cache,
@@ -577,6 +630,16 @@ impl Caches {
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),
+                    max_lazy_recomputations.clone(),
+                )?
+            },
+            ppdb_caches: {
+                let path = config.cache_dir("ppdb_caches");
+                Cache::from_config(
+                    CacheName::PpdbCaches,
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
                     max_lazy_recomputations,
                 )?
             },
@@ -616,6 +679,7 @@ impl Caches {
             il2cpp,
             symcaches,
             cficaches,
+            ppdb_caches,
             diagnostics,
         } = &self;
 
@@ -629,6 +693,7 @@ impl Caches {
             diagnostics.cleanup(),
             auxdifs.cleanup(),
             il2cpp.cleanup(),
+            ppdb_caches.cleanup(),
         ];
 
         let mut first_error = None;
@@ -763,10 +828,6 @@ mod tests {
 
     #[test]
     fn test_retry_misses_after() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-        use std::thread::sleep;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
@@ -801,10 +862,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_malformed() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-        use std::thread::sleep;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
@@ -846,10 +903,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_cache_specific_error_derived() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-        use std::thread::sleep;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
@@ -894,10 +947,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_cache_specific_error_download() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-        use std::thread::sleep;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("foo"))?;
 
@@ -940,9 +989,6 @@ mod tests {
 
     #[test]
     fn test_expiration_strategy_positive() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("honk"))?;
 
@@ -986,9 +1032,6 @@ mod tests {
 
     #[test]
     fn test_expiration_strategy_negative() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("honk"))?;
 
@@ -1012,9 +1055,6 @@ mod tests {
 
     #[test]
     fn test_expiration_strategy_malformed() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("honk"))?;
 
@@ -1050,9 +1090,6 @@ mod tests {
 
     #[test]
     fn test_expiration_strategy_cache_specific_err_derived() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("honk"))?;
 
@@ -1083,9 +1120,6 @@ mod tests {
 
     #[test]
     fn test_expiration_strategy_cache_specific_err_diagnostics() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("honk"))?;
 
@@ -1116,9 +1150,6 @@ mod tests {
 
     #[test]
     fn test_expiration_strategy_cache_specific_err_downloaded() -> Result<()> {
-        use std::fs::create_dir_all;
-        use std::io::Write;
-
         let tempdir = tempdir()?;
         create_dir_all(tempdir.path().join("honk"))?;
 

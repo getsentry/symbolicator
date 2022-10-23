@@ -38,7 +38,7 @@ sources:
     type: http
     url: https://msdl.microsoft.com/download/symbols/
     layout: { type: "symstore" }
-    filters: { filetypes: ["pdb", "pe"] }
+    filters: { filetypes: ["pe", "pdb", "portablepdb"] }
     is_public: true
 
   # Sentry employees can find other non-public symbol servers here:

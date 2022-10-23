@@ -17,9 +17,13 @@ use tokio::io::AsyncWriteExt;
 
 use aws_smithy_http;
 
+use symbolicator_sources::get_directory_paths;
+pub use symbolicator_sources::{
+    DirectoryLayout, FileType, ObjectId, ObjectType, SourceConfig, SourceFilters,
+};
+
 use crate::cache::CacheStatus;
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
-use crate::utils::paths::get_directory_paths;
 
 mod filesystem;
 mod gcs;
@@ -29,8 +33,6 @@ mod s3;
 mod sentry;
 
 use crate::config::Config;
-pub use crate::sources::{DirectoryLayout, FileType, SourceConfig, SourceFilters};
-pub use crate::types::ObjectId;
 pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
 
 /// HTTP User-Agent string to use.
@@ -52,7 +54,7 @@ pub enum DownloadError {
     #[error("failed to fetch data from GCS")]
     Gcs(#[from] crate::utils::gcs::GcsError),
     #[error("failed to fetch data from Sentry")]
-    Sentry(#[from] sentry::SentryError),
+    Sentry(sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
     #[error("aws-sdk: failed to fetch data from S3")]
@@ -64,6 +66,19 @@ pub enum DownloadError {
     Rejected(StatusCode),
     #[error("failed to fetch object: {0}")]
     CachedError(String),
+}
+
+impl From<sentry::SentryError> for DownloadError {
+    fn from(err: sentry::SentryError) -> Self {
+        if matches!(
+            err,
+            sentry::SentryError::BadStatusCode(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
+        ) {
+            DownloadError::Permissions
+        } else {
+            DownloadError::Sentry(err)
+        }
+    }
 }
 
 impl DownloadError {
@@ -456,15 +471,14 @@ fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Dura
 #[cfg(test)]
 mod tests {
     use symbolic::common::{CodeId, DebugId, Uuid};
+    use symbolicator_sources::{ObjectType, SourceConfig};
 
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
     use super::http::HttpRemoteDif;
     use super::*;
 
-    use crate::sources::SourceConfig;
     use crate::test;
-    use crate::types::ObjectType;
 
     #[tokio::test]
     async fn test_download() {

@@ -284,8 +284,8 @@ The following layout types support this lookup:
 ### debuginfod
 
 Symbolicator also supports talking to
-[debuginfod](https://sourceware.org/git/?p=elfutils.git;a=shortlog;h=refs/heads/debuginfod)
-compatible servers for ELF and Macho.
+[debuginfod](https://debuginfod.elfutils.org/) compatible servers for ELF and
+Macho.
 
 **Schema**:
 

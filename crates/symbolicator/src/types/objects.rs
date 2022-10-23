@@ -2,9 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use symbolicator_sources::SourceId;
+
 use crate::cache::CacheStatus;
 use crate::services::download::RemoteDifUri;
-use crate::sources::SourceId;
 
 use super::ObjectFeatures;
 
@@ -18,7 +19,7 @@ use super::ObjectFeatures;
 /// which ID this DIF info was for.
 ///
 /// [`CompleteObjectInfo`]: crate::types::CompleteObjectInfo
-/// [`ObjectId`]: crate::types::ObjectId
+/// [`ObjectId`]: symbolicator_sources::ObjectId
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObjectCandidate {
     /// The ID of the object source where this DIF was expected to be found.

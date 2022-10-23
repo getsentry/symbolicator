@@ -12,6 +12,13 @@
     clippy::all
 )]
 
+#[cfg(not(target_env = "msvc"))]
+use jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[macro_use]
 mod macros;
 
@@ -25,7 +32,6 @@ mod endpoints;
 mod logging;
 mod server;
 mod services;
-mod sources;
 mod types;
 mod utils;
 

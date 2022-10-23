@@ -19,10 +19,12 @@ use aws_types::region::Region;
 use futures::TryStreamExt;
 use parking_lot::Mutex;
 
+use symbolicator_sources::{
+    AwsCredentialsProvider, FileType, ObjectId, S3SourceConfig, S3SourceKey,
+};
+
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
-use crate::sources::{AwsCredentialsProvider, FileType, S3SourceConfig, S3SourceKey};
-use crate::types::ObjectId;
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<Client>>;
 
@@ -95,7 +97,7 @@ pub type S3Error = aws_sdk_s3::Error;
 impl S3Downloader {
     pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
         Self {
-            client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE)),
+            client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE.try_into().unwrap())),
             connect_timeout,
             streaming_timeout,
         }
@@ -272,14 +274,23 @@ impl S3Downloader {
 /*
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use std::path::Path;
 
-    use crate::sources::{CommonSourceConfig, DirectoryLayoutType, SourceId};
-    use crate::test;
-    use crate::types::ObjectType;
+    use symbolicator_sources::{CommonSourceConfig, DirectoryLayoutType, ObjectType, SourceId};
 
+    use crate::test;
+
+<<<<<<< HEAD
     use super::*;
     use aws_sdk_s3::client::Client;
+||||||| 2a7e507
+    use super::*;
+    use rusoto_s3::S3Client;
+=======
+    use rusoto_s3::S3Client;
+>>>>>>> master
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.

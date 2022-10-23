@@ -29,13 +29,14 @@ use warp::filters::fs::File;
 use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
+use symbolicator_sources::{
+    CommonSourceConfig, DirectoryLayoutType, FileType, FilesystemSourceConfig, GcsSourceKey,
+    HttpSourceConfig, SourceConfig, SourceFilters, SourceId,
+};
+
 use crate::config::Config;
 use crate::endpoints;
 use crate::services::Service;
-use crate::sources::{
-    CommonSourceConfig, FileType, FilesystemSourceConfig, GcsSourceKey, HttpSourceConfig,
-    SourceConfig, SourceFilters, SourceId,
-};
 
 pub use tempfile::TempDir;
 
@@ -295,8 +296,7 @@ impl FailingSymbolServer {
 
         let server = Server::new(reject.or(not_found).or(pending).or(forbidden));
 
-        let files_config =
-            CommonSourceConfig::with_layout(crate::sources::DirectoryLayoutType::Unified);
+        let files_config = CommonSourceConfig::with_layout(DirectoryLayoutType::Unified);
 
         let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
             id: SourceId::new("reject"),

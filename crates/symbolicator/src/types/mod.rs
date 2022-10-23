@@ -4,22 +4,17 @@
 //! HTTP API.  Its messy and things probably need a better place and different way to signal
 //! they are part of the public API.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::convert::Infallible;
 use std::fmt;
-use std::ops::Deref;
-use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
-use serde::{de, Deserialize, Deserializer, Serialize};
-use symbolic::common::{split_path, Arch, CodeId, DebugId, Language};
-use symbolic::debuginfo::Object;
+use serde::{Deserialize, Deserializer, Serialize};
+use symbolic::common::{Arch, CodeId, DebugId, Language};
+use symbolicator_sources::ObjectType;
 use uuid::Uuid;
 
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
-use crate::utils::sentry::ConfigureScope;
 
 mod objects;
 
@@ -56,36 +51,6 @@ impl<'de> Deserialize<'de> for RequestId {
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Signal(pub u32);
-
-#[derive(Debug, Clone)]
-pub struct Glob(pub glob::Pattern);
-
-impl<'de> Deserialize<'de> for Glob {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = Cow::<str>::deserialize(deserializer)?;
-        s.parse().map_err(de::Error::custom).map(Glob)
-    }
-}
-
-impl Serialize for Glob {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.0.to_string())
-    }
-}
-
-impl Deref for Glob {
-    type Target = glob::Pattern;
-
-    fn deref(&self) -> &glob::Pattern {
-        &self.0
-    }
-}
 
 /// The scope of a source or debug file.
 ///
@@ -178,6 +143,16 @@ pub struct RawFrame {
     ///
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
+
+    /// The index of the frame's function in the Portable PDB method table.
+    ///
+    /// This is used for dotnet symbolication.
+    ///
+    /// NOTE: While the concept of a "function index" also exists in WASM,
+    /// we don't need it for symbolication. The instruction address is enough
+    /// to get the information we need from a WASM debug file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function_id: Option<HexValue>,
 
     /// The path to the [module](RawObjectInfo) this frame is located in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -340,59 +315,10 @@ pub struct RawObjectInfo {
     /// The size is infered from the module list if not specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
-}
 
-/// The type of an object file.
-#[derive(Serialize, Clone, Copy, Debug, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ObjectType {
-    Elf,
-    Macho,
-    Pe,
-    Wasm,
-    Unknown,
-}
-
-impl FromStr for ObjectType {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<ObjectType, Infallible> {
-        Ok(match s {
-            "elf" => ObjectType::Elf,
-            "macho" => ObjectType::Macho,
-            "pe" => ObjectType::Pe,
-            "wasm" => ObjectType::Wasm,
-            _ => ObjectType::Unknown,
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for ObjectType {
-    fn deserialize<D>(deserializer: D) -> Result<ObjectType, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s: Cow<'de, str> = Deserialize::deserialize(deserializer)?;
-        Ok(s.parse().unwrap())
-    }
-}
-
-impl fmt::Display for ObjectType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ObjectType::Elf => write!(f, "elf"),
-            ObjectType::Macho => write!(f, "macho"),
-            ObjectType::Pe => write!(f, "pe"),
-            ObjectType::Wasm => write!(f, "wasm"),
-            ObjectType::Unknown => write!(f, "unknown"),
-        }
-    }
-}
-
-impl Default for ObjectType {
-    fn default() -> ObjectType {
-        ObjectType::Unknown
-    }
+    /// Checksum of the file's contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
 }
 
 /// Information on the symbolication status of this frame.
@@ -729,99 +655,4 @@ pub struct SystemInfo {
 
     /// Device model name
     pub device_model: String,
-}
-
-/// Information to find an object in external sources and also internal cache.
-///
-/// See [`ObjectId::match_object`] for how these can be compared.
-#[derive(Debug, Clone, Default)]
-pub struct ObjectId {
-    /// Identifier of the code file.
-    pub code_id: Option<CodeId>,
-
-    /// Path to the code file (executable or library).
-    pub code_file: Option<String>,
-
-    /// Identifier of the debug file.
-    pub debug_id: Option<DebugId>,
-
-    /// Path to the debug file.
-    pub debug_file: Option<String>,
-
-    /// Hint to what we believe the file type should be.
-    pub object_type: ObjectType,
-}
-
-impl From<DebugId> for ObjectId {
-    fn from(source: DebugId) -> Self {
-        Self {
-            debug_id: Some(source),
-            ..Default::default()
-        }
-    }
-}
-
-impl ObjectId {
-    pub fn code_file_basename(&self) -> Option<&str> {
-        Some(split_path(self.code_file.as_ref()?).1)
-    }
-
-    pub fn debug_file_basename(&self) -> Option<&str> {
-        Some(split_path(self.debug_file.as_ref()?).1)
-    }
-
-    /// Validates that the object matches expected identifiers.
-    pub fn match_object(&self, object: &Object<'_>) -> bool {
-        if let Some(ref debug_id) = self.debug_id {
-            let parsed_id = object.debug_id();
-
-            // Microsoft symbol server sometimes stores updated files with a more recent
-            // (=higher) age, but resolves it for requests with lower ages as well. Thus, we
-            // need to check whether the parsed debug file fullfills the *miniumum* age bound.
-            // For example:
-            // `4A236F6A0B3941D1966B41A4FC77738C2` is reported as
-            // `4A236F6A0B3941D1966B41A4FC77738C4` from the server.
-            //                                  ^
-            return parsed_id.uuid() == debug_id.uuid()
-                && parsed_id.appendix() >= debug_id.appendix();
-        }
-
-        if let Some(ref code_id) = self.code_id {
-            if let Some(ref object_code_id) = object.code_id() {
-                if object_code_id != code_id {
-                    return false;
-                }
-            }
-        }
-
-        true
-    }
-}
-
-impl ConfigureScope for ObjectId {
-    fn to_scope(&self, scope: &mut sentry::Scope) {
-        scope.set_tag(
-            "object_id.code_id",
-            self.code_id
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "None".to_string()),
-        );
-        scope.set_tag(
-            "object_id.code_file_basename",
-            self.code_file_basename().unwrap_or("None"),
-        );
-        scope.set_tag(
-            "object_id.debug_id",
-            self.debug_id
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "None".to_string()),
-        );
-        scope.set_tag(
-            "object_id.debug_file_basename",
-            self.debug_file_basename().unwrap_or("None"),
-        );
-        scope.set_tag("object_id.object_type", self.object_type.to_string());
-    }
 }
