@@ -8,10 +8,18 @@
 #![warn(missing_docs)]
 
 mod computation;
-// mod fscache;
+mod fscache;
 
 pub use computation::*;
-// pub use fscache::*;
+pub use fscache::*;
+
+/// This trait signals the [`ComputationCache`] when to refresh its entries.
+pub trait RefreshAfter {
+    /// Tells the [`ComputationCache`] if and when to refresh its entry.
+    fn refresh_after(&self) -> Option<crate::time::Instant> {
+        None
+    }
+}
 
 #[cfg(any(test, feature = "test"))]
 pub(crate) use tokio::time;

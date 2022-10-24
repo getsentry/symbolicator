@@ -3309,7 +3309,9 @@ dependencies = [
 name = "symbolicator-cache"
 version = "0.5.1"
 dependencies = [
+ "filetime",
  "futures",
+ "tempfile",
  "tokio",
 ]
 

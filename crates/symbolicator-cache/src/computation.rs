@@ -9,18 +9,19 @@ use tokio::runtime;
 use tokio::task::JoinHandle;
 
 use crate::time::Instant;
+use crate::RefreshAfter;
 
 /// The Cache Computation Driver
 ///
 /// The driver is responsible for providing the actual computation that is supposed to be cached,
 /// as well as determining the cache key.
 pub trait ComputationDriver {
-    /// Input argument to the Driver.
+    /// Input argument to the driver.
     type Arg;
     /// Cache Key for the computation.
     type Key: Eq + Hash + Clone;
-    /// The resulting value of the computation.
-    type Value: RefreshAfter + Clone + Send + 'static;
+    /// The resulting output of the computation.
+    type Output: RefreshAfter + Clone + Send + 'static;
 
     /// Returns the cache key corresponding to the `arg`.
     fn cache_key(&self, arg: &Self::Arg) -> Self::Key;
@@ -35,15 +36,7 @@ pub trait ComputationDriver {
         &self,
         runtime: &runtime::Handle,
         arg: &Self::Arg,
-    ) -> JoinHandle<Self::Value>;
-}
-
-/// This trait signals the [`ComputationCache`] when to refresh its entries.
-pub trait RefreshAfter {
-    /// Tells the [`ComputationCache`] if and when to refresh its entry.
-    fn refresh_after(&self) -> Option<Instant> {
-        None
-    }
+    ) -> JoinHandle<Self::Output>;
 }
 
 // TODO: this should be `impl Future` once TAIT is stable.
@@ -74,18 +67,14 @@ type ComputationMap<K, V> = Mutex<HashMap<K, CacheEntryComputation<V>>>;
 pub struct ComputationCache<D: ComputationDriver> {
     driver: D,
     runtime: runtime::Handle,
-    computations: ComputationMap<D::Key, D::Value>,
+    computations: ComputationMap<D::Key, D::Output>,
 }
 
 impl<D> ComputationCache<D>
 where
     D: ComputationDriver,
 {
-    /// Creates a new Cache.
-    ///
-    /// If a requested item does not yet exists in the cache, or needs to be refreshed,
-    /// the `factory` function is being invoked and the resulting future is spawned on
-    /// the provided `runtime`.
+    /// Creates a new Computation Cache.
     pub fn new(runtime: tokio::runtime::Handle, driver: D) -> Self {
         Self {
             driver,
@@ -94,10 +83,10 @@ where
         }
     }
 
-    /// Get or compute the value for the provided `key`.
+    /// Get or compute the output value for the provided `arg`.
     ///
-    /// See [`ComputationCache`] docs for how the value is computed and the panics that can happen.
-    pub async fn get(&self, arg: &D::Arg) -> D::Value {
+    /// See [`ComputationCache`] docs for how the output value is computed and the panics that can happen.
+    pub async fn get(&self, arg: &D::Arg) -> D::Output {
         // This is a false positive:
         // We drop the lock right before the await.
         // We then re-lock if we need to refresh and loop around.
@@ -119,7 +108,7 @@ where
                     // TODO: remove the Box::pin once TAIT is stable.
                     // XXX: for some reason we need an explicit type annotation here,
                     // so the compiler knows its supposed to be a `dyn Future`.
-                    let fut: Pin<Box<dyn Future<Output = D::Value>>> = Box::pin(async move {
+                    let fut: Pin<Box<dyn Future<Output = D::Output>>> = Box::pin(async move {
                         // unwrap the `JoinError` as we want the fn signature to be as
                         // clean as possible.
                         fut.await.unwrap()
@@ -169,7 +158,7 @@ mod tests {
     impl ComputationDriver for Driver {
         type Arg = ();
         type Key = ();
-        type Value = RefreshesAfter<usize>;
+        type Output = RefreshesAfter<usize>;
 
         fn cache_key(&self, _arg: &Self::Arg) -> Self::Key {}
 
@@ -177,7 +166,7 @@ mod tests {
             &self,
             runtime: &runtime::Handle,
             _arg: &Self::Arg,
-        ) -> JoinHandle<Self::Value> {
+        ) -> JoinHandle<Self::Output> {
             let inner = self.calls.fetch_add(1, Ordering::Relaxed);
 
             runtime.spawn(async move {
