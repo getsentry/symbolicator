@@ -9,6 +9,10 @@ use tokio::fs;
 ///
 /// The driver is responsible for loading an item from a file on disk,
 /// or to write an item into an os-disk file.
+///
+/// # TODO:
+/// * should this handle cache versioning?
+/// * what about shared cache?
 pub trait FsCacheDriver {
     /// Input argument to the driver.
     type Arg;
