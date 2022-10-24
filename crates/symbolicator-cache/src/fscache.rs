@@ -14,6 +14,7 @@ pub trait FsCacheDriver {
     type Arg;
     /// The resulting output that is read from / writen to disk.
     type Output;
+
     /// The future type for the `create` trait fn.
     type CreateFut: Future<Output = io::Result<Self::Output>>;
 
@@ -24,8 +25,8 @@ pub trait FsCacheDriver {
     ///
     /// Returning `None` signals the [`FsCache`] to remove the existing file and to
     /// try recreating it.
-    // TODO: make this return a future?
-    fn load(&self, file: fs::File) -> Option<(Self::Output, bool)>;
+    // TODO: make this return a future and take a tokio file instead?
+    fn load(&self, file: std::fs::File) -> Option<Self::Output>;
 
     /// Write the cache item out into `file`.
     ///
@@ -70,13 +71,8 @@ where
 
         match fs::OpenOptions::new().read(true).open(&cache_path).await {
             Ok(file) => {
-                if let Some((output, should_touch)) = self.driver.load(file) {
-                    // TODO: should touching the file be the responsibility of the the fs cache?
-                    if should_touch {
-                        // TODO: log, ignore or return error?
-                        let _ = filetime::set_file_mtime(&cache_path, filetime::FileTime::now());
-                    }
-                    // TODO: touch file
+                let std_file = file.into_std().await;
+                if let Some(output) = self.driver.load(std_file) {
                     // everything good
                     return output;
                 }
@@ -142,9 +138,7 @@ mod tests {
             self.path.join(arg)
         }
 
-        fn load(&self, file: fs::File) -> Option<(Self::Output, bool)> {
-            // TODO: should this just use std::File?
-            let mut file = file.try_into_std().ok()?;
+        fn load(&self, mut file: std::fs::File) -> Option<Self::Output> {
             let mut output = String::new();
             file.read_to_string(&mut output).ok()?;
 
@@ -153,7 +147,7 @@ mod tests {
                 return None;
             }
 
-            Some((output, false))
+            Some(output)
         }
 
         fn create(&self, _arg: Self::Arg, mut file: fs::File) -> Self::CreateFut {
