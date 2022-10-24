@@ -82,7 +82,7 @@ pub fn execute() -> Result<()> {
         // profiles are sub-sampling transactions, which we only sample based on upstream requests.
         // the sample rate we get from upstream is very low (< 20 transactions per minute, spread
         // across ~30 somewhat instances), so we might as well go full blast here.
-        profiles_sample_rate: 1.0,
+        profiles_sample_rate: 0.5,
         ..Default::default()
     });
 
