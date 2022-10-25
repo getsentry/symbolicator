@@ -35,6 +35,7 @@ RUN mkdir -p crates/symbolicator/src \
 
 COPY crates/symbolicator/src crates/symbolicator/src/
 COPY crates/symbolicator-crash/src crates/symbolicator-crash/src/
+COPY crates/symbolicator-sources/src crates/symbolicator-sources/src/
 COPY crates/symbolicator-crash/sentry-native crates/symbolicator-crash/sentry-native/
 COPY .git ./.git/
 # Ignore missing (deleted) files for dirty-check in `git describe` call for version
