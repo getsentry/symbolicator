@@ -255,7 +255,13 @@ impl<T: CacheItemRequest> Cacher<T> {
                     metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
                     return Ok(None);
                 }
-                if status == CacheStatus::Positive && mtime_bumped {
+
+                // store things into the shared cache when:
+                // - we have a positive cache
+                // - that has the latest version (we don’t want to upload old versions)
+                // - we refreshed the local cache time, so we also refresh the shared cache time.
+                if status == CacheStatus::Positive && version == T::VERSIONS.current && mtime_bumped
+                {
                     let shared_cache_key = SharedCacheKey {
                         name: self.config.name(),
                         version: T::VERSIONS.current,
