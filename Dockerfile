@@ -17,6 +17,7 @@ COPY Cargo.toml Cargo.lock ./
 
 COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
 COPY crates/symbolicator-crash/build.rs crates/symbolicator-crash/Cargo.toml crates/symbolicator-crash/
+COPY crates/symbolicator-sources/Cargo.toml crates/symbolicator-sources/
 
 # Build without --locked.
 #
@@ -28,6 +29,8 @@ RUN mkdir -p crates/symbolicator/src \
     && echo "fn main() {}" > crates/symbolicator/src/main.rs \
     && mkdir -p crates/symbolicator-crash/src \
     && echo "pub fn main() {}" > crates/symbolicator-crash/src/lib.rs \
+    && mkdir -p crates/symbolicator-sources/src \
+    && echo "pub fn main() {}" > crates/symbolicator-sources/src/lib.rs \
     && cargo build --release
 
 COPY crates/symbolicator/src crates/symbolicator/src/
