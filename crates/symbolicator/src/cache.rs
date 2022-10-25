@@ -2,7 +2,7 @@
 
 use core::fmt;
 use std::fs::{read_dir, remove_dir, remove_file};
-use std::io::{self, Read, SeekFrom};
+use std::io::{self, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -354,7 +354,7 @@ impl Cache {
     /// Validate cache expiration of path. If cache should not be used,
     /// `Err(io::ErrorKind::NotFound)` is returned. If cache is usable, `Ok(x)` is returned, where
     /// `x` indicates whether the file should be touched before using.
-    fn check_expiry(&self, path: &Path) -> io::Result<bool> {
+    fn check_expiry(&self, path: &Path) -> io::Result<(ByteView<'static>, bool)> {
         // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
         // filesystem attribute is unreliable.
@@ -370,10 +370,11 @@ impl Cache {
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
         let metadata = path.metadata()?;
-
         tracing::trace!("File length: {}", metadata.len());
 
-        let expiration_strategy = expiration_strategy(&self.cache_config, path)?;
+        let bv = ByteView::open(path)?;
+
+        let expiration_strategy = expiration_strategy(&self.cache_config, &bv)?;
 
         if expiration_strategy == ExpirationStrategy::Malformed {
             // Immediately expire malformed items that have been created before this process started.
@@ -415,7 +416,7 @@ impl Cache {
 
         let touch_before_use = expiration_strategy == ExpirationStrategy::None
             && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true);
-        Ok(touch_before_use)
+        Ok((bv, touch_before_use))
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -429,13 +430,13 @@ impl Cache {
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
         catch_not_found(|| {
-            let should_touch = self.check_expiry(path)?;
+            let (bv, should_touch) = self.check_expiry(path)?;
 
             if should_touch {
                 filetime::set_file_mtime(path, FileTime::now())?;
             }
 
-            Ok((ByteView::open(path)?, should_touch))
+            Ok((bv, should_touch))
         })
     }
 
@@ -494,22 +495,10 @@ enum ExpirationStrategy {
     Malformed,
 }
 
-/// Reads a cache item at a given path and returns the cleanup strategy that should be used
+/// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
 /// for the item.
-fn expiration_strategy(cache_config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
-    let metadata = path.metadata()?;
-
-    let largest_sentinel = MALFORMED_MARKER
-        .len()
-        .max(CACHE_SPECIFIC_ERROR_MARKER.len());
-    let readable_amount = largest_sentinel.min(metadata.len() as usize);
-    let mut file = std::fs::File::open(path)?;
-    let mut buf = vec![0; readable_amount];
-
-    file.read_exact(&mut buf)?;
-    tracing::trace!("First {} bytes: {:?}", buf.len(), buf);
-
-    let strategy = match CacheStatus::from_content(&buf) {
+fn expiration_strategy(cache_config: &CacheConfig, buf: &[u8]) -> io::Result<ExpirationStrategy> {
+    let strategy = match CacheStatus::from_content(buf) {
         CacheStatus::Positive => ExpirationStrategy::None,
         CacheStatus::Negative => ExpirationStrategy::Negative,
         CacheStatus::Malformed(_) => ExpirationStrategy::Malformed,
@@ -985,6 +974,11 @@ mod tests {
         assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
 
         Ok(())
+    }
+
+    fn expiration_strategy(config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
+        let bv = ByteView::open(path)?;
+        super::expiration_strategy(config, &bv)
     }
 
     #[test]
