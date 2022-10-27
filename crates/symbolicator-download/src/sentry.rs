@@ -115,17 +115,7 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
-        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
-        let cache_duration = if config.cache_dir.is_some() {
-            config
-                .caches
-                .downloaded
-                .retry_misses_after
-                .unwrap_or_else(|| Duration::from_secs(0))
-        } else {
-            Duration::from_secs(0)
-        };
+    pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, connect_timeout: Duration, streaming_timeout: Duration, cache_duration: Duration) -> Self {
         Self {
             client,
             runtime,
@@ -133,8 +123,8 @@ impl SentryDownloader {
                 SENTRY_INDEX_CACHE_SIZE.try_into().unwrap(),
             )),
             cache_duration,
-            connect_timeout: config.connect_timeout,
-            streaming_timeout: config.streaming_timeout,
+            connect_timeout,
+            streaming_timeout,
         }
     }
 

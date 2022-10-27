@@ -23,6 +23,7 @@ pub use symbolicator_sources::{
 use crate::cache::CacheStatus;
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
 
+mod config;
 mod filesystem;
 mod gcs;
 mod http;
@@ -30,7 +31,7 @@ mod locations;
 mod s3;
 mod sentry;
 
-use crate::config::Config;
+pub use config::DownloaderConfig;
 pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
 
 /// HTTP User-Agent string to use.
@@ -138,19 +139,31 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
-        let trusted_client = crate::utils::http::create_client(config, true);
-        let restricted_client = crate::utils::http::create_client(config, false);
-
-        let Config {
+    pub fn new(
+        downloader_config: &DownloaderConfig,
+        cache_duration: Duration,
+        runtime: tokio::runtime::Handle,
+    ) -> Arc<Self> {
+        let DownloaderConfig {
             connect_timeout,
             streaming_timeout,
-            ..
-        } = *config;
+            max_download_timeout,
+            connect_to_reserved_ips,
+        } = *downloader_config;
+
+        let trusted_client = create_client(connect_to_reserved_ips, true);
+        let restricted_client = create_client(connect_to_reserved_ips, false);
+
         Arc::new(Self {
             runtime: runtime.clone(),
-            max_download_timeout: config.max_download_timeout,
-            sentry: sentry::SentryDownloader::new(trusted_client, runtime, config),
+            max_download_timeout,
+            sentry: sentry::SentryDownloader::new(
+                trusted_client,
+                runtime,
+                connect_timeout,
+                streaming_timeout,
+                cache_duration,
+            ),
             http: http::HttpDownloader::new(
                 restricted_client.clone(),
                 connect_timeout,
@@ -464,6 +477,16 @@ impl Iterator for SourceLocationIter<'_> {
 fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
+}
+
+fn create_client(connect_to_reserved_ips: bool, trusted: bool) -> reqwest::Client {
+    let mut builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
+
+    if !(trusted || connect_to_reserved_ips) {
+        builder = builder.ip_filter(is_external_ip);
+    }
+
+    builder.build().unwrap()
 }
 
 #[cfg(test)]

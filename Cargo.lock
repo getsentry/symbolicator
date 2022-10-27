@@ -3287,6 +3287,7 @@ dependencies = [
  "structopt",
  "symbolic",
  "symbolicator-crash",
+ "symbolicator-download",
  "symbolicator-sources",
  "tempfile",
  "test-assembler",
@@ -3311,6 +3312,28 @@ version = "0.5.1"
 dependencies = [
  "bindgen",
  "cmake",
+]
+
+[[package]]
+name = "symbolicator-download"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "futures",
+ "humantime-serde",
+ "lru",
+ "parking_lot",
+ "reqwest",
+ "rusoto_core",
+ "rusoto_credential",
+ "rusoto_s3",
+ "sentry",
+ "serde",
+ "symbolicator-sources",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

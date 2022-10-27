@@ -1,0 +1,27 @@
+[package]
+name = "symbolicator-download"
+publish = false
+version = "0.5.1"
+authors = ["Sentry <hello@getsentry.com>"]
+edition = "2021"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.57"
+futures = "0.3.12"
+humantime-serde = "1.1.1"
+lru = "0.8.0"
+parking_lot = "0.12.0"
+reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
+rusoto_core = "0.48.0"
+rusoto_credential = "0.48.0"
+rusoto_s3 = "0.48.0"
+sentry = { version = "0.27.0", features = ["anyhow", "debug-images", "log", "tracing"] }
+serde = { version = "1.0.137", features = ["derive", "rc"] }
+symbolicator-sources = { path = "../symbolicator-sources" }
+thiserror = "1.0.31"
+tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
+tracing = "0.1.34"
+url = { version = "2.2.0", features = ["serde"] }

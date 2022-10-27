@@ -43,6 +43,7 @@ serde_yaml = "0.8.15"
 structopt = "0.3.21"
 symbolic = { version = "10.0.0", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp", "ppdb"] }
 symbolicator-crash = { path = "../symbolicator-crash", optional = true }
+symbolicator-download = { path = "../symbolicator-download" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
 thiserror = "1.0.31"

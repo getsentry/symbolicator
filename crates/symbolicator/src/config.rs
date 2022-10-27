@@ -11,6 +11,7 @@ use sentry::types::Dsn;
 use serde::{de, Deserialize, Deserializer};
 use tracing::level_filters::LevelFilter;
 
+use symbolicator_download::DownloaderConfig;
 use symbolicator_sources::SourceConfig;
 
 use crate::cache::SharedCacheConfig;
@@ -295,36 +296,8 @@ pub struct Config {
     /// Default list of sources and the sources used for proxy mode.
     pub sources: Arc<[SourceConfig]>,
 
-    /// Allow reserved IP addresses for requests to sources.
-    pub connect_to_reserved_ips: bool,
-
     /// Number of subprocesses in the internal processing pool.
     pub processing_pool_size: usize,
-
-    /// The maximum timeout for downloads.
-    ///
-    /// This is the upper limit the download service will take for downloading from a single
-    /// source, regardless of how many retries are involved. The default is set to 315s,
-    /// just above the amount of time it would take for a 4MB/s connection to download 2GB.
-    #[serde(with = "humantime_serde")]
-    pub max_download_timeout: Duration,
-
-    /// The timeout for the initial HEAD request in a download.
-    ///
-    /// This timeout applies to each individual attempt to establish a
-    /// connection with a symbol source if retries take place.
-    #[serde(with = "humantime_serde")]
-    pub connect_timeout: Duration,
-
-    /// The timeout per GB for streaming downloads.
-    ///
-    /// For downloads with a known size, this timeout applies per individual
-    /// download attempt. If the download size is not known, it is ignored and
-    /// only `max_download_timeout` applies. The default is set to 250s,
-    /// just above the amount of time it would take for a 4MB/s connection to
-    /// download 1GB.
-    #[serde(with = "humantime_serde")]
-    pub streaming_timeout: Duration,
 
     /// The maximum number of requests that symbolicator will process concurrently.
     ///
@@ -340,6 +313,10 @@ pub struct Config {
     /// The aim is to make it easy to start up a new symbolicator which will quickly fill up
     /// caches from already running symbolicators.
     pub shared_cache: Option<SharedCacheConfig>,
+
+    /// Configuration of downloader services.
+    #[serde(flatten)]
+    download: DownloaderConfig,
 
     /// Internal. Enables crash handling and sets the absolute path to where minidumps should be
     /// cached on disk. The path is created if it doesn't exist. Path must be UTF-8.
@@ -410,15 +387,10 @@ impl Default for Config {
             caches: CacheConfigs::default(),
             symstore_proxy: true,
             sources: Arc::from(vec![]),
-            connect_to_reserved_ips: false,
             processing_pool_size: num_cpus::get(),
-            // Allow a 4MB/s connection to download 2GB without timing out
-            max_download_timeout: Duration::from_secs(315),
-            connect_timeout: Duration::from_secs(15),
-            // Allow a 4MB/s connection to download 1GB without timing out
-            streaming_timeout: Duration::from_secs(250),
             max_concurrent_requests: Some(120),
             shared_cache: None,
+            download: DownloaderConfig::default(),
             _crash_db: None,
         }
     }

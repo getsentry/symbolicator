@@ -28,7 +28,6 @@ use crate::metrics::record_task_metrics;
 pub mod bitcode;
 pub mod cacher;
 pub mod cficaches;
-pub mod download;
 pub mod il2cpp;
 mod minidump;
 pub mod objects;
@@ -39,13 +38,14 @@ pub mod symcaches;
 
 use self::bitcode::BitcodeService;
 use self::cficaches::CfiCacheActor;
-use self::download::DownloadService;
 use self::il2cpp::Il2cppService;
 use self::objects::ObjectsActor;
 use self::ppdb_caches::PortablePdbCacheActor;
 use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
+
+use symbolicator_download::DownloadService;
 
 /// The shared state for the service.
 #[derive(Clone, Debug)]
@@ -66,7 +66,18 @@ impl Service {
     ) -> Result<Self> {
         let config = Arc::new(config);
 
-        let downloader = DownloadService::new(&config, io_pool.clone());
+        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
+        let cache_duration = if config.cache_dir.is_some() {
+            config
+                .caches
+                .downloaded
+                .retry_misses_after
+                .unwrap_or_else(|| Duration::from_secs(0))
+        } else {
+            Duration::from_secs(0)
+        };
+
+        let downloader = DownloadService::new(&config.download, cache_duration, io_pool.clone());
         let shared_cache =
             SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
         let shared_cache = Arc::new(shared_cache);
