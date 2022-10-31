@@ -14,15 +14,9 @@ pub use computation::*;
 pub use fscache::*;
 
 /// This trait signals the [`ComputationCache`] when to refresh its entries.
-pub trait RefreshAfter {
-    /// Tells the [`ComputationCache`] if and when to refresh its entry.
-    fn refresh_after(&self) -> Option<crate::time::Instant> {
-        None
+pub trait NeedsRefresh {
+    /// Tells the [`ComputationCache`] if an entry should be refreshed.
+    fn needs_refresh(&self) -> bool {
+        false
     }
 }
-
-#[cfg(any(test, feature = "test"))]
-pub(crate) use tokio::time;
-
-#[cfg(not(any(test, feature = "test")))]
-pub(crate) use std::time;
