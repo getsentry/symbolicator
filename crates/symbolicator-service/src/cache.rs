@@ -351,10 +351,12 @@ impl Cache {
         Ok(false)
     }
 
-    /// Validate cache expiration of path. If cache should not be used,
-    /// `Err(io::ErrorKind::NotFound)` is returned. If cache is usable, `Ok(x)` is returned, where
-    /// `x` indicates whether the file should be touched before using.
-    fn check_expiry(&self, path: &Path) -> io::Result<(ByteView<'static>, bool)> {
+    /// Validate cache expiration of path.
+    ///
+    /// If cache should not be used, `Err(io::ErrorKind::NotFound)` is returned.
+    /// If cache is usable, `Ok(x)` is returned with the opened [`ByteView`], and
+    /// an [`ExpirationTime`] that indicates whether the file should be touched before using.
+    fn check_expiry(&self, path: &Path) -> io::Result<(ByteView<'static>, ExpirationTime)> {
         // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
         // filesystem attribute is unreliable.
@@ -373,50 +375,58 @@ impl Cache {
         tracing::trace!("File length: {}", metadata.len());
 
         let bv = ByteView::open(path)?;
+        let mtime = metadata.modified()?;
+        let mtime_elapsed = mtime.elapsed().unwrap_or_default();
 
-        let expiration_strategy = expiration_strategy(&self.cache_config, &bv)?;
+        let cache_status = CacheStatus::from_content(&bv);
+        let expiration_strategy = expiration_strategy(&self.cache_config, &cache_status);
 
-        if expiration_strategy == ExpirationStrategy::Malformed {
-            // Immediately expire malformed items that have been created before this process started.
-            // See docstring of MALFORMED_MARKER
-            let created_at = metadata.modified()?;
+        let expiration_time = match expiration_strategy {
+            ExpirationStrategy::None => {
+                let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
 
-            let retry_malformed = if let (Ok(elapsed), Some(retry_malformed_after)) = (
-                created_at.elapsed(),
-                self.cache_config.retry_malformed_after(),
-            ) {
-                elapsed > retry_malformed_after
-            } else {
-                false
-            };
+                if mtime_elapsed > max_unused_for {
+                    return Err(io::ErrorKind::NotFound.into());
+                }
 
-            if created_at < self.start_time || retry_malformed {
-                tracing::trace!("Created at is older than start time");
-                return Err(io::ErrorKind::NotFound.into());
+                // we want to touch good caches once every hour
+                let touch_in = Duration::from_secs(3600).saturating_sub(mtime_elapsed);
+                ExpirationTime::TouchIn(touch_in)
             }
-        }
+            ExpirationStrategy::Negative => {
+                let retry_misses_after = self
+                    .cache_config
+                    .retry_misses_after()
+                    .unwrap_or(Duration::MAX);
 
-        let max_mtime = if expiration_strategy == ExpirationStrategy::Negative {
-            self.cache_config.retry_misses_after()
-        } else {
-            self.cache_config.max_unused_for()
+                let expires_in = retry_misses_after.saturating_sub(mtime_elapsed);
+
+                if expires_in == Duration::ZERO {
+                    return Err(io::ErrorKind::NotFound.into());
+                }
+
+                ExpirationTime::RefreshIn(expires_in)
+            }
+            ExpirationStrategy::Malformed => {
+                let retry_malformed_after = self
+                    .cache_config
+                    .retry_malformed_after()
+                    .unwrap_or(Duration::MAX);
+
+                let expires_in = retry_malformed_after.saturating_sub(mtime_elapsed);
+
+                // Immediately expire malformed items that have been created before this process started.
+                // See docstring of MALFORMED_MARKER
+                if mtime < self.start_time || expires_in == Duration::ZERO {
+                    tracing::trace!("Created at is older than start time");
+                    return Err(io::ErrorKind::NotFound.into());
+                }
+
+                ExpirationTime::RefreshIn(expires_in)
+            }
         };
 
-        let mtime = if let Some(max_mtime) = max_mtime {
-            let mtime = metadata.modified()?.elapsed().ok();
-
-            if mtime.map(|x| x > max_mtime).unwrap_or(true) {
-                return Err(io::ErrorKind::NotFound.into());
-            }
-
-            mtime
-        } else {
-            None
-        };
-
-        let touch_before_use = expiration_strategy == ExpirationStrategy::None
-            && mtime.map(|x| x > Duration::from_secs(3600)).unwrap_or(true);
-        Ok((bv, touch_before_use))
+        Ok((bv, expiration_time))
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -430,8 +440,9 @@ impl Cache {
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
         catch_not_found(|| {
-            let (bv, should_touch) = self.check_expiry(path)?;
+            let (bv, expiration) = self.check_expiry(path)?;
 
+            let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {
                 filetime::set_file_mtime(path, FileTime::now())?;
             }
@@ -495,10 +506,22 @@ enum ExpirationStrategy {
     Malformed,
 }
 
+/// This gives the time at which different cache items need to be refreshed or touched.
+enum ExpirationTime {
+    /// The [`Duration`] after which [`Negative`](ExpirationStrategy::Negative) or
+    /// [`Malformed`](ExpirationStrategy::Malformed) cache entries expire and need
+    /// to be refreshed.
+    RefreshIn(Duration),
+
+    /// The [`Duration`] after which a positive cache entry needs to be touched to keep it
+    /// alive for a longer time.
+    TouchIn(Duration),
+}
+
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
 /// for the item.
-fn expiration_strategy(cache_config: &CacheConfig, buf: &[u8]) -> io::Result<ExpirationStrategy> {
-    let strategy = match CacheStatus::from_content(buf) {
+fn expiration_strategy(cache_config: &CacheConfig, status: &CacheStatus) -> ExpirationStrategy {
+    match status {
         CacheStatus::Positive => ExpirationStrategy::None,
         CacheStatus::Negative => ExpirationStrategy::Negative,
         CacheStatus::Malformed(_) => ExpirationStrategy::Malformed,
@@ -511,8 +534,7 @@ fn expiration_strategy(cache_config: &CacheConfig, buf: &[u8]) -> io::Result<Exp
             CacheConfig::Derived(_) => ExpirationStrategy::Malformed,
             CacheConfig::Diagnostics(_) => ExpirationStrategy::None,
         },
-    };
-    Ok(strategy)
+    }
 }
 
 fn catch_not_found<F, R>(f: F) -> io::Result<Option<R>>
@@ -978,7 +1000,8 @@ mod tests {
 
     fn expiration_strategy(config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
         let bv = ByteView::open(path)?;
-        super::expiration_strategy(config, &bv)
+        let cache_status = CacheStatus::from_content(&bv);
+        Ok(super::expiration_strategy(config, &cache_status))
     }
 
     #[test]
