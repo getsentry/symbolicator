@@ -1,9 +1,21 @@
 use std::future::Future;
 use std::hash::Hash;
 
-use moka::future::Cache;
+use moka::future::{Cache, CacheBuilder};
 
-use crate::NeedsRefresh;
+/// This trait signals the [`ComputationCache`] when and which of its entries to
+/// evict and refresh.
+pub trait CacheEntry {
+    /// Tells the [`ComputationCache`] if an entry should be refreshed.
+    fn needs_refresh(&self) -> bool {
+        false
+    }
+
+    /// Gives a relative weight for the cache entry, as not all entries are created equal.
+    fn weight(&self) -> u32 {
+        1
+    }
+}
 
 /// The Cache Computation Driver
 ///
@@ -15,8 +27,7 @@ pub trait ComputationDriver {
     /// Cache Key for the computation.
     type Key: Eq + Hash + Send + Sync + 'static;
     /// The resulting output of the computation.
-    type Output: NeedsRefresh + Clone + Send + Sync + 'static;
-
+    type Output: CacheEntry + Clone + Send + Sync + 'static;
     /// The computation Future type.
     type Computation: Future<Output = Self::Output>;
 
@@ -30,19 +41,10 @@ pub trait ComputationDriver {
 /// An in-memory Cache for async Computations.
 ///
 /// The purpose of this Cache is to do request coalescing, and to hold the results
-/// of the computation in-memory for some time depending on [`RefreshAfter`].
+/// of the computation in-memory for some time depending on [`NeedsRefresh`].
 ///
-/// The cache is being constructed using a factory function that computes cache entries,
-/// and a tokio runtime that will spawn those computations.
-///
-/// # Panics
-///
-/// The Cache will propagate panics and unwrap `JoinError`s from the provided
-/// `factory` or `runtime`. It will also panic when its internal locking primitive has
-/// been poisoned.
-///
-/// # TODO:
-/// * provide a configurable bound for entries that are being kept in-memory after computation is complete
+/// The cache is being constructed using a [`ComputationDriver`] that provides cache keys
+/// and a way to compute new cache values on demand.
 pub struct ComputationCache<D: ComputationDriver> {
     driver: D,
     computations: Cache<D::Key, D::Output>,
@@ -53,9 +55,10 @@ where
     D: ComputationDriver,
 {
     /// Creates a new Computation Cache.
-    pub fn new(driver: D) -> Self {
-        // TODO: make this configurable
-        let computations = Cache::new(1_000);
+    pub fn new(driver: D, capacity: u64) -> Self {
+        let computations = CacheBuilder::new(capacity)
+            .weigher(|_k, v: &D::Output| v.weight())
+            .build();
         Self {
             driver,
             computations,
@@ -90,7 +93,7 @@ mod tests {
         pub inner: T,
         ttl: Instant,
     }
-    impl<T> NeedsRefresh for RefreshesAfter<T> {
+    impl<T> CacheEntry for RefreshesAfter<T> {
         fn needs_refresh(&self) -> bool {
             Instant::now() >= self.ttl
         }
@@ -123,7 +126,7 @@ mod tests {
             calls: Default::default(),
         };
 
-        let cache = ComputationCache::new(driver);
+        let cache = ComputationCache::new(driver, 1_000);
 
         time::pause();
         let res = futures::join!(cache.get(&()), cache.get(&()), cache.get(&()));

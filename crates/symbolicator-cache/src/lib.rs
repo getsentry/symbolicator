@@ -12,11 +12,3 @@ mod fscache;
 
 pub use computation::*;
 pub use fscache::*;
-
-/// This trait signals the [`ComputationCache`] when to refresh its entries.
-pub trait NeedsRefresh {
-    /// Tells the [`ComputationCache`] if an entry should be refreshed.
-    fn needs_refresh(&self) -> bool {
-        false
-    }
-}
