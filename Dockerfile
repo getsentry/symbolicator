@@ -25,18 +25,20 @@ RUN apt-get update \
 ARG SYMBOLICATOR_FEATURES=symbolicator-crash
 ENV SYMBOLICATOR_FEATURES=${SYMBOLICATOR_FEATURES}
 
+RUN rustup toolchain install nightly --component rust-src
+
 COPY --from=symbolicator-planner /work/recipe.json recipe.json
 
-RUN rustup toolchain install nightly
-RUN cargo +nightly run -Z build-std --target x86_64-unknown-linux-gnu
-
 # Build only the dependencies identified in the `symbolicator-planner` image
-RUN RUSTFLAGS="-C force-frame-pointers=yes" cargo chef cook --release --features=${SYMBOLICATOR_FEATURES} --recipe-path recipe.json
+RUN RUSTFLAGS="-C force-frame-pointers=yes" cargo +nightly chef cook --release --features=${SYMBOLICATOR_FEATURES} -Z build-std --target x86_64-unknown-linux-gnu --recipe-path recipe.json
 
 COPY . .
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 
-RUN RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release --features=${SYMBOLICATOR_FEATURES}
+RUN RUSTFLAGS="-C force-frame-pointers=yes" cargo +nightly build --release --features=${SYMBOLICATOR_FEATURES} -Z build-std --target x86_64-unknown-linux-gnu
+
+RUN mkdir -p target/release \
+    && mv target/x86_64-unknown-linux-gnu/release/symbolicator target/release/
 RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
     && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
