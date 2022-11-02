@@ -4,6 +4,7 @@ use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use futures::channel::oneshot;
@@ -14,7 +15,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheService};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
@@ -219,6 +220,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
         status: CacheStatus,
         data: ByteView<'static>,
         path: CachePath,
+        expiration: ExpirationTime,
     ) -> Self::Item;
 }
 
@@ -252,11 +254,10 @@ impl<T: CacheItemRequest> Cacher<T> {
                         item_path.to_string_lossy().into(),
                     );
                 });
-                let (byteview, mtime_bumped) = match self.config.open_cachefile(&item_path)? {
+                let (status, byteview, expiration) = match self.config.open_cachefile(&item_path)? {
                     Some(bv) => bv,
                     None => return Ok(None),
                 };
-                let status = CacheStatus::from_content(&byteview);
                 if status == CacheStatus::Positive && !request.should_load(&byteview) {
                     tracing::trace!("Discarding {} at path {}", name, item_path.display());
                     metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
@@ -267,7 +268,10 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // - we have a positive cache
                 // - that has the latest version (we don’t want to upload old versions)
                 // - we refreshed the local cache time, so we also refresh the shared cache time.
-                if status == CacheStatus::Positive && version == T::VERSIONS.current && mtime_bumped
+                let needs_reupload = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
+                if status == CacheStatus::Positive
+                    && version == T::VERSIONS.current
+                    && needs_reupload
                 {
                     let shared_cache_key = SharedCacheKey {
                         name: self.config.name(),
@@ -302,6 +306,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     status,
                     byteview,
                     CachePath::Cached(item_path.clone()),
+                    expiration,
                 );
                 Ok(Some(item))
             }
@@ -461,7 +466,10 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await;
         }
 
-        Ok(request.load(key.scope.clone(), status, byte_view, path))
+        // we just created a fresh cache, so use the initial expiration times
+        let expiration = ExpirationTime::for_fresh_status(&self.config, &status);
+
+        Ok(request.load(key.scope.clone(), status, byte_view, path, expiration))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -706,6 +714,7 @@ mod tests {
             _status: CacheStatus,
             data: ByteView<'static>,
             _path: CachePath,
+            _expiration: ExpirationTime,
         ) -> Self::Item {
             std::str::from_utf8(data.as_slice()).unwrap().to_owned()
         }

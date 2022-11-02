@@ -12,7 +12,7 @@ use symbolic::common::{Arch, ByteView};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -275,7 +275,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
         _scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _: CachePath,
+        _path: CachePath,
+        _expiration: ExpirationTime,
     ) -> Self::Item {
         // TODO: Figure out if this double-parsing could be avoided
         let arch = SymCache::parse(&data)

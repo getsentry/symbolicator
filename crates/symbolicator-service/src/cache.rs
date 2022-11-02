@@ -356,7 +356,10 @@ impl Cache {
     /// If cache should not be used, `Err(io::ErrorKind::NotFound)` is returned.
     /// If cache is usable, `Ok(x)` is returned with the opened [`ByteView`], and
     /// an [`ExpirationTime`] that indicates whether the file should be touched before using.
-    fn check_expiry(&self, path: &Path) -> io::Result<(ByteView<'static>, ExpirationTime)> {
+    fn check_expiry(
+        &self,
+        path: &Path,
+    ) -> io::Result<(CacheStatus, ByteView<'static>, ExpirationTime)> {
         // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
         // filesystem attribute is unreliable.
@@ -426,7 +429,7 @@ impl Cache {
             }
         };
 
-        Ok((bv, expiration_time))
+        Ok((cache_status, bv, expiration_time))
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -435,19 +438,22 @@ impl Cache {
     ///
     /// If an open [`ByteView`] is returned it also returns whether the mtime has been
     /// bumped.
-    pub fn open_cachefile(&self, path: &Path) -> io::Result<Option<(ByteView<'static>, bool)>> {
+    pub fn open_cachefile(
+        &self,
+        path: &Path,
+    ) -> io::Result<Option<(CacheStatus, ByteView<'static>, ExpirationTime)>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
         catch_not_found(|| {
-            let (bv, expiration) = self.check_expiry(path)?;
+            let (cache_status, bv, expiration) = self.check_expiry(path)?;
 
             let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {
                 filetime::set_file_mtime(path, FileTime::now())?;
             }
 
-            Ok((bv, should_touch))
+            Ok((cache_status, bv, expiration))
         })
     }
 
@@ -507,7 +513,7 @@ enum ExpirationStrategy {
 }
 
 /// This gives the time at which different cache items need to be refreshed or touched.
-enum ExpirationTime {
+pub enum ExpirationTime {
     /// The [`Duration`] after which [`Negative`](ExpirationStrategy::Negative) or
     /// [`Malformed`](ExpirationStrategy::Malformed) cache entries expire and need
     /// to be refreshed.
@@ -516,6 +522,30 @@ enum ExpirationTime {
     /// The [`Duration`] after which a positive cache entry needs to be touched to keep it
     /// alive for a longer time.
     TouchIn(Duration),
+}
+
+impl ExpirationTime {
+    /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheStatus`].
+    pub fn for_fresh_status(cache: &Cache, status: &CacheStatus) -> Self {
+        let config = &cache.cache_config;
+        let strategy = expiration_strategy(config, status);
+        match strategy {
+            ExpirationStrategy::None => {
+                // we want to touch good caches once every hour
+                Self::TouchIn(Duration::from_secs(3600))
+            }
+            ExpirationStrategy::Negative => {
+                let retry_misses_after = config.retry_misses_after().unwrap_or(Duration::MAX);
+
+                Self::RefreshIn(retry_misses_after)
+            }
+            ExpirationStrategy::Malformed => {
+                let retry_malformed_after = config.retry_malformed_after().unwrap_or(Duration::MAX);
+
+                Self::RefreshIn(retry_malformed_after)
+            }
+        }
+    }
 }
 
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
@@ -1220,7 +1250,7 @@ mod tests {
         let old_mtime = fs::metadata(&path)?.modified()?;
 
         // Open it with the cache, check contents and new mtime.
-        let (view, _) = cache.open_cachefile(&path)?.expect("No file found");
+        let (_status, view, _expiration) = cache.open_cachefile(&path)?.expect("No file found");
         assert_eq!(view.as_slice(), b"world");
 
         let new_mtime = fs::metadata(&path)?.modified()?;

@@ -12,7 +12,7 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::objects::ObjectError;
 use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
@@ -262,7 +262,8 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         _scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _: CachePath,
+        _path: CachePath,
+        _expiration: ExpirationTime,
     ) -> Self::Item {
         let mut candidates = self.candidates.clone(); // yuk!
         candidates.set_debug(

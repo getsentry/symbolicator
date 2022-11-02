@@ -25,6 +25,7 @@ use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::ObjectId;
 
 use crate::cache::CacheStatus;
+use crate::cache::ExpirationTime;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
 use crate::services::download::DownloadService;
 use crate::services::download::RemoteDif;
@@ -320,7 +321,8 @@ impl CacheItemRequest for FetchFileDataRequest {
         scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _: CachePath,
+        _path: CachePath,
+        _expiration: ExpirationTime,
     ) -> Self::Item {
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
