@@ -61,7 +61,7 @@ jobs:
           rustup set auto-self-update disable
           rustup toolchain install stable --profile minimal --target x86_64-apple-darwin --target aarch64-apple-darwin
 
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
