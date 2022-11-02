@@ -226,7 +226,7 @@ def test_basic_windows(symbolicator, cache_dir_param, is_public, hitcounter):
 
             (symcache,) = (
                 cache_dir_param.join("symcaches")
-                .join("4")
+                .join("5")
                 .join(stored_in_scope)
                 .listdir()
             )
