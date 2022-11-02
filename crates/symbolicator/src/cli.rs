@@ -79,9 +79,6 @@ pub fn execute() -> Result<()> {
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
         enable_profiling: true,
-        // profiles are sub-sampling transactions, which we only sample based on upstream requests.
-        // the sample rate we get from upstream is very low (< 20 transactions per minute, spread
-        // across ~30 somewhat instances), so we might as well go full blast here.
         profiles_sample_rate: 0.4,
         ..Default::default()
     });
