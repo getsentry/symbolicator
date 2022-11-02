@@ -70,6 +70,3 @@ warp = "0.3.0"
 
 [features]
 https = ["axum-server/tls-rustls"]
-
-[profile.release]
-debug = true
