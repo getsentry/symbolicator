@@ -48,6 +48,9 @@ mod markers;
 ///
 /// # Version History
 ///
+/// - `5`: Proactive bump, as a bug in shared cache could have potentially
+///   uploaded `v2` cache files as `v3` (and later `v4`) erroneously.
+///
 /// - `4`: An updated symbolic symcache that uses a LEB128 prefixed string table.
 ///
 /// - `3`: Another round of fixes in symcache generation:
@@ -63,8 +66,8 @@ mod markers;
 ///
 /// - `1`: New binary format based on instruction addr lookup.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 4,
-    fallbacks: &[3],
+    current: 5,
+    fallbacks: &[4],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 

@@ -41,12 +41,15 @@ use super::shared_cache::SharedCacheService;
 ///
 /// # Version History
 ///
+/// - `3`: Proactive bump, as a bug in shared cache could have potentially
+///   uploaded `v1` cache files as `v2` erroneously.
+///
 /// - `2`: Allow underflow in Win-x64 CFI which allows loading registers from outside the stack frame.
 ///
 /// - `1`: Generate higher fidelity CFI for Win-x64 binaries.
 const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[],
+    current: 3,
+    fallbacks: &[2],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
