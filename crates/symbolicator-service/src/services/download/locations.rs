@@ -250,6 +250,8 @@ impl RemoteDifUri {
     ///
     /// # Examples
     /// ```
+    /// use symbolicator_service::services::download::RemoteDifUri;
+    ///
     /// let s3_uri = RemoteDifUri::from_parts("s3", "bucket", "path");
     /// assert_eq!(s3_uri, RemoteDifUri::new("s3://bucket/path"));
     ///

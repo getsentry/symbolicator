@@ -147,6 +147,12 @@ impl CachePath {
     }
 }
 
+impl Default for CachePath {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl std::ops::Deref for CachePath {
     type Target = Path;
 

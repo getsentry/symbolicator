@@ -1,0 +1,62 @@
+[package]
+name = "symbolicator-service"
+version = "0.5.1"
+authors = ["Sentry <hello@getsentry.com>"]
+edition = "2021"
+license = "MIT"
+
+[features]
+https = []
+test = ["warp", "tracing-subscriber"]
+
+[dependencies]
+anyhow = "1.0.57"
+apple-crash-report-parser = "0.5.0"
+async-trait = "0.1.53"
+backtrace = "0.3.65"
+base64 = "0.13.0"
+cadence = "0.29.0"
+chrono = { version = "0.4.19", features = ["serde"] }
+filetime = "0.2.16"
+flate2 = "1.0.23"
+futures = "0.3.12"
+gcp_auth = "0.7.3"
+humantime-serde = "1.1.1"
+ipnetwork = "0.20.0"
+jsonwebtoken = "8.1.0"
+lazy_static = "1.4.0"
+lru = "0.8.0"
+minidump = "0.14.0"
+minidump-processor = "0.14.0"
+num_cpus = "1.13.0"
+parking_lot = "0.12.0"
+regex = "1.5.5"
+reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
+rusoto_core = "0.48.0"
+rusoto_credential = "0.48.0"
+rusoto_s3 = "0.48.0"
+sentry = { version = "0.27.0", features = ["anyhow", "debug-images", "log", "tracing"] }
+serde = { version = "1.0.137", features = ["derive", "rc"] }
+serde_json = "1.0.81"
+serde_yaml = "0.8.15"
+symbolic = { version = "10.0.0", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp", "ppdb"] }
+symbolicator-crash = { path = "../symbolicator-crash", optional = true }
+symbolicator-sources = { path = "../symbolicator-sources" }
+tempfile = "3.2.0"
+thiserror = "1.0.31"
+tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
+tokio-metrics = "0.1.0"
+tokio-util = { version = "0.7.1", features = ["io"] }
+tracing = "0.1.34"
+url = { version = "2.2.0", features = ["serde"] }
+uuid = { version = "1.0.0", features = ["v4", "serde"] }
+zstd = "0.11.1"
+warp = { version = "0.3.0", optional = true }
+tracing-subscriber = { version = "0.3.11", features = ["tracing-log", "local-time", "env-filter", "json"], optional = true }
+
+[dev-dependencies]
+insta = { version = "1.18.0", features = ["redactions", "yaml"] }
+reqwest = { version = "0.11.0", features = ["multipart"] }
+sha-1 = "0.10.0"
+test-assembler = "0.1.5"
+warp = "0.3.0"

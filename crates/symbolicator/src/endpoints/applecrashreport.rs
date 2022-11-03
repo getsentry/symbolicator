@@ -67,7 +67,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service().await;
-        let server = test::Server::with_service(service);
+        let server = test::server_with_service(service);
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
@@ -95,7 +95,7 @@ mod tests {
         test::setup();
 
         let service = test::default_service().await;
-        let server = test::Server::with_service(service);
+        let server = test::server_with_service(service);
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");

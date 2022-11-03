@@ -35,7 +35,6 @@ use symbolicator_sources::{
 };
 
 use crate::config::Config;
-use crate::endpoints;
 use crate::services::Service;
 
 pub use tempfile::TempDir;
@@ -44,7 +43,7 @@ pub use tempfile::TempDir;
 ///
 ///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
 ///    other logs (such as actix or symbolic).
-pub(crate) fn setup() {
+pub fn setup() {
     fmt()
         .with_env_filter(EnvFilter::new("symbolicator=trace"))
         .with_target(false)
@@ -55,7 +54,7 @@ pub(crate) fn setup() {
 }
 
 /// Create a default [`Service`] running with the current Runtime.
-pub(crate) async fn default_service() -> Service {
+pub async fn default_service() -> Service {
     let handle = tokio::runtime::Handle::current();
     Service::create(Config::default(), handle.clone(), handle.clone())
         .await
@@ -67,7 +66,7 @@ pub(crate) async fn default_service() -> Service {
 /// The directory is deleted when the [`TempDir`] instance is dropped, unless
 /// [`into_path`](TemptDir::into_path) is called. Use it as a guard to automatically clean up after
 /// tests.
-pub(crate) fn tempdir() -> TempDir {
+pub fn tempdir() -> TempDir {
     TempDir::new().unwrap()
 }
 
@@ -79,7 +78,7 @@ pub(crate) fn tempdir() -> TempDir {
 /// # Panics
 ///
 /// Panics if the fixture path does not exist on the file system.
-pub(crate) fn fixture(path: impl AsRef<Path>) -> PathBuf {
+pub fn fixture(path: impl AsRef<Path>) -> PathBuf {
     let path = path.as_ref();
 
     let mut full_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -101,7 +100,7 @@ pub(crate) fn fixture(path: impl AsRef<Path>) -> PathBuf {
 /// # Panics
 ///
 /// Panics if the fixture does not exist or cannot be read.
-pub(crate) fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
+pub fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
     std::fs::read(fixture(path)).unwrap()
 }
 
@@ -109,7 +108,7 @@ pub(crate) fn read_fixture(path: impl AsRef<Path>) -> Vec<u8> {
 ///
 /// Files are served directly via the local file system without the indirection through a HTTP
 /// symbol server. This is the fastest way for testing, but also avoids certain code paths.
-pub(crate) fn local_source() -> SourceConfig {
+pub fn local_source() -> SourceConfig {
     SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
         id: SourceId::new("local"),
         path: fixture("symbols"),
@@ -119,7 +118,7 @@ pub(crate) fn local_source() -> SourceConfig {
 
 /// Get bucket configuration for the microsoft symbol server.
 #[allow(dead_code)]
-pub(crate) fn microsoft_symsrv() -> SourceConfig {
+pub fn microsoft_symsrv() -> SourceConfig {
     SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("microsoft"),
         url: "https://msdl.microsoft.com/download/symbols/"
@@ -139,7 +138,7 @@ pub(crate) fn microsoft_symsrv() -> SourceConfig {
 /// Custom version of warp's sealed `IsReject` trait.
 ///
 /// This is required to allow the test [`Server`] to spawn a warp server.
-pub(crate) trait IsReject {}
+pub trait IsReject {}
 
 impl IsReject for warp::reject::Rejection {}
 impl IsReject for std::convert::Infallible {}
@@ -149,9 +148,9 @@ impl IsReject for std::convert::Infallible {}
 /// This server requires a `tokio` runtime and is supposed to be run in a `tokio::test`. It
 /// automatically stops serving when dropped.
 #[derive(Debug)]
-pub(crate) struct Server {
-    handle: tokio::task::JoinHandle<()>,
-    socket: SocketAddr,
+pub struct Server {
+    pub handle: tokio::task::JoinHandle<()>,
+    pub socket: SocketAddr,
 }
 
 impl Server {
@@ -164,20 +163,6 @@ impl Server {
     {
         let (socket, future) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
         let handle = tokio::spawn(future);
-
-        Self { handle, socket }
-    }
-
-    pub fn with_service(service: Service) -> Self {
-        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
-
-        let server =
-            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
-
-        let socket = server.local_addr();
-        let handle = tokio::spawn(async {
-            let _ = server.await;
-        });
 
         Self { handle, socket }
     }
@@ -218,7 +203,7 @@ impl Drop for Server {
 ///
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
 /// permitted, and need to be activated via [`Config::connect_to_reserved_ips`].
-pub(crate) fn symbol_server() -> (Server, SourceConfig) {
+pub fn symbol_server() -> (Server, SourceConfig) {
     let app = warp::path("download").and(warp::fs::dir(fixture("symbols")));
     let server = Server::new(app);
 
@@ -240,7 +225,7 @@ struct GoAway;
 
 impl Reject for GoAway {}
 
-pub(crate) struct FailingSymbolServer {
+pub struct FailingSymbolServer {
     #[allow(unused)]
     server: Server,
     times_accessed: Arc<AtomicUsize>,

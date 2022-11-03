@@ -1,6 +1,6 @@
 ---
-source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 2480
+source: crates/symbolicator-service/src/services/symbolication/process_minidump.rs
+assertion_line: 746
 expression: response.unwrap()
 ---
 status: completed

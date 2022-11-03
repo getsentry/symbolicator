@@ -1,8 +1,7 @@
 ---
-source: crates/symbolicator/src/services/symbolication/mod.rs
-assertion_line: 2264
+source: crates/symbolicator-service/src/services/symbolication/mod.rs
+assertion_line: 544
 expression: response.unwrap()
-
 ---
 status: completed
 stacktraces:

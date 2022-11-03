@@ -19,24 +19,36 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-#[macro_use]
-mod macros;
+pub use symbolicator_service::*;
 
-#[macro_use]
-mod metrics;
-
-mod cache;
 mod cli;
-mod config;
 mod endpoints;
 mod logging;
 mod server;
-mod services;
-mod types;
-mod utils;
 
 #[cfg(test)]
-mod test;
+mod test {
+    use std::net::SocketAddr;
+
+    pub use symbolicator_service::test::*;
+
+    use crate::endpoints;
+    use crate::services::Service;
+
+    pub fn server_with_service(service: Service) -> Server {
+        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server =
+            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
+
+        let socket = server.local_addr();
+        let handle = tokio::spawn(async {
+            let _ = server.await;
+        });
+
+        Server { handle, socket }
+    }
+}
 
 fn main() {
     match cli::execute() {

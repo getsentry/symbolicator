@@ -3248,24 +3248,58 @@ name = "symbolicator"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "apple-crash-report-parser",
- "async-trait",
  "axum",
  "axum-server",
+ "console",
+ "futures",
+ "hostname",
+ "insta",
+ "jemallocator",
+ "reqwest",
+ "sentry",
+ "sentry-tower",
+ "serde",
+ "serde_json",
+ "structopt",
+ "symbolic",
+ "symbolicator-service",
+ "symbolicator-sources",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "symbolicator-crash"
+version = "0.5.1"
+dependencies = [
+ "bindgen",
+ "cmake",
+]
+
+[[package]]
+name = "symbolicator-service"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "apple-crash-report-parser",
+ "async-trait",
  "backtrace",
  "base64",
  "cadence",
  "chrono",
- "console",
  "filetime",
  "flate2",
  "futures",
  "gcp_auth",
- "hostname",
  "humantime-serde",
  "insta",
  "ipnetwork",
- "jemallocator",
  "jsonwebtoken",
  "lazy_static",
  "lru",
@@ -3279,12 +3313,10 @@ dependencies = [
  "rusoto_credential",
  "rusoto_s3",
  "sentry",
- "sentry-tower",
  "serde",
  "serde_json",
  "serde_yaml",
  "sha-1",
- "structopt",
  "symbolic",
  "symbolicator-crash",
  "symbolicator-sources",
@@ -3294,23 +3326,12 @@ dependencies = [
  "tokio",
  "tokio-metrics",
  "tokio-util",
- "tower",
- "tower-layer",
- "tower-service",
  "tracing",
  "tracing-subscriber",
  "url",
  "uuid",
  "warp",
  "zstd",
-]
-
-[[package]]
-name = "symbolicator-crash"
-version = "0.5.1"
-dependencies = [
- "bindgen",
- "cmake",
 ]
 
 [[package]]

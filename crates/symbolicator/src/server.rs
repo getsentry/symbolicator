@@ -14,6 +14,7 @@ use futures::future::BoxFuture;
 
 use crate::config::Config;
 use crate::endpoints;
+use crate::metric;
 use crate::services::Service;
 
 #[cfg(feature = "https")]
