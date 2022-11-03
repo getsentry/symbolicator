@@ -3306,6 +3306,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-common"
+version = "0.5.1"
+dependencies = [
+ "console",
+ "ipnetwork",
+ "jsonwebtoken",
+ "lazy_static",
+ "reqwest",
+ "sentry",
+ "serde",
+ "thiserror",
+ "tokio",
+ "tokio-metrics",
+ "tracing",
+ "tracing-subscriber",
+ "zstd",
+]
+
+[[package]]
 name = "symbolicator-crash"
 version = "0.5.1"
 dependencies = [

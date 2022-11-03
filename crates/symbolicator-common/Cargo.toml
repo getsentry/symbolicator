@@ -1,0 +1,25 @@
+[package]
+name = "symbolicator-common"
+publish = false
+version = "0.5.1"
+authors = ["Sentry <hello@getsentry.com>"]
+edition = "2021"
+license = "MIT"
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0.137", features = ["derive", "rc"] }
+sentry = { version = "0.27.0", features = ["anyhow", "debug-images", "log", "tracing"] }
+tracing = "0.1.34"
+reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
+tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
+tokio-metrics = "0.1.0"
+jsonwebtoken = "8.1.0"
+zstd = "0.11.1"
+lazy_static = "1.4.0"
+thiserror = "1.0.31"
+console = "0.15.0"
+tracing-subscriber = { version = "0.3.11", features = ["tracing-log", "local-time", "env-filter", "json"] }
+ipnetwork = "0.20.0"
