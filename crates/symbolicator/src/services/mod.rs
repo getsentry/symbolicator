@@ -117,15 +117,15 @@ impl Service {
         })
     }
 
-    pub fn symbolication(&self) -> SymbolicationActor {
-        self.symbolication.clone()
+    pub fn symbolication(&self) -> &SymbolicationActor {
+        &self.symbolication
     }
 
     pub fn objects(&self) -> &ObjectsActor {
         &self.objects
     }
 
-    pub fn config(&self) -> Arc<Config> {
-        self.config.clone()
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 }
