@@ -146,11 +146,9 @@ pub async fn request_new_token(
 mod tests {
     use super::*;
 
-    use crate::test;
-
     #[test]
     fn test_key_from_string() {
-        let creds = test::gcs_source_key!();
+        let creds = symbolicator_test::gcs_source_key!();
 
         let key = key_from_string(&creds.private_key);
         assert!(key.is_ok());

@@ -30,12 +30,18 @@ mod server;
 mod test {
     use std::net::SocketAddr;
 
-    pub use symbolicator_service::test::*;
+    use crate::config::Config;
+    pub use symbolicator_test::*;
 
     use crate::endpoints;
     use crate::services::Service;
 
-    pub fn server_with_service(service: Service) -> Server {
+    pub async fn server_with_default_service() -> Server {
+        let handle = tokio::runtime::Handle::current();
+        let service = Service::create(Config::default(), handle.clone(), handle.clone())
+            .await
+            .unwrap();
+
         let socket = SocketAddr::from(([127, 0, 0, 1], 0));
 
         let server =

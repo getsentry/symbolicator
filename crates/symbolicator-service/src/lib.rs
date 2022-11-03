@@ -10,6 +10,7 @@ pub mod services;
 pub mod types;
 pub mod utils;
 
-#[cfg(any(feature = "test", test))]
-#[allow(unused)]
-pub mod test;
+#[cfg(test)]
+mod test {
+    pub use symbolicator_test::*;
+}

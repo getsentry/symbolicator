@@ -34,9 +34,6 @@ use symbolicator_sources::{
     HttpSourceConfig, SourceConfig, SourceFilters, SourceId,
 };
 
-use crate::config::Config;
-use crate::services::Service;
-
 pub use tempfile::TempDir;
 
 /// Setup the test environment.
@@ -51,14 +48,6 @@ pub fn setup() {
         .with_test_writer()
         .try_init()
         .ok();
-}
-
-/// Create a default [`Service`] running with the current Runtime.
-pub async fn default_service() -> Service {
-    let handle = tokio::runtime::Handle::current();
-    Service::create(Config::default(), handle.clone(), handle.clone())
-        .await
-        .unwrap()
 }
 
 /// Creates a temporary directory.
@@ -229,14 +218,14 @@ pub struct FailingSymbolServer {
     #[allow(unused)]
     server: Server,
     times_accessed: Arc<AtomicUsize>,
-    pub(crate) reject_source: SourceConfig,
-    pub(crate) pending_source: SourceConfig,
-    pub(crate) not_found_source: SourceConfig,
-    pub(crate) forbidden_source: SourceConfig,
+    pub reject_source: SourceConfig,
+    pub pending_source: SourceConfig,
+    pub not_found_source: SourceConfig,
+    pub forbidden_source: SourceConfig,
 }
 
 impl FailingSymbolServer {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let times_accessed = Arc::new(AtomicUsize::new(0));
 
         let times = times_accessed.clone();
@@ -321,8 +310,14 @@ impl FailingSymbolServer {
         }
     }
 
-    pub(crate) fn accesses(&self) -> usize {
+    pub fn accesses(&self) -> usize {
         self.times_accessed.swap(0, Ordering::SeqCst)
+    }
+}
+
+impl Default for FailingSymbolServer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -347,9 +342,10 @@ pub fn gcs_source_key_from_env() -> Option<GcsSourceKey> {
 ///
 /// If the credentials are not available this will exit the test early, as a poor substitute
 /// for skipping tests.
+#[macro_export]
 macro_rules! gcs_source_key {
     () => {
-        match $crate::test::gcs_source_key_from_env() {
+        match $crate::gcs_source_key_from_env() {
             Some(key) => key,
             None => {
                 println!("Skipping due to missing SENTRY_SYMBOLICATOR_GCS_PRIVATE_KEY or SENTRY_SYMBOLICATOR_GCS_CLIENT_EMAIL");
@@ -358,9 +354,6 @@ macro_rules! gcs_source_key {
         }
     }
 }
-
-// Allow other modules to use this macro.
-pub(crate) use gcs_source_key;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestGcsCredentials {
@@ -417,18 +410,19 @@ pub fn gcs_credentials_file() -> Result<Option<PathBuf>, std::io::Error> {
 ///
 /// Finally if nothing can be found this macro will return, as a poor substitute for
 /// skipping tests.
+#[macro_export]
 macro_rules! gcs_credentials {
     () => {
-        match $crate::test::gcs_credentials_file() {
+        match $crate::gcs_credentials_file() {
             Ok(Some(path)) => {
-                $crate::test::TestGcsCredentials {
+                $crate::TestGcsCredentials {
                     bucket: "sentryio-symbolicator-cache-test".to_string(),
                     credentials_file: Some(path),
                 }
             },
             Ok(None) => {
                 match std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
-                    Ok(path) => $crate::test::TestGcsCredentials {
+                    Ok(path) => $crate::TestGcsCredentials {
                         bucket: "sentryio-symbolicator-cache-test".to_string(),
                         credentials_file: Some(path.into()),
                     },
@@ -442,6 +436,3 @@ macro_rules! gcs_credentials {
         }
     }
 }
-
-// Allow other modules to use this macro.
-pub(crate) use gcs_credentials;

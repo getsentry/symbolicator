@@ -3264,6 +3264,7 @@ dependencies = [
  "symbolic",
  "symbolicator-service",
  "symbolicator-sources",
+ "symbolicator-test",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -3320,6 +3321,7 @@ dependencies = [
  "symbolic",
  "symbolicator-crash",
  "symbolicator-sources",
+ "symbolicator-test",
  "tempfile",
  "test-assembler",
  "thiserror",
@@ -3327,7 +3329,6 @@ dependencies = [
  "tokio-metrics",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
  "url",
  "uuid",
  "warp",
@@ -3346,6 +3347,19 @@ dependencies = [
  "serde_yaml",
  "symbolic",
  "url",
+]
+
+[[package]]
+name = "symbolicator-test"
+version = "0.5.1"
+dependencies = [
+ "reqwest",
+ "serde",
+ "symbolicator-sources",
+ "tempfile",
+ "tokio",
+ "tracing-subscriber",
+ "warp",
 ]
 
 [[package]]

@@ -453,7 +453,7 @@ fn write_symcache(
         .process_object(&symbolic_object)
         .map_err(SymCacheError::Writing)?;
 
-    let file = File::create(&path)?;
+    let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
     converter
         .serialize(&mut writer)

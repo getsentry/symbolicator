@@ -865,7 +865,8 @@ mod tests {
     use tokio::io::AsyncWriteExt;
     use uuid::Uuid;
 
-    use crate::test::{self, TestGcsCredentials};
+    use symbolicator_test::TestGcsCredentials;
+
     use crate::types::Scope;
 
     use super::*;
@@ -899,7 +900,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_noop_fetch() {
-        test::setup();
+        symbolicator_test::setup();
         let svc = SharedCacheService::new(None, tokio::runtime::Handle::current()).await;
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -916,7 +917,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_noop_store() {
-        test::setup();
+        symbolicator_test::setup();
         let svc = SharedCacheService::new(None, tokio::runtime::Handle::current()).await;
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -934,8 +935,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_filesystem_fetch_found() {
-        test::setup();
-        let dir = test::tempdir();
+        symbolicator_test::setup();
+        let dir = symbolicator_test::tempdir();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -974,8 +975,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_filesystem_fetch_not_found() {
-        test::setup();
-        let dir = test::tempdir();
+        symbolicator_test::setup();
+        let dir = symbolicator_test::tempdir();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -1008,8 +1009,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_filesystem_store() {
-        test::setup();
-        let dir = test::tempdir();
+        symbolicator_test::setup();
+        let dir = symbolicator_test::tempdir();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -1055,8 +1056,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_gcs_fetch_not_found() {
-        test::setup();
-        let credentials = test::gcs_credentials!();
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -1075,7 +1076,7 @@ mod tests {
         let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
         wait_init(&svc).await;
 
-        let dir = test::tempdir();
+        let dir = symbolicator_test::tempdir();
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
 
@@ -1088,8 +1089,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_gcs_state_fetch_not_found() {
-        test::setup();
-        let credentials = test::gcs_credentials!();
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -1114,8 +1115,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_gcs_svc_store_fetch() {
-        test::setup();
-        let dir = test::tempdir();
+        symbolicator_test::setup();
+        let dir = symbolicator_test::tempdir();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -1126,7 +1127,7 @@ mod tests {
             },
         };
 
-        let credentials = test::gcs_credentials!();
+        let credentials = symbolicator_test::gcs_credentials!();
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
             max_upload_queue_size: 10,
@@ -1161,8 +1162,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_gcs_state_store_twice() {
-        test::setup();
-        let credentials = test::gcs_credentials!();
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
 
         let key = SharedCacheKey {
             name: CacheName::Objects,
@@ -1207,8 +1208,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_gcs_exists() {
-        test::setup();
-        let credentials = test::gcs_credentials!();
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
         let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
             .unwrap();

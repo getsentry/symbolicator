@@ -53,13 +53,12 @@ mod tests {
 
     use super::*;
 
-    use crate::test;
-
     #[tokio::test]
     async fn test_untrusted_client() {
-        test::setup();
+        symbolicator_test::setup();
 
-        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server =
+            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -76,9 +75,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_untrusted_client_loopback() {
-        test::setup();
+        symbolicator_test::setup();
 
-        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server =
+            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -95,9 +95,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_untrusted_client_allowed() {
-        test::setup();
+        symbolicator_test::setup();
 
-        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server =
+            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: true,
@@ -116,9 +117,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_trusted() {
-        test::setup();
+        symbolicator_test::setup();
 
-        let server = test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server =
+            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
 
         let config = Config {
             connect_to_reserved_ips: false,
