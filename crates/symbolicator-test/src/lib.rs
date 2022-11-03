@@ -2,18 +2,18 @@
 //!
 //! When writing tests, keep the following points in mind:
 //!
-//!  - In every test, call [`test::setup`]. This will set up the logger so that all console output
+//!  - In every test, call [`setup`]. This will set up the logger so that all console output
 //!    is captured by the test runner.
 //!
-//!  - When using [`test::tempdir`], make sure that the handle to the temp directory is held for the
+//!  - When using [`tempdir`], make sure that the handle to the temp directory is held for the
 //!    entire lifetime of the test. When dropped too early, this might silently leak the temp
 //!    directory, since symbolicator will create it again lazily after it has been deleted. To avoid
 //!    this, assign it to a variable in the test function (e.g. `let _cache_dir = test::tempdir()`).
 //!
-//!  - When using [`test::symbol_server`], make sure that the server is held until all requests to
+//!  - When using [`symbol_server`], make sure that the server is held until all requests to
 //!    the server have been made. If the server is dropped, the ports remain open and all
 //!    connections to it will time out. To avoid this, assign it to a variable: `let (_server,
-//!    source) = test::symbol_server();`. Alternatively, use [`test::local_source`] to test without
+//!    source) = symbol_server();`. Alternatively, use [`local_source`] to test without
 //!    HTTP connections.
 
 use std::net::SocketAddr;
@@ -53,7 +53,7 @@ pub fn setup() {
 /// Creates a temporary directory.
 ///
 /// The directory is deleted when the [`TempDir`] instance is dropped, unless
-/// [`into_path`](TemptDir::into_path) is called. Use it as a guard to automatically clean up after
+/// [`into_path`](TempDir::into_path) is called. Use it as a guard to automatically clean up after
 /// tests.
 pub fn tempdir() -> TempDir {
     TempDir::new().unwrap()
@@ -191,7 +191,7 @@ impl Drop for Server {
 /// symbol server in symbolication requests.
 ///
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
-/// permitted, and need to be activated via [`Config::connect_to_reserved_ips`].
+/// permitted, and need to be activated via `Config::connect_to_reserved_ips`.
 pub fn symbol_server() -> (Server, SourceConfig) {
     let app = warp::path("download").and(warp::fs::dir(fixture("symbols")));
     let server = Server::new(app);
@@ -364,7 +364,7 @@ pub struct TestGcsCredentials {
 /// Return path to service account credentials.
 ///
 /// Looks for a file named `gcs-service-account.json` in the git root which is expected to
-/// contain GCP credentials to be used with [`gcp_auth::from_credentials_file`].
+/// contain GCP credentials to be used with `gcp_auth::from_credentials_file`.
 ///
 /// If the environment variable `GOOGLE_APPLICATION_CREDENTIALS_JSON` exists it is written
 /// into this file first, this is used to support secrets in our CI.
