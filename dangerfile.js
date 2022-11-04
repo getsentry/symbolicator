@@ -76,7 +76,7 @@ results and run symbolicator tests with pytest (\`pytest tests/symbolicator\`).
 }
 
 async function checkSnapshots() {
-  const SNAPSHOT_LOCATION = "crates/symbolicator-service/src/services/symbolication/snapshots";
+  const SNAPSHOT_LOCATION = "crates/symbolicator-service/src/services/symbolication/snapshots/";
 
   // Sanity check that the snapshot directory exists
   let contents = await danger.github.utils.fileContents(
