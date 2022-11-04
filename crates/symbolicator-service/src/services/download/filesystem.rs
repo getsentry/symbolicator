@@ -35,7 +35,7 @@ impl FilesystemRemoteDif {
 
     /// Returns the path from which to fetch this object file.
     pub fn path(&self) -> PathBuf {
-        self.source.path.join(&self.location.path())
+        self.source.path.join(self.location.path())
     }
 
     /// Returns the `file://` URI from which to fetch this object file.

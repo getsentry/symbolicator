@@ -306,7 +306,7 @@ fn write_ppdb_cache(
         .process_portable_pdb(ppdb_obj.portable_pdb())
         .map_err(PortablePdbCacheError::Writing)?;
 
-    let file = File::create(&path)?;
+    let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
     converter
         .serialize(&mut writer)

@@ -296,7 +296,7 @@ fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCa
         .map_err(CfiCacheError::ObjectParsing)?
         .unwrap();
 
-    let file = File::create(&path)?;
+    let file = File::create(path)?;
     let writer = BufWriter::new(file);
 
     tracing::debug!("Converting cficache for {}", object_handle.cache_key());

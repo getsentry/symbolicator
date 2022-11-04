@@ -140,7 +140,7 @@ fn load_symbol_file(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
             )
         },
         || {
-            let bytes = ByteView::open(&cfi_path).map_err(|err| {
+            let bytes = ByteView::open(cfi_path).map_err(|err| {
                 let stderr: &dyn std::error::Error = &err;
                 tracing::error!(stderr, "Error while reading cficache");
                 err
