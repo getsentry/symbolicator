@@ -4,11 +4,11 @@ use axum::Router;
 use sentry_tower::{NewSentryLayer, SentryHttpLayer};
 use tower::ServiceBuilder;
 
-use crate::metrics::MetricsLayer;
 use crate::services::Service;
 
 mod applecrashreport;
 mod error;
+mod metrics;
 mod minidump;
 mod multipart;
 mod proxy;
@@ -16,6 +16,7 @@ mod requests;
 mod symbolicate;
 
 pub use error::ResponseError;
+use metrics::MetricsLayer;
 
 use self::minidump::handle_minidump_request as minidump;
 use applecrashreport::handle_apple_crash_report_request as applecrashreport;
@@ -24,7 +25,7 @@ use requests::poll_request as requests;
 use symbolicate::symbolicate_frames as symbolicate;
 
 pub async fn healthcheck() -> &'static str {
-    metric!(counter("healthcheck") += 1);
+    crate::metric!(counter("healthcheck") += 1);
     "ok"
 }
 

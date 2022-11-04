@@ -5,6 +5,7 @@ use symbolic::common::ByteView;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
+use crate::metric;
 use crate::services::Service;
 use crate::types::{RequestOptions, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
@@ -86,8 +87,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let service = test::default_service().await;
-        let server = test::Server::with_service(service);
+        let server = test::server_with_default_service().await;
 
         let file_contents = test::read_fixture("windows.dmp");
         let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
@@ -147,8 +147,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let service = test::default_service().await;
-        let server = test::Server::with_service(service);
+        let server = test::server_with_default_service().await;
 
         let file_contents = test::read_fixture("windows.dmp");
         let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
