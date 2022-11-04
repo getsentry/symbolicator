@@ -20,7 +20,7 @@ use super::{SymbolicationActor, SymbolicationError};
 
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
-    pub(super) async fn do_symbolicate(
+    pub async fn do_symbolicate(
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {

@@ -72,7 +72,7 @@ pub enum SymbolicationError {
 }
 
 impl SymbolicationError {
-    fn to_symbolication_response(&self) -> SymbolicationResponse {
+    pub fn to_symbolication_response(&self) -> SymbolicationResponse {
         match self {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
             SymbolicationError::Failed(_) | SymbolicationError::InvalidAppleCrashReport(_) => {
@@ -165,15 +165,17 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
-    use symbolicator_sources::ObjectType;
+    use symbolicator_sources::{ObjectType, SourceConfig};
 
     use crate::config::Config;
+    use crate::services::create_service;
     use crate::services::symbolication::module_lookup::ModuleLookup;
-    use crate::services::Service;
     use crate::test::{self, fixture};
-    use crate::types::{CompleteObjectInfo, RawFrame, RawStacktrace};
+    use crate::types::{CompleteObjectInfo, RawFrame, RawStacktrace, RequestOptions, Scope};
     use crate::utils::addr::AddrMode;
     use crate::utils::hex::HexValue;
 
@@ -185,7 +187,7 @@ mod tests {
     ///
     /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
     /// symbol server to test object file downloads.
-    pub(crate) async fn setup_service() -> (Service, test::TempDir) {
+    pub(crate) async fn setup_service() -> (SymbolicationActor, test::TempDir) {
         test::setup();
 
         let cache_dir = test::tempdir();
@@ -196,11 +198,9 @@ mod tests {
             ..Default::default()
         };
         let handle = tokio::runtime::Handle::current();
-        let service = Service::create(config, handle.clone(), handle)
-            .await
-            .unwrap();
+        let (symbolication, _objects) = create_service(&config, handle).await.unwrap();
 
-        (service, cache_dir)
+        (symbolication, cache_dir)
     }
 
     fn get_symbolication_request(sources: Vec<SourceConfig>) -> SymbolicateStacktraces {
@@ -256,58 +256,80 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_remove_bucket() -> Result<(), SymbolicationError> {
+    async fn test_remove_bucket() {
         // Test with sources first, and then without. This test should verify that we do not leak
         // cached debug files to requests that no longer specify a source.
 
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
+        let (symbolication, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![source]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
 
         let request = get_symbolication_request(vec![]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
-
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_add_bucket() -> anyhow::Result<()> {
+    async fn test_add_bucket() {
         // Test without sources first, then with. This test should verify that we apply a new source
         // to requests immediately.
 
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
+        let (symbolication, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
 
         let request = get_symbolication_request(vec![source]);
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
-
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_get_response_multi() {
-        // Make sure we can repeatedly poll for the response
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
+    async fn test_apple_crash_report() {
+        let (symbolication, _cache_dir) = setup_service().await;
+        let (_symsrv, source) = test::symbol_server();
+
+        let report_file = std::fs::File::open(fixture("apple_crash_report.txt")).unwrap();
+
+        let response = symbolication
+            .do_process_apple_crash_report(
+                Scope::Global,
+                report_file,
+                Arc::new([source]),
+                RequestOptions {
+                    dif_candidates: true,
+                },
+            )
+            .await;
+
+        assert_snapshot!(response.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_wasm_payload() {
+        let (symbolication, _cache_dir) = setup_service().await;
+        let (_symsrv, source) = test::symbol_server();
+
+        let modules: Vec<RawObjectInfo> = serde_json::from_str(
+            r#"[
+              {
+                "type":"wasm",
+                "debug_id":"bda18fd8-5d4a-4eb8-9302-2d6bfad846b1",
+                "code_id":"bda18fd85d4a4eb893022d6bfad846b1",
+                "debug_file":"file://foo.invalid/demo.wasm"
+              }
+            ]"#,
+        )
+        .unwrap();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -324,83 +346,6 @@ mod tests {
         .unwrap();
 
         let request = SymbolicateStacktraces {
-            modules: Vec::new(),
-            stacktraces,
-            signal: None,
-            origin: StacktraceOrigin::Symbolicate,
-            sources: Arc::new([]),
-            scope: Default::default(),
-            options: Default::default(),
-        };
-
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-
-        for _ in 0..2 {
-            let response = symbolication.get_response(request_id, None).await.unwrap();
-
-            assert!(
-                matches!(&response, SymbolicationResponse::Completed(_)),
-                "Not a complete response: {:#?}",
-                response
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_apple_crash_report() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
-        let (_symsrv, source) = test::symbol_server();
-
-        let report_file = std::fs::File::open(fixture("apple_crash_report.txt"))?;
-        let request_id = symbolication
-            .process_apple_crash_report(
-                Scope::Global,
-                report_file,
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            )
-            .unwrap();
-
-        let response = symbolication.get_response(request_id, None).await;
-
-        assert_snapshot!(response.unwrap());
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_wasm_payload() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
-        let (_symsrv, source) = test::symbol_server();
-
-        let modules: Vec<RawObjectInfo> = serde_json::from_str(
-            r#"[
-              {
-                "type":"wasm",
-                "debug_id":"bda18fd8-5d4a-4eb8-9302-2d6bfad846b1",
-                "code_id":"bda18fd85d4a4eb893022d6bfad846b1",
-                "debug_file":"file://foo.invalid/demo.wasm"
-              }
-            ]"#,
-        )?;
-
-        let stacktraces = serde_json::from_str(
-            r#"[
-              {
-                "frames":[
-                  {
-                    "instruction_addr":"0x8c",
-                    "addr_mode":"rel:0"
-                  }
-                ]
-              }
-            ]"#,
-        )?;
-
-        let request = SymbolicateStacktraces {
             modules: modules.into_iter().map(From::from).collect(),
             stacktraces,
             signal: None,
@@ -410,17 +355,14 @@ mod tests {
             options: Default::default(),
         };
 
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
-        Ok(())
     }
 
     #[tokio::test]
-    async fn test_source_candidates() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
+    async fn test_source_candidates() {
+        let (symbolication, _cache_dir) = setup_service().await;
         let (_symsrv, source) = test::symbol_server();
 
         // its not wasm, but that is the easiest to write tests because of relative
@@ -433,7 +375,8 @@ mod tests {
                 "code_id":"7f883fcdc55336d0a809b0150f09500b"
               }
             ]"#,
-        )?;
+        )
+        .unwrap();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -446,7 +389,8 @@ mod tests {
                 ]
               }
             ]"#,
-        )?;
+        )
+        .unwrap();
 
         let request = SymbolicateStacktraces {
             modules: modules.into_iter().map(From::from).collect(),
@@ -460,11 +404,9 @@ mod tests {
             },
         };
 
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
-        Ok(())
     }
 
     #[test]
@@ -493,42 +435,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_max_requests() {
-        test::setup();
-
-        let cache_dir = test::tempdir();
-
-        let config = Config {
-            cache_dir: Some(cache_dir.path().to_owned()),
-            connect_to_reserved_ips: true,
-            max_concurrent_requests: Some(2),
-            ..Default::default()
-        };
-
-        let handle = tokio::runtime::Handle::current();
-        let service = Service::create(config, handle.clone(), handle)
-            .await
-            .unwrap();
-
-        let symbolication = service.symbolication();
-        let symbol_server = test::FailingSymbolServer::new();
-
-        // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
-        // two concurrent requests, the first two should succeed and the third one should fail.
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
-
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-        assert!(symbolication.symbolicate_stacktraces(request).is_ok());
-
-        let request = get_symbolication_request(vec![symbol_server.pending_source]);
-        assert!(symbolication.symbolicate_stacktraces(request).is_err());
-    }
-
-    #[tokio::test]
-    async fn test_dotnet_integration() -> anyhow::Result<()> {
-        let (service, _cache_dir) = setup_service().await;
-        let symbolication = service.symbolication();
+    async fn test_dotnet_integration() {
+        let (symbolication, _cache_dir) = setup_service().await;
         let (_srv, source) = test::symbol_server();
 
         let modules: Vec<RawObjectInfo> = serde_json::from_str(
@@ -539,7 +447,8 @@ mod tests {
                 "debug_id":"0c1033f78632492e91c6c314b72e1920e60b819d"
               }
             ]"#,
-        )?;
+        )
+        .unwrap();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -573,7 +482,8 @@ mod tests {
                 ]
               }
             ]"#,
-        )?;
+        )
+        .unwrap();
 
         let request = SymbolicateStacktraces {
             modules: modules.into_iter().map(From::from).collect(),
@@ -587,10 +497,8 @@ mod tests {
             },
         };
 
-        let request_id = symbolication.symbolicate_stacktraces(request).unwrap();
-        let response = symbolication.get_response(request_id, None).await;
+        let response = symbolication.do_symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
-        Ok(())
     }
 }

@@ -1,42 +1,37 @@
 use std::collections::BTreeMap;
-use std::fmt;
-use std::fs::File;
 use std::fs::File;
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures::future;
-use futures::{channel::oneshot, future, FutureExt as _};
-use parking_lot::Mutex;
+use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
+use symbolicator_service::metric;
 use symbolicator_service::services::objects::ObjectsActor;
-use tempfile::TempPath;
+use symbolicator_service::services::symbolication::{SymbolicationActor, SymbolicationError};
+use symbolicator_service::types::CompletedSymbolicationResponse;
 use tempfile::TempPath;
 
 use symbolicator_service::config::Config;
-use symbolicator_service::services::Service as SymbolicatorService;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_sources::SourceConfig;
 
 pub use symbolicator_service::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
-pub use symbolicator_service::services::symbolication::{
-    MaxRequestsError, StacktraceOrigin, SymbolicateStacktraces,
-};
+pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 pub use symbolicator_service::types::{
     RawObjectInfo, RawStacktrace, RequestId, RequestOptions, Scope, Signal, SymbolicationResponse,
 };
 
 /// The underlying service for the HTTP request handlers.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RequestService {
-    inner: Arc<SymbolicatorService>,
+    inner: Arc<RequestServiceInner>,
 }
 
 // We want a shared future here because otherwise polling for a response would hold the global lock.
@@ -64,7 +59,8 @@ impl RequestService {
         io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
     ) -> Result<Self> {
-        let (symbolication, objects) = create_service(&config, io_pool).await?;
+        let (symbolication, objects) =
+            symbolicator_service::services::create_service(&config, io_pool.clone()).await?;
 
         let symbolication_taskmon = tokio_metrics::TaskMonitor::new();
         {
@@ -76,6 +72,8 @@ impl RequestService {
                 }
             });
         }
+
+        let max_concurrent_requests = config.max_concurrent_requests;
 
         let inner = RequestServiceInner {
             config,
@@ -206,7 +204,13 @@ impl RequestService {
         request_id: RequestId,
         timeout: Option<u64>,
     ) -> Option<SymbolicationResponse> {
-        let channel_opt = self.requests.lock().get(&request_id).cloned();
+        let channel_opt = self
+            .inner
+            .requests
+            .lock()
+            .unwrap()
+            .get(&request_id)
+            .cloned();
         match channel_opt {
             Some(channel) => Some(wrap_response_channel(request_id, timeout, channel).await),
             None => {
@@ -217,11 +221,6 @@ impl RequestService {
                 None
             }
         }
-    }
-
-    /// Returns a clone of the task monitor for symbolication requests.
-    pub fn symbolication_task_monitor(&self) -> tokio_metrics::TaskMonitor {
-        self.symbolication_taskmon.clone()
     }
 
     /// Creates a new request to compute the given future.
@@ -239,14 +238,14 @@ impl RequestService {
         let hub = Arc::new(sentry::Hub::new_from_top(sentry::Hub::current()));
 
         // Assume that there are no UUID4 collisions in practice.
-        let requests = Arc::clone(&self.requests);
-        let current_requests = Arc::clone(&self.current_requests);
+        let requests = Arc::clone(&self.inner.requests);
+        let current_requests = Arc::clone(&self.inner.current_requests);
 
         let num_requests = current_requests.load(Ordering::Relaxed);
         metric!(gauge("requests.in_flight") = num_requests as u64);
 
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
-        if let Some(max_concurrent_requests) = self.max_concurrent_requests {
+        if let Some(max_concurrent_requests) = self.inner.max_concurrent_requests {
             if num_requests >= max_concurrent_requests {
                 metric!(counter("requests.rejected") += 1);
                 return Err(MaxRequestsError);
@@ -254,11 +253,14 @@ impl RequestService {
         }
 
         let request_id = RequestId::new(uuid::Uuid::new_v4());
-        requests.lock().insert(request_id, receiver.shared());
+        requests
+            .lock()
+            .unwrap()
+            .insert(request_id, receiver.shared());
         current_requests.fetch_add(1, Ordering::Relaxed);
         let drop_hub = hub.clone();
         let token = CallOnDrop::new(move || {
-            requests.lock().remove(&request_id);
+            requests.lock().unwrap().remove(&request_id);
             // we consider every premature drop of the future as fatal crash, which works fine
             // since ending a session consumes it and its not possible to double-end.
             drop_hub.end_session_with_status(SessionStatus::Crashed);
@@ -301,8 +303,9 @@ impl RequestService {
         }
         .bind_hub(hub);
 
-        self.cpu_pool
-            .spawn(self.symbolication_taskmon.instrument(request_future));
+        self.inner
+            .cpu_pool
+            .spawn(self.inner.symbolication_taskmon.instrument(request_future));
 
         Ok(request_id)
     }
@@ -313,7 +316,7 @@ const MAX_POLL_DELAY: Duration = Duration::from_secs(90);
 
 /// An error returned when symbolicator receives a request while already processing
 /// the maximum number of requests.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 #[error("maximum number of concurrent requests reached")]
 pub struct MaxRequestsError;
 
@@ -348,5 +351,148 @@ async fn wrap_response_channel(
         // If the sender is dropped, this is likely due to a panic that is captured at the source.
         // Therefore, we do not need to capture an error at this point.
         Err(_canceled) => SymbolicationResponse::InternalError,
+    }
+}
+
+trait ToMaxingI64: TryInto<i64> + Copy {
+    fn to_maxing_i64(self) -> i64 {
+        self.try_into().unwrap_or(i64::MAX)
+    }
+}
+
+impl<T: TryInto<i64> + Copy> ToMaxingI64 for T {}
+
+pub fn record_task_metrics(name: &str, metrics: &tokio_metrics::TaskMetrics) {
+    metric!(counter("tasks.instrumented_count") += metrics.instrumented_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.dropped_count") += metrics.dropped_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.first_poll_count") += metrics.first_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_first_poll_delay") += metrics.total_first_poll_delay.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_idled_count") += metrics.total_idled_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_idle_duration") += metrics.total_idle_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_scheduled_count") += metrics.total_scheduled_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_scheduled_duration") += metrics.total_scheduled_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_poll_count") += metrics.total_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_poll_duration") += metrics.total_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_fast_poll_count") += metrics.total_fast_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_fast_poll_durations") += metrics.total_fast_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_slow_poll_count") += metrics.total_slow_poll_count.to_maxing_i64(), "taskname" => name);
+    metric!(counter("tasks.total_slow_poll_duration") += metrics.total_slow_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
+}
+
+#[cfg(test)]
+mod tests {
+    use symbolicator_service::types::{CompleteObjectInfo, RawFrame};
+    use symbolicator_service::utils::hex::HexValue;
+    use symbolicator_sources::ObjectType;
+
+    use crate::test;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_response_multi() {
+        // Make sure we can repeatedly poll for the response
+        let config = Config::default();
+        let handle = tokio::runtime::Handle::current();
+        let service = RequestService::create(config, handle.clone(), handle)
+            .await
+            .unwrap();
+
+        let stacktraces = serde_json::from_str(
+            r#"[
+              {
+                "frames":[
+                  {
+                    "instruction_addr":"0x8c",
+                    "addr_mode":"rel:0"
+                  }
+                ]
+              }
+            ]"#,
+        )
+        .unwrap();
+
+        let request = SymbolicateStacktraces {
+            modules: Vec::new(),
+            stacktraces,
+            signal: None,
+            origin: StacktraceOrigin::Symbolicate,
+            sources: Arc::new([]),
+            scope: Default::default(),
+            options: Default::default(),
+        };
+
+        let request_id = service.symbolicate_stacktraces(request).unwrap();
+
+        for _ in 0..2 {
+            let response = service.get_response(request_id, None).await.unwrap();
+
+            assert!(
+                matches!(&response, SymbolicationResponse::Completed(_)),
+                "Not a complete response: {:#?}",
+                response
+            );
+        }
+    }
+
+    fn get_symbolication_request(sources: Vec<SourceConfig>) -> SymbolicateStacktraces {
+        SymbolicateStacktraces {
+            scope: Scope::Global,
+            signal: None,
+            sources: Arc::from(sources),
+            origin: StacktraceOrigin::Symbolicate,
+            stacktraces: vec![RawStacktrace {
+                frames: vec![RawFrame {
+                    instruction_addr: HexValue(0x1_0000_0fa0),
+                    ..RawFrame::default()
+                }],
+                ..RawStacktrace::default()
+            }],
+            modules: vec![CompleteObjectInfo::from(RawObjectInfo {
+                ty: ObjectType::Macho,
+                code_id: Some("502fc0a51ec13e479998684fa139dca7".to_owned().to_lowercase()),
+                debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".to_owned()),
+                image_addr: HexValue(0x1_0000_0000),
+                image_size: Some(4096),
+                code_file: None,
+                debug_file: None,
+                checksum: None,
+            })],
+            options: RequestOptions {
+                dif_candidates: true,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_max_requests() {
+        test::setup();
+
+        let cache_dir = test::tempdir();
+
+        let config = Config {
+            cache_dir: Some(cache_dir.path().to_owned()),
+            connect_to_reserved_ips: true,
+            max_concurrent_requests: Some(2),
+            ..Default::default()
+        };
+
+        let handle = tokio::runtime::Handle::current();
+        let service = RequestService::create(config, handle.clone(), handle)
+            .await
+            .unwrap();
+
+        let symbol_server = test::FailingSymbolServer::new();
+
+        // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
+        // two concurrent requests, the first two should succeed and the third one should fail.
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(service.symbolicate_stacktraces(request).is_ok());
+
+        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        assert!(service.symbolicate_stacktraces(request).is_ok());
+
+        let request = get_symbolication_request(vec![symbol_server.pending_source]);
+        assert!(service.symbolicate_stacktraces(request).is_err());
     }
 }

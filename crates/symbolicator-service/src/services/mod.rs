@@ -17,13 +17,11 @@
 //! When file fetching is needed, that fetching will happen on the `io_pool`.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::metrics::record_task_metrics;
 
 pub mod bitcode;
 pub mod cacher;
@@ -51,12 +49,12 @@ pub async fn create_service(
     config: &Config,
     io_pool: tokio::runtime::Handle,
 ) -> Result<(SymbolicationActor, ObjectsActor)> {
-    let caches = Caches::from_config(&config).context("failed to create local caches")?;
+    let caches = Caches::from_config(config).context("failed to create local caches")?;
     caches
-        .clear_tmp(&config)
+        .clear_tmp(config)
         .context("failed to clear tmp caches")?;
 
-    let downloader = DownloadService::new(&config, io_pool.clone());
+    let downloader = DownloadService::new(config, io_pool.clone());
 
     let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
     let shared_cache = Arc::new(shared_cache);

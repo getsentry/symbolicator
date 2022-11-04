@@ -59,6 +59,7 @@ pub fn run(config: Config) -> Result<()> {
 
     let handle_http = Handle::new();
     let socket_http = config.bind.parse::<SocketAddr>()?;
+    #[allow(clippy::redundant_clone)] // we need `svc` for the https case below
     let server_http = axum_server::bind(socket_http)
         .handle(handle_http.clone())
         .serve(svc.clone());
