@@ -6,15 +6,14 @@ use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::metric;
-use crate::services::Service;
-use crate::types::{RequestOptions, SymbolicationResponse};
+use crate::service::{RequestOptions, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_minidump_request(
-    extract::Extension(state): extract::Extension<Service>,
+    extract::Extension(service): extract::Extension<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     mut multipart: extract::Multipart,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
@@ -23,7 +22,7 @@ pub async fn handle_minidump_request(
     params.configure_scope();
 
     let mut minidump = None;
-    let mut sources = state.config().default_sources();
+    let mut sources = service.config().default_sources();
     let mut options = RequestOptions::default();
 
     while let Some(field) = multipart.next_field().await? {
@@ -31,7 +30,7 @@ pub async fn handle_minidump_request(
             Some("upload_file_minidump") => {
                 let mut minidump_file = tempfile::Builder::new();
                 minidump_file.prefix("minidump").suffix(".dmp");
-                let minidump_file = if let Some(tmp_dir) = state.config().cache_dir("tmp") {
+                let minidump_file = if let Some(tmp_dir) = service.config().cache_dir("tmp") {
                     minidump_file.tempfile_in(tmp_dir)
                 } else {
                     minidump_file.tempfile()
@@ -66,11 +65,9 @@ pub async fn handle_minidump_request(
         )
             .into());
     }
-    let symbolication = state.symbolication();
-    let request_id =
-        symbolication.process_minidump(params.scope, minidump_file, sources, options)?;
+    let request_id = service.process_minidump(params.scope, minidump_file, sources, options)?;
 
-    match symbolication.get_response(request_id, params.timeout).await {
+    match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
         None => Err("symbolication request did not start".into()),
     }
@@ -80,8 +77,8 @@ pub async fn handle_minidump_request(
 mod tests {
     use reqwest::{multipart, Client, StatusCode};
 
+    use crate::service::SymbolicationResponse;
     use crate::test;
-    use crate::types::SymbolicationResponse;
 
     #[tokio::test]
     async fn test_basic() {

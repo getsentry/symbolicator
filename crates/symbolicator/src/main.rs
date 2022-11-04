@@ -19,26 +19,27 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-pub use symbolicator_service::*;
+pub use symbolicator_service::{config, metric, utils};
 
 mod cli;
 mod endpoints;
 mod logging;
 mod server;
+mod service;
 
 #[cfg(test)]
 mod test {
     use std::net::SocketAddr;
 
     use crate::config::Config;
+    use crate::service::RequestService;
     pub use symbolicator_test::*;
 
     use crate::endpoints;
-    use crate::services::Service;
 
     pub async fn server_with_default_service() -> Server {
         let handle = tokio::runtime::Handle::current();
-        let service = Service::create(Config::default(), handle.clone(), handle.clone())
+        let service = RequestService::create(Config::default(), handle.clone(), handle.clone())
             .await
             .unwrap();
 

@@ -5,7 +5,7 @@ use axum::Json;
 use sentry::integrations::anyhow::capture_anyhow;
 use serde::{Deserialize, Serialize};
 
-use crate::services::symbolication::MaxRequestsError;
+use crate::service::MaxRequestsError;
 
 #[derive(Debug)]
 pub struct ResponseError {
