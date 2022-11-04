@@ -8,10 +8,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_sources::ObjectType;
-use uuid::Uuid;
 
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
@@ -19,33 +18,6 @@ use crate::utils::hex::HexValue;
 mod objects;
 
 pub use objects::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectUseInfo};
-
-/// Symbolication task identifier.
-#[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct RequestId(Uuid);
-
-impl RequestId {
-    /// Creates a new symbolication task identifier.
-    pub fn new(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
-impl fmt::Display for RequestId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'de> Deserialize<'de> for RequestId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let uuid = Uuid::deserialize(deserializer);
-        Ok(Self(uuid.unwrap_or_default()))
-    }
-}
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
@@ -550,25 +522,6 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
             candidates: AllObjectCandidates::default(),
         }
     }
-}
-
-/// The response of a symbolication request or poll request.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
-pub enum SymbolicationResponse {
-    /// Symbolication is still running.
-    Pending {
-        /// The id with which further updates can be polled.
-        request_id: RequestId,
-        /// An indication when the next poll would be suitable.
-        retry_after: usize,
-    },
-    Completed(Box<CompletedSymbolicationResponse>),
-    Failed {
-        message: String,
-    },
-    Timeout,
-    InternalError,
 }
 
 /// The symbolicated crash data.

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::File;
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -10,11 +11,13 @@ use futures::future;
 use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
+use serde::{Deserialize, Deserializer, Serialize};
 use symbolicator_service::metric;
 use symbolicator_service::services::objects::ObjectsActor;
 use symbolicator_service::services::symbolication::{SymbolicationActor, SymbolicationError};
 use symbolicator_service::types::CompletedSymbolicationResponse;
 use tempfile::TempPath;
+use uuid::Uuid;
 
 use symbolicator_service::config::Config;
 use symbolicator_service::utils::futures::CallOnDrop;
@@ -25,8 +28,67 @@ pub use symbolicator_service::services::objects::{
 };
 pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 pub use symbolicator_service::types::{
-    RawObjectInfo, RawStacktrace, RequestId, RequestOptions, Scope, Signal, SymbolicationResponse,
+    RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal,
 };
+
+/// Symbolication task identifier.
+#[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+pub struct RequestId(Uuid);
+
+impl RequestId {
+    /// Creates a new symbolication task identifier.
+    pub fn new(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'de> Deserialize<'de> for RequestId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let uuid = Uuid::deserialize(deserializer);
+        Ok(Self(uuid.unwrap_or_default()))
+    }
+}
+
+/// The response of a symbolication request or poll request.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SymbolicationResponse {
+    /// Symbolication is still running.
+    Pending {
+        /// The id with which further updates can be polled.
+        request_id: RequestId,
+        /// An indication when the next poll would be suitable.
+        retry_after: usize,
+    },
+    Completed(Box<CompletedSymbolicationResponse>),
+    Failed {
+        message: String,
+    },
+    Timeout,
+    InternalError,
+}
+
+impl From<&SymbolicationError> for SymbolicationResponse {
+    fn from(error: &SymbolicationError) -> Self {
+        match error {
+            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
+            SymbolicationError::Failed(_) | SymbolicationError::InvalidAppleCrashReport(_) => {
+                SymbolicationResponse::Failed {
+                    message: error.to_string(),
+                }
+            }
+        }
+    }
+}
 
 /// The underlying service for the HTTP request handlers.
 #[derive(Clone)]
@@ -282,7 +344,7 @@ impl RequestService {
                     };
                     sentry::end_session_with_status(status);
 
-                    let response = error.to_symbolication_response();
+                    let response = SymbolicationResponse::from(&error);
                     let error = anyhow::Error::new(error);
                     tracing::error!("Symbolication error: {:?}", error);
                     response

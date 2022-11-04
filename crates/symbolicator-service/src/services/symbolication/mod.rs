@@ -8,7 +8,7 @@ use crate::services::cficaches::{CfiCacheActor, CfiCacheError};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::{PortablePdbCacheActor, PortablePdbCacheError};
 use crate::services::symcaches::{SymCacheActor, SymCacheError};
-use crate::types::{ObjectFileStatus, RawObjectInfo, SymbolicationResponse};
+use crate::types::{ObjectFileStatus, RawObjectInfo};
 
 mod apple;
 mod module_lookup;
@@ -69,19 +69,6 @@ pub enum SymbolicationError {
 
     #[error("failed to parse apple crash report")]
     InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
-}
-
-impl SymbolicationError {
-    pub fn to_symbolication_response(&self) -> SymbolicationResponse {
-        match self {
-            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Failed(_) | SymbolicationError::InvalidAppleCrashReport(_) => {
-                SymbolicationResponse::Failed {
-                    message: self.to_string(),
-                }
-            }
-        }
-    }
 }
 
 impl From<&CfiCacheError> for ObjectFileStatus {
