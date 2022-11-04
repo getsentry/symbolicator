@@ -1,9 +1,8 @@
 ---
 source: crates/symbolicator-service/src/services/symbolication/process_minidump.rs
-assertion_line: 741
+assertion_line: 740
 expression: response.unwrap()
 ---
-status: completed
 timestamp: 1521713398
 system_info:
   os_name: macOS
