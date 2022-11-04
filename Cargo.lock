@@ -2247,7 +2247,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic-common 9.2.1",
+ "symbolic-common",
 ]
 
 [[package]]
@@ -3114,7 +3114,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d91aea6f2208ce7853a0b61750b217ea7da5c5e46c2eeb52a9bf8a025b707859"
 dependencies = [
  "symbolic-cfi",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-demangle",
  "symbolic-il2cpp",
@@ -3128,21 +3128,9 @@ version = "10.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "099a2b5031a18af7a6671104058ef4de2652d10f2c884a91cd400d7371b22565"
 dependencies = [
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "thiserror",
-]
-
-[[package]]
-name = "symbolic-common"
-version = "9.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "800963ba330b09a2ae4a4f7c6392b81fbc2784099a98c1eac68c3437aa9382b2"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid",
 ]
 
 [[package]]
@@ -3183,7 +3171,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-ppdb",
  "thiserror",
  "wasmparser",
@@ -3200,7 +3188,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common 10.0.0",
+ "symbolic-common",
 ]
 
 [[package]]
@@ -3211,7 +3199,7 @@ checksum = "a78ce9c1fb893dada8ef3e12b1fc5add3d5f1f6e9e332528c7c5b4da8e86dd38"
 dependencies = [
  "indexmap",
  "serde_json",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
 ]
 
@@ -3222,7 +3210,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d04703a3a0798d61ec00115565cc77d64fa6253c77695c937aaf8a8adcfe4097"
 dependencies = [
  "indexmap",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "thiserror",
  "uuid",
  "watto",
@@ -3235,7 +3223,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caaeb234a94403271759121fc99236d8bc4d2dbeadd4eada1ba4b65f4878cce1"
 dependencies = [
  "indexmap",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-il2cpp",
  "thiserror",

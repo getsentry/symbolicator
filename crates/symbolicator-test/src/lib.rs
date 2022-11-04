@@ -106,7 +106,6 @@ pub fn local_source() -> SourceConfig {
 }
 
 /// Get bucket configuration for the microsoft symbol server.
-#[allow(dead_code)]
 pub fn microsoft_symsrv() -> SourceConfig {
     SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("microsoft"),
