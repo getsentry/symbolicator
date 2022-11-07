@@ -24,15 +24,17 @@ use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolicator_service::metric;
-use symbolicator_service::services::objects::ObjectsActor;
-use symbolicator_service::services::symbolication::{SymbolicationActor, SymbolicationError};
-use symbolicator_service::types::CompletedSymbolicationResponse;
 use tempfile::TempPath;
+use thiserror::Error;
 use uuid::Uuid;
 
 use symbolicator_service::config::Config;
+use symbolicator_service::metric;
+use symbolicator_service::services::objects::ObjectsActor;
+use symbolicator_service::services::symbolication::SymbolicationActor;
+use symbolicator_service::types::CompletedSymbolicationResponse;
 use symbolicator_service::utils::futures::CallOnDrop;
+use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
 
 pub use symbolicator_service::services::objects::{
@@ -94,6 +96,16 @@ pub enum SymbolicationResponse {
     },
     Timeout,
     InternalError,
+}
+
+/// Errors during symbolication.
+#[derive(Debug, Error)]
+pub enum SymbolicationError {
+    #[error("symbolication took too long")]
+    Timeout,
+
+    #[error(transparent)]
+    Failed(#[from] anyhow::Error),
 }
 
 impl From<&SymbolicationError> for SymbolicationResponse {
@@ -233,10 +245,10 @@ impl RequestService {
             "symbolicate_stacktraces",
             span,
         );
-        self.create_symbolication_request(options, async move {
+        self.create_symbolication_request("symbolicate", options, async move {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let res = slf.symbolication.do_symbolicate(request).await;
+            let res = slf.symbolication.symbolicate(request).await;
             transaction.finish();
             res
         })
@@ -260,12 +272,12 @@ impl RequestService {
             "process_minidump",
             span,
         );
-        self.create_symbolication_request(options, async move {
+        self.create_symbolication_request("minidump_stackwalk", options, async move {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
             let res = slf
                 .symbolication
-                .do_process_minidump(scope, minidump_file, sources)
+                .process_minidump(scope, minidump_file, sources)
                 .await;
             transaction.finish();
             res
@@ -290,12 +302,12 @@ impl RequestService {
             "process_apple_crash_report",
             span,
         );
-        self.create_symbolication_request(options, async move {
+        self.create_symbolication_request("parse_apple_crash_report", options, async move {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
             let res = slf
                 .symbolication
-                .do_process_apple_crash_report(scope, apple_crash_report, sources)
+                .process_apple_crash_report(scope, apple_crash_report, sources)
                 .await;
             transaction.finish();
             res
@@ -336,13 +348,12 @@ impl RequestService {
     /// maximum number of requests, as given by `max_concurrent_requests`.
     fn create_symbolication_request<F>(
         &self,
+        task_name: &'static str,
         options: RequestOptions,
         f: F,
     ) -> Result<RequestId, MaxRequestsError>
     where
-        F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
-            + Send
-            + 'static,
+        F: Future<Output = Result<CompletedSymbolicationResponse, anyhow::Error>> + Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
@@ -380,7 +391,18 @@ impl RequestService {
         let spawn_time = Instant::now();
         let request_future = async move {
             metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
-            let response = match f.await {
+
+            let f = tokio::time::timeout(Duration::from_secs(3600), f);
+            let f = measure(task_name, m::timed_result, None, f);
+
+            // This flattens the `Result<Result<_, Error>, Timeout>` into a
+            // `Result<_, SymbolicationError>` so we can match on it more easily.
+            let result = f
+                .await
+                .map(|inner| inner.map_err(SymbolicationError::from))
+                .unwrap_or(Err(SymbolicationError::Timeout));
+
+            let response = match result {
                 Ok(mut response) => {
                     if !options.dif_candidates {
                         clear_dif_candidates(&mut response);

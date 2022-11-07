@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -33,10 +33,9 @@ use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFeatures,
     ObjectFileStatus, RawFrame, RawObjectInfo, RawStacktrace, Registers, Scope, SystemInfo,
 };
-use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
-use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor, SymbolicationError};
+use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
 
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 
@@ -530,85 +529,75 @@ impl SymbolicationActor {
         }
     }
 
-    pub async fn do_process_minidump(
+    pub async fn process_minidump(
         &self,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
         let (request, state) = self
-            .do_stackwalk_minidump(scope, minidump_file, sources)
+            .stackwalk_minidump(scope, minidump_file, sources)
             .await?;
 
-        let mut response = self.do_symbolicate(request).await?;
+        let mut response = self.symbolicate(request).await?;
         state.merge_into(&mut response);
 
         Ok(response)
     }
 
     #[tracing::instrument(skip_all)]
-    async fn do_stackwalk_minidump(
+    async fn stackwalk_minidump(
         &self,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
-        let future = async move {
-            let len = minidump_file.metadata()?.len();
-            tracing::debug!("Processing minidump ({} bytes)", len);
-            metric!(time_raw("minidump.upload.size") = len);
+    ) -> Result<(SymbolicateStacktraces, MinidumpState), anyhow::Error> {
+        let len = minidump_file.metadata()?.len();
+        tracing::debug!("Processing minidump ({} bytes)", len);
+        metric!(time_raw("minidump.upload.size") = len);
 
-            let future = stackwalk(
-                self.cficaches.clone(),
-                minidump_file.to_path_buf(),
-                scope.clone(),
-                sources.clone(),
-            );
+        let future = stackwalk(
+            self.cficaches.clone(),
+            minidump_file.to_path_buf(),
+            scope.clone(),
+            sources.clone(),
+        );
 
-            let result = match future.await {
-                Ok(result) => result,
-                Err(err) => {
-                    self.maybe_persist_minidump(minidump_file);
-                    return Err(err);
-                }
-            };
-
-            let StackWalkMinidumpResult {
-                modules,
-                mut stacktraces,
-                minidump_state,
-                duration,
-            } = result;
-
-            metric!(timer("minidump.stackwalk.duration") = duration);
-
-            match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
-                Ok(Some(client_stacktraces)) => merge_clientside_with_processed_stacktraces(
-                    &mut stacktraces,
-                    client_stacktraces,
-                ),
-                Err(e) => tracing::error!("invalid minidump extension: {}", e),
-                _ => (),
+        let result = match future.await {
+            Ok(result) => result,
+            Err(err) => {
+                self.maybe_persist_minidump(minidump_file);
+                return Err(err);
             }
-
-            let request = SymbolicateStacktraces {
-                modules,
-                scope,
-                sources,
-                origin: StacktraceOrigin::Minidump,
-                signal: None,
-                stacktraces,
-            };
-
-            Ok::<_, anyhow::Error>((request, minidump_state))
         };
 
-        let future = tokio::time::timeout(Duration::from_secs(3600), future);
-        let future = measure("minidump_stackwalk", m::timed_result, None, future);
-        future
-            .await
-            .map(|ret| ret.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))
+        let StackWalkMinidumpResult {
+            modules,
+            mut stacktraces,
+            minidump_state,
+            duration,
+        } = result;
+
+        metric!(timer("minidump.stackwalk.duration") = duration);
+
+        match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
+            Ok(Some(client_stacktraces)) => {
+                merge_clientside_with_processed_stacktraces(&mut stacktraces, client_stacktraces)
+            }
+            Err(e) => tracing::error!("invalid minidump extension: {}", e),
+            _ => (),
+        }
+
+        let request = SymbolicateStacktraces {
+            modules,
+            scope,
+            sources,
+            origin: StacktraceOrigin::Minidump,
+            signal: None,
+            stacktraces,
+        };
+
+        Ok((request, minidump_state))
     }
 }
 
@@ -696,7 +685,7 @@ mod tests {
                 let mut minidump_file = NamedTempFile::new().unwrap();
                 minidump_file.write_all(&minidump).unwrap();
                 let response = symbolication
-                    .do_process_minidump(
+                    .process_minidump(
                         Scope::Global,
                         minidump_file.into_temp_path(),
                         Arc::new([source]),
