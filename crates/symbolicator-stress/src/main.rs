@@ -15,7 +15,7 @@ use symbolicator_service::services::symbolication::{
     StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor, SymbolicationError,
 };
 use symbolicator_service::types::{
-    CompletedSymbolicationResponse, RawObjectInfo, RawStacktrace, RequestOptions, Scope,
+    CompletedSymbolicationResponse, RawObjectInfo, RawStacktrace, Scope,
 };
 use tokio::sync::Semaphore;
 
@@ -49,7 +49,6 @@ struct MinidumpPayload {
     scope: Scope,
     minidump_file: PathBuf,
     sources: Arc<[SourceConfig]>,
-    options: RequestOptions,
 }
 
 #[derive(Clone)]
@@ -105,17 +104,10 @@ async fn main() -> Result<()> {
         .map(|(i, workload)| {
             let scope = Scope::Scoped(i.to_string());
             let sources = service_config.sources.clone();
-            // TODO: this should arguably not be part of the interface, and symbolicator should always
-            // return candidates?
-            let options = RequestOptions {
-                dif_candidates: true,
-            };
-
             let parsed_payload = match workload.payload {
                 Payload::Minidump(path) => ParsedPayload::Minidump(MinidumpPayload {
                     scope,
                     sources,
-                    options,
 
                     minidump_file: path,
                 }),
@@ -133,7 +125,6 @@ async fn main() -> Result<()> {
                         signal: None,
                         sources,
                         origin: StacktraceOrigin::Symbolicate,
-                        options,
 
                         stacktraces,
                         modules,
@@ -228,7 +219,6 @@ async fn process_payload(
                 scope,
                 minidump_file,
                 sources,
-                options,
             } = payload;
 
             // processing a minidump requires a tempfile that can be persisted -_-
@@ -246,7 +236,7 @@ async fn process_payload(
                 .unwrap();
 
             symbolication
-                .do_process_minidump(scope, temp_path, sources, options)
+                .do_process_minidump(scope, temp_path, sources)
                 .await
         }
         ParsedPayload::Event(payload) => symbolication.do_symbolicate(payload).await,
