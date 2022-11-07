@@ -39,9 +39,7 @@ pub use symbolicator_service::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
 pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
-pub use symbolicator_service::types::{
-    RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal,
-};
+pub use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope, Signal};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -111,6 +109,33 @@ impl From<&SymbolicationError> for SymbolicationResponse {
     }
 }
 
+/// Common options for all symbolication API requests.
+///
+/// These options control some features which control the symbolication and general request
+/// handling behaviour.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RequestOptions {
+    /// Whether to return detailed information on DIF object candidates.
+    ///
+    /// Symbolication requires DIF object files and which ones selected and not selected
+    /// influences the quality of symbolication.  Enabling this will return extra
+    /// information in the modules list section of the response detailing all DIF objects
+    /// considered, any problems with them and what they were used for.  See the
+    /// [`ObjectCandidate`](symbolicator_service::types::ObjectCandidate) struct
+    /// for which extra information is returned for DIF objects.
+    #[serde(default)]
+    pub dif_candidates: bool,
+}
+
+/// Clears out all the information about the DIF object candidates in the modules list.
+///
+/// This will avoid this from being serialised as the DIF object candidates list is not
+/// serialised when it is empty.
+fn clear_dif_candidates(response: &mut CompletedSymbolicationResponse) {
+    for module in response.modules.iter_mut() {
+        module.candidates.clear()
+    }
+}
 /// The underlying service for the HTTP request handlers.
 #[derive(Clone)]
 pub struct RequestService {
@@ -201,6 +226,7 @@ impl RequestService {
     pub fn symbolicate_stacktraces(
         &self,
         request: SymbolicateStacktraces,
+        options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         let span = sentry::configure_scope(|scope| scope.get_span());
@@ -209,7 +235,7 @@ impl RequestService {
             "symbolicate_stacktraces",
             span,
         );
-        self.create_symbolication_request(async move {
+        self.create_symbolication_request(options, async move {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
             let res = slf.symbolication.do_symbolicate(request).await;
@@ -236,12 +262,12 @@ impl RequestService {
             "process_minidump",
             span,
         );
-        self.create_symbolication_request(async move {
+        self.create_symbolication_request(options, async move {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
             let res = slf
                 .symbolication
-                .do_process_minidump(scope, minidump_file, sources, options)
+                .do_process_minidump(scope, minidump_file, sources)
                 .await;
             transaction.finish();
             res
@@ -266,12 +292,12 @@ impl RequestService {
             "process_apple_crash_report",
             span,
         );
-        self.create_symbolication_request(async move {
+        self.create_symbolication_request(options, async move {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
             let res = slf
                 .symbolication
-                .do_process_apple_crash_report(scope, apple_crash_report, sources, options)
+                .do_process_apple_crash_report(scope, apple_crash_report, sources)
                 .await;
             transaction.finish();
             res
@@ -310,7 +336,11 @@ impl RequestService {
     ///
     /// Returns `None` if the `SymbolicationActor` is already processing the
     /// maximum number of requests, as given by `max_concurrent_requests`.
-    fn create_symbolication_request<F>(&self, f: F) -> Result<RequestId, MaxRequestsError>
+    fn create_symbolication_request<F>(
+        &self,
+        options: RequestOptions,
+        f: F,
+    ) -> Result<RequestId, MaxRequestsError>
     where
         F: Future<Output = Result<CompletedSymbolicationResponse, SymbolicationError>>
             + Send
@@ -353,7 +383,10 @@ impl RequestService {
         let request_future = async move {
             metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
             let response = match f.await {
-                Ok(response) => {
+                Ok(mut response) => {
+                    if !options.dif_candidates {
+                        clear_dif_candidates(&mut response);
+                    }
                     sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))
                 }
@@ -502,10 +535,11 @@ mod tests {
             origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([]),
             scope: Default::default(),
-            options: Default::default(),
         };
 
-        let request_id = service.symbolicate_stacktraces(request).unwrap();
+        let request_id = service
+            .symbolicate_stacktraces(request, RequestOptions::default())
+            .unwrap();
 
         for _ in 0..2 {
             let response = service.get_response(request_id, None).await.unwrap();
@@ -541,9 +575,6 @@ mod tests {
                 debug_file: None,
                 checksum: None,
             })],
-            options: RequestOptions {
-                dif_candidates: true,
-            },
         }
     }
 
@@ -570,12 +601,18 @@ mod tests {
         // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
         // two concurrent requests, the first two should succeed and the third one should fail.
         let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-        assert!(service.symbolicate_stacktraces(request).is_ok());
+        assert!(service
+            .symbolicate_stacktraces(request, RequestOptions::default())
+            .is_ok());
 
         let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
-        assert!(service.symbolicate_stacktraces(request).is_ok());
+        assert!(service
+            .symbolicate_stacktraces(request, RequestOptions::default())
+            .is_ok());
 
         let request = get_symbolication_request(vec![symbol_server.pending_source]);
-        assert!(service.symbolicate_stacktraces(request).is_err());
+        assert!(service
+            .symbolicate_stacktraces(request, RequestOptions::default())
+            .is_err());
     }
 }

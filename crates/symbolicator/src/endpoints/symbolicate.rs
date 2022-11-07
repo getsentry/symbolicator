@@ -64,15 +64,17 @@ pub async fn symbolicate_frames(
         None => service.config().default_sources(),
     };
 
-    let request_id = service.symbolicate_stacktraces(SymbolicateStacktraces {
-        scope: params.scope,
-        signal: body.signal,
-        sources,
-        origin: StacktraceOrigin::Symbolicate,
-        stacktraces: body.stacktraces,
-        modules: body.modules.into_iter().map(From::from).collect(),
-        options: body.options,
-    })?;
+    let request_id = service.symbolicate_stacktraces(
+        SymbolicateStacktraces {
+            scope: params.scope,
+            signal: body.signal,
+            sources,
+            origin: StacktraceOrigin::Symbolicate,
+            stacktraces: body.stacktraces,
+            modules: body.modules.into_iter().map(From::from).collect(),
+        },
+        body.options,
+    )?;
 
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

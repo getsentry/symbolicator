@@ -9,8 +9,8 @@ use crate::services::ppdb_caches::PortablePdbCacheFile;
 use crate::services::symcaches::SymCacheFile;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, RequestOptions, Scope,
-    Signal, SymbolicatedFrame,
+    FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
+    SymbolicatedFrame,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
@@ -24,22 +24,13 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let serialize_dif_candidates = request.options.dif_candidates;
-
         let f = self.do_symbolicate_impl(request);
         let f = tokio::time::timeout(Duration::from_secs(3600), f);
         let f = measure("symbolicate", m::timed_result, None, f);
 
-        let mut response = f
-            .await
+        f.await
             .map(|res| res.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))?;
-
-        if !serialize_dif_candidates {
-            response.clear_dif_candidates();
-        }
-
-        Ok(response)
+            .unwrap_or(Err(SymbolicationError::Timeout))
     }
 
     async fn do_symbolicate_impl(
@@ -143,9 +134,6 @@ pub struct SymbolicateStacktraces {
     /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
     /// be symbolicated as it is not clear which debug file to load.
     pub modules: Vec<CompleteObjectInfo>,
-
-    /// Options that came with this request, see [`RequestOptions`].
-    pub options: RequestOptions,
 }
 
 fn symbolicate_frame(
