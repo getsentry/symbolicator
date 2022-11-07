@@ -1,3 +1,15 @@
+//! This provides a wrapper around the main [`SymbolicationActor`] offering a Request/Response model.
+//!
+//! The request/response model works like this:
+//! - A Symbolication request is created using `symbolicate_stacktraces` or a similar method. This
+//!   function immediate returns a [`RequestId`].
+//! - This [`RequestId`] can later be polled using `get_response` and an optional timeout.
+//!
+//! The [`RequestService`] requires access to two separate runtimes:
+//! When a request comes in on the web pool, it is handed off to the `cpu_pool` for processing, which
+//! is primarily synchronous work in the best case (everything is cached).
+//! When file fetching is needed, that fetching will happen on the `io_pool`.
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
@@ -59,6 +71,15 @@ impl<'de> Deserialize<'de> for RequestId {
 }
 
 /// The response of a symbolication request or poll request.
+///
+/// This object is the main type containing the symblicated crash as returned by the
+/// `/minidump`, `/symbolicate` and `/applecrashreport` endpoints.
+///
+/// This is primarily a wrapper around [`CompletedSymbolicationResponse`] which is publicly
+/// documented at <https://getsentry.github.io/symbolicator/api/response/>.
+///
+/// For the actual HTTP response this is further wrapped to also allow a pending or failed state etc
+/// instead of a result.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum SymbolicationResponse {

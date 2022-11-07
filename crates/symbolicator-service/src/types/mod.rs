@@ -61,21 +61,6 @@ impl fmt::Display for Scope {
     }
 }
 
-/// Extra JSON request data for multipart requests.
-///
-/// Multipart requests like `/minidump` and `/applecrashreport` often need some extra
-/// request data together with their main data payload which is included as a JSON-formatted
-/// multi-part.  This can represent this data.
-///
-/// This is meant to be extensible, it is conceivable that the existing `sources` mutli-part
-/// would merge into this one at some point.
-#[derive(Debug, Deserialize)]
-pub struct RequestData {
-    /// Common symbolication per-request options.
-    #[serde(default)]
-    pub options: RequestOptions,
-}
-
 /// Common options for all symbolication API requests.
 ///
 /// These options control some features which control the symbolication and general request
@@ -529,11 +514,7 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
 /// It contains the symbolicated stack frames, module information as well as other
 /// meta-information about the crash.
 ///
-/// This object is the main type containing the symblicated crash as returned by the
-/// `/minidump`, `/symbolicate` and `/applecrashreport` endpoints.  It is publicly
-/// documented at <https://getsentry.github.io/symbolicator/api/response/>.  For the actual
-/// HTTP response this is further wrapped in [`SymbolicationResponse`] which can also return a
-/// pending or failed state etc instead of a result.
+/// It is publicly documented at <https://getsentry.github.io/symbolicator/api/response/>.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.

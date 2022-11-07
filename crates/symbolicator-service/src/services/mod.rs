@@ -1,20 +1,13 @@
-//! Provides the symbolicator [`Service`] and internal services.
+//! Provides the internal Symbolicator services and a way to initialize them.
 //!
 //! Symbolicator operates a number of independent services defined in this module for downloading,
-//! cache management, and symbolication. They are created by the main [`Service`] and can be
-//! accessed via that.
+//! cache management, and symbolication.
+//! The main [`create_service`] fn creates all these internal services according to the provided
+//! [`Config`] and returns a [`SymbolicationActor`] as the main Symbolicator interface, and an
+//! [`ObjectsActor`] which abstracts object access.
 //!
-//! In general, services are created once in the [`crate::services::Service`] and accessed via this
-//! state.
-//!
-//! The internal services require two separate asynchronous runtimes.
-//! (There is a third runtime dedicated to serving http requests)
-//! For regular scheduling and I/O-intensive work, services will use the `io_pool`.
-//! For CPU intensive workloads, services will use the `cpu_pool`.
-//!
-//! When a request comes in on the web pool, it is handed off to the `cpu_pool` for processing, which
-//! is primarily synchronous work in the best case (everything is cached).
-//! When file fetching is needed, that fetching will happen on the `io_pool`.
+//! The internal services require a separate asynchronous runtimes dedicated for I/O-intensive work,
+//! such as downloads and access to the shared cache.
 
 use std::sync::Arc;
 
