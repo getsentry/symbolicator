@@ -3340,6 +3340,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-stress"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "humantime",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "structopt",
+ "symbolicator-service",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "symbolicator-test"
 version = "0.5.1"
 dependencies = [
