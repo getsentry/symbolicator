@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  develop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Security Opt and cap_add for C++ based debuggers to work.
+    # See `runArgs`: https://github.com/Microsoft/vscode-docs/blob/main/docs/remote/devcontainerjson-reference.md
+    environment:
+      - RUSTC_WRAPPER=/home/vscode/.cargo/bin/sccache
+      - SCCACHE_DIR=/var/cache/sccache
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    volumes:
+      - ../..:/workspaces:cached
+      - sccache:/var/cache/sccache
+    # Overrides default command so things don't shut down after the process ends.
+    command: sleep infinity
+
+    # Uncomment the next line to use a non-root user for all processes.
+    # user: vscode
+
+    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally.
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+
+# this docker-compose uses an external sccache volume that has to be created
+# manually: `docker volume create sccache`
+volumes:
+  sccache:
+    external: true
