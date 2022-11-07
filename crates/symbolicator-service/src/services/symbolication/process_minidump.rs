@@ -31,8 +31,7 @@ use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::objects::ObjectError;
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFeatures,
-    ObjectFileStatus, RawFrame, RawObjectInfo, RawStacktrace, Registers, RequestOptions, Scope,
-    SystemInfo,
+    ObjectFileStatus, RawFrame, RawObjectInfo, RawStacktrace, Registers, Scope, SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
@@ -536,10 +535,9 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
-            .do_stackwalk_minidump(scope, minidump_file, sources, options)
+            .do_stackwalk_minidump(scope, minidump_file, sources)
             .await?;
 
         let mut response = self.do_symbolicate(request).await?;
@@ -554,7 +552,6 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, MinidumpState), SymbolicationError> {
         let future = async move {
             let len = minidump_file.metadata()?.len();
@@ -601,7 +598,6 @@ impl SymbolicationActor {
                 origin: StacktraceOrigin::Minidump,
                 signal: None,
                 stacktraces,
-                options,
             };
 
             Ok::<_, anyhow::Error>((request, minidump_state))
@@ -678,7 +674,7 @@ mod tests {
 
     use crate::services::symbolication::tests::setup_service;
     use crate::test;
-    use crate::types::{RequestOptions, Scope};
+    use crate::types::Scope;
 
     macro_rules! assert_snapshot {
         ($e:expr) => {
@@ -692,14 +688,6 @@ mod tests {
 
     macro_rules! stackwalk_minidump {
         ($path:expr) => {{
-            stackwalk_minidump!(
-                $path,
-                RequestOptions {
-                    dif_candidates: true,
-                }
-            )
-        }};
-        ($path:expr, $options:expr) => {{
             async {
                 let (symbolication, cache_dir) = setup_service().await;
                 let (_symsrv, source) = test::symbol_server();
@@ -712,7 +700,6 @@ mod tests {
                         Scope::Global,
                         minidump_file.into_temp_path(),
                         Arc::new([source]),
-                        $options,
                     )
                     .await;
 

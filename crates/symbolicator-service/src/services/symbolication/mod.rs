@@ -162,7 +162,7 @@ mod tests {
     use crate::services::create_service;
     use crate::services::symbolication::module_lookup::ModuleLookup;
     use crate::test::{self, fixture};
-    use crate::types::{CompleteObjectInfo, RawFrame, RawStacktrace, RequestOptions, Scope};
+    use crate::types::{CompleteObjectInfo, RawFrame, RawStacktrace, Scope};
     use crate::utils::addr::AddrMode;
     use crate::utils::hex::HexValue;
 
@@ -213,9 +213,6 @@ mod tests {
                 debug_file: None,
                 checksum: None,
             })],
-            options: RequestOptions {
-                dif_candidates: true,
-            },
         }
     }
 
@@ -288,14 +285,7 @@ mod tests {
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt")).unwrap();
 
         let response = symbolication
-            .do_process_apple_crash_report(
-                Scope::Global,
-                report_file,
-                Arc::new([source]),
-                RequestOptions {
-                    dif_candidates: true,
-                },
-            )
+            .do_process_apple_crash_report(Scope::Global, report_file, Arc::new([source]))
             .await;
 
         assert_snapshot!(response.unwrap());
@@ -339,7 +329,6 @@ mod tests {
             origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([source]),
             scope: Default::default(),
-            options: Default::default(),
         };
 
         let response = symbolication.do_symbolicate(request).await;
@@ -386,9 +375,6 @@ mod tests {
             origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([source]),
             scope: Default::default(),
-            options: RequestOptions {
-                dif_candidates: true,
-            },
         };
 
         let response = symbolication.do_symbolicate(request).await;
@@ -479,9 +465,6 @@ mod tests {
             origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([source]),
             scope: Default::default(),
-            options: RequestOptions {
-                dif_candidates: true,
-            },
         };
 
         let response = symbolication.do_symbolicate(request).await;

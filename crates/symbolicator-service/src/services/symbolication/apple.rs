@@ -11,7 +11,7 @@ use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::types::{
     CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawObjectInfo, RawStacktrace,
-    RequestOptions, Scope, SystemInfo,
+    Scope, SystemInfo,
 };
 use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
@@ -24,7 +24,6 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
             let report = AppleCrashReport::from_reader(report)?;
@@ -79,7 +78,6 @@ impl SymbolicationActor {
                 origin: StacktraceOrigin::AppleCrashReport,
                 signal: None,
                 stacktraces,
-                options,
             };
 
             let mut system_info = SystemInfo {
@@ -132,10 +130,9 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-        options: RequestOptions,
     ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
         let (request, state) = self
-            .parse_apple_crash_report(scope, report, sources, options)
+            .parse_apple_crash_report(scope, report, sources)
             .await?;
         let mut response = self.do_symbolicate(request).await?;
 
