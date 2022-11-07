@@ -1,9 +1,8 @@
 ---
 source: crates/symbolicator-service/src/services/symbolication/mod.rs
-assertion_line: 550
+assertion_line: 274
 expression: response.unwrap()
 ---
-status: completed
 stacktraces:
   - frames:
       - status: missing

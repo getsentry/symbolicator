@@ -127,8 +127,8 @@ impl SymbolicationActor {
             .unwrap_or(Err(SymbolicationError::Timeout))
     }
 
-    pub(super) async fn do_process_apple_crash_report(
-        self,
+    pub async fn do_process_apple_crash_report(
+        &self,
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,

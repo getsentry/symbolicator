@@ -15,7 +15,7 @@ use futures::future::BoxFuture;
 use crate::config::Config;
 use crate::endpoints;
 use crate::metric;
-use crate::services::Service;
+use crate::service::RequestService;
 
 #[cfg(feature = "https")]
 fn read_pem_file(path: &PathBuf) -> Result<Vec<u8>> {
@@ -48,7 +48,7 @@ pub fn run(config: Config) -> Result<()> {
     let mut servers: Vec<BoxFuture<_>> = vec![];
 
     let service = web_pool
-        .block_on(Service::create(
+        .block_on(RequestService::create(
             config.clone(),
             io_pool.handle().to_owned(),
             cpu_pool.handle().to_owned(),
@@ -59,6 +59,7 @@ pub fn run(config: Config) -> Result<()> {
 
     let handle_http = Handle::new();
     let socket_http = config.bind.parse::<SocketAddr>()?;
+    #[allow(clippy::redundant_clone)] // we need `svc` for the https case below
     let server_http = axum_server::bind(socket_http)
         .handle(handle_http.clone())
         .serve(svc.clone());

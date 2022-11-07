@@ -1,29 +1,20 @@
-//! Provides the symbolicator [`Service`] and internal services.
+//! Provides the internal Symbolicator services and a way to initialize them.
 //!
 //! Symbolicator operates a number of independent services defined in this module for downloading,
-//! cache management, and symbolication. They are created by the main [`Service`] and can be
-//! accessed via that.
+//! cache management, and symbolication.
+//! The main [`create_service`] fn creates all these internal services according to the provided
+//! [`Config`] and returns a [`SymbolicationActor`] as the main Symbolicator interface, and an
+//! [`ObjectsActor`] which abstracts object access.
 //!
-//! In general, services are created once in the [`crate::services::Service`] and accessed via this
-//! state.
-//!
-//! The internal services require two separate asynchronous runtimes.
-//! (There is a third runtime dedicated to serving http requests)
-//! For regular scheduling and I/O-intensive work, services will use the `io_pool`.
-//! For CPU intensive workloads, services will use the `cpu_pool`.
-//!
-//! When a request comes in on the web pool, it is handed off to the `cpu_pool` for processing, which
-//! is primarily synchronous work in the best case (everything is cached).
-//! When file fetching is needed, that fetching will happen on the `io_pool`.
+//! The internal services require a separate asynchronous runtimes dedicated for I/O-intensive work,
+//! such as downloads and access to the shared cache.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 
 use crate::cache::Caches;
 use crate::config::Config;
-use crate::metrics::record_task_metrics;
 
 pub mod bitcode;
 pub mod cacher;
@@ -47,85 +38,50 @@ use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 
-/// The shared state for the service.
-#[derive(Clone, Debug)]
-pub struct Service {
-    /// Actor for minidump and stacktrace processing
-    symbolication: SymbolicationActor,
-    /// Actor for downloading and caching objects (no symcaches or cficaches)
-    objects: ObjectsActor,
-    /// The config object.
-    config: Arc<Config>,
-}
+pub async fn create_service(
+    config: &Config,
+    io_pool: tokio::runtime::Handle,
+) -> Result<(SymbolicationActor, ObjectsActor)> {
+    let caches = Caches::from_config(config).context("failed to create local caches")?;
+    caches
+        .clear_tmp(config)
+        .context("failed to clear tmp caches")?;
 
-impl Service {
-    pub async fn create(
-        config: Config,
-        io_pool: tokio::runtime::Handle,
-        cpu_pool: tokio::runtime::Handle,
-    ) -> Result<Self> {
-        let config = Arc::new(config);
+    let downloader = DownloadService::new(config, io_pool.clone());
 
-        let downloader = DownloadService::new(&config, io_pool.clone());
-        let shared_cache =
-            SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
-        let shared_cache = Arc::new(shared_cache);
-        let caches = Caches::from_config(&config).context("failed to create local caches")?;
-        caches
-            .clear_tmp(&config)
-            .context("failed to clear tmp caches")?;
-        let objects = ObjectsActor::new(
-            caches.object_meta,
-            caches.objects,
-            shared_cache.clone(),
-            downloader.clone(),
-        );
-        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
-        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
-        let symcaches = SymCacheActor::new(
-            caches.symcaches,
-            shared_cache.clone(),
-            objects.clone(),
-            bitcode,
-            il2cpp,
-        );
-        let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache.clone(), objects.clone());
-        let ppdb_caches =
-            PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache, objects.clone());
+    let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
+    let shared_cache = Arc::new(shared_cache);
 
-        let symbolication = SymbolicationActor::new(
-            objects.clone(),
-            symcaches,
-            cficaches,
-            ppdb_caches,
-            caches.diagnostics,
-            cpu_pool,
-            config.max_concurrent_requests,
-        );
-        let symbolication_taskmon = symbolication.symbolication_task_monitor();
-        io_pool.spawn(async move {
-            for interval in symbolication_taskmon.intervals() {
-                record_task_metrics("symbolication", &interval);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-            }
-        });
+    let objects = ObjectsActor::new(
+        caches.object_meta,
+        caches.objects,
+        shared_cache.clone(),
+        downloader.clone(),
+    );
 
-        Ok(Self {
-            symbolication,
-            objects,
-            config,
-        })
-    }
+    let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
 
-    pub fn symbolication(&self) -> &SymbolicationActor {
-        &self.symbolication
-    }
+    let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
 
-    pub fn objects(&self) -> &ObjectsActor {
-        &self.objects
-    }
+    let symcaches = SymCacheActor::new(
+        caches.symcaches,
+        shared_cache.clone(),
+        objects.clone(),
+        bitcode,
+        il2cpp,
+    );
 
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
+    let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache.clone(), objects.clone());
+
+    let ppdb_caches = PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache, objects.clone());
+
+    let symbolication = SymbolicationActor::new(
+        objects.clone(),
+        symcaches,
+        cficaches,
+        ppdb_caches,
+        caches.diagnostics,
+    );
+
+    Ok((symbolication, objects))
 }

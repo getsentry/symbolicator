@@ -1,9 +1,8 @@
 ---
 source: crates/symbolicator-service/src/services/symbolication/process_minidump.rs
-assertion_line: 746
+assertion_line: 745
 expression: response.unwrap()
 ---
-status: completed
 timestamp: 1522061032
 system_info:
   os_name: Linux

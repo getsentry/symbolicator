@@ -44,7 +44,6 @@ symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
 tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
-tokio-metrics = "0.1.0"
 tokio-util = { version = "0.7.1", features = ["io"] }
 tracing = "0.1.34"
 url = { version = "2.2.0", features = ["serde"] }

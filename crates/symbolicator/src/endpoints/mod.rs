@@ -4,7 +4,7 @@ use axum::Router;
 use sentry_tower::{NewSentryLayer, SentryHttpLayer};
 use tower::ServiceBuilder;
 
-use crate::services::Service;
+use crate::service::RequestService;
 
 mod applecrashreport;
 mod error;
@@ -29,7 +29,7 @@ pub async fn healthcheck() -> &'static str {
     "ok"
 }
 
-pub fn create_app(service: Service) -> Router {
+pub fn create_app(service: RequestService) -> Router {
     // The layers here go "top to bottom" according to the reading order here.
     let layer = ServiceBuilder::new()
         .layer(axum::extract::Extension(service))

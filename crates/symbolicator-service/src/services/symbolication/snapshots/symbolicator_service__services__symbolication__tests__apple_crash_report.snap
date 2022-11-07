@@ -1,9 +1,8 @@
 ---
 source: crates/symbolicator-service/src/services/symbolication/mod.rs
-assertion_line: 642
+assertion_line: 314
 expression: response.unwrap()
 ---
-status: completed
 timestamp: 1547055742
 system_info:
   os_name: macOS

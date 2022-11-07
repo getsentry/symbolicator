@@ -8,10 +8,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_sources::ObjectType;
-use uuid::Uuid;
 
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
@@ -19,33 +18,6 @@ use crate::utils::hex::HexValue;
 mod objects;
 
 pub use objects::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectUseInfo};
-
-/// Symbolication task identifier.
-#[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct RequestId(Uuid);
-
-impl RequestId {
-    /// Creates a new symbolication task identifier.
-    pub fn new(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
-impl fmt::Display for RequestId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'de> Deserialize<'de> for RequestId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let uuid = Uuid::deserialize(deserializer);
-        Ok(Self(uuid.unwrap_or_default()))
-    }
-}
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
@@ -87,21 +59,6 @@ impl fmt::Display for Scope {
             Scope::Scoped(ref scope) => f.write_str(scope),
         }
     }
-}
-
-/// Extra JSON request data for multipart requests.
-///
-/// Multipart requests like `/minidump` and `/applecrashreport` often need some extra
-/// request data together with their main data payload which is included as a JSON-formatted
-/// multi-part.  This can represent this data.
-///
-/// This is meant to be extensible, it is conceivable that the existing `sources` mutli-part
-/// would merge into this one at some point.
-#[derive(Debug, Deserialize)]
-pub struct RequestData {
-    /// Common symbolication per-request options.
-    #[serde(default)]
-    pub options: RequestOptions,
 }
 
 /// Common options for all symbolication API requests.
@@ -552,35 +509,12 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
     }
 }
 
-/// The response of a symbolication request or poll request.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
-pub enum SymbolicationResponse {
-    /// Symbolication is still running.
-    Pending {
-        /// The id with which further updates can be polled.
-        request_id: RequestId,
-        /// An indication when the next poll would be suitable.
-        retry_after: usize,
-    },
-    Completed(Box<CompletedSymbolicationResponse>),
-    Failed {
-        message: String,
-    },
-    Timeout,
-    InternalError,
-}
-
 /// The symbolicated crash data.
 ///
 /// It contains the symbolicated stack frames, module information as well as other
 /// meta-information about the crash.
 ///
-/// This object is the main type containing the symblicated crash as returned by the
-/// `/minidump`, `/symbolicate` and `/applecrashreport` endpoints.  It is publicly
-/// documented at <https://getsentry.github.io/symbolicator/api/response/>.  For the actual
-/// HTTP response this is further wrapped in [`SymbolicationResponse`] which can also return a
-/// pending or failed state etc instead of a result.
+/// It is publicly documented at <https://getsentry.github.io/symbolicator/api/response/>.
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.

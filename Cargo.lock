@@ -3254,13 +3254,16 @@ dependencies = [
  "symbolicator-sources",
  "symbolicator-test",
  "tempfile",
+ "thiserror",
  "tokio",
+ "tokio-metrics",
  "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -3314,7 +3317,6 @@ dependencies = [
  "test-assembler",
  "thiserror",
  "tokio",
- "tokio-metrics",
  "tokio-util",
  "tracing",
  "url",
