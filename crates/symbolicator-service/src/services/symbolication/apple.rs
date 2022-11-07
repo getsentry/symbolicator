@@ -2,7 +2,8 @@ use std::fs::File;
 use std::sync::Arc;
 use std::time::Duration;
 
-use apple_crash_report_parser::{AppleCrashReport, ParseError};
+use anyhow::Context;
+use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 
@@ -27,7 +28,8 @@ impl SymbolicationActor {
         options: RequestOptions,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
         let parse_future = async {
-            let report = AppleCrashReport::from_reader(report)?;
+            let report = AppleCrashReport::from_reader(report)
+                .context("failed to parse apple crash report")?;
             let mut metadata = report.metadata;
 
             let arch = report
@@ -116,7 +118,7 @@ impl SymbolicationActor {
                 crash_details,
             };
 
-            Ok::<_, ParseError>((request, state))
+            Ok::<_, anyhow::Error>((request, state))
         };
 
         let future = tokio::time::timeout(Duration::from_secs(1200), parse_future);

@@ -66,9 +66,6 @@ pub enum SymbolicationError {
 
     #[error(transparent)]
     Failed(#[from] anyhow::Error),
-
-    #[error("failed to parse apple crash report")]
-    InvalidAppleCrashReport(#[from] apple_crash_report_parser::ParseError),
 }
 
 impl From<&CfiCacheError> for ObjectFileStatus {

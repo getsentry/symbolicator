@@ -102,11 +102,9 @@ impl From<&SymbolicationError> for SymbolicationResponse {
     fn from(error: &SymbolicationError) -> Self {
         match error {
             SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Failed(_) | SymbolicationError::InvalidAppleCrashReport(_) => {
-                SymbolicationResponse::Failed {
-                    message: error.to_string(),
-                }
-            }
+            SymbolicationError::Failed(_) => SymbolicationResponse::Failed {
+                message: error.to_string(),
+            },
         }
     }
 }
