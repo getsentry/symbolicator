@@ -24,7 +24,7 @@ symbolic = "10.0.0"
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
-tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
+tokio = { version = "1.18.1", features = ["rt-multi-thread", "macros", "fs"] }
 tokio-util = { version = "0.7.1", features = ["io"] }
 tower = "0.4"
 tower-layer = "0.3"
