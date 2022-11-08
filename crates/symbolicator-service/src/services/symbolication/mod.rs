@@ -1,7 +1,3 @@
-use std::fmt;
-
-use thiserror::Error;
-
 use symbolicator_sources::ObjectId;
 
 use crate::services::cficaches::{CfiCacheActor, CfiCacheError};
@@ -20,7 +16,7 @@ mod symbolication;
 
 pub use symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     objects: ObjectsActor,
     symcaches: SymCacheActor,
@@ -45,27 +41,6 @@ impl SymbolicationActor {
             diagnostics_cache,
         }
     }
-}
-
-impl fmt::Debug for SymbolicationActor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_struct("SymbolicationActor")
-            .field("objects", &self.objects)
-            .field("symcaches", &self.symcaches)
-            .field("cficaches", &self.cficaches)
-            .field("diagnostics_cache", &self.diagnostics_cache)
-            .finish()
-    }
-}
-
-/// Errors during symbolication.
-#[derive(Debug, Error)]
-pub enum SymbolicationError {
-    #[error("symbolication took too long")]
-    Timeout,
-
-    #[error(transparent)]
-    Failed(#[from] anyhow::Error),
 }
 
 impl From<&CfiCacheError> for ObjectFileStatus {
@@ -245,12 +220,12 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![source]);
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
 
         let request = get_symbolication_request(vec![]);
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
     }
@@ -264,12 +239,12 @@ mod tests {
         let (_symsrv, source) = test::symbol_server();
 
         let request = get_symbolication_request(vec![]);
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
 
         let request = get_symbolication_request(vec![source]);
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
     }
@@ -282,7 +257,7 @@ mod tests {
         let report_file = std::fs::File::open(fixture("apple_crash_report.txt")).unwrap();
 
         let response = symbolication
-            .do_process_apple_crash_report(Scope::Global, report_file, Arc::new([source]))
+            .process_apple_crash_report(Scope::Global, report_file, Arc::new([source]))
             .await;
 
         assert_snapshot!(response.unwrap());
@@ -328,7 +303,7 @@ mod tests {
             scope: Default::default(),
         };
 
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
     }
@@ -374,7 +349,7 @@ mod tests {
             scope: Default::default(),
         };
 
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
     }
@@ -464,7 +439,7 @@ mod tests {
             scope: Default::default(),
         };
 
-        let response = symbolication.do_symbolicate(request).await;
+        let response = symbolication.symbolicate(request).await;
 
         assert_snapshot!(response.unwrap());
     }

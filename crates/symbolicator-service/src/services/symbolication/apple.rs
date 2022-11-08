@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Context;
 use apple_crash_report_parser::AppleCrashReport;
@@ -14,129 +13,118 @@ use crate::types::{
     CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawObjectInfo, RawStacktrace,
     Scope, SystemInfo,
 };
-use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
-use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor, SymbolicationError};
+use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
 
 impl SymbolicationActor {
-    async fn parse_apple_crash_report(
+    #[tracing::instrument(skip_all)]
+    fn parse_apple_crash_report(
         &self,
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), SymbolicationError> {
-        let parse_future = async {
-            let report = AppleCrashReport::from_reader(report)
-                .context("failed to parse apple crash report")?;
-            let mut metadata = report.metadata;
+    ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), anyhow::Error> {
+        let report =
+            AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
+        let mut metadata = report.metadata;
 
-            let arch = report
-                .code_type
-                .as_ref()
-                .and_then(|code_type| code_type.split(' ').next())
-                .and_then(|word| word.parse().ok())
-                .unwrap_or_default();
+        let arch = report
+            .code_type
+            .as_ref()
+            .and_then(|code_type| code_type.split(' ').next())
+            .and_then(|word| word.parse().ok())
+            .unwrap_or_default();
 
-            let modules = report
-                .binary_images
+        let modules = report
+            .binary_images
+            .into_iter()
+            .map(map_apple_binary_image)
+            .collect();
+
+        let mut stacktraces = Vec::with_capacity(report.threads.len());
+
+        for thread in report.threads {
+            let registers = thread
+                .registers
+                .unwrap_or_default()
                 .into_iter()
-                .map(map_apple_binary_image)
+                .map(|(name, addr)| (name, HexValue(addr.0)))
                 .collect();
 
-            let mut stacktraces = Vec::with_capacity(report.threads.len());
+            let frames = thread
+                .frames
+                .into_iter()
+                .map(|frame| RawFrame {
+                    instruction_addr: HexValue(frame.instruction_addr.0),
+                    package: frame.module,
+                    ..RawFrame::default()
+                })
+                .collect();
 
-            for thread in report.threads {
-                let registers = thread
-                    .registers
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|(name, addr)| (name, HexValue(addr.0)))
-                    .collect();
+            stacktraces.push(RawStacktrace {
+                thread_id: Some(thread.id),
+                thread_name: thread.name,
+                is_requesting: Some(thread.crashed),
+                registers,
+                frames,
+            });
+        }
 
-                let frames = thread
-                    .frames
-                    .into_iter()
-                    .map(|frame| RawFrame {
-                        instruction_addr: HexValue(frame.instruction_addr.0),
-                        package: frame.module,
-                        ..RawFrame::default()
-                    })
-                    .collect();
-
-                stacktraces.push(RawStacktrace {
-                    thread_id: Some(thread.id),
-                    thread_name: thread.name,
-                    is_requesting: Some(thread.crashed),
-                    registers,
-                    frames,
-                });
-            }
-
-            let request = SymbolicateStacktraces {
-                modules,
-                scope,
-                sources,
-                origin: StacktraceOrigin::AppleCrashReport,
-                signal: None,
-                stacktraces,
-            };
-
-            let mut system_info = SystemInfo {
-                os_name: metadata.remove("OS Version").unwrap_or_default(),
-                device_model: metadata.remove("Hardware Model").unwrap_or_default(),
-                cpu_arch: arch,
-                ..SystemInfo::default()
-            };
-
-            if let Some(captures) = OS_MACOS_REGEX.captures(&system_info.os_name) {
-                system_info.os_version = captures
-                    .name("version")
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                system_info.os_build = captures
-                    .name("build")
-                    .map(|m| m.as_str().to_string())
-                    .unwrap_or_default();
-                system_info.os_name = "macOS".to_string();
-            }
-
-            // https://developer.apple.com/library/archive/technotes/tn2151/_index.html
-            let crash_reason = metadata.remove("Exception Type");
-            let crash_details = report
-                .application_specific_information
-                .or_else(|| metadata.remove("Exception Message"))
-                .or_else(|| metadata.remove("Exception Subtype"))
-                .or_else(|| metadata.remove("Exception Codes"));
-
-            let state = AppleCrashReportState {
-                timestamp: report.timestamp,
-                system_info,
-                crash_reason,
-                crash_details,
-            };
-
-            Ok::<_, anyhow::Error>((request, state))
+        let request = SymbolicateStacktraces {
+            modules,
+            scope,
+            sources,
+            origin: StacktraceOrigin::AppleCrashReport,
+            signal: None,
+            stacktraces,
         };
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), parse_future);
-        let future = measure("parse_apple_crash_report", m::timed_result, None, future);
-        future
-            .await
-            .map(|res| res.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))
+        let mut system_info = SystemInfo {
+            os_name: metadata.remove("OS Version").unwrap_or_default(),
+            device_model: metadata.remove("Hardware Model").unwrap_or_default(),
+            cpu_arch: arch,
+            ..SystemInfo::default()
+        };
+
+        if let Some(captures) = OS_MACOS_REGEX.captures(&system_info.os_name) {
+            system_info.os_version = captures
+                .name("version")
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            system_info.os_build = captures
+                .name("build")
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            system_info.os_name = "macOS".to_string();
+        }
+
+        // https://developer.apple.com/library/archive/technotes/tn2151/_index.html
+        let crash_reason = metadata.remove("Exception Type");
+        let crash_details = report
+            .application_specific_information
+            .or_else(|| metadata.remove("Exception Message"))
+            .or_else(|| metadata.remove("Exception Subtype"))
+            .or_else(|| metadata.remove("Exception Codes"));
+
+        let state = AppleCrashReportState {
+            timestamp: report.timestamp,
+            system_info,
+            crash_reason,
+            crash_details,
+        };
+
+        Ok((request, state))
     }
 
-    pub async fn do_process_apple_crash_report(
+    pub async fn process_apple_crash_report(
         &self,
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let (request, state) = self
-            .parse_apple_crash_report(scope, report, sources)
-            .await?;
-        let mut response = self.do_symbolicate(request).await?;
+    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+        let (request, state) = self.parse_apple_crash_report(scope, report, sources)?;
+        let mut response = self.symbolicate(request).await?;
 
         state.merge_into(&mut response);
         Ok(response)

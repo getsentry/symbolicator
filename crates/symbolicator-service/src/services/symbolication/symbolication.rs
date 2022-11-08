@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
@@ -12,28 +11,14 @@ use crate::types::{
     FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
     SymbolicatedFrame,
 };
-use crate::utils::futures::{m, measure};
 use crate::utils::hex::HexValue;
 
 use super::module_lookup::{CacheFile, CacheLookupResult, ModuleLookup};
-use super::{SymbolicationActor, SymbolicationError};
+use super::SymbolicationActor;
 
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
-    pub async fn do_symbolicate(
-        &self,
-        request: SymbolicateStacktraces,
-    ) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
-        let f = self.do_symbolicate_impl(request);
-        let f = tokio::time::timeout(Duration::from_secs(3600), f);
-        let f = measure("symbolicate", m::timed_result, None, f);
-
-        f.await
-            .map(|res| res.map_err(SymbolicationError::from))
-            .unwrap_or(Err(SymbolicationError::Timeout))
-    }
-
-    async fn do_symbolicate_impl(
+    pub async fn symbolicate(
         &self,
         request: SymbolicateStacktraces,
     ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {

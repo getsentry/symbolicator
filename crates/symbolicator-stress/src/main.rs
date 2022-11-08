@@ -12,7 +12,7 @@ use structopt::StructOpt;
 use symbolicator_service::config::Config as SymbolicatorConfig;
 use symbolicator_service::services::download::SourceConfig;
 use symbolicator_service::services::symbolication::{
-    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor, SymbolicationError,
+    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
 };
 use symbolicator_service::types::{
     CompletedSymbolicationResponse, RawObjectInfo, RawStacktrace, Scope,
@@ -212,7 +212,7 @@ async fn main() -> Result<()> {
 async fn process_payload(
     symbolication: &SymbolicationActor,
     workload: ParsedPayload,
-) -> Result<CompletedSymbolicationResponse, SymbolicationError> {
+) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
     match workload {
         ParsedPayload::Minidump(payload) => {
             let MinidumpPayload {
@@ -236,9 +236,9 @@ async fn process_payload(
                 .unwrap();
 
             symbolication
-                .do_process_minidump(scope, temp_path, sources)
+                .process_minidump(scope, temp_path, sources)
                 .await
         }
-        ParsedPayload::Event(payload) => symbolication.do_symbolicate(payload).await,
+        ParsedPayload::Event(payload) => symbolication.symbolicate(payload).await,
     }
 }
