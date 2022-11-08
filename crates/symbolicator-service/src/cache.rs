@@ -501,7 +501,7 @@ impl Cache {
 
 /// Expiration strategies for cache items. These aren't named after the strategies themselves right
 /// now but after the type of cache entry they should be used on instead.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ExpirationStrategy {
     /// Clean up after it is untouched for a fixed period of time.
     None,
