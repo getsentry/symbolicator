@@ -39,6 +39,7 @@
 - Deduplicate SymbolFile computations in SymbolicatorSymbolProvider ([#856](https://github.com/getsentry/symbolicator/pull/856))
 - Separated the symbolication service from the http interface. ([#903](https://github.com/getsentry/symbolicator/pull/903))
 - Move Request/Response/Poll handling into web frontend. ([#904](https://github.com/getsentry/symbolicator/pull/904))
+- Remove unused `processing_pool_size` config. ([#910](https://github.com/getsentry/symbolicator/pull/910))
 
 ## 0.5.1
 

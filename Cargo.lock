@@ -3297,7 +3297,6 @@ dependencies = [
  "lru",
  "minidump",
  "minidump-processor",
- "num_cpus",
  "parking_lot",
  "regex",
  "reqwest",

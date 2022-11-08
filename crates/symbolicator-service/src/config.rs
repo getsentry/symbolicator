@@ -298,9 +298,6 @@ pub struct Config {
     /// Allow reserved IP addresses for requests to sources.
     pub connect_to_reserved_ips: bool,
 
-    /// Number of subprocesses in the internal processing pool.
-    pub processing_pool_size: usize,
-
     /// The maximum timeout for downloads.
     ///
     /// This is the upper limit the download service will take for downloading from a single
@@ -411,7 +408,6 @@ impl Default for Config {
             symstore_proxy: true,
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
-            processing_pool_size: num_cpus::get(),
             // Allow a 4MB/s connection to download 2GB without timing out
             max_download_timeout: Duration::from_secs(315),
             connect_timeout: Duration::from_secs(15),
