@@ -18,7 +18,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 use symbolicator_sources::{ObjectId, SourceId};
 
-use crate::cache::CacheStatus;
+use crate::cache::{CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::types::{ObjectFeatures, Scope};
@@ -163,7 +163,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
         scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _: CachePath,
+        _path: CachePath,
+        _expiration: ExpirationTime,
     ) -> Self::Item {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.

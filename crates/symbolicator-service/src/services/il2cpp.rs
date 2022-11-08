@@ -18,7 +18,7 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
@@ -165,6 +165,7 @@ impl CacheItemRequest for FetchFileRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _path: CachePath,
+        _expiration: ExpirationTime,
     ) -> Self::Item {
         CacheHandle {
             status,

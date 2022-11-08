@@ -12,7 +12,7 @@ use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -211,6 +211,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         status: CacheStatus,
         _data: ByteView<'static>,
         path: CachePath,
+        _expiration: ExpirationTime,
     ) -> Self::Item {
         let mut candidates = self.candidates.clone();
         candidates.set_unwind(
