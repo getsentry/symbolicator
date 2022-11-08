@@ -218,6 +218,13 @@ impl fmt::Display for CacheName {
     }
 }
 
+/// The interval in which positive caches should be touched.
+///
+/// Positive "good" caches use a "time to idle" instead of "time to live" mode.
+/// We thus need to regularly "touch" the files to signal that they are still in use.
+/// This is being debounced to once every hour to not have to touch them on every single use.
+const TOUCH_EVERY: Duration = Duration::from_secs(3600);
+
 /// Common cache configuration.
 ///
 /// Many parts of symbolicator use a cache to save having to re-download data or reprocess
@@ -392,8 +399,8 @@ impl Cache {
                     return Err(io::ErrorKind::NotFound.into());
                 }
 
-                // we want to touch good caches once every hour
-                let touch_in = Duration::from_secs(3600).saturating_sub(mtime_elapsed);
+                // we want to touch good caches once every `TOUCH_EVERY`
+                let touch_in = TOUCH_EVERY.saturating_sub(mtime_elapsed);
                 ExpirationTime::TouchIn(touch_in)
             }
             ExpirationStrategy::Negative => {
@@ -446,11 +453,13 @@ impl Cache {
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
         catch_not_found(|| {
-            let (cache_status, bv, expiration) = self.check_expiry(path)?;
+            let (cache_status, bv, mut expiration) = self.check_expiry(path)?;
 
             let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {
                 filetime::set_file_mtime(path, FileTime::now())?;
+                // well, we just touched the file ;-)
+                expiration = ExpirationTime::TouchIn(TOUCH_EVERY);
             }
 
             Ok((cache_status, bv, expiration))
