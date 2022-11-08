@@ -32,8 +32,7 @@ type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 /// expected concurrency across S3 buckets. If this number is too low, the downloader will
 /// re-authenticate between every request.
 ///
-/// TODO(ja):
-/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
+/// This can be monitored with the `source.s3.client.create` and `source.s3.client.cached` counter
 /// metrics.
 const S3_CLIENT_CACHE_SIZE: usize = 100;
 

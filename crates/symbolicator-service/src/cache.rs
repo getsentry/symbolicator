@@ -1306,6 +1306,7 @@ mod tests {
                 diagnostics: DiagnosticsCacheConfig {
                     retention: Some(Duration::from_secs(60)),
                 },
+                ..Default::default()
             },
             ..Default::default()
         })
