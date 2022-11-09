@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -256,7 +257,7 @@ pub struct InMemoryCacheConfig {
     /// the full request URL + token.
     ///
     /// Defaults to `100_000`.
-    pub sentry_index_capacity: usize,
+    pub sentry_index_capacity: NonZeroUsize,
 
     /// The TTL for Sentry Index entries.
     ///
@@ -278,7 +279,7 @@ pub struct InMemoryCacheConfig {
     /// metrics.
     ///
     /// Defaults to `100`.
-    pub gcs_token_capacity: usize,
+    pub gcs_token_capacity: NonZeroUsize,
 
     /// Capacity for the S3 Client Cache.
     ///
@@ -292,16 +293,16 @@ pub struct InMemoryCacheConfig {
     /// metrics.
     ///
     /// Defaults to `100`.
-    pub s3_client_capacity: usize,
+    pub s3_client_capacity: NonZeroUsize,
 }
 
 impl Default for InMemoryCacheConfig {
     fn default() -> Self {
         Self {
-            sentry_index_capacity: 100_000,
+            sentry_index_capacity: 100_000.try_into().unwrap(),
             sentry_index_ttl: Duration::from_secs(3600),
-            gcs_token_capacity: 100,
-            s3_client_capacity: 100,
+            gcs_token_capacity: 100.try_into().unwrap(),
+            s3_client_capacity: 100.try_into().unwrap(),
         }
     }
 }
