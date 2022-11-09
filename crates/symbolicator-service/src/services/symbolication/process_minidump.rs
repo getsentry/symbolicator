@@ -6,9 +6,6 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::channel::oneshot;
-use futures::future::Shared;
-use futures::FutureExt;
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
@@ -16,7 +13,6 @@ use minidump_processor::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
     SymbolProvider,
 };
-use parking_lot::{Mutex, RwLock};
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use tempfile::TempPath;
@@ -182,8 +178,6 @@ struct CfiModule {
     cfi_candidates: AllObjectCandidates,
 }
 
-type SymbolFileComputation = Shared<oneshot::Receiver<()>>;
-
 /// The Key that is used for looking up the [`Module`] in the per-stackwalk CFI / computation cache.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct LookupKey {
@@ -219,9 +213,7 @@ struct SymbolicatorSymbolProvider {
     /// An internal database of loaded CFI.
     ///
     /// The key consists of a module's debug identifier and base address.
-    cficaches: RwLock<HashMap<LookupKey, CfiModule>>,
-    /// A map of in-progress `SymbolFile` computations.
-    running_computations: Mutex<HashMap<LookupKey, SymbolFileComputation>>,
+    cficaches: moka::future::Cache<LookupKey, Arc<CfiModule>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -236,29 +228,16 @@ impl SymbolicatorSymbolProvider {
             sources,
             cficache_actor,
             object_type,
-            cficaches: Default::default(),
-            running_computations: Default::default(),
+            // use `CacheBuilder` to create a cache with no max capacity
+            cficaches: moka::future::Cache::builder().build(),
         }
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> LookupKey {
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Arc<CfiModule> {
         let key = LookupKey::new(module);
-        if self.cficaches.read().contains_key(&key) {
-            return key;
-        }
-
-        // Check if there is already a CFI cache/symbol file computation in progress for this module.
-        // If not, start it and save it in `running_computations`.
-        let maybe_computation = self.running_computations.lock().get(&key).cloned();
-        match maybe_computation {
-            Some(computation) => computation.await.expect("sender was dropped prematurely"),
-            None => {
-                let (sender, receiver) = oneshot::channel();
-                self.running_computations
-                    .lock()
-                    .insert(key.clone(), receiver.shared());
-
+        self.cficaches
+            .get_with_by_ref(&key, async {
                 let sources = self.sources.clone();
                 let scope = self.scope.clone();
 
@@ -324,15 +303,9 @@ impl SymbolicatorSymbolProvider {
                         }
                     }
                 };
-
-                self.cficaches.write().insert(key.clone(), cfi_module);
-
-                // Ignore error if receiver was dropped
-                let _ = sender.send(());
-            }
-        }
-
-        key
+                Arc::new(cfi_module)
+            })
+            .await
     }
 }
 
@@ -357,13 +330,8 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        let key = self.load_cfi_module(module).await;
-        self.cficaches
-            .read()
-            .get(&key)?
-            .symbol_file
-            .as_ref()?
-            .walk_frame(module, walker)
+        let cfi_module = self.load_cfi_module(module).await;
+        cfi_module.symbol_file.as_ref()?.walk_frame(module, walker)
     }
 
     async fn get_file_path(
@@ -466,7 +434,6 @@ async fn stackwalk(
     // Start building the module list for the symbolication response.
     // After stackwalking, `provider.cficaches` contains entries for exactly
     // those modules that were referenced by some stack frame in the minidump.
-    let mut cficaches = provider.cficaches.into_inner();
     let modules: Vec<CompleteObjectInfo> = process_state
         .modules
         .by_addr()
@@ -474,17 +441,17 @@ async fn stackwalk(
             let key = LookupKey::new(module);
 
             // Discard modules that weren't used and don't have a debug id.
-            if !cficaches.contains_key(&key) && module.debug_identifier().is_none() {
+            if !provider.cficaches.contains_key(&key) && module.debug_identifier().is_none() {
                 return None;
             }
 
             let mut obj_info = object_info_from_minidump_module(ty, module);
 
-            obj_info.unwind_status = match cficaches.remove(&key) {
+            obj_info.unwind_status = match provider.cficaches.get(&key) {
                 None => Some(ObjectFileStatus::Unused),
                 Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);
-                    obj_info.candidates = cfi_module.cfi_candidates;
+                    obj_info.candidates = cfi_module.cfi_candidates.clone();
                     Some(cfi_module.cfi_status)
                 }
             };
