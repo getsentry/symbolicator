@@ -5,6 +5,7 @@
 use std::any::type_name;
 use std::convert::TryFrom;
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,16 +26,6 @@ use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 
 type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
-
-/// Maximum number of cached S3 clients.
-///
-/// This number defines the size of the internal cache for S3 clients and should be higher than
-/// expected concurrency across S3 buckets. If this number is too low, the downloader will
-/// re-authenticate between every request.
-///
-/// This can be monitored with the `source.s3.client.create` and `source.s3.client.cached` counter
-/// metrics.
-const S3_CLIENT_CACHE_SIZE: usize = 100;
 
 /// The S3-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -92,10 +83,14 @@ impl fmt::Debug for S3Downloader {
 pub type S3Error = RusotoError<GetObjectError>;
 
 impl S3Downloader {
-    pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
+    pub fn new(
+        connect_timeout: Duration,
+        streaming_timeout: Duration,
+        s3_client_capacity: NonZeroUsize,
+    ) -> Self {
         Self {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
-            client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE.try_into().unwrap())),
+            client_cache: Mutex::new(ClientCache::new(s3_client_capacity)),
             connect_timeout,
             streaming_timeout,
         }
@@ -421,7 +416,11 @@ mod tests {
         test::setup();
 
         let source = s3_source(s3_source_key!());
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+            100.try_into().unwrap(),
+        );
 
         let object_id = ObjectId {
             code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
@@ -448,7 +447,11 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+            100.try_into().unwrap(),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -477,7 +480,11 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+            100.try_into().unwrap(),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -505,7 +512,11 @@ mod tests {
             secret_key: "".to_owned(),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+            100.try_into().unwrap(),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

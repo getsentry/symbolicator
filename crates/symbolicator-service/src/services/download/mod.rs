@@ -30,7 +30,7 @@ mod locations;
 mod s3;
 mod sentry;
 
-use crate::config::Config;
+use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
 pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
 
 /// HTTP User-Agent string to use.
@@ -145,8 +145,16 @@ impl DownloadService {
         let Config {
             connect_timeout,
             streaming_timeout,
+            caches: CacheConfigs { ref in_memory, .. },
             ..
         } = *config;
+
+        let InMemoryCacheConfig {
+            gcs_token_capacity,
+            s3_client_capacity,
+            ..
+        } = in_memory;
+
         Arc::new(Self {
             runtime: runtime.clone(),
             max_download_timeout: config.max_download_timeout,
@@ -156,8 +164,13 @@ impl DownloadService {
                 connect_timeout,
                 streaming_timeout,
             ),
-            s3: s3::S3Downloader::new(connect_timeout, streaming_timeout),
-            gcs: gcs::GcsDownloader::new(restricted_client, connect_timeout, streaming_timeout),
+            s3: s3::S3Downloader::new(connect_timeout, streaming_timeout, *s3_client_capacity),
+            gcs: gcs::GcsDownloader::new(
+                restricted_client,
+                connect_timeout,
+                streaming_timeout,
+                *gcs_token_capacity,
+            ),
             fs: filesystem::FilesystemDownloader::new(),
         })
     }

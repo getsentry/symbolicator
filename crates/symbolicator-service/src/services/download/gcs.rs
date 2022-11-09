@@ -2,6 +2,7 @@
 //!
 //! Specifically this supports the [`GcsSourceConfig`] source.
 
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -18,16 +19,6 @@ use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, Re
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
-
-/// Maximum number of cached GCS OAuth tokens.
-///
-/// This number defines the size of the internal cache for GCS authentication and should be higher
-/// than expected concurrency across GCS buckets. If this number is too low, the downloader will
-/// re-authenticate between every request.
-///
-/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
-/// metrics.
-const GCS_TOKEN_CACHE_SIZE: usize = 100;
 
 /// The GCS-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -74,9 +65,10 @@ impl GcsDownloader {
         client: Client,
         connect_timeout: std::time::Duration,
         streaming_timeout: std::time::Duration,
+        token_capacity: NonZeroUsize,
     ) -> Self {
         Self {
-            token_cache: Mutex::new(GcsTokenCache::new(GCS_TOKEN_CACHE_SIZE.try_into().unwrap())),
+            token_cache: Mutex::new(GcsTokenCache::new(token_capacity)),
             client,
             connect_timeout,
             streaming_timeout,
@@ -241,6 +233,7 @@ mod tests {
             Client::new(),
             std::time::Duration::from_secs(30),
             std::time::Duration::from_secs(30),
+            100.try_into().unwrap(),
         );
 
         let object_id = ObjectId {
@@ -269,6 +262,7 @@ mod tests {
             Client::new(),
             std::time::Duration::from_secs(30),
             std::time::Duration::from_secs(30),
+            100.try_into().unwrap(),
         );
 
         let tempdir = test::tempdir();
@@ -300,6 +294,7 @@ mod tests {
             Client::new(),
             std::time::Duration::from_secs(30),
             std::time::Duration::from_secs(30),
+            100.try_into().unwrap(),
         );
 
         let tempdir = test::tempdir();
@@ -331,6 +326,7 @@ mod tests {
             Client::new(),
             std::time::Duration::from_secs(30),
             std::time::Duration::from_secs(30),
+            100.try_into().unwrap(),
         );
 
         let tempdir = test::tempdir();
