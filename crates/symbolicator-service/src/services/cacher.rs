@@ -76,7 +76,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 }
 
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct CacheKey {
     pub cache_key: String,
     pub scope: Scope,
