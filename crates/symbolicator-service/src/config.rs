@@ -293,7 +293,7 @@ pub struct InMemoryCacheConfig {
     /// metrics.
     ///
     /// Defaults to `100`.
-    pub s3_client_capacity: NonZeroUsize,
+    pub s3_client_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
@@ -302,7 +302,7 @@ impl Default for InMemoryCacheConfig {
             sentry_index_capacity: 100_000.try_into().unwrap(),
             sentry_index_ttl: Duration::from_secs(3600),
             gcs_token_capacity: 100.try_into().unwrap(),
-            s3_client_capacity: 100.try_into().unwrap(),
+            s3_client_capacity: 100,
         }
     }
 }
