@@ -3,8 +3,7 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use serde::Deserialize;
 
-use crate::services::Service;
-use crate::types::{RequestId, SymbolicationResponse};
+use crate::service::{RequestId, RequestService, SymbolicationResponse};
 
 /// Query parameters of the symbolication poll request.
 #[derive(Deserialize)]
@@ -14,7 +13,7 @@ pub struct PollSymbolicationRequestQueryParams {
 }
 
 pub async fn poll_request(
-    extract::Extension(state): extract::Extension<Service>,
+    extract::Extension(service): extract::Extension<RequestService>,
     extract::Path(request_id): extract::Path<RequestId>,
     extract::Query(query): extract::Query<PollSymbolicationRequestQueryParams>,
 ) -> Result<Json<SymbolicationResponse>, StatusCode> {
@@ -22,10 +21,7 @@ pub async fn poll_request(
         scope.set_transaction(Some("GET /requests"));
     });
 
-    let response_opt = state
-        .symbolication()
-        .get_response(request_id, query.timeout)
-        .await;
+    let response_opt = service.get_response(request_id, query.timeout).await;
 
     match response_opt {
         Some(response) => Ok(Json(response)),

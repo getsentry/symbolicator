@@ -41,7 +41,7 @@ jobs:
           mv target/release/wasm-split build/wasm-split-Linux-x86_64
           mv target/release/symsorter build/symsorter-Linux-x86_64
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ github.sha }}
           path: build/*
@@ -61,7 +61,7 @@ jobs:
           rustup set auto-self-update disable
           rustup toolchain install stable --profile minimal --target x86_64-apple-darwin --target aarch64-apple-darwin
 
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
@@ -104,7 +104,7 @@ jobs:
           cd target/x86_64-apple-darwin/release
           zip -r ../../../build/symbolicator-aarch64-apple-darwin-debug.zip symbolicator.dSYM
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ github.sha }}
           path: build/*
@@ -135,7 +135,7 @@ jobs:
           mv symsorter.exe symsorter-Windows-x86_64.exe
           mv wasm-split.exe wasm-split-Windows-x86_64.exe
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ github.sha }}
           path: target/release/*-Windows-x86_64.exe
@@ -162,7 +162,7 @@ jobs:
           touch site/.nojekyll
           cd site && zip -r gh-pages .
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ github.sha }}
           path: site/gh-pages.zip

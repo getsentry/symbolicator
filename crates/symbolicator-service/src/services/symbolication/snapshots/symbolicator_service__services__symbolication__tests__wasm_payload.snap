@@ -1,0 +1,48 @@
+---
+source: crates/symbolicator-service/src/services/symbolication/mod.rs
+assertion_line: 336
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0x8c"
+        lang: rust
+        symbol: internal_func
+        sym_addr: "0x8b"
+        function: internal_func
+        filename: lib.rs
+        abs_path: /Users/mitsuhiko/Development/wasm-example/simple/src/lib.rs
+        lineno: 19
+modules:
+  - debug_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: false
+      has_symbols: true
+      has_sources: false
+    arch: wasm32
+    type: wasm
+    code_id: bda18fd85d4a4eb893022d6bfad846b1
+    debug_id: bda18fd8-5d4a-4eb8-9302-2d6bfad846b1
+    debug_file: "file://foo.invalid/demo.wasm"
+    image_addr: "0x0"
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/bd/a18fd85d4a4eb893022d6bfad846b1"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/bd/a18fd85d4a4eb893022d6bfad846b1.debug"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: false
+            has_symbols: true
+            has_sources: false
+        debug:
+          status: ok
+

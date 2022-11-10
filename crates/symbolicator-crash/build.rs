@@ -13,7 +13,7 @@ fn main() {
 
     if !Path::new("sentry-native/.git").exists() {
         let _ = Command::new("git")
-            .args(&["submodule", "update", "--init", "--recursive"])
+            .args(["submodule", "update", "--init", "--recursive"])
             .status();
     }
 

@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use structopt::StructOpt;
 
-use crate::cache;
+use symbolicator_service::cache;
+use symbolicator_service::metrics;
+
 use crate::config::Config;
 use crate::logging;
-use crate::metrics;
 use crate::server;
 
 fn get_crate_version() -> &'static str {

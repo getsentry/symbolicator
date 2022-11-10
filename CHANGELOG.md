@@ -31,11 +31,15 @@
 - Extract the correct `code_id` from iOS minidumps. ([#858](https://github.com/getsentry/symbolicator/pull/858))
 - Fetch/use CFI for modules that only have a CodeId. ([#860](https://github.com/getsentry/symbolicator/pull/860))
 - Properly mask Portable PDB Age for symstore/SSQP lookups. ([#888](https://github.com/getsentry/symbolicator/pull/888))
+- Avoid a redundant open/read and fix shared cache refresh. ([#893](https://github.com/getsentry/symbolicator/pull/893))
 
 ### Internal
 
 - Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
 - Deduplicate SymbolFile computations in SymbolicatorSymbolProvider ([#856](https://github.com/getsentry/symbolicator/pull/856))
+- Separated the symbolication service from the http interface. ([#903](https://github.com/getsentry/symbolicator/pull/903))
+- Move Request/Response/Poll handling into web frontend. ([#904](https://github.com/getsentry/symbolicator/pull/904))
+- Remove unused `processing_pool_size` config. ([#910](https://github.com/getsentry/symbolicator/pull/910))
 
 ## 0.5.1
 

@@ -112,16 +112,16 @@ dependencies = [
 
 [[package]]
 name = "async-io"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83e21f3a490c72b3b0cf44962180e60045de2925d8dff97918f7ee43c8f637c7"
+checksum = "e8121296a9f05be7f34aa4196b1747243b3b62e048bb7906f644f3fbfc490cf7"
 dependencies = [
+ "async-lock",
  "autocfg",
  "concurrent-queue",
  "futures-lite",
  "libc",
  "log",
- "once_cell",
  "parking",
  "polling",
  "slab",
@@ -1912,9 +1912,9 @@ dependencies = [
 
 [[package]]
 name = "moka"
-version = "0.9.4"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd8256cf9fa396576521e5e94affadb95818ec48f5dbedca36714387688aea29"
+checksum = "7b49a05f67020456541f4f29cbaa812016a266a86ec76f96d3873d459c68fe5e"
 dependencies = [
  "async-io",
  "async-lock",
@@ -1926,6 +1926,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "quanta",
+ "rustc_version",
  "scheduled-thread-pool",
  "skeptic",
  "smallvec",
@@ -2413,7 +2414,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic-common 9.2.1",
+ "symbolic-common",
 ]
 
 [[package]]
@@ -3343,7 +3344,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d91aea6f2208ce7853a0b61750b217ea7da5c5e46c2eeb52a9bf8a025b707859"
 dependencies = [
  "symbolic-cfi",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-demangle",
  "symbolic-il2cpp",
@@ -3357,21 +3358,9 @@ version = "10.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "099a2b5031a18af7a6671104058ef4de2652d10f2c884a91cd400d7371b22565"
 dependencies = [
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "thiserror",
-]
-
-[[package]]
-name = "symbolic-common"
-version = "9.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "800963ba330b09a2ae4a4f7c6392b81fbc2784099a98c1eac68c3437aa9382b2"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid",
 ]
 
 [[package]]
@@ -3412,7 +3401,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-ppdb",
  "thiserror",
  "wasmparser",
@@ -3429,7 +3418,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common 10.0.0",
+ "symbolic-common",
 ]
 
 [[package]]
@@ -3440,7 +3429,7 @@ checksum = "a78ce9c1fb893dada8ef3e12b1fc5add3d5f1f6e9e332528c7c5b4da8e86dd38"
 dependencies = [
  "indexmap",
  "serde_json",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
 ]
 
@@ -3451,7 +3440,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d04703a3a0798d61ec00115565cc77d64fa6253c77695c937aaf8a8adcfe4097"
 dependencies = [
  "indexmap",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "thiserror",
  "uuid",
  "watto",
@@ -3464,7 +3453,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caaeb234a94403271759121fc99236d8bc4d2dbeadd4eada1ba4b65f4878cce1"
 dependencies = [
  "indexmap",
- "symbolic-common 10.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-il2cpp",
  "thiserror",
@@ -3477,48 +3466,24 @@ name = "symbolicator"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "apple-crash-report-parser",
- "async-trait",
  "axum",
  "axum-server",
- "backtrace",
- "base64",
- "cadence",
- "chrono",
  "console",
- "filetime",
- "flate2",
  "futures",
- "gcp_auth",
  "hostname",
- "humantime-serde",
  "insta",
- "ipnetwork",
  "jemallocator",
- "jsonwebtoken",
- "lazy_static",
- "lru",
- "minidump",
- "minidump-processor",
- "num_cpus",
- "parking_lot",
- "regex",
  "reqwest",
- "rusoto_core",
- "rusoto_credential",
- "rusoto_s3",
  "sentry",
  "sentry-tower",
  "serde",
  "serde_json",
- "serde_yaml",
- "sha-1",
  "structopt",
  "symbolic",
- "symbolicator-crash",
+ "symbolicator-service",
  "symbolicator-sources",
+ "symbolicator-test",
  "tempfile",
- "test-assembler",
  "thiserror",
  "tokio",
  "tokio-metrics",
@@ -3528,10 +3493,7 @@ dependencies = [
  "tower-service",
  "tracing",
  "tracing-subscriber",
- "url",
  "uuid",
- "warp",
- "zstd",
 ]
 
 [[package]]
@@ -3554,6 +3516,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-service"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "apple-crash-report-parser",
+ "async-trait",
+ "backtrace",
+ "base64",
+ "cadence",
+ "chrono",
+ "filetime",
+ "flate2",
+ "futures",
+ "gcp_auth",
+ "humantime-serde",
+ "insta",
+ "ipnetwork",
+ "jsonwebtoken",
+ "lazy_static",
+ "lru",
+ "minidump",
+ "minidump-processor",
+ "moka",
+ "parking_lot",
+ "regex",
+ "reqwest",
+ "rusoto_core",
+ "rusoto_credential",
+ "rusoto_s3",
+ "sentry",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha-1",
+ "symbolic",
+ "symbolicator-crash",
+ "symbolicator-sources",
+ "symbolicator-test",
+ "tempfile",
+ "test-assembler",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+ "warp",
+ "zstd",
+]
+
+[[package]]
 name = "symbolicator-sources"
 version = "0.5.1"
 dependencies = [
@@ -3565,6 +3578,35 @@ dependencies = [
  "serde_yaml",
  "symbolic",
  "url",
+]
+
+[[package]]
+name = "symbolicator-stress"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "humantime",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "structopt",
+ "symbolicator-service",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "symbolicator-test"
+version = "0.5.1"
+dependencies = [
+ "reqwest",
+ "serde",
+ "symbolicator-sources",
+ "tempfile",
+ "tokio",
+ "tracing-subscriber",
+ "warp",
 ]
 
 [[package]]

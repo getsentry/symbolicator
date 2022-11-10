@@ -85,8 +85,6 @@ metrics:
   `true`.
 - `connect_to_reserved_ips`: Allow reserved IP addresses for requests to
   sources. See [Security](#security). Defaults to `false`.
-- `processing_pool_size`: The number of subprocesses in Symbolicator's internal
-  processing pool. Defaults to the total number of logical CPUs on the machine.
 - `max_concurrent_requests`: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
   Set it to `null` to turn off the limit. Defaults to 120.
 

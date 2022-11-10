@@ -8,14 +8,15 @@ use axum::http::{Method, Request, Response, StatusCode};
 
 use symbolicator_sources::parse_symstore_path;
 
-use crate::services::objects::{FindObject, ObjectHandle, ObjectPurpose};
-use crate::services::Service;
-use crate::types::Scope;
+use crate::service::{FindObject, ObjectHandle, ObjectPurpose, RequestService, Scope};
 
 use super::ResponseError;
 
-async fn load_object(state: Service, path: String) -> anyhow::Result<Option<Arc<ObjectHandle>>> {
-    let config = state.config();
+async fn load_object(
+    service: RequestService,
+    path: String,
+) -> anyhow::Result<Option<Arc<ObjectHandle>>> {
+    let config = service.config();
     if !config.symstore_proxy {
         return Ok(None);
     }
@@ -27,9 +28,8 @@ async fn load_object(state: Service, path: String) -> anyhow::Result<Option<Arc<
 
     tracing::debug!("Searching for {:?} ({:?})", object_id, filetypes);
 
-    let found_object = state
-        .objects()
-        .find(FindObject {
+    let found_object = service
+        .find_object(FindObject {
             filetypes,
             identifier: object_id,
             sources: config.default_sources(),
@@ -44,9 +44,8 @@ async fn load_object(state: Service, path: String) -> anyhow::Result<Option<Arc<
         None => return Ok(None),
     };
 
-    let object_handle = state
-        .objects()
-        .fetch(object_meta)
+    let object_handle = service
+        .fetch_object(object_meta)
         .await
         .context("failed to download object")?;
 
@@ -58,7 +57,7 @@ async fn load_object(state: Service, path: String) -> anyhow::Result<Option<Arc<
 }
 
 pub async fn proxy_symstore_request(
-    extract::Extension(state): extract::Extension<Service>,
+    extract::Extension(service): extract::Extension<RequestService>,
     extract::Path(path): extract::Path<String>,
     request: Request<Body>,
 ) -> Result<Response<Body>, ResponseError> {
@@ -66,7 +65,7 @@ pub async fn proxy_symstore_request(
         scope.set_transaction(Some("GET /proxy"));
     });
 
-    let object_handle = match load_object(state, path).await? {
+    let object_handle = match load_object(service, path).await? {
         Some(handle) => handle,
         None => {
             return Ok(Response::builder()
