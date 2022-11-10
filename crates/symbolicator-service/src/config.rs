@@ -430,8 +430,16 @@ impl Config {
         }
     }
 
-    fn from_reader(reader: impl std::io::Read) -> Result<Self> {
-        serde_yaml::from_reader(reader).context("failed to parse YAML")
+    fn from_reader(mut reader: impl std::io::Read) -> Result<Self> {
+        let mut config = String::new();
+        reader
+            .read_to_string(&mut config)
+            .context("failed reading config file")?;
+        if config.trim().is_empty() {
+            anyhow::bail!("config file empty");
+        }
+        // check for empty files explicitly
+        serde_yaml::from_str(&config).context("failed to parse config YAML")
     }
 }
 

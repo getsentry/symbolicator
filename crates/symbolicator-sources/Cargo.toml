@@ -16,4 +16,4 @@ url = { version = "2.2.0", features = ["serde"] }
 
 [dev-dependencies]
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
-serde_yaml = "0.8.15"
+serde_yaml = "0.9.14"
