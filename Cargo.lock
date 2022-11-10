@@ -586,9 +586,8 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eeaa953eaad386a53111e47172c2fedba671e5684c8dd601a5f474f4f118710f"
+version = "0.4.0"
+source = "git+https://github.com/getsentry/cpp_demangle?branch=sentry-patches#fd7437bcff3b1566f07809a847c6e0f3ab680e27"
 dependencies = [
  "cfg-if",
 ]
@@ -1211,9 +1210,9 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "goblin"
-version = "0.5.4"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7666983ed0dd8d21a6f6576ee00053ca0926fb281a5522577a4dbd0f1b54143"
+checksum = "572564d6cba7d09775202c8e7eebc4d534d5ae36578ab402fb21e182a0ac9505"
 dependencies = [
  "log",
  "plain",
@@ -3302,9 +3301,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ac9c95ed15a30cf9af78319a583ab6a674e76fb8c34679a793b7911631567d1"
+checksum = "ab4dac8fb8ea91e6cd6935ed34220f0c559fe4c8e010a3237415d8ac61746da5"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -3317,9 +3316,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eda91ecf589bb823d1db1475d688ca15975d71c29936e3b95daf7f4a01c4b7d5"
+checksum = "6da324450157034a3de59fe2a892ffa58f6ec6852e1723b9eb91a3ccbb786454"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3328,9 +3327,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac457d054f793cedfde6f32d21d692b8351cfec9084fefd0470c0373f6d799bc"
+checksum = "492875918a6bcbae753a5fc6f39bc87566fc3c25182e76d7f128ef1c8a2375c6"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3341,9 +3340,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f519696a9a2296c5ef1df810bf5caf430c1cec9460ca12b64ea7da19d6c3f395"
+checksum = "1e308a705c38b930758c57ead68d3af6c8ba3f39bd0fdcb69d86a6d11e47f495"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3373,9 +3372,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48808b846eef84e0ac06365dc620f028ae632355e5dcffc007bf1b2bf5eab17b"
+checksum = "214d3a420108471222e55268ef502ba0fc89cfd4de876ff26105c560729127af"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3386,9 +3385,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f540614ef72730203b12d91404e26c2149040e29e3f6742299387ca6cd5705fb"
+checksum = "d3e8f6fb713fca935dde72ff1fe7dd45227aa8e939333825206f56a73d0577e4"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -3398,9 +3397,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb97abb53c6b72d3dbabde661fa1c75918da581b4e94db231dca222e4af39367"
+checksum = "df9ed49e7493446437ce0a86f4e3aae69b5d53c7feca960d00c4de3fabfefb2a"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -3411,9 +3410,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "10.1.1"
+version = "10.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b09eab8a5162f4ac9fae283d899101d21da2fae121701653a05d968e2923d1"
+checksum = "3451e79721371b58d2ad76fdaec4700aec21d60c3f0922d60c8f53330d165864"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -4396,9 +4395,9 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.90.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b62c8d843f4423efee314dc75a1049886deba3214f7e7f9ff0e4e58b4d618581"
+checksum = "cdac7e1d98d70913ae3b4923dd7419c8ea7bdfd4c44a240a0ba305d929b7f191"
 dependencies = [
  "indexmap",
 ]
@@ -4679,8 +4678,3 @@ dependencies = [
  "cc",
  "libc",
 ]
-
-[[patch.unused]]
-name = "cpp_demangle"
-version = "0.4.0"
-source = "git+https://github.com/getsentry/cpp_demangle?branch=sentry-patches#fd7437bcff3b1566f07809a847c6e0f3ab680e27"
