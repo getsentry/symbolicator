@@ -312,7 +312,11 @@ impl ObjectsActor {
                     data_cache,
                     download_svc,
                 };
-                Ok(meta_cache.get(request).await)
+                meta_cache
+                    .get(request)
+                    .await
+                    .inner
+                    .map_err(|error| CacheLookupError { file_source, error })
             }
             .bind_hub(Hub::new_from_top(Hub::current()))
         });

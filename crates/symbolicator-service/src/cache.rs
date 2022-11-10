@@ -6,7 +6,7 @@ use std::io::{self, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{anyhow, Result};
 use filetime::FileTime;
@@ -553,6 +553,12 @@ impl ExpirationTime {
 
                 Self::RefreshIn(retry_malformed_after)
             }
+        }
+    }
+
+    pub fn to_instant(&self) -> Instant {
+        match self {
+            ExpirationTime::RefreshIn(d) | ExpirationTime::TouchIn(d) => Instant::now() + *d,
         }
     }
 }

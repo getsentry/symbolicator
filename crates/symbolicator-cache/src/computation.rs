@@ -1,5 +1,5 @@
+use std::future::Future;
 use std::hash::Hash;
-use std::{future::Future, sync::Arc};
 
 use moka::future::{Cache, CacheBuilder};
 
@@ -27,9 +27,9 @@ pub trait ComputationDriver {
     /// Cache Key for the computation.
     type Key: Eq + Hash + Send + Sync + 'static;
     /// The resulting output of the computation.
-    type Output: CacheEntry + Send + Sync + 'static;
+    type Output: CacheEntry + Clone + Send + Sync + 'static;
     /// The computation Future type.
-    type Computation: Future<Output = Arc<Self::Output>>;
+    type Computation: Future<Output = Self::Output> + Send;
 
     /// Returns the cache key corresponding to the `arg`.
     fn cache_key(&self, arg: &Self::Arg) -> Self::Key;
@@ -48,7 +48,7 @@ pub trait ComputationDriver {
 #[derive(Debug)]
 pub struct ComputationCache<D: ComputationDriver> {
     driver: D,
-    computations: Cache<D::Key, Arc<D::Output>>,
+    computations: Cache<D::Key, D::Output>,
 }
 
 impl<D> ComputationCache<D>
@@ -58,7 +58,7 @@ where
     /// Creates a new Computation Cache.
     pub fn new(driver: D, capacity: u64) -> Self {
         let computations = CacheBuilder::new(capacity)
-            .weigher(|_k, v: &Arc<D::Output>| v.weight())
+            .weigher(|_k, v: &D::Output| v.weight())
             .build();
         Self {
             driver,
@@ -69,7 +69,7 @@ where
     /// Get or compute the output value for the provided `arg`.
     ///
     /// See [`ComputationCache`] docs for how the output value is computed and the panics that can happen.
-    pub async fn get(&self, arg: D::Arg) -> Arc<D::Output> {
+    pub async fn get(&self, arg: D::Arg) -> D::Output {
         let key = self.driver.cache_key(&arg);
 
         self.computations
@@ -106,7 +106,7 @@ mod tests {
         type Arg = ();
         type Key = ();
         type Output = RefreshesAfter<usize>;
-        type Computation = Pin<Box<dyn Future<Output = Arc<Self::Output>>>>;
+        type Computation = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
 
         fn cache_key(&self, _arg: &Self::Arg) -> Self::Key {}
 
@@ -116,7 +116,7 @@ mod tests {
             Box::pin(async move {
                 let ttl = Instant::now() + Duration::from_millis(10);
 
-                Arc::new(RefreshesAfter { inner, ttl })
+                RefreshesAfter { inner, ttl }
             })
         }
     }

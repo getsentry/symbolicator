@@ -12,6 +12,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Context;
 use futures::future::BoxFuture;
@@ -29,16 +30,28 @@ use crate::types::{ObjectFeatures, Scope};
 
 use super::{FetchFileDataRequest, ObjectError};
 
-pub(super) type MetaCache = ComputationCache<MetaDriver>;
+pub(super) type ObjectsMetaCache = ComputationCache<ObjectsMetaCacheDriver>;
 
-impl CacheEntry for ObjectMetaHandle {}
+#[derive(Debug, Clone)]
+pub(super) struct ObjectMetaCacheEntry {
+    pub(super) inner: Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>,
+}
+
+impl CacheEntry for ObjectMetaCacheEntry {
+    fn needs_refresh(&self) -> bool {
+        match &self.inner {
+            Ok(meta_handle) => meta_handle.expiration_time < Instant::now(),
+            Err(_) => todo!(),
+        }
+    }
+}
 
 #[derive(Debug)]
-pub(super) struct MetaDriver {
+pub(super) struct ObjectsMetaCacheDriver {
     fs_cache: Arc<Cacher<FetchFileMetaRequest>>,
 }
 
-impl MetaDriver {
+impl ObjectsMetaCacheDriver {
     pub(super) fn new(meta_cache: Cache, shared_cache_svc: Arc<SharedCacheService>) -> Self {
         Self {
             fs_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
@@ -46,11 +59,11 @@ impl MetaDriver {
     }
 }
 
-impl ComputationDriver for MetaDriver {
+impl ComputationDriver for ObjectsMetaCacheDriver {
     type Arg = FetchFileMetaRequest;
     type Key = CacheKey;
-    type Output = ObjectMetaHandle;
-    type Computation = Pin<Box<dyn Future<Output = Arc<Self::Output>> + Send>>;
+    type Output = ObjectMetaCacheEntry;
+    type Computation = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
 
     fn cache_key(&self, arg: &Self::Arg) -> Self::Key {
         arg.file_source.cache_key(arg.scope.clone())
@@ -58,7 +71,10 @@ impl ComputationDriver for MetaDriver {
 
     fn compute(&self, arg: Self::Arg) -> Self::Computation {
         let fs_cache = Arc::clone(&self.fs_cache);
-        Box::pin(async move { fs_cache.compute_memoized(arg).await.unwrap() })
+        Box::pin(async move {
+            let inner = fs_cache.compute_memoized(arg).await;
+            ObjectMetaCacheEntry { inner }
+        })
     }
 }
 
@@ -90,6 +106,7 @@ pub struct ObjectMetaHandle {
     pub(super) file_source: RemoteDif,
     pub(super) features: ObjectFeatures,
     pub(super) status: CacheStatus,
+    pub(super) expiration_time: Instant,
 }
 
 impl ObjectMetaHandle {
@@ -201,7 +218,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _path: CachePath,
-        _expiration: ExpirationTime,
+        expiration: ExpirationTime,
     ) -> Self::Item {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
@@ -224,6 +241,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
             file_source: self.file_source.clone(),
             features,
             status,
+            expiration_time: expiration.to_instant(),
         }
     }
 }
