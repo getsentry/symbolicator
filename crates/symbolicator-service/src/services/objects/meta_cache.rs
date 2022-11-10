@@ -32,20 +32,30 @@ use super::{FetchFileDataRequest, ObjectError};
 
 pub(super) type ObjectsMetaCache = ComputationCache<ObjectsMetaCacheDriver>;
 
+/// An entry in an [`ObjectsMetaCache`].
+///
+/// This is a newtype around `Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>` so that
+/// we can implement [`CacheEntry`] for it.
 #[derive(Debug, Clone)]
-pub(super) struct ObjectMetaCacheEntry {
-    pub(super) inner: Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>,
+pub(super) struct ObjectsMetaCacheEntry(pub(super) Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>);
+
+impl ObjectsMetaCacheEntry {
+    /// Turns this cache entry into the inner Result.
+    pub(super) fn into_inner(self) -> Result<Arc<ObjectMetaHandle>, Arc<ObjectError>> {
+        self.0
+    }
 }
 
-impl CacheEntry for ObjectMetaCacheEntry {
+impl CacheEntry for ObjectsMetaCacheEntry {
     fn needs_refresh(&self) -> bool {
-        match &self.inner {
+        match &self.0 {
             Ok(meta_handle) => meta_handle.expiration_time < Instant::now(),
             Err(_) => todo!(),
         }
     }
 }
 
+/// A driver for computing object metadata entries.
 #[derive(Debug)]
 pub(super) struct ObjectsMetaCacheDriver {
     fs_cache: Arc<Cacher<FetchFileMetaRequest>>,
@@ -62,7 +72,7 @@ impl ObjectsMetaCacheDriver {
 impl ComputationDriver for ObjectsMetaCacheDriver {
     type Arg = FetchFileMetaRequest;
     type Key = CacheKey;
-    type Output = ObjectMetaCacheEntry;
+    type Output = ObjectsMetaCacheEntry;
     type Computation = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
 
     fn cache_key(&self, arg: &Self::Arg) -> Self::Key {
@@ -71,10 +81,7 @@ impl ComputationDriver for ObjectsMetaCacheDriver {
 
     fn compute(&self, arg: Self::Arg) -> Self::Computation {
         let fs_cache = Arc::clone(&self.fs_cache);
-        Box::pin(async move {
-            let inner = fs_cache.compute_memoized(arg).await;
-            ObjectMetaCacheEntry { inner }
-        })
+        Box::pin(async move { ObjectsMetaCacheEntry(fs_cache.compute_memoized(arg).await) })
     }
 }
 
