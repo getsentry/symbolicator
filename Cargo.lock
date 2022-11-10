@@ -3551,6 +3551,7 @@ dependencies = [
  "serde_yaml",
  "sha-1",
  "symbolic",
+ "symbolicator-cache",
  "symbolicator-crash",
  "symbolicator-sources",
  "symbolicator-test",

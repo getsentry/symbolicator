@@ -22,6 +22,9 @@ use meta_cache::FetchFileMetaRequest;
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
 
+use self::meta_cache::MetaCache;
+use self::meta_cache::MetaDriver;
+
 use super::shared_cache::SharedCacheService;
 
 mod data_cache;
@@ -166,7 +169,7 @@ pub struct FoundObject {
 
 #[derive(Clone, Debug)]
 pub struct ObjectsActor {
-    meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
+    meta_cache: Arc<MetaCache>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     download_svc: Arc<DownloadService>,
 }
@@ -179,7 +182,10 @@ impl ObjectsActor {
         download_svc: Arc<DownloadService>,
     ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
+            meta_cache: Arc::new(MetaCache::new(
+                MetaDriver::new(meta_cache, Arc::clone(&shared_cache_svc)),
+                17,
+            )),
             data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc)),
             download_svc,
         }
@@ -306,10 +312,7 @@ impl ObjectsActor {
                     data_cache,
                     download_svc,
                 };
-                meta_cache
-                    .compute_memoized(request)
-                    .await
-                    .map_err(|error| CacheLookupError { file_source, error })
+                Ok(meta_cache.get(request).await)
             }
             .bind_hub(Hub::new_from_top(Hub::current()))
         });

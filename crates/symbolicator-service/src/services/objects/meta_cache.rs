@@ -8,7 +8,9 @@
 //! consistency.
 
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -16,14 +18,49 @@ use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
+use symbolicator_cache::{CacheEntry, ComputationCache, ComputationDriver};
 use symbolicator_sources::{ObjectId, SourceId};
 
-use crate::cache::{CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
+use crate::services::shared_cache::SharedCacheService;
 use crate::types::{ObjectFeatures, Scope};
 
 use super::{FetchFileDataRequest, ObjectError};
+
+pub(super) type MetaCache = ComputationCache<MetaDriver>;
+
+impl CacheEntry for ObjectMetaHandle {}
+
+#[derive(Debug)]
+pub(super) struct MetaDriver {
+    fs_cache: Arc<Cacher<FetchFileMetaRequest>>,
+}
+
+impl MetaDriver {
+    pub(super) fn new(meta_cache: Cache, shared_cache_svc: Arc<SharedCacheService>) -> Self {
+        Self {
+            fs_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
+        }
+    }
+}
+
+impl ComputationDriver for MetaDriver {
+    type Arg = FetchFileMetaRequest;
+    type Key = CacheKey;
+    type Output = ObjectMetaHandle;
+    type Computation = Pin<Box<dyn Future<Output = Arc<Self::Output>> + Send>>;
+
+    fn cache_key(&self, arg: &Self::Arg) -> Self::Key {
+        arg.file_source.cache_key(arg.scope.clone())
+    }
+
+    fn compute(&self, arg: Self::Arg) -> Self::Computation {
+        let fs_cache = Arc::clone(&self.fs_cache);
+        Box::pin(async move { fs_cache.compute_memoized(arg).await.unwrap() })
+    }
+}
 
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]
