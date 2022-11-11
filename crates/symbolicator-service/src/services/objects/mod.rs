@@ -184,7 +184,7 @@ impl ObjectsActor {
         ObjectsActor {
             meta_cache: Arc::new(ObjectsMetaCache::new(
                 ObjectsMetaCacheDriver::new(meta_cache, Arc::clone(&shared_cache_svc)),
-                17,
+                1_000,
             )),
             data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc)),
             download_svc,
