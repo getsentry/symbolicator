@@ -1,7 +1,7 @@
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
-use sentry_tower::{NewSentryLayer, SentryHttpLayer};
+use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use tower::ServiceBuilder;
 
 use crate::service::RequestService;
