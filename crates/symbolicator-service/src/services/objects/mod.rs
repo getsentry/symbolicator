@@ -315,7 +315,6 @@ impl ObjectsActor {
                 meta_cache
                     .get(request)
                     .await
-                    .into_inner()
                     .map_err(|error| CacheLookupError { file_source, error })
             }
             .bind_hub(Hub::new_from_top(Hub::current()))

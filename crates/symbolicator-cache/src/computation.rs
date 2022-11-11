@@ -3,20 +3,6 @@ use std::hash::Hash;
 
 use moka::future::{Cache, CacheBuilder};
 
-/// This trait signals the [`ComputationCache`] when and which of its entries to
-/// evict and refresh.
-pub trait CacheEntry {
-    /// Tells the [`ComputationCache`] if an entry should be refreshed.
-    fn needs_refresh(&self) -> bool {
-        false
-    }
-
-    /// Gives a relative weight for the cache entry, as not all entries are created equal.
-    fn weight(&self) -> u32 {
-        1
-    }
-}
-
 /// The Cache Computation Driver
 ///
 /// The driver is responsible for providing the actual computation that is supposed to be cached,
@@ -27,7 +13,7 @@ pub trait ComputationDriver {
     /// Cache Key for the computation.
     type Key: Eq + Hash + Send + Sync + 'static;
     /// The resulting output of the computation.
-    type Output: CacheEntry + Clone + Send + Sync + 'static;
+    type Output: Clone + Send + Sync + 'static;
     /// The computation Future type.
     type Computation: Future<Output = Self::Output> + Send;
 
@@ -36,6 +22,16 @@ pub trait ComputationDriver {
 
     /// Compute a new value that should be cached.
     fn compute(&self, arg: Self::Arg) -> Self::Computation;
+
+    /// Tells the [`ComputationCache`] if an entry should be refreshed.
+    fn needs_refresh(&self, _entry: &Self::Output) -> bool {
+        false
+    }
+
+    /// Gives a relative weight for the cache entry, as not all entries are created equal.
+    fn weight(_entry: &Self::Output) -> u32 {
+        1
+    }
 }
 
 /// An in-memory Cache for async Computations.
@@ -53,12 +49,12 @@ pub struct ComputationCache<D: ComputationDriver> {
 
 impl<D> ComputationCache<D>
 where
-    D: ComputationDriver,
+    D: ComputationDriver + Sync,
 {
     /// Creates a new Computation Cache.
     pub fn new(driver: D, capacity: u64) -> Self {
         let computations = CacheBuilder::new(capacity)
-            .weigher(|_k, v: &D::Output| v.weight())
+            .weigher(|_k, v: &D::Output| D::weight(v))
             .build();
         Self {
             driver,
@@ -74,7 +70,7 @@ where
 
         self.computations
             .get_with_if(key, async { self.driver.compute(arg).await }, |v| {
-                v.needs_refresh()
+                self.driver.needs_refresh(v)
             })
             .await
     }
@@ -94,14 +90,11 @@ mod tests {
         pub inner: T,
         ttl: Instant,
     }
-    impl<T> CacheEntry for RefreshesAfter<T> {
-        fn needs_refresh(&self) -> bool {
-            Instant::now() >= self.ttl
-        }
-    }
+
     struct Driver {
         calls: AtomicUsize,
     }
+
     impl ComputationDriver for Driver {
         type Arg = ();
         type Key = ();
@@ -118,6 +111,10 @@ mod tests {
 
                 RefreshesAfter { inner, ttl }
             })
+        }
+
+        fn needs_refresh(&self, entry: &Self::Output) -> bool {
+            Instant::now() >= entry.ttl
         }
     }
 
