@@ -64,7 +64,7 @@ impl ComputationDriver for ObjectsMetaCacheDriver {
     fn needs_refresh(&self, entry: &Self::Output) -> bool {
         match entry {
             Ok(meta_handle) => meta_handle.expiration_time < Instant::now(),
-            Err(_) => todo!(),
+            Err(_) => true,
         }
     }
 }
