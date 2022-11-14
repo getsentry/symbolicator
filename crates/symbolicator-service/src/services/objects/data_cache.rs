@@ -398,9 +398,7 @@ mod tests {
         let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
-            // A request for a bcsymbolmap will expand to only one file that is being looked up.
-            // Other filetypes will lead to multiple requests, trying different file extensions, etc
-            filetypes: &[FileType::BcSymbolMap],
+            filetypes: &[FileType::MachCode],
             purpose: ObjectPurpose::Debug,
             scope: Scope::Global,
             identifier: DebugId::default().into(),
@@ -444,9 +442,7 @@ mod tests {
         let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
-            // A request for a bcsymbolmap will expand to only one file that is being looked up.
-            // Other filetypes will lead to multiple requests, trying different file extensions, etc
-            filetypes: &[FileType::BcSymbolMap],
+            filetypes: &[FileType::MachCode],
             purpose: ObjectPurpose::Debug,
             scope: Scope::Global,
             identifier: DebugId::default().into(),
@@ -480,9 +476,7 @@ mod tests {
         let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
-            // A request for a bcsymbolmap will expand to only one file that is being looked up.
-            // Other filetypes will lead to multiple requests, trying different file extensions, etc
-            filetypes: &[FileType::BcSymbolMap],
+            filetypes: &[FileType::MachCode],
             purpose: ObjectPurpose::Debug,
             scope: Scope::Global,
             identifier: DebugId::default().into(),
@@ -522,9 +516,7 @@ mod tests {
         let objects_actor = objects_actor(&cachedir).await;
 
         let find_object = FindObject {
-            // A request for a bcsymbolmap will expand to only one file that is being looked up.
-            // Other filetypes will lead to multiple requests, trying different file extensions, etc
-            filetypes: &[FileType::BcSymbolMap],
+            filetypes: &[FileType::MachCode],
             purpose: ObjectPurpose::Debug,
             scope: Scope::Global,
             identifier: DebugId::default().into(),

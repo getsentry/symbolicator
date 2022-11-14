@@ -13,7 +13,7 @@ use crate::symbolication::setup_service;
 macro_rules! stackwalk_minidump {
     ($path:expr) => {
         async {
-            let (symbolication, cache_dir) = setup_service().await;
+            let (symbolication, cache_dir) = setup_service(|_| ()).await;
             let (_symsrv, source) = test::symbol_server();
 
             let minidump = test::read_fixture($path);

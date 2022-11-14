@@ -176,7 +176,7 @@ impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
 ///
 /// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AllObjectCandidates(Vec<ObjectCandidate>);
+pub struct AllObjectCandidates(pub Vec<ObjectCandidate>);
 
 impl AllObjectCandidates {
     /// Sets the [`ObjectCandidate::debug`] field for the specified DIF object.
