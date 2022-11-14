@@ -434,6 +434,7 @@ impl ModuleLookup {
 #[cfg(test)]
 mod tests {
     use crate::types::RawObjectInfo;
+    use crate::utils::hex::HexValue;
 
     use super::*;
 
@@ -496,16 +497,39 @@ mod tests {
             raw_modules.into_iter().map(From::from),
         );
 
-        let entry = modules.get_module_by_addr(0x1234, AddrMode::Abs);
+        let entry = modules.lookup_cache(0x1234, AddrMode::Abs);
         assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("a"));
 
-        let entry = modules.get_module_by_addr(0x3456, AddrMode::Abs);
+        let entry = modules.lookup_cache(0x3456, AddrMode::Abs);
         assert!(entry.is_none());
 
-        let entry = modules.get_module_by_addr(0x3456, AddrMode::Rel(0));
+        let entry = modules.lookup_cache(0x3456, AddrMode::Rel(0));
         assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("b"));
 
-        let entry = modules.get_module_by_addr(0x4567, AddrMode::Abs);
+        let entry = modules.lookup_cache(0x4567, AddrMode::Abs);
         assert_eq!(entry.unwrap().object_info.raw.code_id.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn test_symcache_lookup_open_end_addr() {
+        // The Rust SDK and some other clients sometimes send zero-sized images when no end addr
+        // could be determined. Symbolicator should still resolve such images.
+        let info = CompleteObjectInfo::from(RawObjectInfo {
+            ty: ObjectType::Unknown,
+            code_id: None,
+            debug_id: None,
+            code_file: None,
+            debug_file: None,
+            image_addr: HexValue(42),
+            image_size: Some(0),
+            checksum: None,
+        });
+
+        let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));
+
+        let lookup_result = lookup.lookup_cache(43, AddrMode::Abs).unwrap();
+        assert_eq!(lookup_result.module_index, 0);
+        assert_eq!(lookup_result.object_info, &info);
+        assert!(lookup_result.cache.is_none());
     }
 }

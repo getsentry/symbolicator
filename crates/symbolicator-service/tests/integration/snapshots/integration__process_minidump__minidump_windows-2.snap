@@ -1,6 +1,6 @@
 ---
-source: crates/symbolicator-service/src/services/symbolication/process_minidump.rs
-assertion_line: 736
+source: crates/symbolicator-service/tests/integration/process_minidump.rs
+assertion_line: 46
 expression: cache_entries
 ---
 - local_59_0285e9e0000_debug
