@@ -8,9 +8,7 @@
 //! consistency.
 
 use std::fs;
-use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -19,7 +17,6 @@ use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
-use symbolicator_cache::{ComputationCache, ComputationDriver};
 use symbolicator_sources::{ObjectId, SourceId};
 
 use crate::cache::{Cache, CacheStatus, ExpirationTime};
@@ -30,42 +27,51 @@ use crate::types::{ObjectFeatures, Scope};
 
 use super::{FetchFileDataRequest, ObjectError};
 
-pub(super) type ObjectsMetaCache = ComputationCache<ObjectsMetaCacheDriver>;
-
-/// A driver for computing object metadata entries.
-#[derive(Debug)]
-pub(super) struct ObjectsMetaCacheDriver {
-    fs_cache: Arc<Cacher<FetchFileMetaRequest>>,
+#[derive(Clone, Debug)]
+pub struct ObjectsMetaCache {
+    fs: Arc<Cacher<FetchFileMetaRequest>>,
+    in_memory: moka::future::Cache<CacheKey, Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>>,
 }
 
-impl ObjectsMetaCacheDriver {
-    pub(super) fn new(meta_cache: Cache, shared_cache_svc: Arc<SharedCacheService>) -> Self {
+impl ObjectsMetaCache {
+    pub(super) fn new(
+        meta_cache: Cache,
+        shared_cache_svc: Arc<SharedCacheService>,
+        capacity: u64,
+    ) -> Self {
         Self {
-            fs_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
+            fs: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
+            in_memory: moka::future::Cache::new(capacity),
         }
     }
-}
 
-impl ComputationDriver for ObjectsMetaCacheDriver {
-    type Arg = FetchFileMetaRequest;
-    type Key = CacheKey;
-    type Output = Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>;
-    type Computation = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
-
-    fn cache_key(&self, arg: &Self::Arg) -> Self::Key {
-        arg.file_source.cache_key(arg.scope.clone())
+    pub(super) async fn get(
+        &self,
+        request: FetchFileMetaRequest,
+    ) -> Result<Arc<ObjectMetaHandle>, Arc<ObjectError>> {
+        let key = request.file_source.cache_key(request.scope.clone());
+        self.in_memory
+            .get_with_if(
+                key,
+                async { self.compute(request).await },
+                Self::needs_refresh,
+            )
+            .await
     }
 
-    fn compute(&self, arg: Self::Arg) -> Self::Computation {
-        let fs_cache = Arc::clone(&self.fs_cache);
-        Box::pin(async move { fs_cache.compute_memoized(arg).await })
-    }
-
-    fn needs_refresh(&self, entry: &Self::Output) -> bool {
+    fn needs_refresh(entry: &Result<Arc<ObjectMetaHandle>, Arc<ObjectError>>) -> bool {
         match entry {
             Ok(meta_handle) => meta_handle.expiration_time < Instant::now(),
             Err(_) => true,
         }
+    }
+
+    async fn compute(
+        &self,
+        request: FetchFileMetaRequest,
+    ) -> Result<Arc<ObjectMetaHandle>, Arc<ObjectError>> {
+        let fs = Arc::clone(&self.fs);
+        fs.compute_memoized(request).await
     }
 }
 

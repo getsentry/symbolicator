@@ -22,10 +22,8 @@ use meta_cache::FetchFileMetaRequest;
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
 
-use self::meta_cache::ObjectsMetaCache;
-use self::meta_cache::ObjectsMetaCacheDriver;
-
 use super::shared_cache::SharedCacheService;
+use meta_cache::ObjectsMetaCache;
 
 mod data_cache;
 mod meta_cache;
@@ -183,7 +181,8 @@ impl ObjectsActor {
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(ObjectsMetaCache::new(
-                ObjectsMetaCacheDriver::new(meta_cache, Arc::clone(&shared_cache_svc)),
+                meta_cache,
+                Arc::clone(&shared_cache_svc),
                 1_000,
             )),
             data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc)),
