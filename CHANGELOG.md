@@ -32,6 +32,7 @@
 - Fetch/use CFI for modules that only have a CodeId. ([#860](https://github.com/getsentry/symbolicator/pull/860))
 - Properly mask Portable PDB Age for symstore/SSQP lookups. ([#888](https://github.com/getsentry/symbolicator/pull/888))
 - Avoid a redundant open/read and fix shared cache refresh. ([#893](https://github.com/getsentry/symbolicator/pull/893))
+- Correctly return object candidates for malformed caches. ([#917](https://github.com/getsentry/symbolicator/pull/917))
 
 ### Internal
 
