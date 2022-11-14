@@ -1,6 +1,6 @@
 ---
-source: crates/symbolicator-service/src/services/symbolication/process_minidump.rs
-assertion_line: 735
+source: crates/symbolicator-service/tests/integration/process_minidump.rs
+assertion_line: 46
 expression: response.unwrap()
 ---
 timestamp: 1521713273
