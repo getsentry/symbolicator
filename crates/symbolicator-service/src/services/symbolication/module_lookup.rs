@@ -176,82 +176,75 @@ impl ModuleLookup {
                 let scope = self.scope.clone();
                 let object_type = entry.object_info.raw.ty;
 
-                Some(
-                    async move {
-                        match object_type {
-                            ObjectType::PeDotnet => {
-                                let request = FetchPortablePdbCache {
-                                    identifier,
-                                    sources,
-                                    scope,
-                                };
+                let fut = async move {
+                    match object_type {
+                        ObjectType::PeDotnet => {
+                            let request = FetchPortablePdbCache {
+                                identifier,
+                                sources,
+                                scope,
+                            };
 
-                                let ppdb_cache_result = match ppdb_cache_actor.fetch(request).await
-                                {
-                                    Ok(ppdb_cache) => Ok(CacheFile::PortablePdbCache(ppdb_cache)),
-                                    Err(e) => Err(e.as_ref().into()),
-                                };
+                            let ppdb_cache_result = match ppdb_cache_actor.fetch(request).await {
+                                Ok(ppdb_cache) => Ok(CacheFile::PortablePdbCache(ppdb_cache)),
+                                Err(e) => Err(e.as_ref().into()),
+                            };
 
-                                (idx, ppdb_cache_result)
-                            }
-                            _ => {
-                                let request = FetchSymCache {
-                                    object_type,
-                                    identifier,
-                                    sources,
-                                    scope,
-                                };
+                            (idx, ppdb_cache_result)
+                        }
+                        _ => {
+                            let request = FetchSymCache {
+                                object_type,
+                                identifier,
+                                sources,
+                                scope,
+                            };
 
-                                let symcache_result = match symcache_actor.fetch(request).await {
-                                    Ok(symcache) => Ok(CacheFile::SymCache(symcache)),
-                                    Err(e) => Err(e.as_ref().into()),
-                                };
+                            let symcache_result = match symcache_actor.fetch(request).await {
+                                Ok(symcache) => Ok(CacheFile::SymCache(symcache)),
+                                Err(e) => Err(e.as_ref().into()),
+                            };
 
-                                (idx, symcache_result)
-                            }
+                            (idx, symcache_result)
                         }
                     }
-                    .bind_hub(Hub::new_from_top(Hub::current())),
-                )
+                }
+                .bind_hub(Hub::new_from_top(Hub::current()));
+                Some(fut)
             });
 
         for (idx, cache_result) in future::join_all(futures).await {
             if let Some(entry) = self.modules.get_mut(idx) {
+                entry.object_info.arch = Default::default();
+
                 let (cache, status) = match cache_result {
                     Ok(cache) => match cache {
-                        CacheFile::SymCache(ref symcache) => match symcache.parse() {
-                            Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
-                            Ok(None) => (Some(cache), ObjectFileStatus::Missing),
-                            Err(e) => (None, (&e).into()),
-                        },
+                        CacheFile::SymCache(ref symcache) => {
+                            entry.object_info.arch = symcache.arch();
+                            entry.object_info.features.merge(symcache.features());
+                            entry.object_info.candidates.merge(symcache.candidates());
 
-                        CacheFile::PortablePdbCache(ref ppdb_cache) => match ppdb_cache.parse() {
-                            Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
-                            Ok(None) => (Some(cache), ObjectFileStatus::Missing),
-                            Err(e) => (None, (&e).into()),
-                        },
+                            match symcache.parse() {
+                                Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
+                                Ok(None) => (Some(cache), ObjectFileStatus::Missing),
+                                Err(e) => (None, (&e).into()),
+                            }
+                        }
+
+                        CacheFile::PortablePdbCache(ref ppdb_cache) => {
+                            entry.object_info.features.merge(ppdb_cache.features());
+                            entry.object_info.candidates.merge(ppdb_cache.candidates());
+                            match ppdb_cache.parse() {
+                                Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
+                                Ok(None) => (Some(cache), ObjectFileStatus::Missing),
+                                Err(e) => (None, (&e).into()),
+                            }
+                        }
                     },
                     Err(e) => (None, e),
                 };
 
-                entry.object_info.arch = Default::default();
                 entry.object_info.debug_status = status;
-
-                match cache {
-                    Some(CacheFile::SymCache(ref symcache)) => {
-                        entry.object_info.arch = symcache.arch();
-                        entry.object_info.features.merge(symcache.features());
-                        entry.object_info.candidates.merge(symcache.candidates());
-                    }
-
-                    Some(CacheFile::PortablePdbCache(ref ppdb_cache)) => {
-                        entry.object_info.features.merge(ppdb_cache.features());
-                        entry.object_info.candidates.merge(ppdb_cache.candidates());
-                    }
-
-                    None => {}
-                }
-
                 entry.cache = cache;
             }
         }

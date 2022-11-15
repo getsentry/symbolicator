@@ -25,13 +25,12 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
-use warp::filters::fs::File;
 use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
 use symbolicator_sources::{
-    CommonSourceConfig, DirectoryLayoutType, FileType, FilesystemSourceConfig, GcsSourceKey,
-    HttpSourceConfig, SourceConfig, SourceFilters, SourceId,
+    CommonSourceConfig, FileType, FilesystemSourceConfig, GcsSourceKey, HttpSourceConfig,
+    SourceConfig, SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -185,7 +184,7 @@ impl Drop for Server {
 /// Spawn an actual HTTP symbol server for local fixtures.
 ///
 /// The symbol server serves static files from the local symbols fixture location under the
-/// `/download` prefix. The layout of this folder is [`DirectoryLayoutType::Native`]. This function
+/// `/download` prefix. The layout of this folder is `DirectoryLayoutType::Native`. This function
 /// returns the test server as well as a source configuration, which can be used to access the
 /// symbol server in symbolication requests.
 ///
@@ -221,6 +220,7 @@ pub struct FailingSymbolServer {
     pub pending_source: SourceConfig,
     pub not_found_source: SourceConfig,
     pub forbidden_source: SourceConfig,
+    pub invalid_file_source: SourceConfig,
 }
 
 impl FailingSymbolServer {
@@ -229,47 +229,59 @@ impl FailingSymbolServer {
 
         let times = times_accessed.clone();
         let reject = warp::path("reject").and_then(move || {
-            let times = Arc::clone(&times);
-            async move {
-                (*times).fetch_add(1, Ordering::SeqCst);
+            (*times).fetch_add(1, Ordering::SeqCst);
 
-                Err::<File, _>(warp::reject::custom(GoAway))
-            }
+            std::future::ready(Err::<&str, _>(warp::reject::custom(GoAway)))
         });
 
         let times = times_accessed.clone();
         let not_found = warp::path("not-found").and_then(move || {
-            let times = Arc::clone(&times);
-            async move {
-                (*times).fetch_add(1, Ordering::SeqCst);
-
-                Err::<File, _>(warp::reject::not_found())
-            }
+            (*times).fetch_add(1, Ordering::SeqCst);
+            std::future::ready(Err::<&str, _>(warp::reject::not_found()))
         });
 
         let times = times_accessed.clone();
         let pending = warp::path("pending").and_then(move || {
             (*times).fetch_add(1, Ordering::SeqCst);
 
-            std::future::pending::<Result<File, Rejection>>()
+            std::future::pending::<Result<&str, Rejection>>()
         });
 
         let times = times_accessed.clone();
         let forbidden = warp::path("forbidden").and_then(move || {
             (*times).fetch_add(1, Ordering::SeqCst);
 
-            async move {
-                let result: Result<_, Rejection> = Ok(warp::reply::with_status(
-                    warp::reply(),
-                    warp::http::StatusCode::FORBIDDEN,
-                ));
-                result
-            }
+            let result: Result<_, Rejection> = Ok(warp::reply::with_status(
+                warp::reply(),
+                warp::http::StatusCode::FORBIDDEN,
+            ));
+            std::future::ready(result)
         });
 
-        let server = Server::new(reject.or(not_found).or(pending).or(forbidden));
+        let times = times_accessed.clone();
+        let invalid_file = warp::path("invalid-file").and_then(move || {
+            (*times).fetch_add(1, Ordering::SeqCst);
 
-        let files_config = CommonSourceConfig::with_layout(DirectoryLayoutType::Unified);
+            let result = Ok::<_, Rejection>("not a valid object");
+            std::future::ready(result)
+        });
+
+        let server = Server::new(
+            reject
+                .or(not_found)
+                .or(pending)
+                .or(forbidden)
+                .or(invalid_file),
+        );
+
+        let files_config = CommonSourceConfig {
+            filters: SourceFilters {
+                filetypes: vec![FileType::MachCode],
+                path_patterns: vec![],
+            },
+            layout: Default::default(),
+            is_public: false,
+        };
 
         let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
             id: SourceId::new("reject"),
@@ -296,6 +308,13 @@ impl FailingSymbolServer {
             id: SourceId::new("forbidden"),
             url: server.url("forbidden/"),
             headers: Default::default(),
+            files: files_config.clone(),
+        }));
+
+        let invalid_file_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new("invalid-file"),
+            url: server.url("invalid-file/"),
+            headers: Default::default(),
             files: files_config,
         }));
 
@@ -306,6 +325,7 @@ impl FailingSymbolServer {
             pending_source,
             not_found_source,
             forbidden_source,
+            invalid_file_source,
         }
     }
 

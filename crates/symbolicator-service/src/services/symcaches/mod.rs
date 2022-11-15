@@ -25,6 +25,7 @@ use crate::utils::sentry::ConfigureScope;
 
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
+use super::download::DownloadError;
 use super::il2cpp::Il2cppService;
 use super::shared_cache::SharedCacheService;
 
@@ -208,13 +209,19 @@ async fn fetch_difs_and_compute_symcache(
         .await
         .map_err(SymCacheError::Fetching)?;
 
-    // The original has a download error so the sym cache entry should just be negative.
-    if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
+    let status = object_handle.status();
+
+    // The original has a download error so the sym cache entry should be marked as a fetch error
+    if let Some(_download_error) = DownloadError::from_cache(status) {
+        // FIXME: this should be:
+        //return Err(SymCacheError::Fetching(download_error.into()));
+        // but instead we have to return an `Ok`, otherwise the `candidate` info will be lost
+        // somwhere along the path of the symcache request.
         return Ok(CacheStatus::Negative);
     }
 
-    if object_handle.status() != &CacheStatus::Positive {
-        return Ok(object_handle.status().clone());
+    if status != &CacheStatus::Positive {
+        return Ok(status.clone());
     }
 
     let status = match write_symcache(&path, &object_handle, secondary_sources) {

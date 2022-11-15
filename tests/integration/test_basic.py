@@ -596,10 +596,13 @@ def test_malformed_objects(symbolicator, hitcounter):
 
     expected = _make_error_result(
         status="malformed",
-        download_error={"status": "notfound"},
-        source=None,
-        base_url=f"{hitcounter.url}/msdl/",
+        download_error={"status": "malformed"},
+        source=("broken", False),
+        base_url=f"{hitcounter.url}/garbage_data/",
     )
+    # add a debug error to the candidate
+    expected["modules"][0]["candidates"][0]["debug"] = {"status": "malformed"}
+
     assert_symbolication(response, expected)
 
 
