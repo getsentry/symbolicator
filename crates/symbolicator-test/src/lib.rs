@@ -184,7 +184,7 @@ impl Drop for Server {
 /// Spawn an actual HTTP symbol server for local fixtures.
 ///
 /// The symbol server serves static files from the local symbols fixture location under the
-/// `/download` prefix. The layout of this folder is [`DirectoryLayoutType::Native`]. This function
+/// `/download` prefix. The layout of this folder is `DirectoryLayoutType::Native`. This function
 /// returns the test server as well as a source configuration, which can be used to access the
 /// symbol server in symbolication requests.
 ///
