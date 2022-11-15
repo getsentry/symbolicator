@@ -54,3 +54,35 @@ enum CacheEntry { // Arc-ed
     NotFound(Error), // Download / Permission Error
     Malformed(Error), // Conversion / Parsing Error
 }
+
+// moka =>
+struct InternalCacheEntry<T> {
+    entry: CacheEntry<T>,
+    ttl: Instant,
+}
+
+enum CacheEntry<T> {
+    AllGood(T), // => symcache => SymCache, object_meta => ObjectFeatures, cficache => SymbolFile
+    NotFound,
+    PermissionDenied(String), // => whatever the server returned
+    Timeout(Duration), // => should we return the duration after which we timed out?
+    DownloadError(String), // => connection lost, dns resolution, or 5xx server errors
+    Malformed(String), // => unsupported object file, symcache conversion failure
+    InternalError, // => unexpected errors like: io::Error, serde_error, symcache parse error,
+}
+
+impl<T> CacheEntry<T> {
+    fn load_from_file() -> Self<ByteView<'static>>;
+
+    fn persist_to_file(&self); // => T would not be directly
+}
+
+fetch_symcache(sources, id) -> CacheEntry<SymCache> {
+    // candidates blabla
+    // object_meta
+
+    moka:
+        load_disk_cache(disk_cache_key) -> CacheEntry<ByteView<'static>>
+
+        load_symcache(CacheEntry<ByteView>) -> Arc<CacheEntry<SymCache>>
+}
