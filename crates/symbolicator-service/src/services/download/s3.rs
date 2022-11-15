@@ -108,7 +108,7 @@ impl S3Downloader {
                 "Using AWS credentials provider: {:?}",
                 key.aws_credentials_provider
             );
-            let s3 = Arc::new(match key.aws_credentials_provider {
+            Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
                     let container_provider = rusoto_credential::ContainerProvider::new();
                     let provider =
@@ -128,8 +128,7 @@ impl S3Downloader {
                     );
                     self.create_s3_client(provider, region)
                 }
-            });
-            s3
+            })
         })
     }
 
