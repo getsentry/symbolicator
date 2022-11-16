@@ -173,10 +173,17 @@ struct RequestServiceInner {
 impl RequestService {
     /// Creates a new [`RequestService`].
     pub async fn create(
-        config: Config,
+        mut config: Config,
         io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
     ) -> Result<Self> {
+        // FIXME(swatinem):
+        // The Sentry<->Symbolicator tests currently rely on the fact that the Sentry Downloader cache
+        // is deactivated depending on the file system cache directory:
+        if config.cache_dir.is_none() {
+            config.caches.in_memory.sentry_index_ttl = Duration::ZERO;
+        }
+
         let (symbolication, objects) =
             symbolicator_service::services::create_service(&config, io_pool.clone()).await?;
 
