@@ -19,9 +19,9 @@ const BASE_URL: &str = "https://sentry.io/api/0/";
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let auth_token = std::env::var("AUTH_TOKEN").context("No auth token provided")?;
-
     let args = Cli::parse();
+
+    let auth_token = std::env::var("SENTRY_AUTH_TOKEN").context("No auth token provided")?;
 
     let config = Config::get(args.config.as_deref())?;
 
@@ -147,18 +147,28 @@ async fn download_minidump(
     Ok(temp_file.into_temp_path())
 }
 
+/// A utility that provides local symbolication of Sentry events.
+///
+/// Currently, only events with an attached minidump are supported.
+///
+/// A valid auth token needs to be provided via the `SENTRY_AUTH_TOKEN` environment variable.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about)]
 struct Cli {
-    /// ID of the event to symbolicate
+    /// The ID of the event to symbolicate.
     event: String,
 
+    /// The organization slug.
     #[arg(long, short)]
     org: String,
 
+    /// The project slug.
     #[arg(long, short)]
     project: String,
 
+    /// A symbolicator configuration file.
+    ///
+    /// Use this to configure caches and additional DIF sources.
     #[arg(long, short)]
     config: Option<PathBuf>,
 }
