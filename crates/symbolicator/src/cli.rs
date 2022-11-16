@@ -84,6 +84,8 @@ pub fn execute() -> Result<()> {
         release: Some(env!("SYMBOLICATOR_RELEASE").into()),
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
+        enable_profiling: true,
+        profiles_sample_rate: 0.4,
         ..Default::default()
     });
 
