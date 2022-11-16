@@ -16,6 +16,7 @@
 - Use jemalloc as global allocater (for Rust and C). ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Clean up empty cache directories. ([#887](https://github.com/getsentry/symbolicator/pull/887))
 - Update symbolic and increase SymCache Version to `4` which now uses a LEB128-prefixed string table. ([#886](https://github.com/getsentry/symbolicator/pull/886))
+- Add Configuration options for in-memory Caches. ([#911](https://github.com/getsentry/symbolicator/pull/911))
 - Add the `symbolicli` utility for local symbolication. ([#919](https://github.com/getsentry/symbolicator/pull/919))
 
 ### Fixes
