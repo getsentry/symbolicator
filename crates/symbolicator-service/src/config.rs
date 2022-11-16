@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -247,6 +248,65 @@ impl From<DiagnosticsCacheConfig> for CacheConfig {
     }
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct InMemoryCacheConfig {
+    /// Capacity for the Sentry Index Cache.
+    ///
+    /// This cache is used for requests to the Sentry symbol source and is keyed by
+    /// the full request URL + token.
+    ///
+    /// Defaults to `100_000`.
+    pub sentry_index_capacity: NonZeroUsize,
+
+    /// The TTL for Sentry Index entries.
+    ///
+    /// Controls the TTL for entries in the Sentry Index Cache.
+    ///
+    /// Defaults to `1h`.
+    #[serde(with = "humantime_serde")]
+    pub sentry_index_ttl: Duration,
+
+    /// Capacity for the GCS Token Cache.
+    ///
+    /// This number defines the size of the internal cache for GCS authentication and should be higher
+    /// than expected concurrency across GCS buckets. If this number is too low, the downloader will
+    /// re-authenticate between every request.
+    ///
+    /// The cache is keyed by GCS source keys.
+    ///
+    /// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
+    /// metrics.
+    ///
+    /// Defaults to `100`.
+    pub gcs_token_capacity: NonZeroUsize,
+
+    /// Capacity for the S3 Client Cache.
+    ///
+    /// This number defines the size of the internal cache for S3 clients and should be higher than
+    /// expected concurrency across S3 buckets. If this number is too low, the downloader will
+    /// re-authenticate between every request.
+    ///
+    /// The cache is keyed by S3 source keys.
+    ///
+    /// This can be monitored with the `source.s3.client.create` and `source.s3.client.cached` counter
+    /// metrics.
+    ///
+    /// Defaults to `100`.
+    pub s3_client_capacity: u64,
+}
+
+impl Default for InMemoryCacheConfig {
+    fn default() -> Self {
+        Self {
+            sentry_index_capacity: 100_000.try_into().unwrap(),
+            sentry_index_ttl: Duration::from_secs(3600),
+            gcs_token_capacity: 100.try_into().unwrap(),
+            s3_client_capacity: 100,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Default)]
 #[serde(default)]
 pub struct CacheConfigs {
@@ -258,6 +318,9 @@ pub struct CacheConfigs {
     ///
     /// E.g. minidumps which caused a crash in symbolicator will be stored here.
     pub diagnostics: DiagnosticsCacheConfig,
+
+    /// Configuration of various in-memory caches.
+    pub in_memory: InMemoryCacheConfig,
 }
 
 /// See docs/index.md for more information on config values.

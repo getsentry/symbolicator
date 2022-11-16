@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::TryStreamExt;
-use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rusoto_core::credential::ProvideAwsCredentials;
 use rusoto_core::region::Region;
@@ -24,18 +23,7 @@ use symbolicator_sources::{
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 
-type ClientCache = lru::LruCache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
-
-/// Maximum number of cached S3 clients.
-///
-/// This number defines the size of the internal cache for S3 clients and should be higher than
-/// expected concurrency across S3 buckets. If this number is too low, the downloader will
-/// re-authenticate between every request.
-///
-/// TODO(ja):
-/// This can be monitored with the `source.gcs.token.requests` and `source.gcs.token.cached` counter
-/// metrics.
-const S3_CLIENT_CACHE_SIZE: usize = 100;
+type ClientCache = moka::sync::Cache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 
 /// The S3-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -76,7 +64,7 @@ impl S3RemoteDif {
 /// Downloader implementation that supports the [`S3SourceConfig`] source.
 pub struct S3Downloader {
     http_client: Arc<rusoto_core::HttpClient>,
-    client_cache: Mutex<ClientCache>,
+    client_cache: ClientCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
@@ -85,7 +73,8 @@ impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
             .field("http_client", &format_args!("rusoto_core::HttpClient"))
-            .field("client_cache", &self.client_cache)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("streaming_timeout", &self.streaming_timeout)
             .finish()
     }
 }
@@ -93,21 +82,25 @@ impl fmt::Debug for S3Downloader {
 pub type S3Error = RusotoError<GetObjectError>;
 
 impl S3Downloader {
-    pub fn new(connect_timeout: Duration, streaming_timeout: Duration) -> Self {
+    pub fn new(
+        connect_timeout: Duration,
+        streaming_timeout: Duration,
+        s3_client_capacity: u64,
+    ) -> Self {
         Self {
             http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
-            client_cache: Mutex::new(ClientCache::new(S3_CLIENT_CACHE_SIZE.try_into().unwrap())),
+            client_cache: ClientCache::new(s3_client_capacity),
             connect_timeout,
             streaming_timeout,
         }
     }
 
     fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
-        let mut container = self.client_cache.lock();
-        if let Some(client) = container.get(key) {
+        if self.client_cache.contains_key(key) {
             metric!(counter("source.s3.client.cached") += 1);
-            client.clone()
-        } else {
+        }
+
+        self.client_cache.get_with_by_ref(key, || {
             metric!(counter("source.s3.client.create") += 1);
 
             let region = key.region.clone();
@@ -115,7 +108,7 @@ impl S3Downloader {
                 "Using AWS credentials provider: {:?}",
                 key.aws_credentials_provider
             );
-            let s3 = Arc::new(match key.aws_credentials_provider {
+            Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
                     let container_provider = rusoto_credential::ContainerProvider::new();
                     let provider =
@@ -135,11 +128,8 @@ impl S3Downloader {
                     );
                     self.create_s3_client(provider, region)
                 }
-            });
-
-            container.put(key.clone(), s3.clone());
-            s3
-        }
+            })
+        })
     }
 
     fn create_s3_client<P: ProvideAwsCredentials + Send + Sync + 'static>(
@@ -422,7 +412,7 @@ mod tests {
         test::setup();
 
         let source = s3_source(s3_source_key!());
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
         let object_id = ObjectId {
             code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
@@ -449,7 +439,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -478,7 +468,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -506,7 +496,7 @@ mod tests {
             secret_key: "".to_owned(),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30));
+        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

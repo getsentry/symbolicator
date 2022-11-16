@@ -25,9 +25,6 @@ use super::{
 use crate::config::Config;
 use crate::utils::futures::{self as future_utils, CancelOnDrop};
 
-/// Maximum number of cached Sentry `list_files` requests.
-const SENTRY_INDEX_CACHE_SIZE: usize = 100_000;
-
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct SentryRemoteDif {
@@ -116,23 +113,13 @@ impl fmt::Debug for SentryDownloader {
 
 impl SentryDownloader {
     pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
-        // The Sentry cache index should expire as soon as we attempt to retry negative caches.
-        let cache_duration = if config.cache_dir.is_some() {
-            config
-                .caches
-                .downloaded
-                .retry_misses_after
-                .unwrap_or_else(|| Duration::from_secs(0))
-        } else {
-            Duration::from_secs(0)
-        };
         Self {
             client,
             runtime,
             index_cache: Mutex::new(SentryIndexCache::new(
-                SENTRY_INDEX_CACHE_SIZE.try_into().unwrap(),
+                config.caches.in_memory.sentry_index_capacity,
             )),
-            cache_duration,
+            cache_duration: config.caches.in_memory.sentry_index_ttl,
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,
         }
