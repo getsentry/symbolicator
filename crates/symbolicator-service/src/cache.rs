@@ -555,6 +555,11 @@ impl ExpirationTime {
             }
         }
     }
+
+    /// Says whether the cache was just touched.
+    pub fn was_touched(&self) -> bool {
+        matches!(self, ExpirationTime::TouchIn(TOUCH_EVERY))
+    }
 }
 
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used

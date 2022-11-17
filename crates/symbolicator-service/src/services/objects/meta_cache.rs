@@ -19,7 +19,7 @@ use symbolic::debuginfo::Object;
 use symbolicator_sources::{ObjectId, SourceId};
 
 use crate::cache::{CacheStatus, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::types::{ObjectFeatures, Scope};
 
@@ -160,10 +160,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
     /// returned will contain the default [`ObjectMetaHandle::features`].
     fn load(
         &self,
-        scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _path: CachePath,
         _expiration: ExpirationTime,
     ) -> Self::Item {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
@@ -182,7 +180,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         };
 
         ObjectMetaHandle {
-            scope,
+            scope: self.scope.clone(),
             object_id: self.object_id.clone(),
             file_source: self.file_source.clone(),
             features,

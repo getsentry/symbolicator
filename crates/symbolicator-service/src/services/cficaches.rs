@@ -13,7 +13,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -93,15 +93,9 @@ impl CfiCacheActor {
 
 #[derive(Debug)]
 pub struct CfiCacheFile {
-    // NOTE: ideally this would keep the ByteView it could receive via CacheItemRequest::load
-    // however we only use this file by opening it by filename from a subprocess.  Until we can
-    // pass a filedescriptor to the subprocess instead of a filename there is no point in storing
-    // this ByteView and instead we only rely on the cache semantics of touching the mtime
-    // before returning a cache item to ensure the cleanup process will not remove this while
-    // we are using it.
     features: ObjectFeatures,
     status: CacheStatus,
-    path: CachePath,
+    data: ByteView<'static>,
     candidates: AllObjectCandidates,
 }
 
@@ -116,9 +110,11 @@ impl CfiCacheFile {
         self.features
     }
 
-    /// Returns the path at which this cache file is stored.
-    pub fn path(&self) -> &Path {
-        self.path.as_ref()
+    /// Returns the cfi contents as a [`ByteView`].
+    // FIXME(swatinem): symbolic `CfiCache::from_bytes` should actually take a `&[u8]` instead of
+    // an explicit `ByteView`.
+    pub fn data(&self) -> ByteView {
+        self.data.clone()
     }
 
     /// Returns all the DIF object candidates.
@@ -207,10 +203,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     fn load(
         &self,
-        _scope: Scope,
         status: CacheStatus,
-        _data: ByteView<'static>,
-        path: CachePath,
+        data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
         let mut candidates = self.candidates.clone();
@@ -223,7 +217,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         CfiCacheFile {
             features: self.meta_handle.features(),
             status,
-            path,
+            data,
             candidates,
         }
     }
@@ -275,7 +269,7 @@ impl CfiCacheActor {
             None => Ok(Arc::new(CfiCacheFile {
                 features: ObjectFeatures::default(),
                 status: CacheStatus::Negative,
-                path: CachePath::new(),
+                data: ByteView::from_slice(&[]),
                 candidates: found_result.candidates,
             })),
         }
@@ -288,9 +282,7 @@ impl CfiCacheActor {
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
-    sentry::configure_scope(|scope| {
-        object_handle.to_scope(scope);
-    });
+    object_handle.configure_scope();
 
     let object = object_handle
         .parse()
