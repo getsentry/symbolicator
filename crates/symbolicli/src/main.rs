@@ -71,10 +71,11 @@ async fn main() -> anyhow::Result<()> {
 
     let scope = Scope::Scoped(project.clone());
 
-    let _res = symbolication
+    let res = symbolication
         .process_minidump(scope, minidump_path, sources)
         .await?;
 
+    println!("{}", serde_json::to_string(&res).unwrap());
     Ok(())
 }
 
@@ -162,6 +163,8 @@ async fn download_minidump(
 ///
 /// A valid auth token needs to be provided via the `--auth-token` option
 /// or the `SENTRY_AUTH_TOKEN` environment variable. The option takes precedence.
+///
+/// The symbolication result will be returned as JSON.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about)]
 struct Cli {
