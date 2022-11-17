@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(path = ?minidump_path, "minidump file downloaded");
 
     let uploaded_difs = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
-        id: SourceId::new("Uploaded DIFs"),
+        id: SourceId::new("sentry:project"),
         token: auth_token,
         url: reqwest::Url::parse(&format!("{BASE_URL}projects/{org}/{project}/files/dsyms/"))
             .unwrap(),
@@ -83,9 +83,9 @@ async fn download_minidump(
 
     tracing::info!(url = %attachments_url, "fetching attachments");
 
-    let request = client.get(attachments_url.clone()).build().unwrap();
     let response = client
-        .execute(request)
+        .get(attachments_url.clone())
+        .send()
         .await
         .context("Failed to send request")?;
 
@@ -104,22 +104,22 @@ async fn download_minidump(
         ));
     };
 
-    let minidump_id = attachments.iter().find_map(|attachment| {
-        (attachment.r#type == "event.minidump").then_some(attachment.id.clone())
-    });
-
-    let Some(minidump_id) = minidump_id else {
+    let Some(minidump) = attachments
+        .iter()
+        .find(|attachment| attachment.r#type == "event.minidump") else {
         bail!("Event has no minidump attached");
     };
+
+    let minidump_id = &minidump.id;
 
     let mut download_url = attachments_url.join(&format!("{minidump_id}/")).unwrap();
     download_url.query_pairs_mut().append_pair("download", "1");
 
     tracing::info!(url = %download_url, "downloading minidump file");
 
-    let request = client.get(download_url).build().unwrap();
     let response = client
-        .execute(request)
+        .get(download_url)
+        .send()
         .await
         .context("Failed to send request")?;
 
