@@ -61,8 +61,7 @@ async fn main() -> anyhow::Result<()> {
     sources.extend(config.sources.iter().cloned());
     let sources = Arc::from(sources.into_boxed_slice());
 
-    // TODO: figure out what this should actually be
-    let scope = Scope::Global;
+    let scope = Scope::Scoped(project.clone());
 
     let _res = symbolication
         .process_minidump(scope, minidump_path, sources)
