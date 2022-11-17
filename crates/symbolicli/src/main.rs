@@ -19,7 +19,9 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
-    let auth_token = std::env::var("SENTRY_AUTH_TOKEN").context("No auth token provided")?;
+    let Some(auth_token) = args.auth_token.or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok()) else {
+        bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
+    };
 
     let sentry_url = Url::parse(&args.sentry_url).context("Invalid sentry URL")?;
     let base_url = if sentry_url.as_str().ends_with('/') {
@@ -158,7 +160,8 @@ async fn download_minidump(
 ///
 /// Currently, only events with an attached minidump are supported.
 ///
-/// A valid auth token needs to be provided via the `SENTRY_AUTH_TOKEN` environment variable.
+/// A valid auth token needs to be provided via the `--auth-token` option
+/// or the `SENTRY_AUTH_TOKEN` environment variable. The option takes precedence.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about)]
 struct Cli {
@@ -182,6 +185,12 @@ struct Cli {
     /// The URL of the sentry instance to connect to.
     #[arg(long, default_value_t = String::from("https://sentry.io/"))]
     sentry_url: String,
+
+    /// The Sentry auth token to use to access the event and DIFs.
+    ///
+    /// This can alternatively be passed via the `SENTRY_AUTH_TOKEN` environment variable.
+    #[arg(long = "auth-token")]
+    auth_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
