@@ -14,7 +14,7 @@ use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
     ObjectsActor,
@@ -279,10 +279,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
     fn load(
         &self,
-        _scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _path: CachePath,
         _expiration: ExpirationTime,
     ) -> Self::Item {
         // TODO: Figure out if this double-parsing could be avoided
@@ -408,9 +406,7 @@ fn write_symcache(
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
 ) -> Result<(), SymCacheError> {
-    sentry::configure_scope(|scope| {
-        object_handle.to_scope(scope);
-    });
+    object_handle.configure_scope();
 
     let symbolic_object = object_handle
         .parse()

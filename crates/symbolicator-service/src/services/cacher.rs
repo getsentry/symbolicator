@@ -4,7 +4,6 @@ use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Context;
 use futures::channel::oneshot;
@@ -125,56 +124,6 @@ pub struct CacheVersions {
     pub fallbacks: &'static [u32],
 }
 
-/// Path to a temporary or cached file.
-///
-/// This path can either point to a named temporary file, or a permanently cached file. If the file
-/// is a named temporary, it will be removed once this path instance is dropped. If the file is
-/// permanently cached, dropping this path does not remove it.
-///
-/// This path implements `Deref<Path>`, which means all non-mutating methods can be called on path
-/// directly.
-#[derive(Debug)]
-pub enum CachePath {
-    /// A named temporary file that will be deleted.
-    Temp(tempfile::TempPath),
-    /// A permanently cached file.
-    Cached(PathBuf),
-}
-
-impl CachePath {
-    /// Creates an empty cache path.
-    pub fn new() -> Self {
-        Self::Cached(PathBuf::new())
-    }
-}
-
-impl Default for CachePath {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::ops::Deref for CachePath {
-    type Target = Path;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        match *self {
-            Self::Temp(ref temp) => temp,
-            Self::Cached(ref buf) => buf,
-        }
-    }
-}
-
-impl AsRef<Path> for CachePath {
-    #[inline]
-    fn as_ref(&self) -> &Path {
-        match *self {
-            Self::Temp(ref temp) => temp,
-            Self::Cached(ref buf) => buf,
-        }
-    }
-}
 /// Protect against:
 /// * ".."
 /// * absolute paths
@@ -216,10 +165,8 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     /// Loads an existing element from the cache.
     fn load(
         &self,
-        scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        path: CachePath,
         expiration: ExpirationTime,
     ) -> Self::Item;
 }
@@ -268,7 +215,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // - we have a positive cache
                 // - that has the latest version (we don’t want to upload old versions)
                 // - we refreshed the local cache time, so we also refresh the shared cache time.
-                let needs_reupload = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
+                let needs_reupload = expiration.was_touched();
                 if status == CacheStatus::Positive
                     && version == T::VERSIONS.current
                     && needs_reupload
@@ -301,13 +248,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 );
 
                 tracing::trace!("Loading {} at path {}", name, item_path.display());
-                let item = request.load(
-                    key.scope.clone(),
-                    status,
-                    byteview,
-                    CachePath::Cached(item_path.clone()),
-                    expiration,
-                );
+                let item = request.load(status, byteview, expiration);
                 Ok(Some(item))
             }
             None => Ok(None),
@@ -381,79 +322,72 @@ impl<T: CacheItemRequest> Cacher<T> {
         // is fine as it does not move filesystem boundaries there.
         let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
 
-        let path = match self.config.cache_dir() {
-            Some(cache_dir) => {
-                // Cache is enabled, write it!
-                let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
+        if let Some(cache_dir) = self.config.cache_dir() {
+            // Cache is enabled, write it!
+            let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
-                tracing::trace!(
-                    "Creating {} at path {:?}",
-                    self.config.name(),
-                    cache_path.display()
-                );
-                let parent = cache_path.parent().ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "no parent directory to persist item",
-                    )
-                })?;
+            tracing::trace!(
+                "Creating {} at path {:?}",
+                self.config.name(),
+                cache_path.display()
+            );
+            let parent = cache_path.parent().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "no parent directory to persist item",
+                )
+            })?;
 
-                // The `cleanup` process could potentially remove the parent directories we are
-                // operating in, so be defensive here and retry the fs operations.
-                const MAX_RETRIES: usize = 2;
-                let mut retries = 0;
-                loop {
-                    retries += 1;
+            // The `cleanup` process could potentially remove the parent directories we are
+            // operating in, so be defensive here and retry the fs operations.
+            const MAX_RETRIES: usize = 2;
+            let mut retries = 0;
+            loop {
+                retries += 1;
 
-                    if let Err(e) = fs::create_dir_all(parent).await {
-                        sentry::with_scope(
-                            |scope| scope.set_extra("path", parent.display().to_string().into()),
-                            || tracing::error!("Failed to create cache directory: {:?}", e),
-                        );
-                        if retries > MAX_RETRIES {
-                            return Err(e.into());
-                        }
-                        continue;
+                if let Err(e) = fs::create_dir_all(parent).await {
+                    sentry::with_scope(
+                        |scope| scope.set_extra("path", parent.display().to_string().into()),
+                        || tracing::error!("Failed to create cache directory: {:?}", e),
+                    );
+                    if retries > MAX_RETRIES {
+                        return Err(e.into());
                     }
-
-                    if let Err(e) = temp_file.persist(&cache_path) {
-                        temp_file = e.file;
-                        let err = e.error;
-                        sentry::with_scope(
-                            |scope| {
-                                scope.set_extra("path", cache_path.display().to_string().into())
-                            },
-                            || tracing::error!("Failed to create cache file: {:?}", err),
-                        );
-                        if retries > MAX_RETRIES {
-                            return Err(err.into());
-                        }
-                        continue;
-                    }
-
-                    break;
+                    continue;
                 }
 
-                metric!(
-                    counter(&format!("caches.{}.file.write", self.config.name())) += 1,
-                    "status" => status.as_ref(),
-                    "is_refresh" => &is_refresh.to_string(),
-                );
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
-                    "hit" => "false",
-                    "is_refresh" => &is_refresh.to_string(),
-                );
-                sentry::configure_scope(|scope| {
-                    scope.set_extra(
-                        &format!("cache.{}.cache_path", self.config.name()),
-                        cache_path.to_string_lossy().into(),
+                if let Err(e) = temp_file.persist(&cache_path) {
+                    temp_file = e.file;
+                    let err = e.error;
+                    sentry::with_scope(
+                        |scope| scope.set_extra("path", cache_path.display().to_string().into()),
+                        || tracing::error!("Failed to create cache file: {:?}", err),
                     );
-                });
+                    if retries > MAX_RETRIES {
+                        return Err(err.into());
+                    }
+                    continue;
+                }
 
-                CachePath::Cached(cache_path)
+                break;
             }
-            None => CachePath::Temp(temp_file.into_temp_path()),
+
+            metric!(
+                counter(&format!("caches.{}.file.write", self.config.name())) += 1,
+                "status" => status.as_ref(),
+                "is_refresh" => &is_refresh.to_string(),
+            );
+            metric!(
+                time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                "hit" => "false",
+                "is_refresh" => &is_refresh.to_string(),
+            );
+            sentry::configure_scope(|scope| {
+                scope.set_extra(
+                    &format!("cache.{}.cache_path", self.config.name()),
+                    cache_path.to_string_lossy().into(),
+                );
+            });
         };
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
@@ -469,7 +403,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // we just created a fresh cache, so use the initial expiration times
         let expiration = ExpirationTime::for_fresh_status(&self.config, &status);
 
-        Ok(request.load(key.scope.clone(), status, byte_view, path, expiration))
+        Ok(request.load(status, byte_view, expiration))
     }
 
     /// Creates a shareable channel that computes an item.
@@ -710,10 +644,8 @@ mod tests {
 
         fn load(
             &self,
-            _scope: Scope,
             _status: CacheStatus,
             data: ByteView<'static>,
-            _path: CachePath,
             _expiration: ExpirationTime,
         ) -> Self::Item {
             std::str::from_utf8(data.as_slice()).unwrap().to_owned()

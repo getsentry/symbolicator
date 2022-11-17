@@ -18,7 +18,7 @@ use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
-use super::cacher::{CacheItemRequest, CacheKey, CachePath, CacheVersions, Cacher};
+use super::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use super::objects::{
     FindObject, FoundObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -259,10 +259,8 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 
     fn load(
         &self,
-        _scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _path: CachePath,
         _expiration: ExpirationTime,
     ) -> Self::Item {
         let mut candidates = self.candidates.clone(); // yuk!
@@ -289,9 +287,7 @@ fn write_ppdb_cache(
     path: &Path,
     object_handle: &ObjectHandle,
 ) -> Result<(), PortablePdbCacheError> {
-    sentry::configure_scope(|scope| {
-        object_handle.to_scope(scope);
-    });
+    object_handle.configure_scope();
 
     let ppdb_obj = match object_handle.parse() {
         Ok(Some(Object::PortablePdb(ppdb_obj))) => ppdb_obj,
