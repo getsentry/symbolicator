@@ -11,8 +11,6 @@ use reqwest::{header, Url};
 use serde::Deserialize;
 use tempfile::{NamedTempFile, TempPath};
 
-const BASE_URL: &str = "https://sentry.io/api/0/";
-
 #[tokio::main]
 #[allow(unreachable_code)]
 #[allow(unused)]
@@ -22,6 +20,13 @@ async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
 
     let auth_token = std::env::var("SENTRY_AUTH_TOKEN").context("No auth token provided")?;
+
+    let sentry_url = Url::parse(&args.sentry_url).context("Invalid sentry URL")?;
+    let base_url = if sentry_url.as_str().ends_with('/') {
+        sentry_url.join("api/0/").unwrap()
+    } else {
+        sentry_url.join("/api/0/").unwrap()
+    };
 
     let config = Config::get(args.config.as_deref())?;
 
@@ -46,14 +51,15 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .unwrap();
 
-    let minidump_path = download_minidump(&client, &org, &project, &event_id).await?;
+    let minidump_path = download_minidump(&client, &base_url, &org, &project, &event_id).await?;
 
     tracing::info!(path = ?minidump_path, "minidump file downloaded");
 
     let uploaded_difs = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         token: auth_token,
-        url: reqwest::Url::parse(&format!("{BASE_URL}projects/{org}/{project}/files/dsyms/"))
+        url: base_url
+            .join(&format!("projects/{org}/{project}/files/dsyms/"))
             .unwrap(),
     }));
 
@@ -72,14 +78,16 @@ async fn main() -> anyhow::Result<()> {
 
 async fn download_minidump(
     client: &reqwest::Client,
+    base_url: &Url,
     org: &str,
     project: &str,
     event_id: &str,
 ) -> anyhow::Result<TempPath> {
-    let attachments_url = Url::parse(&format!(
-        "{BASE_URL}projects/{org}/{project}/events/{event_id}/attachments/"
-    ))
-    .unwrap();
+    let attachments_url = base_url
+        .join(&format!(
+            "projects/{org}/{project}/events/{event_id}/attachments/"
+        ))
+        .unwrap();
 
     tracing::info!(url = %attachments_url, "fetching attachments");
 
@@ -170,6 +178,10 @@ struct Cli {
     /// Use this to configure caches and additional DIF sources.
     #[arg(long, short)]
     config: Option<PathBuf>,
+
+    /// The URL of the sentry instance to connect to.
+    #[arg(long, default_value_t = String::from("https://sentry.io/"))]
+    sentry_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
