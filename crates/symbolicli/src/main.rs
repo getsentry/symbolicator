@@ -1,13 +1,13 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
-use symbolicator_service::config::Config;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 
-use anyhow::{bail, Context};
-use clap::Parser;
-use reqwest::{header, Url};
+use anyhow::Context;
+use reqwest::header;
 use serde::Deserialize;
+
+mod settings;
 
 #[tokio::main]
 #[allow(unreachable_code)]
@@ -15,30 +15,20 @@ use serde::Deserialize;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let args = Cli::parse();
-
-    let Some(auth_token) = args.auth_token.or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok()) else {
-        bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
-    };
-
-    let sentry_url = Url::parse(&args.sentry_url).context("Invalid sentry URL")?;
-    let base_url = if sentry_url.as_str().ends_with('/') {
-        sentry_url.join("api/0/").unwrap()
-    } else {
-        sentry_url.join("/api/0/").unwrap()
-    };
-
-    let config = Config::get(args.config.as_deref())?;
+    let settings::Settings {
+        event_id,
+        project,
+        org,
+        auth_token,
+        base_url,
+        symbolicator_config,
+    } = settings::Settings::get()?;
 
     let runtime = tokio::runtime::Handle::current();
     let (symbolication, _objects) =
-        symbolicator_service::services::create_service(&config, runtime)
+        symbolicator_service::services::create_service(&symbolicator_config, runtime)
             .await
             .context("failed to start symbolication service")?;
-
-    let org = args.org;
-    let project = args.project;
-    let event_id = args.event;
 
     let mut headers = header::HeaderMap::new();
     headers.insert(
@@ -51,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .unwrap();
 
-    let uploaded_difs = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
+    let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         token: auth_token,
         url: base_url
@@ -67,8 +57,8 @@ async fn main() -> anyhow::Result<()> {
             let minidump_path = minidump::download_minidump(&client, minidump_url).await?;
             tracing::info!(path = ?minidump_path, "minidump file downloaded");
 
-            let mut sources = vec![uploaded_difs.clone()];
-            sources.extend(config.sources.iter().cloned());
+            let mut sources = vec![project_source.clone()];
+            sources.extend(symbolicator_config.sources.iter().cloned());
             let sources = Arc::from(sources.into_boxed_slice());
 
             let scope = Scope::Scoped(project.clone());
@@ -81,10 +71,8 @@ async fn main() -> anyhow::Result<()> {
             let event = event::get_event(&client, &base_url, &org, &project, &event_id).await?;
 
             let symbolication_request =
-                event::create_symbolication_request(&project, uploaded_difs, event)
+                event::create_symbolication_request(&project, project_source, event)
                     .context("Event cannot be symbolicated")?;
-
-            dbg!(&symbolication_request.sources);
 
             symbolication.symbolicate(symbolication_request).await?
         }
@@ -93,45 +81,6 @@ async fn main() -> anyhow::Result<()> {
     println!("{}", serde_json::to_string(&res).unwrap());
 
     Ok(())
-}
-
-/// A utility that provides local symbolication of Sentry events.
-///
-/// Currently, only events with an attached minidump are supported.
-///
-/// A valid auth token needs to be provided via the `--auth-token` option
-/// or the `SENTRY_AUTH_TOKEN` environment variable. The option takes precedence.
-///
-/// The symbolication result will be returned as JSON.
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about)]
-struct Cli {
-    /// The ID of the event to symbolicate.
-    event: String,
-
-    /// The organization slug.
-    #[arg(long, short)]
-    org: String,
-
-    /// The project slug.
-    #[arg(long, short)]
-    project: String,
-
-    /// A symbolicator configuration file.
-    ///
-    /// Use this to configure caches and additional DIF sources.
-    #[arg(long, short)]
-    config: Option<PathBuf>,
-
-    /// The URL of the sentry instance to connect to.
-    #[arg(long, default_value_t = String::from("https://sentry.io/"))]
-    sentry_url: String,
-
-    /// The Sentry auth token to use to access the event and DIFs.
-    ///
-    /// This can alternatively be passed via the `SENTRY_AUTH_TOKEN` environment variable.
-    #[arg(long = "auth-token")]
-    auth_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
