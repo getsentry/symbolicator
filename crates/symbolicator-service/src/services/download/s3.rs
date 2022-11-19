@@ -107,9 +107,9 @@ impl S3Downloader {
 
                 let region = key.region.clone();
                 tracing::debug!(
-                "Using AWS credentials provider: {:?}",
-                key.aws_credentials_provider
-            );
+                    "Using AWS credentials provider: {:?}",
+                    key.aws_credentials_provider
+                );
                 Arc::new(match key.aws_credentials_provider {
                     AwsCredentialsProvider::Container => {
                         let provider = LazyCachingCredentialsProvider::builder()
@@ -252,8 +252,8 @@ impl S3Downloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-            .map(|loc| S3RemoteDif::new(source.clone(), loc).into())
-            .collect()
+        .map(|loc| S3RemoteDif::new(source.clone(), loc).into())
+        .collect()
     }
 }
 
