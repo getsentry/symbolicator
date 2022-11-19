@@ -1,0 +1,77 @@
+---
+source: crates/symbolicator-service/tests/integration/symbolication.rs
+assertion_line: 273
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0xa"
+        function_id: "0x6"
+        lang: csharp
+        filename: Program.cs
+        abs_path: /Users/swatinem/Coding/sentry-dotnet/samples/foo/Program.cs
+        lineno: 55
+      - status: symbolicated
+        original_index: 1
+        addr_mode: "rel:0"
+        instruction_addr: "0x6"
+        function_id: "0x5"
+        lang: csharp
+        filename: Program.cs
+        abs_path: /Users/swatinem/Coding/sentry-dotnet/samples/foo/Program.cs
+        lineno: 48
+      - status: symbolicated
+        original_index: 2
+        addr_mode: "rel:0"
+        instruction_addr: "0x0"
+        function_id: "0x3"
+        lang: csharp
+        filename: Program.cs
+        abs_path: /Users/swatinem/Coding/sentry-dotnet/samples/foo/Program.cs
+        lineno: 41
+      - status: symbolicated
+        original_index: 3
+        addr_mode: "rel:0"
+        instruction_addr: "0x0"
+        function_id: "0x2"
+        lang: csharp
+        filename: Program.cs
+        abs_path: /Users/swatinem/Coding/sentry-dotnet/samples/foo/Program.cs
+        lineno: 36
+      - status: symbolicated
+        original_index: 4
+        addr_mode: "rel:0"
+        instruction_addr: "0x2d"
+        function_id: "0x1"
+        lang: csharp
+        filename: Program.cs
+        abs_path: /Users/swatinem/Coding/sentry-dotnet/samples/foo/Program.cs
+        lineno: 18
+modules:
+  - debug_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe_dotnet
+    debug_id: 0c1033f7-8632-492e-91c6-c314b72e1920-e60b819d
+    debug_file: integration.pdb
+    image_addr: "0x0"
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/download/integration.pdb/0C1033F78632492E91C6C314B72E1920ffffffff/integration.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: false
+            has_symbols: false
+            has_sources: false
+        debug:
+          status: ok
+

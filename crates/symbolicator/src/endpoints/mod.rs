@@ -1,14 +1,14 @@
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
-use sentry_tower::{NewSentryLayer, SentryHttpLayer};
+use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use tower::ServiceBuilder;
 
-use crate::metrics::MetricsLayer;
-use crate::services::Service;
+use crate::service::RequestService;
 
 mod applecrashreport;
 mod error;
+mod metrics;
 mod minidump;
 mod multipart;
 mod proxy;
@@ -16,6 +16,7 @@ mod requests;
 mod symbolicate;
 
 pub use error::ResponseError;
+use metrics::MetricsLayer;
 
 use self::minidump::handle_minidump_request as minidump;
 use applecrashreport::handle_apple_crash_report_request as applecrashreport;
@@ -24,11 +25,11 @@ use requests::poll_request as requests;
 use symbolicate::symbolicate_frames as symbolicate;
 
 pub async fn healthcheck() -> &'static str {
-    metric!(counter("healthcheck") += 1);
+    crate::metric!(counter("healthcheck") += 1);
     "ok"
 }
 
-pub fn create_app(service: Service) -> Router {
+pub fn create_app(service: RequestService) -> Router {
     // The layers here go "top to bottom" according to the reading order here.
     let layer = ServiceBuilder::new()
         .layer(axum::extract::Extension(service))

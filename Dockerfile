@@ -1,7 +1,20 @@
+# CLI
 FROM getsentry/sentry-cli:2 AS sentry-cli
-FROM rust:slim-bullseye AS symbolicator-build
+
+# Image with cargo-chef as base image to our builder
+FROM rust:slim-bullseye AS symbolicator-chef
 
 WORKDIR /work
+RUN cargo install cargo-chef --locked
+
+# Image that generates cargo-check recipe
+FROM symbolicator-chef AS symbolicator-planner
+
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Image that builds the final symbolicator
+FROM symbolicator-chef AS symbolicator-build
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
@@ -12,30 +25,12 @@ RUN apt-get update \
 ARG SYMBOLICATOR_FEATURES=symbolicator-crash
 ENV SYMBOLICATOR_FEATURES=${SYMBOLICATOR_FEATURES}
 
-# Build only dependencies to speed up subsequent builds
-COPY Cargo.toml Cargo.lock ./
+COPY --from=symbolicator-planner /work/recipe.json recipe.json
 
-COPY crates/symbolicator/build.rs crates/symbolicator/Cargo.toml crates/symbolicator/
-COPY crates/symbolicator-crash/build.rs crates/symbolicator-crash/Cargo.toml crates/symbolicator-crash/
+# Build only the dependencies identified in the `symbolicator-planner` image
+RUN cargo chef cook --release --features=${SYMBOLICATOR_FEATURES} --recipe-path recipe.json
 
-# Build without --locked.
-#
-# CI already builds with --locked so we are sure exactly which
-# dependencies we are building with.  However because we do not copy
-# in all the crates into the build the workspace-wide Cargo.lock file
-# will get some unused dependencies pruned during this build.
-RUN mkdir -p crates/symbolicator/src \
-    && echo "fn main() {}" > crates/symbolicator/src/main.rs \
-    && mkdir -p crates/symbolicator-crash/src \
-    && echo "pub fn main() {}" > crates/symbolicator-crash/src/lib.rs \
-    && cargo build --release
-
-COPY crates/symbolicator/src crates/symbolicator/src/
-COPY crates/symbolicator-crash/src crates/symbolicator-crash/src/
-COPY crates/symbolicator-crash/sentry-native crates/symbolicator-crash/sentry-native/
-COPY .git ./.git/
-# Ignore missing (deleted) files for dirty-check in `git describe` call for version
-# This is a bit hacky because it ignores *all* deleted files, not just the ones we skipped in Docker
+COPY . .
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 RUN cargo build --release --features=${SYMBOLICATOR_FEATURES}
 RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \

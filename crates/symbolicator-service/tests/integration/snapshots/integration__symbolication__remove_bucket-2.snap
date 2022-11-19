@@ -1,0 +1,24 @@
+---
+source: crates/symbolicator-service/tests/integration/symbolication.rs
+assertion_line: 84
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: missing
+        original_index: 0
+        instruction_addr: "0x100000fa0"
+modules:
+  - debug_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: macho
+    code_id: 502fc0a51ec13e479998684fa139dca7
+    debug_id: 502fc0a5-1ec1-3e47-9998-684fa139dca7
+    image_addr: "0x100000000"
+    image_size: 4096
+

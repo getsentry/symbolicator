@@ -11,7 +11,7 @@ use serde_json::{to_string, Map, Value};
 use structopt::StructOpt;
 use symbolic_common::split_path;
 
-#[path = "../../symbolicator/src/utils/hex.rs"]
+#[path = "../../symbolicator-service/src/utils/hex.rs"]
 mod hex;
 
 use hex::HexValue;

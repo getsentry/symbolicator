@@ -4,10 +4,9 @@ use serde::Deserialize;
 
 use symbolicator_sources::SourceConfig;
 
-use crate::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
-use crate::services::Service;
-use crate::types::{
-    RawObjectInfo, RawStacktrace, RequestOptions, Scope, Signal, SymbolicationResponse,
+use crate::service::{
+    RawObjectInfo, RawStacktrace, RequestOptions, RequestService, Scope, Signal, StacktraceOrigin,
+    SymbolicateStacktraces, SymbolicationResponse,
 };
 use crate::utils::sentry::ConfigureScope;
 
@@ -49,7 +48,7 @@ pub struct SymbolicationRequestBody {
 }
 
 pub async fn symbolicate_frames(
-    extract::Extension(state): extract::Extension<Service>,
+    extract::Extension(service): extract::Extension<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     extract::ContentLengthLimit(extract::Json(body)): extract::ContentLengthLimit<
         extract::Json<SymbolicationRequestBody>,
@@ -62,21 +61,22 @@ pub async fn symbolicate_frames(
 
     let sources = match body.sources {
         Some(sources) => sources.into(),
-        None => state.config().default_sources(),
+        None => service.config().default_sources(),
     };
 
-    let symbolication = state.symbolication();
-    let request_id = symbolication.symbolicate_stacktraces(SymbolicateStacktraces {
-        scope: params.scope,
-        signal: body.signal,
-        sources,
-        origin: StacktraceOrigin::Symbolicate,
-        stacktraces: body.stacktraces,
-        modules: body.modules.into_iter().map(From::from).collect(),
-        options: body.options,
-    })?;
+    let request_id = service.symbolicate_stacktraces(
+        SymbolicateStacktraces {
+            scope: params.scope,
+            signal: body.signal,
+            sources,
+            origin: StacktraceOrigin::Symbolicate,
+            stacktraces: body.stacktraces,
+            modules: body.modules.into_iter().map(From::from).collect(),
+        },
+        body.options,
+    )?;
 
-    match symbolication.get_response(request_id, params.timeout).await {
+    match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
         None => Err("symbolication request did not start".into()),
     }

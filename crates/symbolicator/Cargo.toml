@@ -5,69 +5,39 @@ authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
 
+[features]
+https = ["axum-server/tls-rustls", "symbolicator-service/https"]
+
 [dependencies]
 anyhow = "1.0.57"
-aws-config = "0.51.0"
-aws-types = { version = "0.51.0", features = ["hardcoded-credentials"] }
-aws-sdk-s3 = "0.21.0"
-aws-smithy-http = "0.51.0"
-apple-crash-report-parser = "0.5.0"
-async-trait = "0.1.53"
 axum = { version = "0.5.4", features = ["multipart"] }
 axum-server = "0.4.2"
-backtrace = "0.3.65"
-base64 = "0.13.0"
-cadence = "0.29.0"
-chrono = { version = "0.4.19", features = ["serde"] }
 console = "0.15.0"
-filetime = "0.2.16"
-flate2 = "1.0.23"
 futures = "0.3.12"
-gcp_auth = "0.7.3"
 hostname = "0.3.1"
-humantime-serde = "1.1.1"
-ipnetwork = "0.20.0"
-jsonwebtoken = "8.1.0"
-lazy_static = "1.4.0"
-lru = "0.8.0"
-minidump = "0.14.0"
-minidump-processor = "0.14.0"
-num_cpus = "1.13.0"
-parking_lot = "0.12.0"
-regex = "1.5.5"
-reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
-sentry = { version = "0.27.0", features = ["anyhow", "debug-images", "log", "tracing"] }
-sentry-tower = { version = "0.27.0", features = ["http"] }
+sentry = { version = "0.28.0", features = ["anyhow", "debug-images", "tracing", "tower", "tower-http"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
-serde_yaml = "0.8.15"
 structopt = "0.3.21"
-symbolic = { version = "10.0.0", features = ["cfi", "common-serde", "debuginfo", "demangle", "symcache", "il2cpp", "ppdb"] }
-symbolicator-crash = { path = "../symbolicator-crash", optional = true }
+symbolic = "10.0.0"
+symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
-thiserror = "1.0.31"
-tokio = { version = "1.18.1", features = ["rt", "macros", "fs"] }
-tokio-metrics = "0.1.0"
+tokio = { version = "1.18.1", features = ["rt-multi-thread", "macros", "fs"] }
 tokio-util = { version = "0.7.1", features = ["io"] }
 tower = "0.4"
 tower-layer = "0.3"
+tokio-metrics = "0.1.0"
+thiserror = "1.0.31"
 tower-service = "0.3"
+uuid = { version = "1.0.0", features = ["v4", "serde"] }
 tracing = "0.1.34"
 tracing-subscriber = { version = "0.3.11", features = ["tracing-log", "local-time", "env-filter", "json"] }
-url = { version = "2.2.0", features = ["serde"] }
-uuid = { version = "1.0.0", features = ["v4", "serde"] }
-zstd = "0.11.1"
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-jemallocator = { version = "0.5", features = ["unprefixed_malloc_on_supported_platforms"] }
 
 [dev-dependencies]
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
 reqwest = { version = "0.11.0", features = ["multipart"] }
-sha-1 = "0.10.0"
-test-assembler = "0.1.5"
-warp = "0.3.0"
+symbolicator-test = { path = "../symbolicator-test" }
 
-[features]
-https = ["axum-server/tls-rustls"]
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+jemallocator = { version = "0.5", features = ["unprefixed_malloc_on_supported_platforms"] }

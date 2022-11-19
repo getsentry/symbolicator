@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 
 fn emit_version_var() -> Result<(), io::Error> {
     let cmd = Command::new("git")
-        .args(&["describe", "--always", "--dirty=-modified"])
+        .args(["describe", "--always", "--dirty=-modified"])
         .stderr(Stdio::inherit())
         .output()?;
 
@@ -24,7 +24,7 @@ fn emit_version_var() -> Result<(), io::Error> {
 
 fn emit_release_var() -> Result<(), io::Error> {
     let cmd = Command::new("git")
-        .args(&["rev-parse", "HEAD"])
+        .args(["rev-parse", "HEAD"])
         .stderr(Stdio::inherit())
         .output()?;
 

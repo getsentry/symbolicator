@@ -16,6 +16,7 @@
 - Use jemalloc as global allocater (for Rust and C). ([#885](https://github.com/getsentry/symbolicator/pull/885))
 - Clean up empty cache directories. ([#887](https://github.com/getsentry/symbolicator/pull/887))
 - Update symbolic and increase SymCache Version to `4` which now uses a LEB128-prefixed string table. ([#886](https://github.com/getsentry/symbolicator/pull/886))
+- Add Configuration options for in-memory Caches. ([#911](https://github.com/getsentry/symbolicator/pull/911))
 - Migrate from rusoto to aws-sdk-rust ([#849](https://github.com/getsentry/symbolicator/pull/849))
 
 ### Fixes
@@ -32,11 +33,16 @@
 - Extract the correct `code_id` from iOS minidumps. ([#858](https://github.com/getsentry/symbolicator/pull/858))
 - Fetch/use CFI for modules that only have a CodeId. ([#860](https://github.com/getsentry/symbolicator/pull/860))
 - Properly mask Portable PDB Age for symstore/SSQP lookups. ([#888](https://github.com/getsentry/symbolicator/pull/888))
+- Avoid a redundant open/read and fix shared cache refresh. ([#893](https://github.com/getsentry/symbolicator/pull/893))
+- Correctly return object candidates for malformed caches. ([#917](https://github.com/getsentry/symbolicator/pull/917))
 
 ### Internal
 
 - Fetch CFI on-demand during stackwalking ([#838](https://github.com/getsentry/symbolicator/pull/838))
 - Deduplicate SymbolFile computations in SymbolicatorSymbolProvider ([#856](https://github.com/getsentry/symbolicator/pull/856))
+- Separated the symbolication service from the http interface. ([#903](https://github.com/getsentry/symbolicator/pull/903))
+- Move Request/Response/Poll handling into web frontend. ([#904](https://github.com/getsentry/symbolicator/pull/904))
+- Remove unused `processing_pool_size` config. ([#910](https://github.com/getsentry/symbolicator/pull/910))
 
 ## 0.5.1
 

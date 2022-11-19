@@ -1,0 +1,17 @@
+[package]
+name = "symbolicator-stress"
+publish = false
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.57"
+futures = "0.3.12"
+humantime = "2.0.1"
+symbolicator-service = { path = "../symbolicator-service" }
+serde = { version = "1.0.137", features = ["derive"] }
+tokio = { version = "1.18.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+serde_yaml = "0.9.14"
+tempfile = "3.2.0"
+structopt = "0.3.21"
+serde_json = "1.0.81"

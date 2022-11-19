@@ -4,15 +4,14 @@ use axum::response::Json;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::services::Service;
-use crate::types::{RequestOptions, SymbolicationResponse};
+use crate::service::{RequestOptions, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_apple_crash_report_request(
-    extract::Extension(state): extract::Extension<Service>,
+    extract::Extension(service): extract::Extension<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     mut multipart: extract::Multipart,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
@@ -21,7 +20,7 @@ pub async fn handle_apple_crash_report_request(
     params.configure_scope();
 
     let mut report = None;
-    let mut sources = state.config().default_sources();
+    let mut sources = service.config().default_sources();
     let mut options = RequestOptions::default();
 
     while let Some(field) = multipart.next_field().await? {
@@ -45,11 +44,9 @@ pub async fn handle_apple_crash_report_request(
 
     let report = report.ok_or((StatusCode::BAD_REQUEST, "missing apple crash report"))?;
 
-    let symbolication = state.symbolication();
-    let request_id =
-        symbolication.process_apple_crash_report(params.scope, report, sources, options)?;
+    let request_id = service.process_apple_crash_report(params.scope, report, sources, options)?;
 
-    match symbolication.get_response(request_id, params.timeout).await {
+    match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
         None => Err("symbolication request did not start".into()),
     }
@@ -59,15 +56,14 @@ pub async fn handle_apple_crash_report_request(
 mod tests {
     use reqwest::{multipart, Client, StatusCode};
 
+    use crate::service::SymbolicationResponse;
     use crate::test;
-    use crate::types::SymbolicationResponse;
 
     #[tokio::test]
     async fn test_basic() {
         test::setup();
 
-        let service = test::default_service().await;
-        let server = test::Server::with_service(service);
+        let server = test::server_with_default_service().await;
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
@@ -94,8 +90,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let service = test::default_service().await;
-        let server = test::Server::with_service(service);
+        let server = test::server_with_default_service().await;
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");

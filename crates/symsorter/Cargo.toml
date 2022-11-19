@@ -3,6 +3,7 @@ name = "symsorter"
 version = "0.5.1"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
