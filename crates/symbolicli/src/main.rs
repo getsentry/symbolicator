@@ -1,33 +1,23 @@
-use std::{
-    fmt,
-    io::{Read, Seek, SeekFrom},
-    path::Path,
-};
-
+use std::fmt;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 use std::sync::Arc;
 
 use symbolic::common::Language;
-use symbolicator_service::{
-    services::symbolication::StacktraceOrigin,
-    types::{
-        CompleteObjectInfo, FrameTrust, RawFrame, RawObjectInfo, RawStacktrace, Scope, Signal,
-    },
-    utils::{addr::AddrMode, hex::HexValue},
+use symbolicator_service::services::symbolication::{
+    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
 };
-
-use anyhow::{bail, Context};
-use reqwest::Url;
-use serde::Deserialize;
-use symbolicator_service::services::symbolication::SymbolicateStacktraces;
-use symbolicator_service::{
-    services::symbolication::SymbolicationActor,
-    types::{CompletedSymbolicationResponse, Scope},
+use symbolicator_service::types::{
+    CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust, RawFrame, RawObjectInfo,
+    RawStacktrace, Scope, Signal,
 };
-use symbolicator_sources::SourceConfig;
+use symbolicator_service::utils::addr::AddrMode;
+use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 
-use anyhow::Context;
-use reqwest::header;
+use anyhow::{bail, Context};
+use reqwest::{header, Url};
+use serde::Deserialize;
 use tempfile::{NamedTempFile, TempPath};
 
 mod settings;
@@ -77,32 +67,26 @@ async fn main() -> anyhow::Result<()> {
 
     let res = match Local::parse(&event_id)? {
         Some(local) => local.process(&symbolication, scope, sources).await?,
-        None => {
-            match minidump::get_attached_minidump(&client, &base_url, &org, &project, &event_id)
-                .await?
-            {
-                Some(minidump_url) => {
-                    tracing::info!("minidump attachment found");
-                    let minidump_path = minidump::download_minidump(&client, minidump_url).await?;
-                    tracing::info!(path = ?minidump_path, "minidump file downloaded");
+        None => match get_attached_minidump(&client, &base_url, &org, &project, &event_id).await? {
+            Some(minidump_url) => {
+                tracing::info!("minidump attachment found");
+                let minidump_path = download_minidump(&client, minidump_url).await?;
+                tracing::info!(path = ?minidump_path, "minidump file downloaded");
 
-                    symbolication
-                        .process_minidump(scope, minidump_path, sources)
-                        .await?
-                }
-
-                None => {
-                    let event =
-                        event::get_event(&client, &base_url, &org, &project, &event_id).await?;
-
-                    let symbolication_request =
-                        event::create_symbolication_request(scope, sources, event)
-                            .context("Event cannot be symbolicated")?;
-
-                    symbolication.symbolicate(symbolication_request).await?
-                }
+                symbolication
+                    .process_minidump(scope, minidump_path, sources)
+                    .await?
             }
-        }
+
+            None => {
+                let event = get_event(&client, &base_url, &org, &project, &event_id).await?;
+
+                let symbolication_request = create_symbolication_request(scope, sources, event)
+                    .context("Event cannot be symbolicated")?;
+
+                symbolication.symbolicate(symbolication_request).await?
+            }
+        },
     };
 
     println!("{}", serde_json::to_string(&res).unwrap());
@@ -112,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[derive(Debug)]
 enum Local {
-    Event(event::Event),
+    Event(Event),
     Minidump(TempPath),
 }
 
@@ -126,9 +110,8 @@ impl Local {
         match self {
             Local::Event(event) => {
                 tracing::info!("event is a local event json file");
-                let symbolication_request =
-                    event::create_symbolication_request(scope, sources, event)
-                        .context("Event cannot be symbolicated")?;
+                let symbolication_request = create_symbolication_request(scope, sources, event)
+                    .context("Event cannot be symbolicated")?;
 
                 symbolication.symbolicate(symbolication_request).await
             }
@@ -167,13 +150,6 @@ impl Local {
         }
     }
 }
-
-use std::io::Write;
-
-use anyhow::{bail, Context};
-use reqwest::Url;
-use serde::Deserialize;
-use tempfile::{NamedTempFile, TempPath};
 
 #[derive(Debug, Clone, Deserialize)]
 struct Attachment {
