@@ -38,7 +38,7 @@ struct Cli {
 
     /// The URL of the sentry instance to connect to.
     ///
-    /// Defaults to https://sentry.io/.
+    /// Defaults to `https://sentry.io/`.
     #[arg(long)]
     pub url: Option<String>,
 
@@ -56,7 +56,6 @@ struct ConfigFile {
     pub org: Option<String>,
     pub project: Option<String>,
     pub url: Option<String>,
-    #[serde(rename = "auth-token")]
     pub auth_token: Option<String>,
     pub cache_dir: Option<PathBuf>,
     pub caches: CacheConfigs,
