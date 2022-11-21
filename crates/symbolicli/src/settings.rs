@@ -51,6 +51,7 @@ struct Cli {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 struct ConfigFile {
     pub org: Option<String>,
     pub project: Option<String>,
