@@ -6,7 +6,7 @@ use symbolicator_service::config::{CacheConfigs, Config};
 use symbolicator_sources::SourceConfig;
 
 use anyhow::{anyhow, bail, Context};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use reqwest::Url;
 use serde::Deserialize;
 
@@ -15,6 +15,12 @@ pub const DEFAULT_URL: &str = "https://sentry.io/";
 
 /// The name of the configuration file.
 pub const CONFIG_RC_FILE_NAME: &str = ".symboliclirc";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum OutputFormat {
+    Json,
+    Pretty,
+}
 
 /// A utility that provides local symbolication of Sentry events.
 ///
@@ -48,6 +54,10 @@ struct Cli {
     /// or `~/.symboliclirc`.
     #[arg(long = "auth-token")]
     pub auth_token: Option<String>,
+
+    /// The output format.
+    #[arg(long, value_enum, default_value = "json")]
+    format: OutputFormat,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -116,6 +126,7 @@ pub struct Settings {
     pub auth_token: String,
     pub base_url: reqwest::Url,
     pub symbolicator_config: Config,
+    pub output_format: OutputFormat,
 }
 
 impl Settings {
@@ -161,6 +172,7 @@ impl Settings {
             auth_token,
             base_url: url,
             symbolicator_config,
+            output_format: cli.format,
         };
 
         Ok(args)
