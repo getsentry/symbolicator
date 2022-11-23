@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
             let module_addr_by_code_file: HashMap<_, _> = res
                 .modules
                 .into_iter()
-                .filter_map(|module| Some((module.raw.code_file?, module.raw.image_addr.0)))
+                .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
                 .collect();
 
             if res.stacktraces.is_empty() {
@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
                 print!("{trust:<8} {instruction_addr:#018x}");
 
                 if let Some(module_file) = frame.raw.package {
-                    let module_addr = module_addr_by_code_file[&module_file];
+                    let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
                     let module_file = split_path(&module_file).1;
                     let module_rel_addr = instruction_addr - module_addr;
 
