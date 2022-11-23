@@ -211,6 +211,9 @@ impl Payload {
         event_id: &str,
     ) -> anyhow::Result<Self> {
         tracing::info!("trying to resolve event remotely");
+        let event = remote::download_event(client, base_url, org, project, event_id).await?;
+        tracing::info!("event json file downloaded");
+
         match remote::get_attached_minidump(client, base_url, org, project, event_id).await? {
             Some(minidump_url) => {
                 tracing::info!("minidump attachment found");
@@ -222,9 +225,6 @@ impl Payload {
 
             None => {
                 tracing::info!("no minidump attachment found");
-                let event =
-                    remote::download_event(client, base_url, org, project, event_id).await?;
-                tracing::info!("event json file downloaded");
                 Ok(Self::Event(event))
             }
         }
@@ -235,7 +235,7 @@ mod remote {
     use std::io::Write;
 
     use anyhow::{bail, Context};
-    use reqwest::Url;
+    use reqwest::{StatusCode, Url};
     use serde::Deserialize;
     use tempfile::{NamedTempFile, TempPath};
 
@@ -351,6 +351,8 @@ mod remote {
 
         if response.status().is_success() {
             response.json().await.context("Failed to decode event")
+        } else if response.status() == StatusCode::NOT_FOUND {
+            bail!("Invalid event ID");
         } else {
             bail!(format!(
                 "Response from server: {}",
