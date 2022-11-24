@@ -11,7 +11,7 @@ use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 
 use anyhow::Context;
 use prettytable::format::consts::FORMAT_CLEAN;
-use prettytable::{cell, row, Cell, Row, Table};
+use prettytable::{cell, row, Row, Table};
 use reqwest::{header, Url};
 use tempfile::{NamedTempFile, TempPath};
 
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     match output_format {
         settings::OutputFormat::Json => println!("{}", serde_json::to_string(&res).unwrap()),
         settings::OutputFormat::Compact => print_compact(res),
-        settings::OutputFormat::Pretty => todo!(),
+        settings::OutputFormat::Pretty => print_pretty(res),
     }
 
     Ok(())
@@ -163,6 +163,97 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
         table.add_row(row);
     }
 
+    table.printstd();
+}
+
+fn print_pretty(mut response: CompletedSymbolicationResponse) {
+    let module_addr_by_code_file: HashMap<_, _> = response
+        .modules
+        .into_iter()
+        .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
+        .collect();
+
+    if response.stacktraces.is_empty() {
+        return;
+    }
+
+    let crashing_thread_idx = response
+        .stacktraces
+        .iter()
+        .position(|s| s.is_requesting.unwrap_or(false))
+        .unwrap_or(0);
+
+    let thread = response.stacktraces.swap_remove(crashing_thread_idx);
+
+    let mut table = Table::new();
+    table.set_format(*prettytable::format::consts::FORMAT_CLEAN);
+    let mut frames = thread.frames.into_iter().enumerate().peekable();
+    while let Some((i, frame)) = frames.next() {
+        let is_inline = Some(frame.raw.instruction_addr)
+            == frames
+                .peek()
+                .map(|(_, next_frame)| next_frame.raw.instruction_addr);
+
+        let trust = if is_inline {
+            "inline"
+        } else {
+            match frame.raw.trust {
+                FrameTrust::None => "none",
+                FrameTrust::Scan => "scan",
+                FrameTrust::CfiScan => "cfiscan",
+                FrameTrust::Fp => "fp",
+                FrameTrust::Cfi => "cfi",
+                FrameTrust::PreWalked => "prewalked",
+                FrameTrust::Context => "context",
+            }
+        };
+
+        let title_cell = cell!(lb->format!("Frame #{i}")).with_hspan(2);
+        table.add_row(Row::new(vec![title_cell]));
+        // println!("Frame #{i}:");
+        // println!("    Trust: {trust}");
+
+        let instruction_addr = frame.raw.instruction_addr.0;
+
+        // println!("    Instruction Address: {instruction_addr:#018x}");
+        table.add_row(row![r->"  Trust:", trust]);
+        table.add_row(row![r->"  Instruction:", format!("{instruction_addr:#0x}")]);
+        if let Some(module_file) = frame.raw.package {
+            let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
+            let module_file = split_path(&module_file).1;
+            let module_rel_addr = instruction_addr - module_addr;
+
+            table.add_row(row![
+                r->"  Module:",
+                format!("{module_file} +{module_rel_addr:#0x}")
+            ]);
+            // println!("    Module: {module_file} +{module_rel_addr:#0x}");
+        }
+
+        if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
+            // print!("    Function: {func}");
+
+            let sym_addr = frame
+                .raw
+                .sym_addr
+                .map(|sym_addr| format!(" + {:#x}", instruction_addr - sym_addr.0))
+                .unwrap_or_default();
+
+            table.add_row(row![r->"  Function:", format!("{func}{sym_addr}")]);
+            // print!(" +{sym_rel_addr:#x}");
+
+            // println!();
+        }
+
+        if let Some(file) = frame.raw.filename {
+            let line = frame.raw.lineno.unwrap_or(0);
+
+            table.add_row(row![r->"  File:", format!("{file}:{line}")]);
+            // println!("    File: ({file}:{line})");
+        }
+
+        table.add_empty_row();
+    }
     table.printstd();
 }
 
