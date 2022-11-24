@@ -105,7 +105,7 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
 
     let mut table = Table::new();
     table.set_format(*FORMAT_CLEAN);
-    table.set_titles(row![b => "Trust", "Instruction", "Module File", "Function", "File"]);
+    table.set_titles(row![b => "Trust", "Instruction", "Module File", "", "Function", "", "File"]);
     while let Some(frame) = frames.next() {
         let mut row = Row::empty();
         let is_inline = Some(frame.raw.instruction_addr)
@@ -130,28 +130,32 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
         let instruction_addr = frame.raw.instruction_addr.0;
 
         row.add_cell(cell!(trust));
-        row.add_cell(cell!(format!("{instruction_addr:#018x}")));
+        row.add_cell(cell!(r->format!("{instruction_addr:#x}")));
 
-        if let Some(module_file) = frame.raw.package {
-            let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
-            let module_file = split_path(&module_file).1;
-            let module_rel_addr = instruction_addr - module_addr;
+        match frame.raw.package {
+            Some(module_file) => {
+                let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
+                let module_file = split_path(&module_file).1;
+                let module_rel_addr = instruction_addr - module_addr;
 
-            row.add_cell(cell!(format!("{module_file:} +{module_rel_addr:#x}")));
-        } else {
-            row.add_cell(cell!(""));
+                row.add_cell(cell!(module_file));
+                row.add_cell(cell!(r->format!("+{module_rel_addr:#x}")));
+            }
+            None => row.add_cell(cell!("").with_hspan(2)),
         }
 
-        if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
-            let sym_rel_addr = frame
-                .raw
-                .sym_addr
-                .map(|sym_addr| format!(" + {:#x}", instruction_addr - sym_addr.0))
-                .unwrap_or_default();
+        match frame.raw.function.or(frame.raw.symbol) {
+            Some(func) => {
+                let sym_rel_addr = frame
+                    .raw
+                    .sym_addr
+                    .map(|sym_addr| format!(" +{:#x}", instruction_addr - sym_addr.0))
+                    .unwrap_or_default();
 
-            row.add_cell(cell!(format!("{func}{sym_rel_addr}")));
-        } else {
-            row.add_cell(cell!(""));
+                row.add_cell(cell!(func));
+                row.add_cell(cell!(r->sym_rel_addr));
+            }
+            None => row.add_cell(cell!("").with_hspan(2)),
         }
 
         if let Some(file) = frame.raw.filename {
