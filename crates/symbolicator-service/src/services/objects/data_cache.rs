@@ -26,7 +26,7 @@ use symbolicator_sources::ObjectId;
 
 use crate::cache::CacheStatus;
 use crate::cache::ExpirationTime;
-use crate::services::cacher::{CacheItemRequest, CacheKey, CachePath};
+use crate::services::cacher::{CacheItemRequest, CacheKey};
 use crate::services::download::DownloadService;
 use crate::services::download::RemoteDif;
 use crate::services::download::{DownloadError, DownloadStatus};
@@ -50,6 +50,7 @@ pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
 #[derive(Debug, Clone)]
 pub struct ObjectHandle {
     pub(super) object_id: ObjectId,
+    // FIXME(swatinem): the scope is only ever used for sentry events
     pub(super) scope: Scope,
 
     pub(super) cache_key: CacheKey,
@@ -91,10 +92,6 @@ impl ObjectHandle {
         &self.status
     }
 
-    pub fn scope(&self) -> &Scope {
-        &self.scope
-    }
-
     pub fn cache_key(&self) -> &CacheKey {
         &self.cache_key
     }
@@ -107,7 +104,7 @@ impl ObjectHandle {
 impl ConfigureScope for ObjectHandle {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.to_scope(scope);
-        scope.set_tag("object_file.scope", self.scope());
+        scope.set_tag("object_file.scope", &self.scope);
         scope.set_extra(
             "object_file.first_16_bytes",
             format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
@@ -318,15 +315,13 @@ impl CacheItemRequest for FetchFileDataRequest {
 
     fn load(
         &self,
-        scope: Scope,
         status: CacheStatus,
         data: ByteView<'static>,
-        _path: CachePath,
         _expiration: ExpirationTime,
     ) -> Self::Item {
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
-            scope,
+            scope: self.0.scope.clone(),
 
             cache_key: self.get_cache_key(),
 
@@ -334,6 +329,9 @@ impl CacheItemRequest for FetchFileDataRequest {
             data,
         };
 
+        // FIXME(swatinem): This `configure_scope` call happens in a spawned/deduplicated
+        // cache request, which means users of the object (such as `write_symcache`) do
+        // not observe it directly, hence they need to do their own.
         object_handle.configure_scope();
 
         object_handle

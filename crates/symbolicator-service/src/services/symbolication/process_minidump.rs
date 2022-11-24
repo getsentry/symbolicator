@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -124,45 +124,29 @@ impl MinidumpState {
 }
 
 /// Loads a [`SymbolFile`] from the given `Path`.
-#[tracing::instrument(skip_all, fields(cfi_cache = %cfi_path.to_string_lossy()))]
-fn load_symbol_file(cfi_path: &Path) -> Result<SymbolFile, anyhow::Error> {
-    sentry::with_scope(
-        |scope| {
-            scope.set_extra(
-                "cfi_cache",
-                sentry::protocol::Value::String(cfi_path.to_string_lossy().to_string()),
-            )
-        },
-        || {
-            let bytes = ByteView::open(cfi_path).map_err(|err| {
-                let stderr: &dyn std::error::Error = &err;
-                tracing::error!(stderr, "Error while reading cficache");
-                err
-            })?;
+#[tracing::instrument(skip_all)]
+fn load_symbol_file(bytes: ByteView) -> Result<SymbolFile, anyhow::Error> {
+    let cfi_cache = CfiCache::from_bytes(bytes)
+        // This mostly never happens since we already checked the files
+        // after downloading and they would have been tagged with
+        // CacheStatus::Malformed.
+        .map_err(|err| {
+            let stderr: &dyn std::error::Error = &err;
+            tracing::error!(stderr, "Error while loading cficache");
+            err
+        })?;
 
-            let cfi_cache = CfiCache::from_bytes(bytes)
-                // This mostly never happens since we already checked the files
-                // after downloading and they would have been tagged with
-                // CacheStatus::Malformed.
-                .map_err(|err| {
-                    let stderr: &dyn std::error::Error = &err;
-                    tracing::error!(stderr, "Error while loading cficache");
-                    err
-                })?;
+    if cfi_cache.as_slice().is_empty() {
+        anyhow::bail!("cficache is empty")
+    }
 
-            if cfi_cache.as_slice().is_empty() {
-                anyhow::bail!("cficache is empty")
-            }
+    let symbol_file = SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(|err| {
+        let stderr: &dyn std::error::Error = &err;
+        tracing::error!(stderr, "Error while processing cficache");
+        err
+    })?;
 
-            let symbol_file = SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(|err| {
-                let stderr: &dyn std::error::Error = &err;
-                tracing::error!(stderr, "Error while processing cficache");
-                err
-            })?;
-
-            Ok(symbol_file)
-        },
-    )
+    Ok(symbol_file)
 }
 
 /// Processing information for a module that was referenced in a minidump.
@@ -282,7 +266,7 @@ impl SymbolicatorSymbolProvider {
                             }
                         };
                         let symbol_file = match cfi_cache.status() {
-                            CacheStatus::Positive => load_symbol_file(cfi_cache.path()).ok(),
+                            CacheStatus::Positive => load_symbol_file(cfi_cache.data()).ok(),
                             _ => None,
                         };
                         CfiModule {
