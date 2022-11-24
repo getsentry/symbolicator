@@ -18,8 +18,15 @@ pub const CONFIG_RC_FILE_NAME: &str = ".symboliclirc";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
+    /// Outputs the symbolication result as JSON.
     Json,
+    /// Outputs the symbolication result as a detailed list of frames.
+    ///
+    /// This will only print the crashed thread.
     Pretty,
+    /// Outputs the symbolication result as a table.
+    ///
+    /// This will only print the crashed thread.
     Compact,
 }
 
@@ -28,11 +35,14 @@ pub enum OutputFormat {
 /// A valid auth token needs to be provided via the `--auth-token` option,
 /// the `SENTRY_AUTH_TOKEN` environment variable, or `~/.symboliclirc`.
 ///
-/// The symbolication result will be returned as JSON.
+/// The output format can be controlled with the `--format` option.
 #[derive(Clone, Parser, Debug)]
 #[command(author, version, about, long_about)]
 struct Cli {
-    /// The ID of the event to symbolicate.
+    /// The event to symbolicate.
+    ///
+    /// This can either be the name of a local file (minidump or event JSON)
+    /// or an event ID.
     pub event: String,
 
     /// The organization slug.
