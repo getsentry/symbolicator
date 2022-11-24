@@ -130,7 +130,7 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
         let instruction_addr = frame.raw.instruction_addr.0;
 
         row.add_cell(cell!(trust));
-        row.add_cell(cell!(format!("{instruction_addr:#0x}")));
+        row.add_cell(cell!(format!("{instruction_addr:#018x}")));
 
         if let Some(module_file) = frame.raw.package {
             let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
@@ -146,7 +146,7 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
             let sym_rel_addr = frame
                 .raw
                 .sym_addr
-                .map(|sym_addr| instruction_addr - sym_addr.0)
+                .map(|sym_addr| format!(" + {:#x}", instruction_addr - sym_addr.0))
                 .unwrap_or_default();
 
             row.add_cell(cell!(format!("{func}{sym_rel_addr}")));
