@@ -10,6 +10,8 @@ use symbolicator_service::types::{CompletedSymbolicationResponse, FrameTrust, Sc
 use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 
 use anyhow::Context;
+use prettytable::format::consts::FORMAT_CLEAN;
+use prettytable::{cell, row, Cell, Row, Table};
 use reqwest::{header, Url};
 use tempfile::{NamedTempFile, TempPath};
 
@@ -100,7 +102,12 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
     let thread = response.stacktraces.swap_remove(crashing_thread_idx);
 
     let mut frames = thread.frames.into_iter().peekable();
+
+    let mut table = Table::new();
+    table.set_format(*FORMAT_CLEAN);
+    table.set_titles(row![b => "Trust", "Instruction", "Module File", "Function", "File"]);
     while let Some(frame) = frames.next() {
+        let mut row = Row::empty();
         let is_inline = Some(frame.raw.instruction_addr)
             == frames
                 .peek()
@@ -122,33 +129,41 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
 
         let instruction_addr = frame.raw.instruction_addr.0;
 
-        print!("{trust:<8} {instruction_addr:#018x}");
+        row.add_cell(cell!(trust));
+        row.add_cell(cell!(format!("{instruction_addr:#0x}")));
 
         if let Some(module_file) = frame.raw.package {
             let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
             let module_file = split_path(&module_file).1;
             let module_rel_addr = instruction_addr - module_addr;
 
-            print!(" {:<30}", format!("{module_file:} +{module_rel_addr:#x}"));
+            row.add_cell(cell!(format!("{module_file:} +{module_rel_addr:#x}")));
+        } else {
+            row.add_cell(cell!(""));
         }
 
         if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
-            print!(" {func}");
+            let sym_rel_addr = frame
+                .raw
+                .sym_addr
+                .map(|sym_addr| instruction_addr - sym_addr.0)
+                .unwrap_or_default();
 
-            if let Some(sym_addr) = frame.raw.sym_addr {
-                let sym_rel_addr = instruction_addr - sym_addr.0;
-
-                print!(" +{sym_rel_addr:#x}");
-            }
+            row.add_cell(cell!(format!("{func}{sym_rel_addr}")));
+        } else {
+            row.add_cell(cell!(""));
         }
 
         if let Some(file) = frame.raw.filename {
             let line = frame.raw.lineno.unwrap_or(0);
-            print!(" ({file}:{line})");
+
+            row.add_cell(cell!(format!("{file}:{line}")));
         }
 
-        println!();
+        table.add_row(row);
     }
+
+    table.printstd();
 }
 
 #[derive(Debug)]
