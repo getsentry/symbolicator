@@ -25,7 +25,7 @@ use symbolicator_sources::{
 use super::locations::SourceLocation;
 use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
 
-type ClientCache = moka::sync::Cache<Arc<S3SourceKey>, Arc<Client>>;
+type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
 /// The S3-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
@@ -101,8 +101,8 @@ impl S3Downloader {
             metric!(counter("source.s3.client.cached") += 1);
         }
 
-        self.client_cache.get_with_by_ref(key, || {
-            tokio::runtime::Handle::current().block_on(async {
+        self.client_cache
+            .get_with_by_ref(key, async {
                 metric!(counter("source.s3.client.create") += 1);
 
                 let region = key.region.clone();
@@ -132,7 +132,7 @@ impl S3Downloader {
                     }
                 })
             })
-        })
+            .await
     }
 
     async fn create_s3_client(
