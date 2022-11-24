@@ -20,6 +20,7 @@ pub const CONFIG_RC_FILE_NAME: &str = ".symboliclirc";
 pub enum OutputFormat {
     Json,
     Pretty,
+    Compact,
 }
 
 /// A utility that provides local symbolication of Sentry events.

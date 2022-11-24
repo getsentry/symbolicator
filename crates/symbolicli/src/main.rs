@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
 
     let scope = Scope::Scoped(project.clone());
 
-    let mut res = match Payload::parse(&event_id)? {
+    let res = match Payload::parse(&event_id)? {
         Some(local) => {
             tracing::info!("successfully parsed local event");
             local.process(&symbolication, scope, sources).await?
@@ -73,79 +73,82 @@ async fn main() -> anyhow::Result<()> {
 
     match output_format {
         settings::OutputFormat::Json => println!("{}", serde_json::to_string(&res).unwrap()),
-        settings::OutputFormat::Pretty => {
-            let module_addr_by_code_file: HashMap<_, _> = res
-                .modules
-                .into_iter()
-                .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
-                .collect();
-
-            if res.stacktraces.is_empty() {
-                return Ok(());
-            }
-
-            let crashing_thread_idx = res
-                .stacktraces
-                .iter()
-                .position(|s| s.is_requesting.unwrap_or(false))
-                .unwrap_or(0);
-
-            let thread = res.stacktraces.swap_remove(crashing_thread_idx);
-
-            let mut frames = thread.frames.into_iter().peekable();
-            while let Some(frame) = frames.next() {
-                let is_inline = Some(frame.raw.instruction_addr)
-                    == frames
-                        .peek()
-                        .map(|next_frame| next_frame.raw.instruction_addr);
-
-                let trust = if is_inline {
-                    "inline"
-                } else {
-                    match frame.raw.trust {
-                        FrameTrust::None => "none",
-                        FrameTrust::Scan => "scan",
-                        FrameTrust::CfiScan => "cfiscan",
-                        FrameTrust::Fp => "fp",
-                        FrameTrust::Cfi => "cfi",
-                        FrameTrust::PreWalked => "prewalked",
-                        FrameTrust::Context => "context",
-                    }
-                };
-
-                let instruction_addr = frame.raw.instruction_addr.0;
-
-                print!("{trust:<8} {instruction_addr:#018x}");
-
-                if let Some(module_file) = frame.raw.package {
-                    let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
-                    let module_file = split_path(&module_file).1;
-                    let module_rel_addr = instruction_addr - module_addr;
-
-                    print!(" {:<30}", format!("{module_file:} +{module_rel_addr:#x}"));
-                }
-
-                if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
-                    print!(" {func}");
-
-                    if let Some(sym_addr) = frame.raw.sym_addr {
-                        let sym_rel_addr = instruction_addr - sym_addr.0;
-
-                        print!(" +{sym_rel_addr:#x}");
-                    }
-                }
-
-                if let Some(file) = frame.raw.filename {
-                    let line = frame.raw.lineno.unwrap_or(0);
-                    print!(" ({file}:{line})");
-                }
-
-                println!();
-            }
-        }
+        settings::OutputFormat::Compact => print_compact(res),
+        settings::OutputFormat::Pretty => todo!(),
     }
 
     Ok(())
+}
+
+fn print_compact(mut response: CompletedSymbolicationResponse) {
+    let module_addr_by_code_file: HashMap<_, _> = response
+        .modules
+        .into_iter()
+        .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
+        .collect();
+
+    if response.stacktraces.is_empty() {
+        return;
+    }
+
+    let crashing_thread_idx = response
+        .stacktraces
+        .iter()
+        .position(|s| s.is_requesting.unwrap_or(false))
+        .unwrap_or(0);
+
+    let thread = response.stacktraces.swap_remove(crashing_thread_idx);
+
+    let mut frames = thread.frames.into_iter().peekable();
+    while let Some(frame) = frames.next() {
+        let is_inline = Some(frame.raw.instruction_addr)
+            == frames
+                .peek()
+                .map(|next_frame| next_frame.raw.instruction_addr);
+
+        let trust = if is_inline {
+            "inline"
+        } else {
+            match frame.raw.trust {
+                FrameTrust::None => "none",
+                FrameTrust::Scan => "scan",
+                FrameTrust::CfiScan => "cfiscan",
+                FrameTrust::Fp => "fp",
+                FrameTrust::Cfi => "cfi",
+                FrameTrust::PreWalked => "prewalked",
+                FrameTrust::Context => "context",
+            }
+        };
+
+        let instruction_addr = frame.raw.instruction_addr.0;
+
+        print!("{trust:<8} {instruction_addr:#018x}");
+
+        if let Some(module_file) = frame.raw.package {
+            let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
+            let module_file = split_path(&module_file).1;
+            let module_rel_addr = instruction_addr - module_addr;
+
+            print!(" {:<30}", format!("{module_file:} +{module_rel_addr:#x}"));
+        }
+
+        if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
+            print!(" {func}");
+
+            if let Some(sym_addr) = frame.raw.sym_addr {
+                let sym_rel_addr = instruction_addr - sym_addr.0;
+
+                print!(" +{sym_rel_addr:#x}");
+            }
+        }
+
+        if let Some(file) = frame.raw.filename {
+            let line = frame.raw.lineno.unwrap_or(0);
+            print!(" ({file}:{line})");
+        }
+
+        println!();
+    }
 }
 
 #[derive(Debug)]
