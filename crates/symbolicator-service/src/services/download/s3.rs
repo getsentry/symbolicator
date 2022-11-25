@@ -79,8 +79,6 @@ impl fmt::Debug for S3Downloader {
     }
 }
 
-// It's one of these?
-// pub type S3Error = aws_sdk_s3::types::SdkError;
 pub type S3Error = aws_sdk_s3::Error;
 
 impl S3Downloader {
