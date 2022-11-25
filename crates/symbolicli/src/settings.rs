@@ -2,7 +2,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use symbolicator_service::config::{CacheConfigs, Config};
+use symbolicator_service::config::Config;
 use symbolicator_sources::SourceConfig;
 
 use anyhow::{anyhow, bail, Context};
@@ -74,8 +74,8 @@ struct ConfigFile {
     pub project: Option<String>,
     pub url: Option<String>,
     pub auth_token: Option<String>,
-    pub cache_dir: Option<PathBuf>,
-    pub caches: CacheConfigs,
+    //pub cache_dir: Option<PathBuf>,
+    //pub caches: CacheConfigs,
     pub sources: Arc<[SourceConfig]>,
 }
 
@@ -107,8 +107,8 @@ impl Default for ConfigFile {
             project: None,
             url: None,
             auth_token: None,
-            cache_dir: None,
-            caches: Default::default(),
+            //cache_dir: None,
+            //caches: Default::default(),
             sources: Arc::from(vec![]),
         }
     }
@@ -117,8 +117,8 @@ impl Default for ConfigFile {
 impl From<ConfigFile> for Config {
     fn from(config_file: ConfigFile) -> Self {
         Self {
-            cache_dir: config_file.cache_dir,
-            caches: config_file.caches,
+            //cache_dir: config_file.cache_dir,
+            //caches: config_file.caches,
             sources: config_file.sources,
             ..Default::default()
         }
