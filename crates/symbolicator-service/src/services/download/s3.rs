@@ -251,7 +251,6 @@ impl S3Downloader {
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +262,9 @@ mod tests {
     use crate::test;
 
     use aws_sdk_s3::client::Client;
+    use aws_sdk_s3::error::{HeadBucketError, HeadBucketErrorKind};
+    use aws_sdk_s3::error::{HeadObjectError, HeadObjectErrorKind};
+    use aws_smithy_http::byte_stream::ByteStream;
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.
@@ -276,7 +278,7 @@ mod tests {
             None
         } else {
             Some(S3SourceKey {
-                region: aws_sdk_s3::Region::from_static("us-east-1"),
+                region: Region::from_static("us-east-1"),
                 aws_credentials_provider: AwsCredentialsProvider::Static,
                 access_key,
                 secret_key,
@@ -307,64 +309,87 @@ mod tests {
     }
 
     /// Creates an S3 bucket if it does not exist.
-    async fn ensure_bucket(s3_client: &S3Client) {
+    async fn ensure_bucket(s3_client: &Client) {
         let head_result = s3_client
-            .head_bucket(rusoto_s3::HeadBucketRequest {
-                bucket: S3_BUCKET.to_owned(),
-                ..Default::default()
-            })
+            .head_bucket()
+            .bucket(S3_BUCKET.to_owned())
+            .send()
             .await;
 
         match head_result {
             Ok(_) => return,
-            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadBucketError::NoSuchBucket(_))) => {
-                // fallthrough
+            Err(ServiceError {
+                err:
+                    HeadBucketError {
+                        kind: HeadBucketErrorKind::NotFound(err),
+                        ..
+                    },
+                ..
+            }) => {
+                println!("{:?}", err.message());
             }
-            Err(rusoto_core::RusotoError::Unknown(err)) if err.status == 404 => {
-                // fallthrough. rusoto does not seem to detect the 404.
+            Err(ServiceError {
+                err:
+                    HeadBucketError {
+                        kind: HeadBucketErrorKind::Unhandled(err),
+                        ..
+                    },
+                ..
+            }) => {
+                println!("{:?}", err);
             }
             Err(err) => panic!("failed to check S3 bucket: {:?}", err),
         }
 
         s3_client
-            .create_bucket(rusoto_s3::CreateBucketRequest {
-                bucket: S3_BUCKET.to_owned(),
-                ..Default::default()
-            })
+            .create_bucket()
+            .bucket(S3_BUCKET.to_owned())
+            .send()
             .await
             .unwrap();
     }
 
     /// Loads a mock fixture into the S3 bucket if it does not exist.
-    async fn ensure_fixture(
-        s3_client: &S3Client,
-        fixture: impl AsRef<Path>,
-        key: impl Into<String>,
-    ) {
+    async fn ensure_fixture(s3_client: &Client, fixture: impl AsRef<Path>, key: impl Into<String>) {
         let key = key.into();
         let head_result = s3_client
-            .head_object(rusoto_s3::HeadObjectRequest {
-                bucket: S3_BUCKET.to_owned(),
-                key: key.clone(),
-                ..Default::default()
-            })
+            .head_object()
+            .bucket(S3_BUCKET.to_owned())
+            .key(key.clone())
+            .send()
             .await;
 
         match head_result {
             Ok(_) => return,
-            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_))) => {
-                // fallthrough
+            Err(ServiceError {
+                err:
+                    HeadObjectError {
+                        kind: HeadObjectErrorKind::NotFound(err),
+                        ..
+                    },
+                ..
+            }) => {
+                println!("{:?}", err.message());
+            }
+            Err(ServiceError {
+                err:
+                    HeadObjectError {
+                        kind: HeadObjectErrorKind::Unhandled(err),
+                        ..
+                    },
+                ..
+            }) => {
+                println!("{:?}", err);
             }
             Err(err) => panic!("failed to check S3 object: {:?}", err),
         }
 
         s3_client
-            .put_object(rusoto_s3::PutObjectRequest {
-                bucket: S3_BUCKET.to_owned(),
-                body: Some(test::read_fixture(fixture).into()),
-                key,
-                ..Default::default()
-            })
+            .put_object()
+            .bucket(S3_BUCKET.to_owned())
+            .body(ByteStream::from(test::read_fixture(fixture)))
+            .key(key)
+            .send()
             .await
             .unwrap();
     }
@@ -377,14 +402,17 @@ mod tests {
     ///
     /// On error, the function panics with the error message.
     async fn setup_bucket(source_key: S3SourceKey) {
-        let s3_client = S3Client::new_with(
-            rusoto_core::HttpClient::new().expect("create S3 HTTP client"),
-            rusoto_credential::StaticProvider::new_minimal(
-                source_key.access_key,
-                source_key.secret_key,
-            ),
-            source_key.region,
+        let provider = Credentials::from_keys(
+            source_key.access_key.clone(),
+            source_key.secret_key.clone(),
+            None,
         );
+        let shared_config = aws_config::from_env()
+            .credentials_provider(provider)
+            .region(source_key.region)
+            .load()
+            .await;
+        let s3_client = Client::new(&shared_config);
 
         ensure_bucket(&s3_client).await;
         ensure_fixture(
@@ -478,7 +506,7 @@ mod tests {
         test::setup();
 
         let broken_key = S3SourceKey {
-            region: rusoto_core::Region::UsEast1,
+            region: Region::from_static("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: "".to_owned(),
             secret_key: "".to_owned(),
@@ -503,7 +531,7 @@ mod tests {
     #[test]
     fn test_s3_remote_dif_uri() {
         let source_key = Arc::new(S3SourceKey {
-            region: rusoto_core::Region::UsEast1,
+            region: Region::from_static("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: String::from("abc"),
             secret_key: String::from("123"),
@@ -524,4 +552,3 @@ mod tests {
         );
     }
 }
-*/
