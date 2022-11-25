@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
-use aws_config::meta::credentials::provide_credentials_fn;
 use aws_sdk_s3::error::GetObjectErrorKind;
 use aws_sdk_s3::types::SdkError::{ConstructionFailure, DispatchFailure};
 use aws_sdk_s3::types::SdkError::{ResponseError, ServiceError, TimeoutError};
@@ -111,12 +110,7 @@ impl S3Downloader {
                 Arc::new(match key.aws_credentials_provider {
                     AwsCredentialsProvider::Container => {
                         let provider = LazyCachingCredentialsProvider::builder()
-                            .load(provide_credentials_fn(|| async {
-                                aws_config::ecs::EcsCredentialsProvider::builder()
-                                    .build()
-                                    .credentials()
-                                    .await
-                            }))
+                            .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
                             .build();
                         self.create_s3_client(provider, region).await
                     }
