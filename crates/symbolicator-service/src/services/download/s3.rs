@@ -156,11 +156,7 @@ impl S3Downloader {
 
         let source_key = &file_source.source.source_key;
         let client = self.get_s3_client(source_key).await;
-        let request = client
-            .get_object()
-            .bucket(&bucket)
-            .key(&key)
-            .send();
+        let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteDif::from(file_source.clone());
         let request = tokio::time::timeout(self.connect_timeout, request);
