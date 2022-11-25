@@ -158,8 +158,8 @@ impl S3Downloader {
         let client = self.get_s3_client(source_key).await;
         let request = client
             .get_object()
-            .bucket(bucket.clone())
-            .key(key.clone())
+            .bucket(&bucket)
+            .key(&key)
             .send();
 
         let source = RemoteDif::from(file_source.clone());
@@ -169,7 +169,7 @@ impl S3Downloader {
         let response = match request.await {
             Ok(Ok(response)) => response,
             Ok(Err(err)) => {
-                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
+                tracing::debug!("Skipping response from s3://{}/{}: {}", &bucket, &key, err);
                 return match &err {
                     ConstructionFailure(err1) => {
                         println!("ERROR: ConstructionFailure: {:?}", err1);
@@ -222,7 +222,7 @@ impl S3Downloader {
         ));
 
         let stream = if response.content_length == 0 {
-            tracing::debug!("Empty response from s3:{}{}", bucket, &key);
+            tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
             return Ok(DownloadStatus::NotFound);
         } else {
             response.body.map_err(DownloadError::S3Sdk)
