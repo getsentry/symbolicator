@@ -248,7 +248,7 @@ impl std::hash::Hash for S3SourceKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.access_key.hash(state);
         self.secret_key.hash(state);
-        self.region.to_string().hash(state);
+        self.region.hash(state);
     }
 }
 
