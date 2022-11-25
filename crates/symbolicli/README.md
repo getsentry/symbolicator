@@ -1,6 +1,6 @@
 `symbolicli` is a cli utility that lets you symbolicate native events and minidumps locally.
 
-By default, `symbolicli` will access target https://sentry.io/. If you are hosting your own
+By default, `symbolicli` will target https://sentry.io/. If you are hosting your own
 Sentry instance, you can override this with the `--url` option or the `url` config setting.
 
 # Basic usage
