@@ -39,6 +39,12 @@ impl From<S3RemoteDif> for RemoteDif {
     }
 }
 
+impl From<&S3RemoteDif> for RemoteDif {
+    fn from(source: &S3RemoteDif) -> Self {
+        Self::S3(source.clone())
+    }
+}
+
 impl S3RemoteDif {
     pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
@@ -158,7 +164,7 @@ impl S3Downloader {
         let client = self.get_s3_client(source_key).await;
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
-        let source = RemoteDif::from(file_source.clone());
+        let source = RemoteDif::from(&file_source);
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
