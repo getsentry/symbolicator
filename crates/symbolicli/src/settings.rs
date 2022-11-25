@@ -18,15 +18,11 @@ pub const CONFIG_RC_FILE_NAME: &str = ".symboliclirc";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
-    /// Outputs the symbolication result as JSON.
+    /// Outputs the entire symbolication result as JSON.
     Json,
-    /// Outputs the symbolication result as a detailed list of frames.
-    ///
-    /// This will only print the crashed thread.
+    /// Outputs the crashed thread as a detailed list of frames.
     Pretty,
-    /// Outputs the symbolication result as a table.
-    ///
-    /// This will only print the crashed thread.
+    /// Outputs the crashed thread as a table.
     Compact,
 }
 

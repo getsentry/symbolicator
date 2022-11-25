@@ -214,12 +214,9 @@ fn print_pretty(mut response: CompletedSymbolicationResponse) {
 
         let title_cell = cell!(lb->format!("Frame #{i}")).with_hspan(2);
         table.add_row(Row::new(vec![title_cell]));
-        // println!("Frame #{i}:");
-        // println!("    Trust: {trust}");
 
         let instruction_addr = frame.raw.instruction_addr.0;
 
-        // println!("    Instruction Address: {instruction_addr:#018x}");
         table.add_row(row![r->"  Trust:", trust]);
         table.add_row(row![r->"  Instruction:", format!("{instruction_addr:#0x}")]);
         if let Some(module_file) = frame.raw.package {
@@ -231,12 +228,9 @@ fn print_pretty(mut response: CompletedSymbolicationResponse) {
                 r->"  Module:",
                 format!("{module_file} +{module_rel_addr:#0x}")
             ]);
-            // println!("    Module: {module_file} +{module_rel_addr:#0x}");
         }
 
         if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
-            // print!("    Function: {func}");
-
             let sym_addr = frame
                 .raw
                 .sym_addr
@@ -244,16 +238,12 @@ fn print_pretty(mut response: CompletedSymbolicationResponse) {
                 .unwrap_or_default();
 
             table.add_row(row![r->"  Function:", format!("{func}{sym_addr}")]);
-            // print!(" +{sym_rel_addr:#x}");
-
-            // println!();
         }
 
         if let Some(file) = frame.raw.filename {
             let line = frame.raw.lineno.unwrap_or(0);
 
             table.add_row(row![r->"  File:", format!("{file}:{line}")]);
-            // println!("    File: ({file}:{line})");
         }
 
         table.add_empty_row();
