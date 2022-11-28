@@ -67,7 +67,7 @@ struct Cli {
     format: OutputFormat,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
 #[serde(default)]
 struct ConfigFile {
     pub org: Option<String>,
@@ -76,7 +76,7 @@ struct ConfigFile {
     pub auth_token: Option<String>,
     //pub cache_dir: Option<PathBuf>,
     //pub caches: CacheConfigs,
-    pub sources: Arc<[SourceConfig]>,
+    pub sources: Vec<SourceConfig>,
 }
 
 impl ConfigFile {
@@ -100,31 +100,6 @@ impl ConfigFile {
     }
 }
 
-impl Default for ConfigFile {
-    fn default() -> Self {
-        Self {
-            org: None,
-            project: None,
-            url: None,
-            auth_token: None,
-            //cache_dir: None,
-            //caches: Default::default(),
-            sources: Arc::from(vec![]),
-        }
-    }
-}
-
-impl From<ConfigFile> for Config {
-    fn from(config_file: ConfigFile) -> Self {
-        Self {
-            //cache_dir: config_file.cache_dir,
-            //caches: config_file.caches,
-            sources: config_file.sources,
-            ..Default::default()
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub event_id: String,
@@ -140,19 +115,25 @@ impl Settings {
     pub fn get() -> anyhow::Result<Self> {
         let cli = Cli::parse();
 
-        let mut config_file = ConfigFile::parse(&find_global_config_file()?)?;
+        let mut global_config_file = ConfigFile::parse(&find_global_config_file()?)?;
+        let mut project_config_file = match find_project_config_file() {
+            Some(path) => ConfigFile::parse(&path)?,
+            None => ConfigFile::default(),
+        };
 
         let Some(auth_token) = cli
             .auth_token
             .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
-            .or_else(|| config_file.auth_token.take()) else {
+            .or_else(|| project_config_file.auth_token.take())
+            .or_else(|| global_config_file.auth_token.take()) else {
             bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
     };
 
         let sentry_url = cli
             .url
             .as_deref()
-            .or(config_file.url.as_deref())
+            .or(project_config_file.url.as_deref())
+            .or(global_config_file.url.as_deref())
             .unwrap_or(DEFAULT_URL);
 
         let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
@@ -162,15 +143,27 @@ impl Settings {
             sentry_url.join("/api/0/").unwrap()
         };
 
-        let Some(org) = cli.org.or_else(|| config_file.org.take()) else {
+        let Some(org) = cli.org
+            .or_else(|| project_config_file.org.take())
+            .or_else(|| global_config_file.org.take()) else {
             bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");  
         };
 
-        let Some(project) = cli.project.or_else(|| config_file.project.take()) else {
+        let Some(project) = cli.project
+            .or_else(|| project_config_file.project.take())
+            .or_else(|| global_config_file.project.take()) else {
             bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");  
         };
 
-        let symbolicator_config = config_file.into();
+        let symbolicator_config = {
+            let mut sources = project_config_file.sources;
+            sources.append(&mut global_config_file.sources);
+
+            Config {
+                sources: Arc::from(sources),
+                ..Default::default()
+            }
+        };
 
         let args = Settings {
             event_id: cli.event,
@@ -193,4 +186,21 @@ fn find_global_config_file() -> anyhow::Result<PathBuf> {
             path.push(CONFIG_RC_FILE_NAME);
             path
         })
+}
+
+fn find_project_config_file() -> Option<PathBuf> {
+    std::env::current_dir().ok().and_then(|mut path| loop {
+        path.push(CONFIG_RC_FILE_NAME);
+        if path.exists() {
+            return Some(path);
+        }
+        path.set_file_name("symbolicli.toml");
+        if path.exists() {
+            return Some(path);
+        }
+        path.pop();
+        if !path.pop() {
+            return None;
+        }
+    })
 }

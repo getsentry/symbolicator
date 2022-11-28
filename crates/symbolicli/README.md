@@ -16,6 +16,9 @@ where
 # Configuration
 
 `symbolicli` can be configured via the `~/.symboliclirc` config file, written in the TOML format.
+You can also place a `.symboliclirc` or `symbolicli.toml` file in a project directory to override
+global settings.
+
 The available options are:
 
 * `url`: The base URL of the sentry instance. Defaults to `https://sentry.io/`.
