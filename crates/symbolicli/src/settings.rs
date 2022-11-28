@@ -85,8 +85,8 @@ impl ConfigFile {
             Ok(mut file) => {
                 let mut buf = Vec::new();
                 file.read_to_end(&mut buf)
-                    .context("Could not open configuration file")?;
-                toml::de::from_slice(&buf).context("Could not read configuration file")
+                    .context("Could not read configuration file")?;
+                toml::de::from_slice(&buf).context("Could not parse configuration file")
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 tracing::warn!(path = %path.display(), "Configuration file not found");
@@ -137,11 +137,7 @@ impl Settings {
             .unwrap_or(DEFAULT_URL);
 
         let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
-        let url = if sentry_url.as_str().ends_with('/') {
-            sentry_url.join("api/0/").unwrap()
-        } else {
-            sentry_url.join("/api/0/").unwrap()
-        };
+        let url = sentry_url.join("/api/0/").unwrap();
 
         let Some(org) = cli.org
             .or_else(|| project_config_file.org.take())

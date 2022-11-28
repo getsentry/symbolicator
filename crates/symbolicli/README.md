@@ -3,15 +3,14 @@
 By default, `symbolicli` will target https://sentry.io/. If you are hosting your own
 Sentry instance, you can override this with the `--url` option or the `url` config setting.
 
-# Basic usage
+# Basic Usage
 ```
 symbolicli -o <ORG> -p <PROJECT> --auth-token <TOKEN> <EVENT>
 ```
-where
 
 * `<ORG>` and `<PROJECT>` are the organization and project to which the event belongs;
 * `<TOKEN>` is a Sentry authentication token that has access to the project;
-* `<EVENT>` is either a local file (minidump or event JSON) or the ID of an event on the Sentry instance.
+* `<EVENT>` is either a local file (minidump or event JSON) or the ID of an event from the Sentry instance.
 
 # Configuration
 

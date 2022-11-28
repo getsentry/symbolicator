@@ -4,6 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 
+use remote::EventKey;
 use symbolic::common::split_path;
 use symbolicator_service::services::symbolication::SymbolicationActor;
 use symbolicator_service::types::{CompletedSymbolicationResponse, FrameTrust, Scope};
@@ -12,7 +13,7 @@ use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 use anyhow::Context;
 use prettytable::format::consts::FORMAT_CLEAN;
 use prettytable::{cell, row, Row, Table};
-use reqwest::{header, Url};
+use reqwest::header;
 use tempfile::{NamedTempFile, TempPath};
 
 mod settings;
@@ -68,7 +69,13 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             tracing::info!("event not found in local file system");
-            let remote = Payload::get_remote(&client, &base_url, &org, &project, &event_id).await?;
+            let key = EventKey {
+                base_url: &base_url,
+                org: &org,
+                project: &project,
+                event_id: &event_id,
+            };
+            let remote = Payload::get_remote(&client, key).await?;
             remote.process(&symbolication, scope, sources).await?
         }
     };
@@ -83,15 +90,15 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn print_compact(mut response: CompletedSymbolicationResponse) {
+    if response.stacktraces.is_empty() {
+        return;
+    }
+
     let module_addr_by_code_file: HashMap<_, _> = response
         .modules
         .into_iter()
         .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
         .collect();
-
-    if response.stacktraces.is_empty() {
-        return;
-    }
 
     let crashing_thread_idx = response
         .stacktraces
@@ -171,15 +178,15 @@ fn print_compact(mut response: CompletedSymbolicationResponse) {
 }
 
 fn print_pretty(mut response: CompletedSymbolicationResponse) {
+    if response.stacktraces.is_empty() {
+        return;
+    }
+
     let module_addr_by_code_file: HashMap<_, _> = response
         .modules
         .into_iter()
         .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
         .collect();
-
-    if response.stacktraces.is_empty() {
-        return;
-    }
 
     let crashing_thread_idx = response
         .stacktraces
@@ -306,18 +313,12 @@ impl Payload {
         }
     }
 
-    async fn get_remote(
-        client: &reqwest::Client,
-        base_url: &Url,
-        org: &str,
-        project: &str,
-        event_id: &str,
-    ) -> anyhow::Result<Self> {
+    async fn get_remote<'a>(client: &reqwest::Client, key: EventKey<'a>) -> anyhow::Result<Self> {
         tracing::info!("trying to resolve event remotely");
-        let event = remote::download_event(client, base_url, org, project, event_id).await?;
+        let event = remote::download_event(client, key).await?;
         tracing::info!("event json file downloaded");
 
-        match remote::get_attached_minidump(client, base_url, org, project, event_id).await? {
+        match remote::get_attached_minidump(client, key).await? {
             Some(minidump_url) => {
                 tracing::info!("minidump attachment found");
                 let minidump_path = remote::download_minidump(client, minidump_url).await?;
@@ -344,19 +345,30 @@ mod remote {
 
     use crate::event::Event;
 
+    #[derive(Clone, Copy, Debug)]
+    pub struct EventKey<'a> {
+        pub base_url: &'a Url,
+        pub org: &'a str,
+        pub project: &'a str,
+        pub event_id: &'a str,
+    }
+
     #[derive(Debug, Clone, Deserialize)]
     struct Attachment {
         r#type: String,
         id: String,
     }
 
-    pub async fn get_attached_minidump(
+    pub async fn get_attached_minidump<'a>(
         client: &reqwest::Client,
-        base_url: &Url,
-        org: &str,
-        project: &str,
-        event_id: &str,
+        key: EventKey<'a>,
     ) -> anyhow::Result<Option<Url>> {
+        let EventKey {
+            base_url,
+            org,
+            project,
+            event_id,
+        } = key;
         let attachments_url = base_url
             .join(&format!(
                 "projects/{org}/{project}/events/{event_id}/attachments/"
@@ -434,13 +446,16 @@ mod remote {
         Ok(temp_file.into_temp_path())
     }
 
-    pub async fn download_event(
+    pub async fn download_event<'a>(
         client: &reqwest::Client,
-        base_url: &Url,
-        org: &str,
-        project: &str,
-        event_id: &str,
+        key: EventKey<'a>,
     ) -> anyhow::Result<Event> {
+        let EventKey {
+            base_url,
+            org,
+            project,
+            event_id,
+        } = key;
         let event_url = base_url
             .join(&format!("projects/{org}/{project}/events/{event_id}/json/"))
             .unwrap();
