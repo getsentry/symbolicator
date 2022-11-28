@@ -1,18 +1,16 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 
+use output::{print_compact, print_pretty};
 use remote::EventKey;
-use symbolic::common::split_path;
+
 use symbolicator_service::services::symbolication::SymbolicationActor;
-use symbolicator_service::types::{CompletedSymbolicationResponse, FrameTrust, Scope};
+use symbolicator_service::types::{CompletedSymbolicationResponse, Scope};
 use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 
 use anyhow::Context;
-use prettytable::format::consts::FORMAT_CLEAN;
-use prettytable::{cell, row, Row, Table};
 use reqwest::header;
 use tempfile::{NamedTempFile, TempPath};
 
@@ -89,175 +87,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_compact(mut response: CompletedSymbolicationResponse) {
-    if response.stacktraces.is_empty() {
-        return;
-    }
-
-    let module_addr_by_code_file: HashMap<_, _> = response
-        .modules
-        .into_iter()
-        .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
-        .collect();
-
-    let crashing_thread_idx = response
-        .stacktraces
-        .iter()
-        .position(|s| s.is_requesting.unwrap_or(false))
-        .unwrap_or(0);
-
-    let thread = response.stacktraces.swap_remove(crashing_thread_idx);
-
-    let mut frames = thread.frames.into_iter().peekable();
-
-    let mut table = Table::new();
-    table.set_format(*FORMAT_CLEAN);
-    table.set_titles(row![b => "Trust", "Instruction", "Module File", "", "Function", "", "File"]);
-    while let Some(frame) = frames.next() {
-        let mut row = Row::empty();
-        let is_inline = Some(frame.raw.instruction_addr)
-            == frames
-                .peek()
-                .map(|next_frame| next_frame.raw.instruction_addr);
-
-        let trust = if is_inline {
-            "inline"
-        } else {
-            match frame.raw.trust {
-                FrameTrust::None => "none",
-                FrameTrust::Scan => "scan",
-                FrameTrust::CfiScan => "cfiscan",
-                FrameTrust::Fp => "fp",
-                FrameTrust::Cfi => "cfi",
-                FrameTrust::PreWalked => "prewalked",
-                FrameTrust::Context => "context",
-            }
-        };
-
-        let instruction_addr = frame.raw.instruction_addr.0;
-
-        row.add_cell(cell!(trust));
-        row.add_cell(cell!(r->format!("{instruction_addr:#x}")));
-
-        match frame.raw.package {
-            Some(module_file) => {
-                let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
-                let module_file = split_path(&module_file).1;
-                let module_rel_addr = instruction_addr - module_addr;
-
-                row.add_cell(cell!(module_file));
-                row.add_cell(cell!(r->format!("+{module_rel_addr:#x}")));
-            }
-            None => row.add_cell(cell!("").with_hspan(2)),
-        }
-
-        match frame.raw.function.or(frame.raw.symbol) {
-            Some(func) => {
-                let sym_rel_addr = frame
-                    .raw
-                    .sym_addr
-                    .map(|sym_addr| format!(" +{:#x}", instruction_addr - sym_addr.0))
-                    .unwrap_or_default();
-
-                row.add_cell(cell!(func));
-                row.add_cell(cell!(r->sym_rel_addr));
-            }
-            None => row.add_cell(cell!("").with_hspan(2)),
-        }
-
-        if let Some(file) = frame.raw.filename {
-            let line = frame.raw.lineno.unwrap_or(0);
-
-            row.add_cell(cell!(format!("{file}:{line}")));
-        }
-
-        table.add_row(row);
-    }
-
-    table.printstd();
-}
-
-fn print_pretty(mut response: CompletedSymbolicationResponse) {
-    if response.stacktraces.is_empty() {
-        return;
-    }
-
-    let module_addr_by_code_file: HashMap<_, _> = response
-        .modules
-        .into_iter()
-        .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
-        .collect();
-
-    let crashing_thread_idx = response
-        .stacktraces
-        .iter()
-        .position(|s| s.is_requesting.unwrap_or(false))
-        .unwrap_or(0);
-
-    let thread = response.stacktraces.swap_remove(crashing_thread_idx);
-
-    let mut table = Table::new();
-    table.set_format(*prettytable::format::consts::FORMAT_CLEAN);
-    let mut frames = thread.frames.into_iter().enumerate().peekable();
-    while let Some((i, frame)) = frames.next() {
-        let is_inline = Some(frame.raw.instruction_addr)
-            == frames
-                .peek()
-                .map(|(_, next_frame)| next_frame.raw.instruction_addr);
-
-        let trust = if is_inline {
-            "inline"
-        } else {
-            match frame.raw.trust {
-                FrameTrust::None => "none",
-                FrameTrust::Scan => "scan",
-                FrameTrust::CfiScan => "cfiscan",
-                FrameTrust::Fp => "fp",
-                FrameTrust::Cfi => "cfi",
-                FrameTrust::PreWalked => "prewalked",
-                FrameTrust::Context => "context",
-            }
-        };
-
-        let title_cell = cell!(lb->format!("Frame #{i}")).with_hspan(2);
-        table.add_row(Row::new(vec![title_cell]));
-
-        let instruction_addr = frame.raw.instruction_addr.0;
-
-        table.add_row(row![r->"  Trust:", trust]);
-        table.add_row(row![r->"  Instruction:", format!("{instruction_addr:#0x}")]);
-        if let Some(module_file) = frame.raw.package {
-            let module_addr = module_addr_by_code_file[&module_file].raw.image_addr.0;
-            let module_file = split_path(&module_file).1;
-            let module_rel_addr = instruction_addr - module_addr;
-
-            table.add_row(row![
-                r->"  Module:",
-                format!("{module_file} +{module_rel_addr:#0x}")
-            ]);
-        }
-
-        if let Some(func) = frame.raw.function.or(frame.raw.symbol) {
-            let sym_addr = frame
-                .raw
-                .sym_addr
-                .map(|sym_addr| format!(" + {:#x}", instruction_addr - sym_addr.0))
-                .unwrap_or_default();
-
-            table.add_row(row![r->"  Function:", format!("{func}{sym_addr}")]);
-        }
-
-        if let Some(file) = frame.raw.filename {
-            let line = frame.raw.lineno.unwrap_or(0);
-
-            table.add_row(row![r->"  File:", format!("{file}:{line}")]);
-        }
-
-        table.add_empty_row();
-    }
-    table.printstd();
-}
-
 #[derive(Debug)]
 enum Payload {
     Event(event::Event),
@@ -332,6 +161,204 @@ impl Payload {
                 Ok(Self::Event(event))
             }
         }
+    }
+}
+
+mod output {
+    use std::{collections::HashMap, iter::Peekable, vec::IntoIter};
+
+    use prettytable::{cell, format::consts::FORMAT_CLEAN, row, Row, Table};
+    use symbolic::common::split_path;
+    use symbolicator_service::types::{
+        CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust, SymbolicatedFrame,
+    };
+
+    #[derive(Clone, Debug)]
+    struct FrameData {
+        instruction_addr: u64,
+        trust: &'static str,
+        module: Option<(String, u64)>,
+        func: Option<(String, u64)>,
+        file: Option<(String, u32)>,
+    }
+
+    #[derive(Clone, Debug)]
+    struct Frames {
+        inner: Peekable<IntoIter<SymbolicatedFrame>>,
+        modules: HashMap<String, CompleteObjectInfo>,
+    }
+
+    impl Iterator for Frames {
+        type Item = FrameData;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let frame = self.inner.next()?;
+            let is_inline = Some(frame.raw.instruction_addr)
+                == self
+                    .inner
+                    .peek()
+                    .map(|next_frame| next_frame.raw.instruction_addr);
+
+            let trust = if is_inline {
+                "inline"
+            } else {
+                match frame.raw.trust {
+                    FrameTrust::None => "none",
+                    FrameTrust::Scan => "scan",
+                    FrameTrust::CfiScan => "cfiscan",
+                    FrameTrust::Fp => "fp",
+                    FrameTrust::Cfi => "cfi",
+                    FrameTrust::PreWalked => "prewalked",
+                    FrameTrust::Context => "context",
+                }
+            };
+
+            let instruction_addr = frame.raw.instruction_addr.0;
+
+            let module = frame.raw.package.map(|module_file| {
+                let module_addr = self.modules[&module_file].raw.image_addr.0;
+                let module_file = split_path(&module_file).1.into();
+                let module_rel_addr = instruction_addr - module_addr;
+
+                (module_file, module_rel_addr)
+            });
+
+            let func = frame.raw.function.or(frame.raw.symbol).map(|func| {
+                let sym_rel_addr = frame
+                    .raw
+                    .sym_addr
+                    .map(|sym_addr| instruction_addr - sym_addr.0)
+                    .unwrap_or_default();
+
+                (func, sym_rel_addr)
+            });
+
+            let file = frame.raw.filename.map(|file| {
+                let line = frame.raw.lineno.unwrap_or(0);
+
+                (file, line)
+            });
+
+            Some(FrameData {
+                instruction_addr,
+                trust,
+                module,
+                func,
+                file,
+            })
+        }
+    }
+
+    fn get_crashing_thread_frames(mut response: CompletedSymbolicationResponse) -> Frames {
+        let modules: HashMap<_, _> = response
+            .modules
+            .into_iter()
+            .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
+            .collect();
+
+        let crashing_thread_idx = response
+            .stacktraces
+            .iter()
+            .position(|s| s.is_requesting.unwrap_or(false))
+            .unwrap_or(0);
+
+        let crashing_thread = response.stacktraces.swap_remove(crashing_thread_idx);
+        Frames {
+            inner: crashing_thread.frames.into_iter().peekable(),
+            modules,
+        }
+    }
+
+    pub fn print_compact(response: CompletedSymbolicationResponse) {
+        if response.stacktraces.is_empty() {
+            return;
+        }
+
+        let mut table = Table::new();
+        table.set_format(*FORMAT_CLEAN);
+        table.set_titles(
+            row![b => "Trust", "Instruction", "Module File", "", "Function", "", "File"],
+        );
+
+        for frame in get_crashing_thread_frames(response) {
+            let mut row = Row::empty();
+            let FrameData {
+                instruction_addr,
+                trust,
+                module,
+                func,
+                file,
+            } = frame;
+
+            row.add_cell(cell!(trust));
+            row.add_cell(cell!(r->format!("{instruction_addr:#x}")));
+
+            match module {
+                Some((module_file, module_offset)) => {
+                    row.add_cell(cell!(module_file));
+                    row.add_cell(cell!(r->format!("+{module_offset:#x}")));
+                }
+                None => row.add_cell(cell!("").with_hspan(2)),
+            }
+
+            match func {
+                Some((func, func_offset)) => {
+                    row.add_cell(cell!(func));
+                    row.add_cell(cell!(r->format!(" + {func_offset:#x}")));
+                }
+                None => row.add_cell(cell!("").with_hspan(2)),
+            }
+
+            match file {
+                Some((name, line)) => row.add_cell(cell!(format!("{name}:{line}"))),
+                None => row.add_cell(cell!("")),
+            }
+
+            table.add_row(row);
+        }
+
+        table.printstd();
+    }
+
+    pub fn print_pretty(response: CompletedSymbolicationResponse) {
+        if response.stacktraces.is_empty() {
+            return;
+        }
+
+        let mut table = Table::new();
+        table.set_format(*prettytable::format::consts::FORMAT_CLEAN);
+
+        for (i, frame) in get_crashing_thread_frames(response).enumerate() {
+            let FrameData {
+                instruction_addr,
+                trust,
+                module,
+                func,
+                file,
+            } = frame;
+
+            let title_cell = cell!(lb->format!("Frame #{i}")).with_hspan(2);
+            table.add_row(Row::new(vec![title_cell]));
+
+            table.add_row(row![r->"  Trust:", trust]);
+            table.add_row(row![r->"  Instruction:", format!("{instruction_addr:#0x}")]);
+
+            if let Some((module_file, module_offset)) = module {
+                table.add_row(row![
+                    r->"  Module:",
+                    format!("{module_file} +{module_offset:#0x}")
+                ]);
+            }
+
+            if let Some((func, func_offset)) = func {
+                table.add_row(row![r->"  Function:", format!("{func} + {func_offset:#x}")]);
+            }
+
+            if let Some((name, line)) = file {
+                table.add_row(row![r->"  File:", format!("{name}:{line}")]);
+            }
+        }
+        table.printstd();
     }
 }
 
