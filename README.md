@@ -8,9 +8,18 @@ server] support. It's a flexible frontend for parts of the [symbolic] library.
 
 [Documentation]
 
+## Contained Binaries
+
+This repository contains several binary crates that can be run with `cargo run -p <PACKAGE>`:
+
+* `symbolicator`: Runs a symbolicator server. Calling `cargo run` without a package will run this binary.
+* `symsorter`: Sorts debug files into a structure usable by `symbolicator`.
+* `wasm-split`: Adds build IDs to wasm files.
+* `symbolicli`: Performs symbolication on the CLI. See [the readme](./crates/symbolicli/README.md).
+
 ## Compiling
 
-Symbolicator is currently not distributed as binary, which means you need to
+Symbolicator is currently not distributed as a binary, which means you need to
 compile it yourself. It is written in [Rust] and requires the latest stable Rust
 compiler.
 
@@ -20,8 +29,8 @@ To compile, run:
 cargo build --release
 ```
 
-The resulting binary ends up in `target/release/symbolicator` along with a debug
-information file. On Linux, debug information is part of the executable and
+The resulting binaries ends up in `target/release/` along with debug
+information files. On Linux, debug information is part of the executable and
 might need to be stripped using `objcopy`.
 
 ## Usage with Sentry
