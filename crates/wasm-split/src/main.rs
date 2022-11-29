@@ -187,7 +187,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     // always print the build id.
     if !cli.quiet {
-        println!("{}", hex::encode(&build_id));
+        println!("{}", hex::encode(build_id));
     }
 
     Ok(())

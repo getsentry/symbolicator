@@ -56,7 +56,7 @@ impl SymbolicationActor {
         for trace in &mut stacktraces {
             for frame in &mut trace.frames {
                 let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                    (&Some(ref abs_path), Some(lineno)) => (abs_path, lineno),
+                    (Some(abs_path), Some(lineno)) => (abs_path, lineno),
                     _ => continue,
                 };
 

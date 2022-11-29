@@ -9,7 +9,7 @@
 use std::cmp;
 use std::fmt;
 use std::fs;
-use std::io::{self, Seek, SeekFrom};
+use std::io::{self, Seek};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -211,7 +211,7 @@ async fn fetch_file(
     // Since objects in Sentry (and potentially also other sources) might be
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
     // extract the wanted file.
-    decompressed.seek(SeekFrom::Start(0))?;
+    decompressed.rewind()?;
     let view = ByteView::map_file(decompressed)?;
     let archive = match Archive::parse(&view) {
         Ok(archive) => archive,
