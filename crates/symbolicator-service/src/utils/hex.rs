@@ -54,7 +54,7 @@ impl<'de> Deserialize<'de> for HexValue {
             }
 
             fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
-                Ok(HexValue(v as u64))
+                Ok(HexValue(v))
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {

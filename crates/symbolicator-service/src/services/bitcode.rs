@@ -5,7 +5,7 @@
 
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, Cursor, Seek, SeekFrom};
+use std::io::{self, Cursor, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -127,7 +127,7 @@ impl FetchFileRequest {
         };
 
         // Seek back to the start and parse this DIF.
-        decompressed.seek(SeekFrom::Start(0))?;
+        decompressed.rewind()?;
         let view = ByteView::map_file(decompressed)?;
 
         match self.kind {
