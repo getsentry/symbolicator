@@ -463,22 +463,6 @@ mod tests {
      */
 
     #[test]
-    fn test_s3_config_bad_plain_region() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region: my-cool-region
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
-    }
-
-    #[test]
     fn test_s3_config_plain_empty_region() {
         let text = r#"
           - id: honk
