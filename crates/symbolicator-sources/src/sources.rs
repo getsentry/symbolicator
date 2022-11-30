@@ -152,6 +152,13 @@ where
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("string")
         }
+
+        fn visit_str<E>(self, value: &str) -> Result<Region, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Region::new(String::from(value)))
+        }
     }
 
     deserializer.deserialize_any(SdkRegion)
