@@ -12,15 +12,13 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install rust stable toolchain
-        run: |
-          rustup set auto-self-update disable
-          rustup toolchain install stable --profile minimal
+        run: rustup toolchain install stable --profile minimal --no-self-update
 
       - name: Run cargo build
-        run: cargo build --workspace --bins --release --locked
+        run: cargo build --bins --release --locked
 
       - name: Split and archive debug info
         run: |
@@ -54,28 +52,19 @@ jobs:
     runs-on: macos-11
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install rust stable toolchain
-        run: |
-          rustup set auto-self-update disable
-          rustup toolchain install stable --profile minimal --target x86_64-apple-darwin --target aarch64-apple-darwin
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          target: x86_64-apple-darwin
+        run: rustup toolchain install stable --profile minimal --target x86_64-apple-darwin --target aarch64-apple-darwin --no-self-update
 
       - name: Run cargo build for x86_64
-        run: cargo build --workspace --bins --release --locked --target=x86_64-apple-darwin
+        run: cargo build --bins --release --locked --target=x86_64-apple-darwin
         env:
           # Generates separate debug symbol files alongside release builds
           CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
 
       - name: Run cargo build for ARM
-        run: cargo build --workspace --bins --release --locked --target=aarch64-apple-darwin
+        run: cargo build --bins --release --locked --target=aarch64-apple-darwin
         env:
           # Generates separate debug symbol files alongside release builds
           CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
@@ -114,24 +103,20 @@ jobs:
     runs-on: windows-2019
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: recursive
 
       - name: Install rust stable toolchain
-        run: |
-          rustup set auto-self-update disable
-          rustup toolchain install stable --profile minimal
+        run: rustup toolchain install stable --profile minimal --no-self-update
 
-      - name: Run Cargo Build (symsorter)
-        run: cargo build -p symsorter --release --locked
-
-      - name: Run Cargo Build (wasm-split)
-        run: cargo build -p wasm-split --release --locked
+      - name: Run cargo build
+        run: cargo build --bins --release --locked
 
       - name: Rename Binaries
         run: |
           cd target/release
+          mv symbolicator.exe symbolicator-Windows-x86_64.exe
           mv symsorter.exe symsorter-Windows-x86_64.exe
           mv wasm-split.exe wasm-split-Windows-x86_64.exe
 
@@ -146,10 +131,10 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
 

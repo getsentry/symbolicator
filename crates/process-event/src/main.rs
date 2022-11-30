@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek};
 use std::path::PathBuf;
 
 use ::reqwest::blocking::multipart;
@@ -52,7 +52,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut magic = [0; 4];
     file.read_exact(&mut magic)?;
-    file.seek(SeekFrom::Start(0))?;
+    file.rewind()?;
 
     let req = if &magic == b"MDMP" || &magic == b"PMDM" {
         let req = client.post(&format!("{}/minidump", symbolicator));

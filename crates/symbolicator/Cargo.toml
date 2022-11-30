@@ -4,6 +4,7 @@ version = "0.6.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
+default-run = "symbolicator"
 
 [features]
 https = ["axum-server/tls-rustls", "symbolicator-service/https"]

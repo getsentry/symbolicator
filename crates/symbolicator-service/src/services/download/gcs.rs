@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(download_status, DownloadStatus::Completed);
         assert!(target_path.exists());
 
-        let hash = Sha1::digest(&std::fs::read(target_path).unwrap());
+        let hash = Sha1::digest(std::fs::read(target_path).unwrap());
         let hash = format!("{:x}", hash);
         assert_eq!(hash, "206e63c06da135be1858dde03778caf25f8465b8");
     }

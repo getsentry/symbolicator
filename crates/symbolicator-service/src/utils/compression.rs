@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek};
 use std::process::{Command, Stdio};
 
 use flate2::read::{MultiGzDecoder, ZlibDecoder};
@@ -17,10 +17,10 @@ pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<
     let metadata = src.as_file().metadata()?;
     metric!(time_raw("objects.size") = metadata.len());
 
-    src.as_file().seek(SeekFrom::Start(0))?;
+    src.as_file().rewind()?;
     let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
     src.as_file().read_exact(&mut magic_bytes)?;
-    src.as_file().seek(SeekFrom::Start(0))?;
+    src.as_file().rewind()?;
 
     // For a comprehensive list also refer to
     // https://en.wikipedia.org/wiki/List_of_file_signatures

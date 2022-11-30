@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-default-members = ["crates/symbolicator", "crates/symbolicator-service"]
+default-members = ["crates/symbolicator", "crates/symbolicli", "crates/symsorter", "crates/wasm-split"]
 
 [profile.dev]
 # Debug information slows down the build and increases caches in the
