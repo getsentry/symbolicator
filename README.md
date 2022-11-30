@@ -19,8 +19,7 @@ This repository contains several binary crates that can be run with `cargo run -
 
 ## Compiling
 
-Symbolicator is currently not distributed as a binary, which means you need to
-compile it yourself. It is written in [Rust] and requires the latest stable Rust
+Symbolicator is written in [Rust] and requires the latest stable Rust
 compiler.
 
 To compile, run:
