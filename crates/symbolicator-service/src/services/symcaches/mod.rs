@@ -8,7 +8,7 @@ use anyhow::Error;
 use futures::future::BoxFuture;
 use thiserror::Error;
 
-use symbolic::common::{Arch, ByteView};
+use symbolic::common::{Arch, ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
@@ -71,6 +71,12 @@ const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
     fallbacks: &[4],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
+
+pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
+
+fn parse_symcache_owned(byteview: ByteView<'static>) -> Result<OwnedSymCache, symcache::Error> {
+    SelfCell::try_new(byteview, |p| unsafe { SymCache::parse(&*p) })
+}
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]

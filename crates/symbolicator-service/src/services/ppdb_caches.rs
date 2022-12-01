@@ -7,7 +7,7 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use thiserror::Error;
 
-use symbolic::common::ByteView;
+use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
@@ -43,6 +43,14 @@ const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
     fallbacks: &[],
 };
+
+pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'static>>;
+
+fn parse_ppdb_cache_owned(
+    byteview: ByteView<'static>,
+) -> Result<OwnedPortablePdbCache, symbolic::ppdb::CacheError> {
+    SelfCell::try_new(byteview, |p| unsafe { PortablePdbCache::parse(&*p) })
+}
 
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
