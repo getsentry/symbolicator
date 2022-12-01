@@ -12,7 +12,7 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
 use crate::services::objects::ObjectError;
 use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
@@ -76,6 +76,21 @@ pub enum PortablePdbCacheError {
     #[error("ppdb cache building took too long")]
     Timeout,
 }
+
+impl From<&PortablePdbCacheError> for CacheEntry<OwnedPortablePdbCache> {
+    fn from(error: &PortablePdbCacheError) -> Self {
+        match *error {
+            PortablePdbCacheError::Io(_)
+            | PortablePdbCacheError::Parsing(_)
+            | PortablePdbCacheError::PortablePdbParsing(_)
+            | PortablePdbCacheError::Writing(_) => Self::InternalError,
+            PortablePdbCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
+            PortablePdbCacheError::Malformed => Self::Malformed(String::new()),
+            PortablePdbCacheError::Timeout => Self::Timeout(Duration::default()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PortablePdbCacheFile {
     data: ByteView<'static>,

@@ -12,7 +12,7 @@ use symbolic::common::{Arch, ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -107,6 +107,22 @@ pub enum SymCacheError {
 
     #[error("symcache building took too long")]
     Timeout,
+}
+
+impl From<&SymCacheError> for CacheEntry<OwnedSymCache> {
+    fn from(error: &SymCacheError) -> Self {
+        match error {
+            SymCacheError::Io(_)
+            | SymCacheError::Parsing(_)
+            | SymCacheError::Writing(_)
+            | SymCacheError::ObjectParsing(_)
+            | SymCacheError::BcSymbolMapError(_)
+            | SymCacheError::Il2cppError(_) => Self::InternalError,
+            SymCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
+            SymCacheError::Malformed => Self::Malformed(String::new()),
+            SymCacheError::Timeout => Self::Timeout(Duration::default()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
