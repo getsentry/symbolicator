@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
 jobs:
-  image:
+  build-image:
     strategy:
       matrix:
         arch: [amd64, arm64]
@@ -41,7 +41,7 @@ jobs:
 
   multiarch:
     if: github.event_name != 'pull_request'
-    needs: [build]
+    needs: [build-image]
     runs-on: ubuntu-latest
     steps:
       - run: |
