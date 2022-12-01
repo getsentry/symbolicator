@@ -1,0 +1,53 @@
+name: image
+on:
+  pull_request:
+  push:
+    branches: [master]
+jobs:
+  image:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ubuntu-latest
+    env:
+      IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
+      IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: docker run --rm --privileged tonistiigi/binfmt --install arm64
+        if: matrix.arch == 'arm64'
+      - name: build
+        run: |
+          set -euxo pipefail
+          args=()
+          if docker pull -q "$IMG_CACHE"; then
+            args+=(--cache-from "$IMG_CACHE")
+          fi
+          docker buildx build \
+              "${args[@]}" \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --platform linux/${{ matrix.arch }} \
+              --tag "$IMG_VERSIONED" \
+              --target symbolicator-build \
+              .
+          docker tag "$IMG_VERSIONED" "$IMG_CACHE"
+      - name: push
+        run: |
+          set -euxo pipefail
+          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
+          docker push "$IMG_VERSIONED"
+          docker push "$IMG_CACHE"
+        if: github.event_name != 'pull_request'
+
+  multiarch:
+    if: github.event_name != 'pull_request'
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set -euxo pipefail
+          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
+          docker manifest create ghcr.io/getsentry/symbolicator:latest \
+            ghcr.io/getsentry/symbolicator:arm64-latest \
+            ghcr.io/getsentry/symbolicator:amd64-latest
+          docker manifest push ghcr.io/getsentry/symbolicator:latest
