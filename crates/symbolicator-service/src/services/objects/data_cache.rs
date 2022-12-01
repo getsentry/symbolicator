@@ -420,7 +420,7 @@ mod tests {
                 "failed to download: 500 Internal Server Error"
             ))
         );
-        assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
+        assert_eq!(server.accesses(), 3); // up to 3 tries on failure
         let result = objects_actor.find(find_object.clone()).await.unwrap();
         assert_eq!(
             result.meta.unwrap().status,
@@ -496,6 +496,7 @@ mod tests {
             result.meta.unwrap().status,
             CacheStatus::CacheSpecificError(String::from("download was cancelled"))
         );
+        // XXX: why are we not trying this 3 times?
         assert_eq!(server.accesses(), 1);
         let result = objects_actor.find(find_object.clone()).await.unwrap();
         assert_eq!(
@@ -536,7 +537,8 @@ mod tests {
             result.meta.clone().unwrap().status,
             CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
         );
-        assert_eq!(server.accesses(), 1 + 3); // 1 initial attempt + 3 retries
+        // XXX: why *are* we trying this 3 times?
+        assert_eq!(server.accesses(), 3); // up to 3 tries on failure
         let result = objects_actor.find(find_object.clone()).await.unwrap();
         assert_eq!(
             result.meta.unwrap().status,

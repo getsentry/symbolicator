@@ -216,20 +216,20 @@ pub mod m {
     }
 }
 
-/// Retry a future 3 times with 20 millisecond delays.
+/// Try to run a future up to 3 times with 20 millisecond delays on failure.
 pub async fn retry<G, F, T, E>(mut task_gen: G) -> Result<T, E>
 where
     G: FnMut() -> F,
     F: Future<Output = Result<T, E>>,
 {
-    let mut retries = 0;
+    let mut tries = 0;
     loop {
+        tries += 1;
         let result = task_gen().await;
-        if result.is_ok() || retries >= 3 {
+        if result.is_ok() || tries >= 3 {
             break result;
         }
 
-        retries += 1;
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
