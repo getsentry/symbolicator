@@ -340,8 +340,12 @@ impl SymCacheActor {
     pub async fn fetch(
         &self,
         request: FetchSymCache,
-    ) -> Result<Arc<SymCacheFile>, Arc<SymCacheError>> {
-        let FoundObject { meta, candidates } = self
+    ) -> (
+        CacheEntry<OwnedSymCache>,
+        AllObjectCandidates,
+        ObjectFeatures,
+    ) {
+        let Ok(FoundObject { meta, candidates }) = self
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
@@ -350,8 +354,9 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .await
-            .map_err(|e| Arc::new(SymCacheError::Fetching(e)))?;
+            .await else {
+            return (CacheEntry::InternalError, AllObjectCandidates::default(), ObjectFeatures::default())
+        };
 
         match meta {
             Some(handle) => {
@@ -397,23 +402,33 @@ impl SymCacheActor {
                     il2cpp_handle,
                 };
 
-                self.symcaches
+                match self
+                    .symcaches
                     .compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
                         secondary_sources,
                         object_meta: handle,
-                        candidates,
+                        candidates: candidates.clone(),
                     })
                     .await
+                {
+                    Ok(symcache_file) => {
+                        let SymCacheFile {
+                            status,
+                            data,
+                            candidates,
+                            features,
+                            ..
+                        } = Arc::try_unwrap(symcache_file).unwrap_or_else(|arc| (*arc).clone());
+                        let cache_entry = CacheEntry::from((status, data));
+                        let mapped = cache_entry.try_map(parse_symcache_owned);
+                        (mapped, candidates, features)
+                    }
+                    Err(e) => (e.as_ref().into(), candidates, ObjectFeatures::default()),
+                }
             }
-            None => Ok(Arc::new(SymCacheFile {
-                data: ByteView::from_slice(b""),
-                features: ObjectFeatures::default(),
-                status: CacheStatus::Negative,
-                arch: Arch::Unknown,
-                candidates,
-            })),
+            None => (CacheEntry::NotFound, candidates, ObjectFeatures::default()),
         }
     }
 }
@@ -600,8 +615,14 @@ mod tests {
 
         // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
         // symcache will be obfuscated.
-        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-        let symcache = symcache_file.parse().unwrap().unwrap();
+        let owned_symcache = symcache_actor
+            .fetch(fetch_symcache.clone())
+            .await
+            .0
+            .all_good()
+            .unwrap();
+
+        let symcache = owned_symcache.get();
         let sl = symcache.lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
@@ -625,8 +646,14 @@ mod tests {
         // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
         // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
         // be obfuscated like before.
-        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-        let symcache = symcache_file.parse().unwrap().unwrap();
+        let owned_symcache = symcache_actor
+            .fetch(fetch_symcache.clone())
+            .await
+            .0
+            .all_good()
+            .unwrap();
+
+        let symcache = owned_symcache.get();
         let sl = symcache.lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
@@ -639,8 +666,14 @@ mod tests {
 
         // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
         // symcache are unobfuscated.
-        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-        let symcache = symcache_file.parse().unwrap().unwrap();
+        let owned_symcache = symcache_actor
+            .fetch(fetch_symcache.clone())
+            .await
+            .0
+            .all_good()
+            .unwrap();
+
+        let symcache = owned_symcache.get();
         let sl = symcache.lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),

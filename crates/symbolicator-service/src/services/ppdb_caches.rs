@@ -155,8 +155,12 @@ impl PortablePdbCacheActor {
     pub async fn fetch(
         &self,
         request: FetchPortablePdbCache,
-    ) -> Result<Arc<PortablePdbCacheFile>, Arc<PortablePdbCacheError>> {
-        let FoundObject { meta, candidates } = self
+    ) -> (
+        CacheEntry<OwnedPortablePdbCache>,
+        AllObjectCandidates,
+        ObjectFeatures,
+    ) {
+        let Ok(FoundObject { meta, candidates }) = self
             .objects
             .find(FindObject {
                 filetypes: &[FileType::PortablePdb],
@@ -165,26 +169,38 @@ impl PortablePdbCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .await
-            .map_err(|e| Arc::new(PortablePdbCacheError::Fetching(e)))?;
+            .await else {
+            return (CacheEntry::InternalError, AllObjectCandidates::default(), ObjectFeatures::default())
+        };
 
         match meta {
             Some(handle) => {
-                self.ppdb_caches
+                match self
+                    .ppdb_caches
                     .compute_memoized(FetchPortablePdbCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
                         object_meta: handle,
-                        candidates,
+                        candidates: candidates.clone(),
                     })
                     .await
+                {
+                    Ok(ppdb_cache_file) => {
+                        let PortablePdbCacheFile {
+                            status,
+                            data,
+                            candidates,
+                            features,
+                            ..
+                        } = Arc::try_unwrap(ppdb_cache_file).unwrap_or_else(|arc| (*arc).clone());
+                        let cache_entry = CacheEntry::from((status, data));
+                        let mapped = cache_entry.try_map(parse_ppdb_cache_owned);
+                        (mapped, candidates, features)
+                    }
+                    Err(e) => (e.as_ref().into(), candidates, ObjectFeatures::default()),
+                }
             }
-            None => Ok(Arc::new(PortablePdbCacheFile {
-                data: ByteView::from_slice(b""),
-                status: CacheStatus::Negative,
-                candidates,
-                features: ObjectFeatures::default(),
-            })),
+            None => (CacheEntry::NotFound, candidates, ObjectFeatures::default()),
         }
     }
 }
