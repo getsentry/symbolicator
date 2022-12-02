@@ -107,8 +107,6 @@ impl From<&PortablePdbCacheError> for CacheEntry<OwnedPortablePdbCache> {
 pub struct PortablePdbCacheFile {
     data: ByteView<'static>,
     status: CacheStatus,
-    candidates: AllObjectCandidates,
-    features: ObjectFeatures,
 }
 
 impl PortablePdbCacheFile {
@@ -125,16 +123,6 @@ impl PortablePdbCacheFile {
             // from a previous symcache conversion attempt.
             CacheStatus::CacheSpecificError(_) => Err(PortablePdbCacheError::Malformed),
         }
-    }
-
-    /// Returns the list of DIFs which were searched for this ppdb cache.
-    pub fn candidates(&self) -> &AllObjectCandidates {
-        &self.candidates
-    }
-
-    /// Returns the features of the object file this ppdb cache was constructed from.
-    pub fn features(&self) -> ObjectFeatures {
-        self.features
     }
 }
 
@@ -172,7 +160,7 @@ impl PortablePdbCacheActor {
         AllObjectCandidates,
         ObjectFeatures,
     ) {
-        let Ok(FoundObject { meta, candidates }) = self
+        let Ok(FoundObject { meta, mut candidates }) = self
             .objects
             .find(FindObject {
                 filetypes: &[FileType::PortablePdb],
@@ -192,22 +180,23 @@ impl PortablePdbCacheActor {
                     .compute_memoized(FetchPortablePdbCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
-                        object_meta: handle,
-                        candidates: candidates.clone(),
+                        object_meta: Arc::clone(&handle),
                     })
                     .await
                 {
                     Ok(ppdb_cache_file) => {
-                        let PortablePdbCacheFile {
-                            status,
-                            data,
-                            candidates,
-                            features,
-                            ..
-                        } = Arc::try_unwrap(ppdb_cache_file).unwrap_or_else(|arc| (*arc).clone());
+                        let PortablePdbCacheFile { status, data, .. } =
+                            Arc::try_unwrap(ppdb_cache_file).unwrap_or_else(|arc| (*arc).clone());
+
+                        candidates.set_debug(
+                            handle.source_id(),
+                            &handle.uri(),
+                            ObjectUseInfo::from_derived_status(&status, handle.status()),
+                        );
+
                         let cache_entry = CacheEntry::from((status, data));
                         let mapped = cache_entry.try_map(parse_ppdb_cache_owned);
-                        (mapped, candidates, features)
+                        (mapped, candidates, handle.features())
                     }
                     Err(e) => (e.as_ref().into(), candidates, ObjectFeatures::default()),
                 }
@@ -227,12 +216,6 @@ struct FetchPortablePdbCacheInternal {
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
-
-    /// The object candidates from which [`FetchPortablePdbCacheInternal::object_meta`] was chosen.
-    ///
-    /// This needs to be returned back with the symcache result and is only being passed
-    /// through here as callers to the PortablePdbCacheActer want to have this info.
-    candidates: AllObjectCandidates,
 }
 
 /// Fetches the needed DIF objects and spawns symcache computation.
@@ -314,19 +297,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        let mut candidates = self.candidates.clone(); // yuk!
-        candidates.set_debug(
-            self.object_meta.source_id(),
-            &self.object_meta.uri(),
-            ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
-        );
-
-        PortablePdbCacheFile {
-            data,
-            status,
-            candidates,
-            features: self.object_meta.features(),
-        }
+        PortablePdbCacheFile { data, status }
     }
 }
 

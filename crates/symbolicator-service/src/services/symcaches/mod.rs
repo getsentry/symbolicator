@@ -171,10 +171,8 @@ impl SymCacheActor {
 #[derive(Clone, Debug)]
 pub struct SymCacheFile {
     data: ByteView<'static>,
-    features: ObjectFeatures,
     status: CacheStatus,
     arch: Arch,
-    candidates: AllObjectCandidates,
 }
 
 impl SymCacheFile {
@@ -195,16 +193,6 @@ impl SymCacheFile {
     pub fn arch(&self) -> Arch {
         self.arch
     }
-
-    /// Returns the features of the object file this symcache was constructed from.
-    pub fn features(&self) -> ObjectFeatures {
-        self.features
-    }
-
-    /// Returns the list of DIFs which were searched for this symcache.
-    pub fn candidates(&self) -> &AllObjectCandidates {
-        &self.candidates
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -220,12 +208,6 @@ struct FetchSymCacheInternal {
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
-
-    /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
-    ///
-    /// This needs to be returned back with the symcache result and is only being passed
-    /// through here as callers to the SymCacheActer want to have this info.
-    candidates: AllObjectCandidates,
 }
 
 /// Fetches the needed DIF objects and spawns symcache computation.
@@ -328,20 +310,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .map(|cache| cache.arch())
             .unwrap_or_default();
 
-        let mut candidates = self.candidates.clone(); // yuk!
-        candidates.set_debug(
-            self.object_meta.source_id(),
-            &self.object_meta.uri(),
-            ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
-        );
-
-        SymCacheFile {
-            data,
-            features: self.object_meta.features(),
-            status,
-            arch,
-            candidates,
-        }
+        SymCacheFile { data, status, arch }
     }
 }
 
@@ -363,7 +332,7 @@ impl SymCacheActor {
         AllObjectCandidates,
         ObjectFeatures,
     ) {
-        let Ok(FoundObject { meta, candidates }) = self
+        let Ok(FoundObject { meta, mut candidates }) = self
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
@@ -426,22 +395,23 @@ impl SymCacheActor {
                         request,
                         objects_actor: self.objects.clone(),
                         secondary_sources,
-                        object_meta: handle,
-                        candidates: candidates.clone(),
+                        object_meta: Arc::clone(&handle),
                     })
                     .await
                 {
                     Ok(symcache_file) => {
-                        let SymCacheFile {
-                            status,
-                            data,
-                            candidates,
-                            features,
-                            ..
-                        } = Arc::try_unwrap(symcache_file).unwrap_or_else(|arc| (*arc).clone());
+                        let SymCacheFile { status, data, .. } =
+                            Arc::try_unwrap(symcache_file).unwrap_or_else(|arc| (*arc).clone());
+
+                        candidates.set_debug(
+                            handle.source_id(),
+                            &handle.uri(),
+                            ObjectUseInfo::from_derived_status(&status, handle.status()),
+                        );
+
                         let cache_entry = CacheEntry::from((status, data));
                         let mapped = cache_entry.try_map(parse_symcache_owned);
-                        (mapped, candidates, features)
+                        (mapped, candidates, handle.features())
                     }
                     Err(e) => (e.as_ref().into(), candidates, ObjectFeatures::default()),
                 }
