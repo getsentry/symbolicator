@@ -79,11 +79,23 @@ pub enum PortablePdbCacheError {
 
 impl From<&PortablePdbCacheError> for CacheEntry<OwnedPortablePdbCache> {
     fn from(error: &PortablePdbCacheError) -> Self {
-        match *error {
-            PortablePdbCacheError::Io(_)
-            | PortablePdbCacheError::Parsing(_)
-            | PortablePdbCacheError::PortablePdbParsing(_)
-            | PortablePdbCacheError::Writing(_) => Self::InternalError,
+        match error {
+            PortablePdbCacheError::Io(e) => {
+                tracing::error!(error = %e, "failed to write ppdb cache");
+                Self::InternalError
+            }
+            PortablePdbCacheError::Parsing(e) => {
+                tracing::error!(error = %e, "failed to parse ppdb cache");
+                Self::InternalError
+            }
+            PortablePdbCacheError::PortablePdbParsing(e) => {
+                tracing::error!(error = %e, "failed to parse portable pdb");
+                Self::InternalError
+            }
+            PortablePdbCacheError::Writing(e) => {
+                tracing::error!(error = %e, "failed to write ppdb cache");
+                Self::InternalError
+            }
             PortablePdbCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
             PortablePdbCacheError::Malformed => Self::Malformed(String::new()),
             PortablePdbCacheError::Timeout => Self::Timeout(Duration::default()),

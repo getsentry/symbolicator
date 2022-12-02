@@ -112,12 +112,30 @@ pub enum SymCacheError {
 impl From<&SymCacheError> for CacheEntry<OwnedSymCache> {
     fn from(error: &SymCacheError) -> Self {
         match error {
-            SymCacheError::Io(_)
-            | SymCacheError::Parsing(_)
-            | SymCacheError::Writing(_)
-            | SymCacheError::ObjectParsing(_)
-            | SymCacheError::BcSymbolMapError(_)
-            | SymCacheError::Il2cppError(_) => Self::InternalError,
+            SymCacheError::Io(e) => {
+                tracing::error!(error = %e, "failed to write symcache");
+                Self::InternalError
+            }
+            SymCacheError::Parsing(e) => {
+                tracing::error!(error = %e, "failed to parse symcache");
+                Self::InternalError
+            }
+            SymCacheError::Writing(e) => {
+                tracing::error!(error = %e, "failed to write symcache");
+                Self::InternalError
+            }
+            SymCacheError::ObjectParsing(e) => {
+                tracing::error!(error = %e, "failed to parse object");
+                Self::InternalError
+            }
+            SymCacheError::BcSymbolMapError(e) => {
+                tracing::error!(error = %e, "failed to handle auxiliary BCSymbolMap file");
+                Self::InternalError
+            }
+            SymCacheError::Il2cppError(e) => {
+                tracing::error!(error = %e, "failed to handle auxiliary il2cpp line mapping file");
+                Self::InternalError
+            }
             SymCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
             SymCacheError::Malformed => Self::Malformed(String::new()),
             SymCacheError::Timeout => Self::Timeout(Duration::default()),
