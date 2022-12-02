@@ -154,7 +154,6 @@ impl<T> CacheEntry<T> {
     const TIMEOUT_MARKER: &[u8] = b"timeout";
     const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
     const MALFORMED_MARKER: &[u8] = b"malformed";
-    const INTERNAL_ERROR_MARKER: &[u8] = b"internalerror";
 
     pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
         file.rewind().await?;
@@ -180,9 +179,7 @@ impl<T> CacheEntry<T> {
                 file.write_all(Self::MALFORMED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
             }
-            CacheEntry::InternalError => {
-                file.write_all(Self::INTERNAL_ERROR_MARKER).await?;
-            }
+            CacheEntry::InternalError => {}
         }
 
         let new_len = file.stream_position().await?;
@@ -259,8 +256,6 @@ impl CacheEntry<ByteView<'static>> {
         } else if let Some(raw_message) = bytes.strip_prefix(Self::MALFORMED_MARKER) {
             let err_msg = String::from_utf8_lossy(raw_message);
             Self::Malformed(err_msg.into_owned())
-        } else if bytes.as_ref() == Self::INTERNAL_ERROR_MARKER {
-            Self::InternalError
         } else if bytes.is_empty() {
             Self::NotFound
         } else {
@@ -1807,10 +1802,6 @@ mod tests {
             read_cache_entry(permission_denied),
             CacheEntry::PermissionDenied("I'm sorry Dave, I'm afraid I can't do that".into())
         );
-
-        let internal_error = b"internalerror";
-
-        assert_eq!(read_cache_entry(internal_error), CacheEntry::InternalError);
 
         let all_good = b"Not any of the error cases";
 
