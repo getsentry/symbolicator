@@ -120,8 +120,14 @@ impl CacheStatus {
     }
 }
 
-/// A cache entry that either contains an object of type `T`
-/// or one of several error conditions.
+/// A cache entry that represents the result of fetching an object of type `T` from
+/// a remote location.
+///
+/// # Reading from a file
+///
+/// A `CacheEntry<ByteView>` can be read from a [`ByteView`] using
+/// [`from_bytes`](CacheEntry::from_bytes). That `CacheEntry` can then be converted
+/// using [`map`](CacheEntry::map) or [`try_map`](CacheEntry::try_map).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheEntry<T> {
     /// A valid cache entry containing an instance of `T`.
@@ -134,7 +140,7 @@ pub enum CacheEntry<T> {
     /// The attached string contains the remote source's response.
     PermissionDenied(String), // => whatever the server returned
     /// The object could not be fetched from the remote source due to a timeout.
-    Timeout(Duration), // => should we return the duration after which we timed out?
+    Timeout(Duration),
     /// The object could not be fetched from the remote source due to another problem,
     /// like connection loss, DNS resolution, or a 5xx server response.
     ///
@@ -146,6 +152,8 @@ pub enum CacheEntry<T> {
     /// during symcache conversion
     Malformed(String),
     /// An unexpected error in symbolicator itself.
+    ///
+    /// This variant is not intended to be persisted to or read from disk.
     InternalError,
 }
 
@@ -155,38 +163,60 @@ impl<T> CacheEntry<T> {
     const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
     const MALFORMED_MARKER: &[u8] = b"malformed";
 
+    /// Writes error markers and details to a file.
+    ///
+    /// * If `self` is [`AllGood`](CacheEntry::AllGood), this merely seeks to
+    /// the end of the file.
+    /// * If `self` is [`InternalError`](CacheEntry::InternalError), it does nothing.
+    /// * If `self` is [`NotFound`](CacheEntry::NotFound), it empties the file.
+    /// * In all other cases, it writes the corresponding marker, followed by the error
+    /// details, and truncates the file.
     pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
-        file.rewind().await?;
         match self {
-            CacheEntry::AllGood(_entry) => {}
+            CacheEntry::AllGood(_) => {
+                file.seek(SeekFrom::End(0)).await?;
+            }
             CacheEntry::NotFound => {
+                file.rewind().await?;
                 file.set_len(0).await?;
             }
             CacheEntry::PermissionDenied(details) => {
+                file.rewind().await?;
                 file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
             CacheEntry::Timeout(duration) => {
+                file.rewind().await?;
                 file.write_all(Self::TIMEOUT_MARKER).await?;
                 file.write_all(format_duration(*duration).to_string().as_bytes())
                     .await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
             CacheEntry::DownloadError(details) => {
+                file.rewind().await?;
                 file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
             CacheEntry::Malformed(details) => {
+                file.rewind().await?;
                 file.write_all(Self::MALFORMED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
             }
             CacheEntry::InternalError => {}
         }
 
-        let new_len = file.stream_position().await?;
-        file.set_len(new_len).await?;
         Ok(())
     }
 
+    /// Maps a `CacheEntry<T>` to `CacheEntry<U>` by applying a function to a contained
+    /// [`AllGood`](CacheEntry::AllGood) value, leaving all other variants alone.
     pub fn map<F, U>(self, f: F) -> CacheEntry<U>
     where
         F: FnOnce(T) -> U,
@@ -202,6 +232,11 @@ impl<T> CacheEntry<T> {
         }
     }
 
+    /// Maps a `CacheEntry<T>` to `CacheEntry<U>` by applying a fallible function to a contained
+    /// [`AllGood`](CacheEntry::AllGood) value, leaving all other variants alone.
+    ///
+    /// If the function returns an error, that error will be logged and an
+    /// [`InternalError`](CacheEntry::InternalError) will be returned.
     pub fn try_map<F, U, E>(self, f: F) -> CacheEntry<U>
     where
         E: std::error::Error,
@@ -224,6 +259,8 @@ impl<T> CacheEntry<T> {
         }
     }
 
+    /// Returns `Some(x)` if `self` is [`AllGood(x)`](CacheEntry::AllGood), otherwise
+    /// returns `None`.
     pub fn all_good(self) -> Option<T> {
         match self {
             Self::AllGood(entry) => Some(entry),
@@ -231,10 +268,14 @@ impl<T> CacheEntry<T> {
         }
     }
 
+    /// Returns `true` if `self` is [`NotFound`](CacheEntry::NotFound).
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::NotFound)
     }
 
+    /// Returns the [`CacheStatus`] corresponding to this `CacheEntry`.
+    ///
+    /// Note that this method allocates strings for some of the variants.
     pub fn as_cache_status(&self) -> CacheStatus {
         match self {
             Self::AllGood(_) => CacheStatus::Positive,
@@ -251,6 +292,12 @@ impl<T> CacheEntry<T> {
 }
 
 impl CacheEntry<ByteView<'static>> {
+    /// Parses a `CacheEntry` from a [`ByteView`](ByteView).
+    ///
+    /// * If the file starts with an error marker, the corresponding error variant will be returned.
+    /// * If the file is empty, [`NotFound`](CacheEntry::NotFound) will be returned.
+    /// * In any other case, an [`AllGood`](CacheEntry::AllGood) containing the `ByteView` itself will be
+    /// returned.
     pub fn from_bytes(bytes: ByteView<'static>) -> Self {
         if let Some(raw_message) = bytes.strip_prefix(Self::PERMISSION_DENIED_MARKER) {
             let err_msg = String::from_utf8_lossy(raw_message);
