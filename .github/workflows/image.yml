@@ -7,7 +7,7 @@ jobs:
   build-image:
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        arch: [amd64]
     runs-on: ubuntu-latest
     env:
       IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
