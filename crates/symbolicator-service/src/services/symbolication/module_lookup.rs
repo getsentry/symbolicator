@@ -12,9 +12,12 @@ use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 use crate::cache::CacheEntry;
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
-    FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError,
+    FetchPortablePdbCache, FetchPortablePdbCacheResponse, OwnedPortablePdbCache,
+    PortablePdbCacheActor, PortablePdbCacheError,
 };
-use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor, SymCacheError};
+use crate::services::symcaches::{
+    FetchSymCache, FetchSymCacheResponse, OwnedSymCache, SymCacheActor, SymCacheError,
+};
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
     RawStacktrace, Scope,
@@ -206,13 +209,17 @@ impl ModuleLookup {
                                 sources,
                                 scope,
                             };
-                            let (ppdb_cache_entry, candidates, features) =
-                                ppdb_cache_actor.fetch(request).await;
+
+                            let FetchPortablePdbCacheResponse {
+                                cache,
+                                candidates,
+                                features,
+                            } = ppdb_cache_actor.fetch(request).await;
 
                             (
                                 idx,
                                 CacheFile {
-                                    file: ppdb_cache_entry.map(CacheFileEntry::PortablePdbCache),
+                                    file: cache.map(CacheFileEntry::PortablePdbCache),
                                     candidates,
                                     features,
                                 },
@@ -226,13 +233,16 @@ impl ModuleLookup {
                                 scope,
                             };
 
-                            let (symcache_entry, candidates, features) =
-                                symcache_actor.fetch(request).await;
+                            let FetchSymCacheResponse {
+                                cache,
+                                candidates,
+                                features,
+                            } = symcache_actor.fetch(request).await;
 
                             (
                                 idx,
                                 CacheFile {
-                                    file: symcache_entry.map(CacheFileEntry::SymCache),
+                                    file: cache.map(CacheFileEntry::SymCache),
                                     candidates,
                                     features,
                                 },

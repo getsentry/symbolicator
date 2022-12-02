@@ -234,6 +234,20 @@ impl<T> CacheEntry<T> {
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::NotFound)
     }
+
+    pub fn as_cache_status(&self) -> CacheStatus {
+        match self {
+            Self::AllGood(_) => CacheStatus::Positive,
+            Self::NotFound => CacheStatus::Negative,
+            Self::DownloadError(s) => CacheStatus::CacheSpecificError(s.clone()),
+            Self::PermissionDenied(_) => {
+                CacheStatus::CacheSpecificError("missing permissions for file".into())
+            }
+            Self::Timeout(_) => CacheStatus::CacheSpecificError("download was cancelled".into()),
+            Self::Malformed(s) => CacheStatus::Malformed(s.clone()),
+            Self::InternalError => CacheStatus::CacheSpecificError("internal error".into()),
+        }
+    }
 }
 
 impl CacheEntry<ByteView<'static>> {

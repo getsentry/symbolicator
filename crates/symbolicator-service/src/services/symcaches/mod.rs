@@ -8,7 +8,7 @@ use anyhow::Error;
 use futures::future::BoxFuture;
 use thiserror::Error;
 
-use symbolic::common::{Arch, ByteView, SelfCell};
+use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
@@ -169,33 +169,6 @@ impl SymCacheActor {
 }
 
 #[derive(Clone, Debug)]
-pub struct SymCacheFile {
-    data: ByteView<'static>,
-    status: CacheStatus,
-    arch: Arch,
-}
-
-impl SymCacheFile {
-    pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        match &self.status {
-            CacheStatus::Positive => Ok(Some(
-                SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
-            )),
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(_) => Err(SymCacheError::Malformed),
-            // If the cache entry is for a cache specific error, it must be
-            // from a previous symcache conversion attempt.
-            CacheStatus::CacheSpecificError(_) => Err(SymCacheError::Malformed),
-        }
-    }
-
-    /// Returns the architecture of this symcache.
-    pub fn arch(&self) -> Arch {
-        self.arch
-    }
-}
-
-#[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
     /// The external request, as passed into [`SymCacheActor::fetch`].
     request: FetchSymCache,
@@ -258,7 +231,7 @@ async fn fetch_difs_and_compute_symcache(
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
-    type Item = SymCacheFile;
+    type Item = CacheEntry<OwnedSymCache>;
     type Error = SymCacheError;
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
@@ -305,12 +278,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        // TODO: Figure out if this double-parsing could be avoided
-        let arch = SymCache::parse(&data)
-            .map(|cache| cache.arch())
-            .unwrap_or_default();
-
-        SymCacheFile { data, status, arch }
+        let cache_entry = CacheEntry::from((status, data));
+        cache_entry.try_map(parse_symcache_owned)
     }
 }
 
@@ -323,15 +292,25 @@ pub struct FetchSymCache {
     pub scope: Scope,
 }
 
+#[derive(Debug, Clone)]
+pub struct FetchSymCacheResponse {
+    pub cache: CacheEntry<OwnedSymCache>,
+    pub candidates: AllObjectCandidates,
+    pub features: ObjectFeatures,
+}
+
+impl Default for FetchSymCacheResponse {
+    fn default() -> Self {
+        Self {
+            cache: CacheEntry::InternalError,
+            candidates: Default::default(),
+            features: Default::default(),
+        }
+    }
+}
+
 impl SymCacheActor {
-    pub async fn fetch(
-        &self,
-        request: FetchSymCache,
-    ) -> (
-        CacheEntry<OwnedSymCache>,
-        AllObjectCandidates,
-        ObjectFeatures,
-    ) {
+    pub async fn fetch(&self, request: FetchSymCache) -> FetchSymCacheResponse {
         let Ok(FoundObject { meta, mut candidates }) = self
             .objects
             .find(FindObject {
@@ -342,7 +321,7 @@ impl SymCacheActor {
                 purpose: ObjectPurpose::Debug,
             })
             .await else {
-            return (CacheEntry::InternalError, AllObjectCandidates::default(), ObjectFeatures::default())
+                return FetchSymCacheResponse::default();
         };
 
         match meta {
@@ -400,23 +379,34 @@ impl SymCacheActor {
                     .await
                 {
                     Ok(symcache_file) => {
-                        let SymCacheFile { status, data, .. } =
-                            Arc::try_unwrap(symcache_file).unwrap_or_else(|arc| (*arc).clone());
-
                         candidates.set_debug(
                             handle.source_id(),
                             &handle.uri(),
-                            ObjectUseInfo::from_derived_status(&status, handle.status()),
+                            ObjectUseInfo::from_derived_status(
+                                &symcache_file.as_cache_status(),
+                                handle.status(),
+                            ),
                         );
 
-                        let cache_entry = CacheEntry::from((status, data));
-                        let mapped = cache_entry.try_map(parse_symcache_owned);
-                        (mapped, candidates, handle.features())
+                        FetchSymCacheResponse {
+                            cache: Arc::try_unwrap(symcache_file)
+                                .unwrap_or_else(|arc| (*arc).clone()),
+                            candidates,
+                            features: handle.features(),
+                        }
                     }
-                    Err(e) => (e.as_ref().into(), candidates, ObjectFeatures::default()),
+                    Err(e) => FetchSymCacheResponse {
+                        cache: e.as_ref().into(),
+                        candidates,
+                        features: ObjectFeatures::default(),
+                    },
                 }
             }
-            None => (CacheEntry::NotFound, candidates, ObjectFeatures::default()),
+            None => FetchSymCacheResponse {
+                cache: CacheEntry::NotFound,
+                candidates,
+                features: ObjectFeatures::default(),
+            },
         }
     }
 }
@@ -606,7 +596,7 @@ mod tests {
         let owned_symcache = symcache_actor
             .fetch(fetch_symcache.clone())
             .await
-            .0
+            .cache
             .all_good()
             .unwrap();
 
@@ -637,7 +627,7 @@ mod tests {
         let owned_symcache = symcache_actor
             .fetch(fetch_symcache.clone())
             .await
-            .0
+            .cache
             .all_good()
             .unwrap();
 
@@ -657,7 +647,7 @@ mod tests {
         let owned_symcache = symcache_actor
             .fetch(fetch_symcache.clone())
             .await
-            .0
+            .cache
             .all_good()
             .unwrap();
 

@@ -103,35 +103,29 @@ impl From<&PortablePdbCacheError> for CacheEntry<OwnedPortablePdbCache> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PortablePdbCacheFile {
-    data: ByteView<'static>,
-    status: CacheStatus,
-}
-
-impl PortablePdbCacheFile {
-    pub fn parse(
-        &self,
-    ) -> Result<Option<symbolic::ppdb::PortablePdbCache<'_>>, PortablePdbCacheError> {
-        match &self.status {
-            CacheStatus::Positive => Ok(Some(
-                PortablePdbCache::parse(&self.data).map_err(PortablePdbCacheError::Parsing)?,
-            )),
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(_) => Err(PortablePdbCacheError::Malformed),
-            // If the cache entry is for a cache specific error, it must be
-            // from a previous symcache conversion attempt.
-            CacheStatus::CacheSpecificError(_) => Err(PortablePdbCacheError::Malformed),
-        }
-    }
-}
-
 /// Information for fetching the symbols for this ppdb cache
 #[derive(Debug, Clone)]
 pub struct FetchPortablePdbCache {
     pub identifier: ObjectId,
     pub sources: Arc<[SourceConfig]>,
     pub scope: Scope,
+}
+
+#[derive(Debug, Clone)]
+pub struct FetchPortablePdbCacheResponse {
+    pub cache: CacheEntry<OwnedPortablePdbCache>,
+    pub candidates: AllObjectCandidates,
+    pub features: ObjectFeatures,
+}
+
+impl Default for FetchPortablePdbCacheResponse {
+    fn default() -> Self {
+        Self {
+            cache: CacheEntry::InternalError,
+            candidates: Default::default(),
+            features: Default::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -152,14 +146,7 @@ impl PortablePdbCacheActor {
         }
     }
 
-    pub async fn fetch(
-        &self,
-        request: FetchPortablePdbCache,
-    ) -> (
-        CacheEntry<OwnedPortablePdbCache>,
-        AllObjectCandidates,
-        ObjectFeatures,
-    ) {
+    pub async fn fetch(&self, request: FetchPortablePdbCache) -> FetchPortablePdbCacheResponse {
         let Ok(FoundObject { meta, mut candidates }) = self
             .objects
             .find(FindObject {
@@ -170,7 +157,7 @@ impl PortablePdbCacheActor {
                 purpose: ObjectPurpose::Debug,
             })
             .await else {
-            return (CacheEntry::InternalError, AllObjectCandidates::default(), ObjectFeatures::default())
+                return FetchPortablePdbCacheResponse::default()
         };
 
         match meta {
@@ -185,23 +172,34 @@ impl PortablePdbCacheActor {
                     .await
                 {
                     Ok(ppdb_cache_file) => {
-                        let PortablePdbCacheFile { status, data, .. } =
-                            Arc::try_unwrap(ppdb_cache_file).unwrap_or_else(|arc| (*arc).clone());
-
                         candidates.set_debug(
                             handle.source_id(),
                             &handle.uri(),
-                            ObjectUseInfo::from_derived_status(&status, handle.status()),
+                            ObjectUseInfo::from_derived_status(
+                                &ppdb_cache_file.as_cache_status(),
+                                handle.status(),
+                            ),
                         );
 
-                        let cache_entry = CacheEntry::from((status, data));
-                        let mapped = cache_entry.try_map(parse_ppdb_cache_owned);
-                        (mapped, candidates, handle.features())
+                        FetchPortablePdbCacheResponse {
+                            cache: Arc::try_unwrap(ppdb_cache_file)
+                                .unwrap_or_else(|arc| (*arc).clone()),
+                            candidates,
+                            features: handle.features(),
+                        }
                     }
-                    Err(e) => (e.as_ref().into(), candidates, ObjectFeatures::default()),
+                    Err(e) => FetchPortablePdbCacheResponse {
+                        cache: e.as_ref().into(),
+                        candidates,
+                        features: ObjectFeatures::default(),
+                    },
                 }
             }
-            None => (CacheEntry::NotFound, candidates, ObjectFeatures::default()),
+            None => FetchPortablePdbCacheResponse {
+                cache: CacheEntry::NotFound,
+                candidates,
+                features: ObjectFeatures::default(),
+            },
         }
     }
 }
@@ -259,7 +257,7 @@ async fn fetch_difs_and_compute_ppdb_cache(
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
-    type Item = PortablePdbCacheFile;
+    type Item = CacheEntry<OwnedPortablePdbCache>;
     type Error = PortablePdbCacheError;
 
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
@@ -297,7 +295,8 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        PortablePdbCacheFile { data, status }
+        let cache_entry = CacheEntry::from((status, data));
+        cache_entry.try_map(parse_ppdb_cache_owned)
     }
 }
 
