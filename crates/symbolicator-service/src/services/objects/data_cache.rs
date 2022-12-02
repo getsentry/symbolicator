@@ -175,6 +175,12 @@ async fn fetch_file(
             tracing::debug!("No debug file found for {}", cache_key);
             return Ok(CacheStatus::Negative);
         }
+        Ok(DownloadStatus::PermissionDenied) => {
+            // FIXME: this is really unreachable as the downloader converts these already
+            return Ok(CacheStatus::CacheSpecificError(
+                DownloadError::Permissions.for_cache(),
+            ));
+        }
 
         Err(e) => {
             // We want to error-log "interesting" download errors so we can look them up
@@ -537,8 +543,7 @@ mod tests {
             result.meta.clone().unwrap().status,
             CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
         );
-        // XXX: why *are* we trying this 3 times?
-        assert_eq!(server.accesses(), 3); // up to 3 tries on failure
+        assert_eq!(server.accesses(), 1);
         let result = objects_actor.find(find_object.clone()).await.unwrap();
         assert_eq!(
             result.meta.unwrap().status,

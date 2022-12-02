@@ -160,7 +160,7 @@ impl GcsDownloader {
                 &key,
                 &bucket,
             );
-            Err(DownloadError::Permissions)
+            Ok(DownloadStatus::PermissionDenied)
         // If it's a client error, chances are either it's a 404 or it's permission-related.
         } else if response.status().is_client_error() {
             tracing::debug!(

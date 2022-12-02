@@ -304,7 +304,7 @@ impl SentryDownloader {
             StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
         ) {
             tracing::debug!("Insufficient permissions to download from {}", download_url);
-            Err(DownloadError::Permissions)
+            Ok(DownloadStatus::PermissionDenied)
         } else if response.status().is_client_error() {
             tracing::debug!(
                 "Unexpected client error status code from {}: {}",

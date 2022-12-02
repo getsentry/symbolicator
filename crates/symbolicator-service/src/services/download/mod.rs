@@ -119,6 +119,8 @@ pub enum DownloadStatus {
     Completed,
     /// The requested file was not found, there is no useful data at the provided path.
     NotFound,
+    /// Not enough permissions to download the file.
+    PermissionDenied,
 }
 
 /// A service which can download files from a [`SourceConfig`].
@@ -207,6 +209,11 @@ impl DownloadService {
                     }
                     DownloadStatus::NotFound => {
                         tracing::debug!("Debug file not found at {}", source);
+                    }
+                    DownloadStatus::PermissionDenied => {
+                        tracing::debug!("No permissions to fetch file from {}", source);
+                        // FIXME: downstream users still expect these to be errors
+                        return Err(DownloadError::Permissions);
                     }
                 };
                 Ok(status)

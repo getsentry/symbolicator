@@ -178,7 +178,7 @@ impl S3Downloader {
                 match &err {
                     RusotoError::Service(_) => return Ok(DownloadStatus::NotFound),
                     RusotoError::Unknown(response) if response.status == StatusCode::FORBIDDEN => {
-                        return Err(DownloadError::Permissions)
+                        return Ok(DownloadStatus::PermissionDenied)
                     }
                     RusotoError::Unknown(response) if response.status.is_client_error() => {
                         return Ok(DownloadStatus::NotFound)
@@ -504,10 +504,10 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteDif::new(source, source_location);
 
-        downloader
-            .download_source(file_source, &target_path)
-            .await
-            .expect_err("authentication should fail");
+        assert!(matches!(
+            downloader.download_source(file_source, &target_path).await,
+            Ok(DownloadStatus::PermissionDenied)
+        ));
 
         assert!(!target_path.exists());
     }

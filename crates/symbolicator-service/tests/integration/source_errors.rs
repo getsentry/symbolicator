@@ -83,7 +83,6 @@ async fn test_download_errors() {
             )
         );
 
-        // NOTE: we try this 3 times on error, why though?
         let request = get_symbolication_request(vec![server.forbidden_source.clone()]);
         let response = symbolication.symbolicate(request).await.unwrap();
 
@@ -111,7 +110,7 @@ async fn test_download_errors() {
         );
     }
 
-    // server errors and permission errors are tried up to 3 times, all others once, for a total of
-    // 9 requests, as the second requests should be served from cache
-    assert_eq!(server.accesses(), 9);
+    // server errors are tried up to 3 times, all others once, for a total of
+    // 7 requests, as the second requests should be served from cache
+    assert_eq!(server.accesses(), 7);
 }
