@@ -264,7 +264,7 @@ impl SentryDownloader {
         &self,
         file_source: SentryRemoteDif,
         destination: &Path,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<DownloadStatus<()>, DownloadError> {
         let request = self
             .client
             .get(file_source.url())
