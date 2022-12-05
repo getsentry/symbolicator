@@ -5,17 +5,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use futures::prelude::*;
+use minidump_processor::SymbolFile;
 use thiserror::Error;
 
 use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus, ExpirationTime};
+use crate::cache::{
+    cache_entry_as_cache_status, cache_entry_from_cache_status, Cache, CacheEntry, CacheError,
+    CacheStatus, ExpirationTime,
+};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
-    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+    FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
+    ObjectsActor,
 };
 use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
@@ -53,6 +57,25 @@ const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
+#[tracing::instrument(skip_all)]
+fn parse_cfi_cache(bytes: ByteView<'static>) -> Result<Option<Arc<SymbolFile>>, CacheError> {
+    let cfi_cache = CfiCache::from_bytes(bytes).map_err(|e| {
+        tracing::error!(error = %e);
+        CacheError::InternalError
+    })?;
+
+    if cfi_cache.as_slice().is_empty() {
+        return Ok(None);
+    }
+
+    let symbol_file = SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(|e| {
+        tracing::error!(error = %e);
+        CacheError::InternalError
+    })?;
+
+    Ok(Some(Arc::new(symbol_file)))
+}
+
 /// Errors happening while generating a cficache
 #[derive(Debug, Error)]
 pub enum CfiCacheError {
@@ -68,8 +91,36 @@ pub enum CfiCacheError {
     #[error("failed to parse object")]
     ObjectParsing(#[source] ObjectError),
 
+    #[error("failed parsing symbolfile")]
+    SymbolFileParsing(#[from] minidump_processor::SymbolError),
+
     #[error("cficache building took too long")]
     Timeout,
+}
+
+impl From<&CfiCacheError> for CacheError {
+    fn from(error: &CfiCacheError) -> Self {
+        match error {
+            CfiCacheError::Io(e) => {
+                tracing::error!(error = %e, "failed to write cfi cache");
+                Self::InternalError
+            }
+            CfiCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
+            CfiCacheError::Parsing(e) => {
+                tracing::error!(error = %e, "failed to parse cfi cache");
+                Self::InternalError
+            }
+            CfiCacheError::ObjectParsing(e) => {
+                tracing::error!(error = %e, "failed to parse object");
+                Self::InternalError
+            }
+            CfiCacheError::SymbolFileParsing(e) => {
+                tracing::error!(error = %e, "failed to parse symbolfile");
+                Self::InternalError
+            }
+            CfiCacheError::Timeout => Self::Timeout(Duration::default()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -128,7 +179,6 @@ struct FetchCfiCacheInternal {
     request: FetchCfiCache,
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
-    candidates: AllObjectCandidates,
 }
 
 /// Extracts the Call Frame Information (CFI) from an object file.
@@ -167,7 +217,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = CfiCacheFile;
+    type Item = CacheEntry<Option<Arc<SymbolFile>>>;
     type Error = CfiCacheError;
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
@@ -207,18 +257,24 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        let mut candidates = self.candidates.clone();
-        candidates.set_unwind(
-            self.meta_handle.source_id().clone(),
-            &self.meta_handle.uri(),
-            ObjectUseInfo::from_derived_status(&status, self.meta_handle.status()),
-        );
+        let cache_entry = cache_entry_from_cache_status(status, data);
 
-        CfiCacheFile {
-            features: self.meta_handle.features(),
-            status,
-            data,
-            candidates,
+        cache_entry.and_then(parse_cfi_cache)
+    }
+}
+#[derive(Debug, Clone)]
+pub struct FetchCfiCacheResponse {
+    pub cache: CacheEntry<Option<Arc<SymbolFile>>>,
+    pub candidates: AllObjectCandidates,
+    pub features: ObjectFeatures,
+}
+
+impl Default for FetchCfiCacheResponse {
+    fn default() -> Self {
+        Self {
+            cache: Err(CacheError::InternalError),
+            candidates: Default::default(),
+            features: Default::default(),
         }
     }
 }
@@ -239,11 +295,8 @@ impl CfiCacheActor {
     /// debug filename (the basename).  To do this it looks in the existing cache with the
     /// given scope and if it does not yet exist in cached form will fetch the required DIFs
     /// and compute the required CFI cache file.
-    pub async fn fetch(
-        &self,
-        request: FetchCfiCache,
-    ) -> Result<Arc<CfiCacheFile>, Arc<CfiCacheError>> {
-        let found_result = self
+    pub async fn fetch(&self, request: FetchCfiCache) -> FetchCfiCacheResponse {
+        let Ok(FoundObject { meta, mut candidates }) = self
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
@@ -251,27 +304,49 @@ impl CfiCacheActor {
                 sources: request.sources.clone(),
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Unwind,
-            })
-            .map_err(|e| Arc::new(CfiCacheError::Fetching(e)))
-            .await?;
+            }).await else {
+                return FetchCfiCacheResponse::default();
+            };
 
-        match found_result.meta {
+        match meta {
             Some(meta_handle) => {
-                self.cficaches
+                match self
+                    .cficaches
                     .compute_memoized(FetchCfiCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
-                        meta_handle,
-                        candidates: found_result.candidates,
+                        meta_handle: Arc::clone(&meta_handle),
                     })
                     .await
+                {
+                    Ok(symbolfile) => {
+                        candidates.set_unwind(
+                            meta_handle.source_id().clone(),
+                            &meta_handle.uri(),
+                            ObjectUseInfo::from_derived_status(
+                                &cache_entry_as_cache_status(&symbolfile),
+                                meta_handle.status(),
+                            ),
+                        );
+
+                        FetchCfiCacheResponse {
+                            cache: Arc::try_unwrap(symbolfile).unwrap_or_else(|arc| (*arc).clone()),
+                            candidates,
+                            features: meta_handle.features(),
+                        }
+                    }
+                    Err(e) => FetchCfiCacheResponse {
+                        cache: Err(e.as_ref().into()),
+                        candidates,
+                        features: ObjectFeatures::default(),
+                    },
+                }
             }
-            None => Ok(Arc::new(CfiCacheFile {
+            None => FetchCfiCacheResponse {
+                cache: Err(CacheError::NotFound),
+                candidates,
                 features: ObjectFeatures::default(),
-                status: CacheStatus::Negative,
-                data: ByteView::from_slice(&[]),
-                candidates: found_result.candidates,
-            })),
+            },
         }
     }
 }

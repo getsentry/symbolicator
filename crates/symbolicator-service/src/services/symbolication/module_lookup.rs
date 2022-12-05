@@ -26,7 +26,7 @@ use crate::utils::addr::AddrMode;
 
 use super::object_id_from_object_info;
 
-fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> ObjectFileStatus {
+pub fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> ObjectFileStatus {
     match cache_entry {
         Ok(_) => ObjectFileStatus::Found,
         Err(CacheError::NotFound) => ObjectFileStatus::Missing,
