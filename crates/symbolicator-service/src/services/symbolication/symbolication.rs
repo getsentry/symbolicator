@@ -6,7 +6,7 @@ use symbolic::ppdb::PortablePdbCache;
 use symbolic::symcache::SymCache;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
-use crate::cache::CacheEntry;
+use crate::cache::CacheError;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
     FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
@@ -136,7 +136,7 @@ fn symbolicate_frame(
     frame.package = lookup_result.object_info.raw.code_file.clone();
 
     match lookup_result.cache {
-        CacheEntry::AllGood(CacheFileEntry::SymCache(symcache)) => symbolicate_native_frame(
+        Ok(CacheFileEntry::SymCache(symcache)) => symbolicate_native_frame(
             symcache.get(),
             lookup_result,
             registers,
@@ -144,10 +144,10 @@ fn symbolicate_frame(
             frame,
             index,
         ),
-        CacheEntry::AllGood(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
+        Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
             symbolicate_dotnet_frame(ppdb_cache.get(), frame, index)
         }
-        CacheEntry::Malformed(_) => Err(FrameStatus::Malformed),
+        Err(CacheError::Malformed(_)) => Err(FrameStatus::Malformed),
         _ => Err(FrameStatus::Missing),
     }
 }

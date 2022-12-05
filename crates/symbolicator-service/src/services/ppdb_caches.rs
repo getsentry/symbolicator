@@ -12,7 +12,10 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{
+    cache_entry_as_cache_status, cache_entry_from_cache_status, Cache, CacheEntry, CacheError,
+    CacheStatus, ExpirationTime,
+};
 use crate::services::objects::ObjectError;
 use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
 use crate::utils::futures::{m, measure};
@@ -48,8 +51,13 @@ pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'s
 
 fn parse_ppdb_cache_owned(
     byteview: ByteView<'static>,
-) -> Result<OwnedPortablePdbCache, symbolic::ppdb::CacheError> {
-    SelfCell::try_new(byteview, |p| unsafe { PortablePdbCache::parse(&*p) })
+) -> Result<OwnedPortablePdbCache, CacheError> {
+    SelfCell::try_new(byteview, |p| unsafe {
+        PortablePdbCache::parse(&*p).map_err(|e| {
+            tracing::error!(error = %e);
+            CacheError::InternalError
+        })
+    })
 }
 
 /// Errors happening while generating a symcache.
@@ -77,7 +85,7 @@ pub enum PortablePdbCacheError {
     Timeout,
 }
 
-impl From<&PortablePdbCacheError> for CacheEntry<OwnedPortablePdbCache> {
+impl From<&PortablePdbCacheError> for CacheError {
     fn from(error: &PortablePdbCacheError) -> Self {
         match error {
             PortablePdbCacheError::Io(e) => {
@@ -121,7 +129,7 @@ pub struct FetchPortablePdbCacheResponse {
 impl Default for FetchPortablePdbCacheResponse {
     fn default() -> Self {
         Self {
-            cache: CacheEntry::InternalError,
+            cache: Err(CacheError::InternalError),
             candidates: Default::default(),
             features: Default::default(),
         }
@@ -176,7 +184,7 @@ impl PortablePdbCacheActor {
                             handle.source_id(),
                             &handle.uri(),
                             ObjectUseInfo::from_derived_status(
-                                &ppdb_cache_file.as_cache_status(),
+                                &cache_entry_as_cache_status(&ppdb_cache_file),
                                 handle.status(),
                             ),
                         );
@@ -189,14 +197,14 @@ impl PortablePdbCacheActor {
                         }
                     }
                     Err(e) => FetchPortablePdbCacheResponse {
-                        cache: e.as_ref().into(),
+                        cache: Err(e.as_ref().into()),
                         candidates,
                         features: ObjectFeatures::default(),
                     },
                 }
             }
             None => FetchPortablePdbCacheResponse {
-                cache: CacheEntry::NotFound,
+                cache: Err(CacheError::NotFound),
                 candidates,
                 features: ObjectFeatures::default(),
             },
@@ -295,8 +303,8 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        let cache_entry = CacheEntry::from((status, data));
-        cache_entry.try_map(parse_ppdb_cache_owned)
+        let cache_entry = cache_entry_from_cache_status(status, data);
+        cache_entry.and_then(parse_ppdb_cache_owned)
     }
 }
 

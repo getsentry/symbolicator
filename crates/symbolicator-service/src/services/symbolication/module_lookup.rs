@@ -9,7 +9,7 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
-use crate::cache::CacheEntry;
+use crate::cache::{CacheEntry, CacheError};
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
     FetchPortablePdbCache, FetchPortablePdbCacheResponse, OwnedPortablePdbCache,
@@ -28,14 +28,14 @@ use super::object_id_from_object_info;
 
 fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> ObjectFileStatus {
     match cache_entry {
-        CacheEntry::AllGood(_) => ObjectFileStatus::Found,
-        CacheEntry::NotFound => ObjectFileStatus::Missing,
-        CacheEntry::PermissionDenied(_) | CacheEntry::DownloadError(_) => {
+        Ok(_) => ObjectFileStatus::Found,
+        Err(CacheError::NotFound) => ObjectFileStatus::Missing,
+        Err(CacheError::PermissionDenied(_) | CacheError::DownloadError(_)) => {
             ObjectFileStatus::FetchingFailed
         }
-        CacheEntry::Timeout(_) => ObjectFileStatus::Timeout,
-        CacheEntry::Malformed(_) => ObjectFileStatus::Malformed,
-        CacheEntry::InternalError => ObjectFileStatus::Other,
+        Err(CacheError::Timeout(_)) => ObjectFileStatus::Timeout,
+        Err(CacheError::Malformed(_)) => ObjectFileStatus::Malformed,
+        Err(CacheError::InternalError) => ObjectFileStatus::Other,
     }
 }
 
@@ -119,7 +119,7 @@ impl ModuleLookup {
             .map(|(module_index, object_info)| ModuleEntry {
                 module_index,
                 object_info,
-                cache: CacheEntry::NotFound,
+                cache: Err(CacheError::NotFound),
                 source_object: None,
             })
             .collect();
@@ -269,7 +269,7 @@ impl ModuleLookup {
                 entry.object_info.candidates.merge(&candidates);
                 entry.object_info.debug_status = object_file_status_from_cache_entry(&file);
 
-                if let CacheEntry::AllGood(CacheFileEntry::SymCache(ref symcache)) = file {
+                if let Ok(CacheFileEntry::SymCache(ref symcache)) = file {
                     entry.object_info.arch = symcache.get().arch();
                 }
 
@@ -551,6 +551,6 @@ mod tests {
         let lookup_result = lookup.lookup_cache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);
         assert_eq!(lookup_result.object_info, &info);
-        assert!(lookup_result.cache.is_not_found());
+        assert!(matches!(lookup_result.cache, Err(CacheError::NotFound)));
     }
 }

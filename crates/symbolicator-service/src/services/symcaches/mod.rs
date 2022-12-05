@@ -12,7 +12,10 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{
+    cache_entry_as_cache_status, cache_entry_from_cache_status, Cache, CacheEntry, CacheError,
+    CacheStatus, ExpirationTime,
+};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -74,8 +77,13 @@ static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
 pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 
-fn parse_symcache_owned(byteview: ByteView<'static>) -> Result<OwnedSymCache, symcache::Error> {
-    SelfCell::try_new(byteview, |p| unsafe { SymCache::parse(&*p) })
+fn parse_symcache_owned(byteview: ByteView<'static>) -> Result<OwnedSymCache, CacheError> {
+    SelfCell::try_new(byteview, |p| unsafe {
+        SymCache::parse(&*p).map_err(|e| {
+            tracing::error!(error = %e);
+            CacheError::InternalError
+        })
+    })
 }
 
 /// Errors happening while generating a symcache.
@@ -109,7 +117,7 @@ pub enum SymCacheError {
     Timeout,
 }
 
-impl From<&SymCacheError> for CacheEntry<OwnedSymCache> {
+impl From<&SymCacheError> for CacheError {
     fn from(error: &SymCacheError) -> Self {
         match error {
             SymCacheError::Io(e) => {
@@ -278,8 +286,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        let cache_entry = CacheEntry::from((status, data));
-        cache_entry.try_map(parse_symcache_owned)
+        let cache_entry = cache_entry_from_cache_status(status, data);
+        cache_entry.and_then(parse_symcache_owned)
     }
 }
 
@@ -302,7 +310,7 @@ pub struct FetchSymCacheResponse {
 impl Default for FetchSymCacheResponse {
     fn default() -> Self {
         Self {
-            cache: CacheEntry::InternalError,
+            cache: Err(CacheError::InternalError),
             candidates: Default::default(),
             features: Default::default(),
         }
@@ -383,7 +391,7 @@ impl SymCacheActor {
                             handle.source_id(),
                             &handle.uri(),
                             ObjectUseInfo::from_derived_status(
-                                &symcache_file.as_cache_status(),
+                                &cache_entry_as_cache_status(&symcache_file),
                                 handle.status(),
                             ),
                         );
@@ -396,14 +404,14 @@ impl SymCacheActor {
                         }
                     }
                     Err(e) => FetchSymCacheResponse {
-                        cache: e.as_ref().into(),
+                        cache: Err(e.as_ref().into()),
                         candidates,
                         features: ObjectFeatures::default(),
                     },
                 }
             }
             None => FetchSymCacheResponse {
-                cache: CacheEntry::NotFound,
+                cache: Err(CacheError::NotFound),
                 candidates,
                 features: ObjectFeatures::default(),
             },
@@ -597,7 +605,7 @@ mod tests {
             .fetch(fetch_symcache.clone())
             .await
             .cache
-            .all_good()
+            .ok()
             .unwrap();
 
         let symcache = owned_symcache.get();
@@ -628,7 +636,7 @@ mod tests {
             .fetch(fetch_symcache.clone())
             .await
             .cache
-            .all_good()
+            .ok()
             .unwrap();
 
         let symcache = owned_symcache.get();
@@ -648,7 +656,7 @@ mod tests {
             .fetch(fetch_symcache.clone())
             .await
             .cache
-            .all_good()
+            .ok()
             .unwrap();
 
         let symcache = owned_symcache.get();
