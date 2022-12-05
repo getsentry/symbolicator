@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use filetime::FileTime;
+use humantime_serde::re::humantime::{format_duration, parse_duration};
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
@@ -116,6 +117,178 @@ impl CacheStatus {
             }
         }
         Ok(())
+    }
+}
+
+/// An error that happens when fetching an object from a remote location.
+///
+/// This error enum is intended for persisting in caches, except for the
+/// [`InternalError`](Self::InternalError) variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheError {
+    /// The object was not found at the remote source.
+    NotFound,
+    /// The object could not be fetched from the remote source due to missing
+    /// permissions.
+    ///
+    /// The attached string contains the remote source's response.
+    PermissionDenied(String),
+    /// The object could not be fetched from the remote source due to a timeout.
+    Timeout(Duration),
+    /// The object could not be fetched from the remote source due to another problem,
+    /// like connection loss, DNS resolution, or a 5xx server response.
+    ///
+    /// The attached string contains the remote source's response.
+    DownloadError(String),
+    /// The object was fetched successfully, but is invalid in some way.
+    ///
+    /// For example, this could result from an unsupported object file or an error
+    /// during symcache conversion
+    Malformed(String),
+    /// An unexpected error in symbolicator itself.
+    ///
+    /// This variant is not intended to be persisted to or read from caches.
+    InternalError,
+}
+
+impl CacheError {
+    const PERMISSION_DENIED_MARKER: &[u8] = b"permissiondenied";
+    const TIMEOUT_MARKER: &[u8] = b"timeout";
+    const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
+    const MALFORMED_MARKER: &[u8] = b"malformed";
+
+    /// Writes error markers and details to a file.
+    ///
+    /// * If `self` is [`InternalError`](Self::InternalError), it does nothing.
+    /// * If `self` is [`NotFound`](Self::NotFound), it empties the file.
+    /// * In all other cases, it writes the corresponding marker, followed by the error
+    /// details, and truncates the file.
+    pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
+        match self {
+            Self::NotFound => {
+                file.rewind().await?;
+                file.set_len(0).await?;
+            }
+            Self::PermissionDenied(details) => {
+                file.rewind().await?;
+                file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
+            }
+            Self::Timeout(duration) => {
+                file.rewind().await?;
+                file.write_all(Self::TIMEOUT_MARKER).await?;
+                file.write_all(format_duration(*duration).to_string().as_bytes())
+                    .await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
+            }
+            Self::DownloadError(details) => {
+                file.rewind().await?;
+                file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
+            }
+            Self::Malformed(details) => {
+                file.rewind().await?;
+                file.write_all(Self::MALFORMED_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
+                let new_len = file.stream_position().await?;
+                file.set_len(new_len).await?;
+            }
+            Self::InternalError => {}
+        }
+
+        Ok(())
+    }
+
+    /// Parses a `CacheError` from a byte slice.
+    ///
+    /// * If the slice starts with an error marker, the corresponding error variant will be returned.
+    /// * If the slice is empty, [`NotFound`](Self::NotFound) will be returned.
+    /// * Otherwise `None` is returned.
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if let Some(raw_message) = bytes.strip_prefix(CacheError::PERMISSION_DENIED_MARKER) {
+            let err_msg = String::from_utf8_lossy(raw_message);
+            Some(Self::PermissionDenied(err_msg.into_owned()))
+        } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
+            let raw_duration = String::from_utf8_lossy(raw_duration);
+            match parse_duration(&raw_duration) {
+                Ok(duration) => Some(Self::Timeout(duration)),
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to read timeout duration");
+                    Some(Self::InternalError)
+                }
+            }
+        } else if let Some(raw_message) = bytes.strip_prefix(Self::DOWNLOAD_ERROR_MARKER) {
+            let err_msg = String::from_utf8_lossy(raw_message);
+            Some(Self::DownloadError(err_msg.into_owned()))
+        } else if let Some(raw_message) = bytes.strip_prefix(Self::MALFORMED_MARKER) {
+            let err_msg = String::from_utf8_lossy(raw_message);
+            Some(Self::Malformed(err_msg.into_owned()))
+        } else if bytes.is_empty() {
+            Some(Self::NotFound)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the [`CacheStatus`] corresponding to this `CacheError`.
+    ///
+    /// Note that this method allocates strings for some of the variants.
+    pub fn as_cache_status(&self) -> CacheStatus {
+        match self {
+            Self::NotFound => CacheStatus::Negative,
+            Self::DownloadError(s) => CacheStatus::CacheSpecificError(s.clone()),
+            Self::PermissionDenied(_) => {
+                CacheStatus::CacheSpecificError("missing permissions for file".into())
+            }
+            Self::Timeout(_) => CacheStatus::CacheSpecificError("download was cancelled".into()),
+            Self::Malformed(s) => CacheStatus::Malformed(s.clone()),
+            Self::InternalError => CacheStatus::CacheSpecificError("internal error".into()),
+        }
+    }
+}
+
+/// An entry in a cache, containing either `Ok(T)` or an error denoting the reason why an
+/// object could not be fetched or is otherwise unusable.
+pub type CacheEntry<T> = Result<T, CacheError>;
+
+/// Parses a `CacheEntry` from a [`ByteView`](ByteView).
+pub fn cache_entry_from_bytes(bytes: ByteView<'static>) -> CacheEntry<ByteView<'static>> {
+    CacheError::from_bytes(&bytes).map(Err).unwrap_or(Ok(bytes))
+}
+
+/// Transforms a `([CacheStatus], [ByteView])` pair into a [`CacheEntry`].
+pub fn cache_entry_from_cache_status(
+    status: CacheStatus,
+    content: ByteView<'static>,
+) -> CacheEntry<ByteView<'static>> {
+    match status {
+        CacheStatus::Positive => Ok(content),
+        CacheStatus::Negative => Err(CacheError::NotFound),
+        CacheStatus::Malformed(s) => Err(CacheError::Malformed(s)),
+        CacheStatus::CacheSpecificError(message) => {
+            if let Some(details) = message.strip_prefix("missing permissions for file") {
+                Err(CacheError::PermissionDenied(details.to_string()))
+            } else if message == "download was cancelled" {
+                Err(CacheError::Timeout(Duration::from_secs(0)))
+            } else {
+                Err(CacheError::DownloadError(message))
+            }
+        }
+    }
+}
+
+/// Returns the [`CacheStatus`] corresponding to the given `CacheEntry`.
+///
+/// Note that this function allocates strings for some of the variants.
+pub fn cache_entry_as_cache_status<T>(entry: &CacheEntry<T>) -> CacheStatus {
+    match entry {
+        Ok(_) => CacheStatus::Positive,
+        Err(e) => e.as_cache_status(),
     }
 }
 
@@ -1598,5 +1771,58 @@ mod tests {
             }
             SharedCacheBackendConfig::Filesystem(_) => panic!("wrong backend"),
         }
+    }
+
+    #[test]
+    fn test_cache_entry() {
+        fn read_cache_entry(bytes: &'static [u8]) -> CacheEntry<String> {
+            cache_entry_from_bytes(ByteView::from_slice(bytes))
+                .map(|bv| String::from_utf8_lossy(bv.as_slice()).into_owned())
+        }
+
+        let not_found = b"";
+
+        assert_eq!(read_cache_entry(not_found), Err(CacheError::NotFound));
+
+        let malformed = b"malformedDoesn't look like anything to me";
+
+        assert_eq!(
+            read_cache_entry(malformed),
+            Err(CacheError::Malformed(
+                "Doesn't look like anything to me".into()
+            ))
+        );
+
+        let timeout = b"timeout4m33s";
+
+        assert_eq!(
+            read_cache_entry(timeout),
+            Err(CacheError::Timeout(Duration::from_secs(273)))
+        );
+
+        let download_error = b"downloaderrorSomeone unplugged the internet";
+
+        assert_eq!(
+            read_cache_entry(download_error),
+            Err(CacheError::DownloadError(
+                "Someone unplugged the internet".into()
+            ))
+        );
+
+        let permission_denied = b"permissiondeniedI'm sorry Dave, I'm afraid I can't do that";
+
+        assert_eq!(
+            read_cache_entry(permission_denied),
+            Err(CacheError::PermissionDenied(
+                "I'm sorry Dave, I'm afraid I can't do that".into()
+            ))
+        );
+
+        let all_good = b"Not any of the error cases";
+
+        assert_eq!(
+            read_cache_entry(all_good),
+            Ok("Not any of the error cases".into())
+        );
     }
 }

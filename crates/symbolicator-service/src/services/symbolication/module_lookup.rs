@@ -9,17 +9,35 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
+use crate::cache::{CacheEntry, CacheError};
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
-    FetchPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError, PortablePdbCacheFile,
+    FetchPortablePdbCache, FetchPortablePdbCacheResponse, OwnedPortablePdbCache,
+    PortablePdbCacheActor, PortablePdbCacheError,
 };
-use crate::services::symcaches::{FetchSymCache, SymCacheActor, SymCacheError, SymCacheFile};
+use crate::services::symcaches::{
+    FetchSymCache, FetchSymCacheResponse, OwnedSymCache, SymCacheActor, SymCacheError,
+};
 use crate::types::{
-    CompleteObjectInfo, CompleteStacktrace, ObjectFileStatus, RawStacktrace, Scope,
+    AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
+    RawStacktrace, Scope,
 };
 use crate::utils::addr::AddrMode;
 
 use super::object_id_from_object_info;
+
+fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> ObjectFileStatus {
+    match cache_entry {
+        Ok(_) => ObjectFileStatus::Found,
+        Err(CacheError::NotFound) => ObjectFileStatus::Missing,
+        Err(CacheError::PermissionDenied(_) | CacheError::DownloadError(_)) => {
+            ObjectFileStatus::FetchingFailed
+        }
+        Err(CacheError::Timeout(_)) => ObjectFileStatus::Timeout,
+        Err(CacheError::Malformed(_)) => ObjectFileStatus::Malformed,
+        Err(CacheError::InternalError) => ObjectFileStatus::Other,
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum CacheFileError {
@@ -30,16 +48,23 @@ pub enum CacheFileError {
 }
 
 #[derive(Debug, Clone)]
-pub enum CacheFile {
-    SymCache(Arc<SymCacheFile>),
-    PortablePdbCache(Arc<PortablePdbCacheFile>),
+pub enum CacheFileEntry {
+    SymCache(OwnedSymCache),
+    PortablePdbCache(OwnedPortablePdbCache),
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheFile {
+    file: CacheEntry<CacheFileEntry>,
+    candidates: AllObjectCandidates,
+    features: ObjectFeatures,
 }
 
 #[derive(Debug, Clone)]
 pub struct CacheLookupResult<'a> {
     pub module_index: usize,
     pub object_info: &'a CompleteObjectInfo,
-    pub cache: Option<&'a CacheFile>,
+    pub cache: &'a CacheEntry<CacheFileEntry>,
     pub relative_addr: Option<u64>,
 }
 
@@ -72,7 +97,7 @@ pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
 struct ModuleEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
-    cache: Option<CacheFile>,
+    cache: CacheEntry<CacheFileEntry>,
     source_object: Option<SourceObject>,
 }
 
@@ -94,7 +119,7 @@ impl ModuleLookup {
             .map(|(module_index, object_info)| ModuleEntry {
                 module_index,
                 object_info,
-                cache: None,
+                cache: Err(CacheError::NotFound),
                 source_object: None,
             })
             .collect();
@@ -185,12 +210,20 @@ impl ModuleLookup {
                                 scope,
                             };
 
-                            let ppdb_cache_result = match ppdb_cache_actor.fetch(request).await {
-                                Ok(ppdb_cache) => Ok(CacheFile::PortablePdbCache(ppdb_cache)),
-                                Err(e) => Err(e.as_ref().into()),
-                            };
+                            let FetchPortablePdbCacheResponse {
+                                cache,
+                                candidates,
+                                features,
+                            } = ppdb_cache_actor.fetch(request).await;
 
-                            (idx, ppdb_cache_result)
+                            (
+                                idx,
+                                CacheFile {
+                                    file: cache.map(CacheFileEntry::PortablePdbCache),
+                                    candidates,
+                                    features,
+                                },
+                            )
                         }
                         _ => {
                             let request = FetchSymCache {
@@ -200,12 +233,20 @@ impl ModuleLookup {
                                 scope,
                             };
 
-                            let symcache_result = match symcache_actor.fetch(request).await {
-                                Ok(symcache) => Ok(CacheFile::SymCache(symcache)),
-                                Err(e) => Err(e.as_ref().into()),
-                            };
+                            let FetchSymCacheResponse {
+                                cache,
+                                candidates,
+                                features,
+                            } = symcache_actor.fetch(request).await;
 
-                            (idx, symcache_result)
+                            (
+                                idx,
+                                CacheFile {
+                                    file: cache.map(CacheFileEntry::SymCache),
+                                    candidates,
+                                    features,
+                                },
+                            )
                         }
                     }
                 }
@@ -213,39 +254,26 @@ impl ModuleLookup {
                 Some(fut)
             });
 
-        for (idx, cache_result) in future::join_all(futures).await {
+        for (
+            idx,
+            CacheFile {
+                file,
+                candidates,
+                features,
+            },
+        ) in future::join_all(futures).await
+        {
             if let Some(entry) = self.modules.get_mut(idx) {
                 entry.object_info.arch = Default::default();
+                entry.object_info.features.merge(features);
+                entry.object_info.candidates.merge(&candidates);
+                entry.object_info.debug_status = object_file_status_from_cache_entry(&file);
 
-                let (cache, status) = match cache_result {
-                    Ok(cache) => match cache {
-                        CacheFile::SymCache(ref symcache) => {
-                            entry.object_info.arch = symcache.arch();
-                            entry.object_info.features.merge(symcache.features());
-                            entry.object_info.candidates.merge(symcache.candidates());
+                if let Ok(CacheFileEntry::SymCache(ref symcache)) = file {
+                    entry.object_info.arch = symcache.get().arch();
+                }
 
-                            match symcache.parse() {
-                                Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
-                                Ok(None) => (Some(cache), ObjectFileStatus::Missing),
-                                Err(e) => (None, (&e).into()),
-                            }
-                        }
-
-                        CacheFile::PortablePdbCache(ref ppdb_cache) => {
-                            entry.object_info.features.merge(ppdb_cache.features());
-                            entry.object_info.candidates.merge(ppdb_cache.candidates());
-                            match ppdb_cache.parse() {
-                                Ok(Some(_)) => (Some(cache), ObjectFileStatus::Found),
-                                Ok(None) => (Some(cache), ObjectFileStatus::Missing),
-                                Err(e) => (None, (&e).into()),
-                            }
-                        }
-                    },
-                    Err(e) => (None, e),
-                };
-
-                entry.object_info.debug_status = status;
-                entry.cache = cache;
+                entry.cache = file;
             }
         }
     }
@@ -333,7 +361,7 @@ impl ModuleLookup {
             CacheLookupResult {
                 module_index: entry.module_index,
                 object_info: &entry.object_info,
-                cache: entry.cache.as_ref(),
+                cache: &entry.cache,
                 relative_addr,
             }
         })
@@ -523,6 +551,6 @@ mod tests {
         let lookup_result = lookup.lookup_cache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);
         assert_eq!(lookup_result.object_info, &info);
-        assert!(lookup_result.cache.is_none());
+        assert!(matches!(lookup_result.cache, Err(CacheError::NotFound)));
     }
 }

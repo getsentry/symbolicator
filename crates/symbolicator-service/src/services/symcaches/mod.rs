@@ -8,11 +8,14 @@ use anyhow::Error;
 use futures::future::BoxFuture;
 use thiserror::Error;
 
-use symbolic::common::{Arch, ByteView};
+use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus, ExpirationTime};
+use crate::cache::{
+    cache_entry_as_cache_status, cache_entry_from_cache_status, Cache, CacheEntry, CacheError,
+    CacheStatus, ExpirationTime,
+};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -72,6 +75,17 @@ const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
+pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
+
+fn parse_symcache_owned(byteview: ByteView<'static>) -> Result<OwnedSymCache, CacheError> {
+    SelfCell::try_new(byteview, |p| unsafe {
+        SymCache::parse(&*p).map_err(|e| {
+            tracing::error!(error = %e);
+            CacheError::InternalError
+        })
+    })
+}
+
 /// Errors happening while generating a symcache.
 #[derive(Debug, Error)]
 pub enum SymCacheError {
@@ -103,6 +117,40 @@ pub enum SymCacheError {
     Timeout,
 }
 
+impl From<&SymCacheError> for CacheError {
+    fn from(error: &SymCacheError) -> Self {
+        match error {
+            SymCacheError::Io(e) => {
+                tracing::error!(error = %e, "failed to write symcache");
+                Self::InternalError
+            }
+            SymCacheError::Parsing(e) => {
+                tracing::error!(error = %e, "failed to parse symcache");
+                Self::InternalError
+            }
+            SymCacheError::Writing(e) => {
+                tracing::error!(error = %e, "failed to write symcache");
+                Self::InternalError
+            }
+            SymCacheError::ObjectParsing(e) => {
+                tracing::error!(error = %e, "failed to parse object");
+                Self::InternalError
+            }
+            SymCacheError::BcSymbolMapError(e) => {
+                tracing::error!(error = %e, "failed to handle auxiliary BCSymbolMap file");
+                Self::InternalError
+            }
+            SymCacheError::Il2cppError(e) => {
+                tracing::error!(error = %e, "failed to handle auxiliary il2cpp line mapping file");
+                Self::InternalError
+            }
+            SymCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
+            SymCacheError::Malformed => Self::Malformed(String::new()),
+            SymCacheError::Timeout => Self::Timeout(Duration::default()),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
@@ -129,45 +177,6 @@ impl SymCacheActor {
 }
 
 #[derive(Clone, Debug)]
-pub struct SymCacheFile {
-    data: ByteView<'static>,
-    features: ObjectFeatures,
-    status: CacheStatus,
-    arch: Arch,
-    candidates: AllObjectCandidates,
-}
-
-impl SymCacheFile {
-    pub fn parse(&self) -> Result<Option<SymCache<'_>>, SymCacheError> {
-        match &self.status {
-            CacheStatus::Positive => Ok(Some(
-                SymCache::parse(&self.data).map_err(SymCacheError::Parsing)?,
-            )),
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(_) => Err(SymCacheError::Malformed),
-            // If the cache entry is for a cache specific error, it must be
-            // from a previous symcache conversion attempt.
-            CacheStatus::CacheSpecificError(_) => Err(SymCacheError::Malformed),
-        }
-    }
-
-    /// Returns the architecture of this symcache.
-    pub fn arch(&self) -> Arch {
-        self.arch
-    }
-
-    /// Returns the features of the object file this symcache was constructed from.
-    pub fn features(&self) -> ObjectFeatures {
-        self.features
-    }
-
-    /// Returns the list of DIFs which were searched for this symcache.
-    pub fn candidates(&self) -> &AllObjectCandidates {
-        &self.candidates
-    }
-}
-
-#[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
     /// The external request, as passed into [`SymCacheActor::fetch`].
     request: FetchSymCache,
@@ -180,12 +189,6 @@ struct FetchSymCacheInternal {
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
-
-    /// The object candidates from which [`FetchSymCacheInternal::object_meta`] was chosen.
-    ///
-    /// This needs to be returned back with the symcache result and is only being passed
-    /// through here as callers to the SymCacheActer want to have this info.
-    candidates: AllObjectCandidates,
 }
 
 /// Fetches the needed DIF objects and spawns symcache computation.
@@ -236,7 +239,7 @@ async fn fetch_difs_and_compute_symcache(
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
-    type Item = SymCacheFile;
+    type Item = CacheEntry<OwnedSymCache>;
     type Error = SymCacheError;
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
@@ -283,25 +286,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> Self::Item {
-        // TODO: Figure out if this double-parsing could be avoided
-        let arch = SymCache::parse(&data)
-            .map(|cache| cache.arch())
-            .unwrap_or_default();
-
-        let mut candidates = self.candidates.clone(); // yuk!
-        candidates.set_debug(
-            self.object_meta.source_id(),
-            &self.object_meta.uri(),
-            ObjectUseInfo::from_derived_status(&status, self.object_meta.status()),
-        );
-
-        SymCacheFile {
-            data,
-            features: self.object_meta.features(),
-            status,
-            arch,
-            candidates,
-        }
+        let cache_entry = cache_entry_from_cache_status(status, data);
+        cache_entry.and_then(parse_symcache_owned)
     }
 }
 
@@ -314,12 +300,26 @@ pub struct FetchSymCache {
     pub scope: Scope,
 }
 
+#[derive(Debug, Clone)]
+pub struct FetchSymCacheResponse {
+    pub cache: CacheEntry<OwnedSymCache>,
+    pub candidates: AllObjectCandidates,
+    pub features: ObjectFeatures,
+}
+
+impl Default for FetchSymCacheResponse {
+    fn default() -> Self {
+        Self {
+            cache: Err(CacheError::InternalError),
+            candidates: Default::default(),
+            features: Default::default(),
+        }
+    }
+}
+
 impl SymCacheActor {
-    pub async fn fetch(
-        &self,
-        request: FetchSymCache,
-    ) -> Result<Arc<SymCacheFile>, Arc<SymCacheError>> {
-        let FoundObject { meta, candidates } = self
+    pub async fn fetch(&self, request: FetchSymCache) -> FetchSymCacheResponse {
+        let Ok(FoundObject { meta, mut candidates }) = self
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
@@ -328,8 +328,9 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .await
-            .map_err(|e| Arc::new(SymCacheError::Fetching(e)))?;
+            .await else {
+                return FetchSymCacheResponse::default();
+        };
 
         match meta {
             Some(handle) => {
@@ -375,23 +376,45 @@ impl SymCacheActor {
                     il2cpp_handle,
                 };
 
-                self.symcaches
+                match self
+                    .symcaches
                     .compute_memoized(FetchSymCacheInternal {
                         request,
                         objects_actor: self.objects.clone(),
                         secondary_sources,
-                        object_meta: handle,
-                        candidates,
+                        object_meta: Arc::clone(&handle),
                     })
                     .await
+                {
+                    Ok(symcache_file) => {
+                        candidates.set_debug(
+                            handle.source_id(),
+                            &handle.uri(),
+                            ObjectUseInfo::from_derived_status(
+                                &cache_entry_as_cache_status(&symcache_file),
+                                handle.status(),
+                            ),
+                        );
+
+                        FetchSymCacheResponse {
+                            cache: Arc::try_unwrap(symcache_file)
+                                .unwrap_or_else(|arc| (*arc).clone()),
+                            candidates,
+                            features: handle.features(),
+                        }
+                    }
+                    Err(e) => FetchSymCacheResponse {
+                        cache: Err(e.as_ref().into()),
+                        candidates,
+                        features: ObjectFeatures::default(),
+                    },
+                }
             }
-            None => Ok(Arc::new(SymCacheFile {
-                data: ByteView::from_slice(b""),
-                features: ObjectFeatures::default(),
-                status: CacheStatus::Negative,
-                arch: Arch::Unknown,
+            None => FetchSymCacheResponse {
+                cache: Err(CacheError::NotFound),
                 candidates,
-            })),
+                features: ObjectFeatures::default(),
+            },
         }
     }
 }
@@ -578,8 +601,14 @@ mod tests {
 
         // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
         // symcache will be obfuscated.
-        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-        let symcache = symcache_file.parse().unwrap().unwrap();
+        let owned_symcache = symcache_actor
+            .fetch(fetch_symcache.clone())
+            .await
+            .cache
+            .ok()
+            .unwrap();
+
+        let symcache = owned_symcache.get();
         let sl = symcache.lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
@@ -603,8 +632,14 @@ mod tests {
         // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
         // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
         // be obfuscated like before.
-        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-        let symcache = symcache_file.parse().unwrap().unwrap();
+        let owned_symcache = symcache_actor
+            .fetch(fetch_symcache.clone())
+            .await
+            .cache
+            .ok()
+            .unwrap();
+
+        let symcache = owned_symcache.get();
         let sl = symcache.lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
@@ -617,8 +652,14 @@ mod tests {
 
         // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
         // symcache are unobfuscated.
-        let symcache_file = symcache_actor.fetch(fetch_symcache.clone()).await.unwrap();
-        let symcache = symcache_file.parse().unwrap().unwrap();
+        let owned_symcache = symcache_actor
+            .fetch(fetch_symcache.clone())
+            .await
+            .cache
+            .ok()
+            .unwrap();
+
+        let symcache = owned_symcache.get();
         let sl = symcache.lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),

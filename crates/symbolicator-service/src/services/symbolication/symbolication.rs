@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
+use symbolic::ppdb::PortablePdbCache;
+use symbolic::symcache::SymCache;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
-use crate::services::ppdb_caches::PortablePdbCacheFile;
-use crate::services::symcaches::SymCacheFile;
+use crate::cache::CacheError;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
     FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
@@ -13,7 +14,7 @@ use crate::types::{
 };
 use crate::utils::hex::HexValue;
 
-use super::module_lookup::{CacheFile, CacheLookupResult, ModuleLookup};
+use super::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 use super::SymbolicationActor;
 
 impl SymbolicationActor {
@@ -135,31 +136,27 @@ fn symbolicate_frame(
     frame.package = lookup_result.object_info.raw.code_file.clone();
 
     match lookup_result.cache {
-        Some(CacheFile::SymCache(symcache)) => {
-            symbolicate_native_frame(symcache, lookup_result, registers, signal, frame, index)
+        Ok(CacheFileEntry::SymCache(symcache)) => symbolicate_native_frame(
+            symcache.get(),
+            lookup_result,
+            registers,
+            signal,
+            frame,
+            index,
+        ),
+        Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
+            symbolicate_dotnet_frame(ppdb_cache.get(), frame, index)
         }
-        Some(CacheFile::PortablePdbCache(ppdbcache)) => {
-            symbolicate_dotnet_frame(ppdbcache, frame, index)
-        }
-        None if lookup_result.object_info.debug_status == ObjectFileStatus::Malformed => {
-            Err(FrameStatus::Malformed)
-        }
-        None => Err(FrameStatus::Missing),
+        Err(CacheError::Malformed(_)) => Err(FrameStatus::Malformed),
+        _ => Err(FrameStatus::Missing),
     }
 }
 
 fn symbolicate_dotnet_frame(
-    ppdbcache: &PortablePdbCacheFile,
+    ppdbcache: &PortablePdbCache,
     frame: &RawFrame,
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-    tracing::trace!("Loading ppdbcache");
-    let ppdbcache = match ppdbcache.parse() {
-        Ok(Some(x)) => x,
-        Ok(None) => return Err(FrameStatus::Missing),
-        Err(_) => return Err(FrameStatus::Malformed),
-    };
-
     // TODO: Add a new error variant for this?
     let function_idx = frame.function_id.ok_or(FrameStatus::MissingSymbol)?.0 as u32;
     let il_offset = frame.instruction_addr.0 as u32;
@@ -186,19 +183,13 @@ fn symbolicate_dotnet_frame(
 }
 
 fn symbolicate_native_frame(
-    symcache: &SymCacheFile,
+    symcache: &SymCache,
     lookup_result: CacheLookupResult,
     registers: &Registers,
     signal: Option<Signal>,
     frame: &RawFrame,
     index: usize,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-    tracing::trace!("Loading symcache");
-    let symcache = match symcache.parse() {
-        Ok(Some(x)) => x,
-        Ok(None) => return Err(FrameStatus::Missing),
-        Err(_) => return Err(FrameStatus::Malformed),
-    };
     // get the relative caller address
     let relative_addr = if let Some(addr) = lookup_result.relative_addr {
         // heuristics currently are only supported when we can work with absolute addresses.

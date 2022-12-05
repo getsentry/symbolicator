@@ -8,7 +8,7 @@ version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ecd88a8c8378ca913a680cd98f0f13ac67383d35993f86c90a70e3f137816b"
 dependencies = [
- "gimli",
+ "gimli 0.26.2",
 ]
 
 [[package]]
@@ -1294,6 +1294,12 @@ name = "gimli"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22030e2c5a68ec659fde1e949a745124b48e6fa8b045b7ed5bd1fe4ccc5c4e5d"
+
+[[package]]
+name = "gimli"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec7af912d60cdbd3677c1af9352ebae6fb8394d165568a2234df0fa00f87793"
 dependencies = [
  "fallible-iterator",
  "stable_deref_trait",
@@ -3436,9 +3442,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "symbolic"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab4dac8fb8ea91e6cd6935ed34220f0c559fe4c8e010a3237415d8ac61746da5"
+checksum = "b4e804a19ea4039205b426738671552a7f6bec75015e0437f6318ddb4fb5123c"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -3451,9 +3457,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6da324450157034a3de59fe2a892ffa58f6ec6852e1723b9eb91a3ccbb786454"
+checksum = "cb7996a16aa672dcc3b129eac5a5ea5f148e80d35a8f904efa3eb8adea5922b3"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -3462,9 +3468,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "492875918a6bcbae753a5fc6f39bc87566fc3c25182e76d7f128ef1c8a2375c6"
+checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3475,9 +3481,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e308a705c38b930758c57ead68d3af6c8ba3f39bd0fdcb69d86a6d11e47f495"
+checksum = "10f5d898f6c19efe593df62197f91df6176bdfa664426b16ff9f1a434a83df67"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -3485,7 +3491,7 @@ dependencies = [
  "elsa",
  "fallible-iterator",
  "flate2",
- "gimli",
+ "gimli 0.27.0",
  "goblin",
  "lazy_static",
  "lazycell",
@@ -3507,9 +3513,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "214d3a420108471222e55268ef502ba0fc89cfd4de876ff26105c560729127af"
+checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -3520,9 +3526,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3e8f6fb713fca935dde72ff1fe7dd45227aa8e939333825206f56a73d0577e4"
+checksum = "625c4a9dedade30048ada3162f1c1f63799396698f0146688d77466d93e6f1d4"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -3532,9 +3538,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9ed49e7493446437ce0a86f4e3aae69b5d53c7feca960d00c4de3fabfefb2a"
+checksum = "125fcd987182e46cd828416a9f2bdb7752c42081b33fa6d80a94afb1fdd4109b"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -3545,9 +3551,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "10.1.2"
+version = "10.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3451e79721371b58d2ad76fdaec4700aec21d60c3f0922d60c8f53330d165864"
+checksum = "2ffdc2062d9339eabecd0a600cb7d06ddb98b6957734faf10e678c17db838889"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -4573,11 +4579,12 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.94.0"
+version = "0.95.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdac7e1d98d70913ae3b4923dd7419c8ea7bdfd4c44a240a0ba305d929b7f191"
+checksum = "f2ea896273ea99b15132414be1da01ab0d8836415083298ecaffbe308eaac87a"
 dependencies = [
  "indexmap",
+ "url",
 ]
 
 [[package]]
