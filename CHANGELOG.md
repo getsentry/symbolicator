@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Internal
+
+- Simplified internal error architecture. ([#929](https://github.com/getsentry/symbolicator/pull/929))
+
 ## 0.6.0
 
 ### Features
