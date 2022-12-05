@@ -207,7 +207,7 @@ impl CacheError {
     /// Parses a `CacheError` from a byte slice.
     ///
     /// * If the slice starts with an error marker, the corresponding error variant will be returned.
-    /// * If the slice is empty, [`NotFound`](CacheEntry::NotFound) will be returned.
+    /// * If the slice is empty, [`NotFound`](Self::NotFound) will be returned.
     /// * Otherwise `None` is returned.
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if let Some(raw_message) = bytes.strip_prefix(CacheError::PERMISSION_DENIED_MARKER) {
