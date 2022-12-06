@@ -10,24 +10,21 @@ use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
     SymbolProvider,
 };
-use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use tempfile::TempPath;
 
-use symbolic::cfi::CfiCache;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::CacheStatus;
-use crate::services::cficaches::{CfiCacheActor, CfiCacheError, FetchCfiCache};
+use crate::services::cficaches::{CfiCacheActor, FetchCfiCache, FetchCfiCacheResponse};
 use crate::services::minidump::parse_stacktraces_from_minidump;
-use crate::services::objects::ObjectError;
+use crate::services::symbolication::module_lookup::object_file_status_from_cache_entry;
 use crate::types::{
-    AllObjectCandidates, CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFeatures,
-    ObjectFileStatus, RawFrame, RawObjectInfo, RawStacktrace, Registers, Scope, SystemInfo,
+    CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFileStatus, RawFrame, RawObjectInfo,
+    RawStacktrace, Registers, Scope, SystemInfo,
 };
 use crate::utils::hex::HexValue;
 
@@ -123,45 +120,6 @@ impl MinidumpState {
     }
 }
 
-/// Loads a [`SymbolFile`] from the given `Path`.
-#[tracing::instrument(skip_all)]
-fn load_symbol_file(bytes: ByteView) -> Result<SymbolFile, anyhow::Error> {
-    let cfi_cache = CfiCache::from_bytes(bytes)
-        // This mostly never happens since we already checked the files
-        // after downloading and they would have been tagged with
-        // CacheStatus::Malformed.
-        .map_err(|err| {
-            let stderr: &dyn std::error::Error = &err;
-            tracing::error!(stderr, "Error while loading cficache");
-            err
-        })?;
-
-    if cfi_cache.as_slice().is_empty() {
-        anyhow::bail!("cficache is empty")
-    }
-
-    let symbol_file = SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(|err| {
-        let stderr: &dyn std::error::Error = &err;
-        tracing::error!(stderr, "Error while processing cficache");
-        err
-    })?;
-
-    Ok(symbol_file)
-}
-
-/// Processing information for a module that was referenced in a minidump.
-#[derive(Debug, Default)]
-struct CfiModule {
-    /// Combined features provided by all the DIFs we found for this module.
-    features: ObjectFeatures,
-    /// Status of the CFI or unwind information for this module.
-    cfi_status: ObjectFileStatus,
-    /// Call frame information for the module, loaded as a [`SymbolFile`].
-    symbol_file: Option<SymbolFile>,
-    /// The DIF object candidates for for this module.
-    cfi_candidates: AllObjectCandidates,
-}
-
 /// The Key that is used for looking up the [`Module`] in the per-stackwalk CFI / computation cache.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct LookupKey {
@@ -197,7 +155,7 @@ struct SymbolicatorSymbolProvider {
     /// An internal database of loaded CFI.
     ///
     /// The key consists of a module's debug identifier and base address.
-    cficaches: moka::future::Cache<LookupKey, Arc<CfiModule>>,
+    cficaches: moka::future::Cache<LookupKey, FetchCfiCacheResponse>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -218,7 +176,7 @@ impl SymbolicatorSymbolProvider {
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Arc<CfiModule> {
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchCfiCacheResponse {
         let key = LookupKey::new(module);
         self.cficaches
             .get_with_by_ref(&key, async {
@@ -235,59 +193,14 @@ impl SymbolicatorSymbolProvider {
                     object_type: self.object_type,
                 };
 
-                let cache_result = self
-                    .cficache_actor
+                self.cficache_actor
                     .fetch(FetchCfiCache {
                         object_type: self.object_type,
                         identifier,
                         sources,
                         scope,
                     })
-                    .bind_hub(Hub::new_from_top(Hub::current()))
-                    .await;
-
-                let cfi_module = match cache_result {
-                    Ok(cfi_cache) => {
-                        let cfi_status = match cfi_cache.status() {
-                            CacheStatus::Positive => ObjectFileStatus::Found,
-                            CacheStatus::Negative => ObjectFileStatus::Missing,
-                            CacheStatus::Malformed(details) => {
-                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                                let stderr: &dyn std::error::Error = &err;
-                                tracing::warn!(stderr, "Error while parsing cficache: {}", details);
-                                ObjectFileStatus::from(&err)
-                            }
-                            // If the cache entry is for a cache specific error, it must be
-                            // from a previous cficache conversion attempt.
-                            CacheStatus::CacheSpecificError(details) => {
-                                let err = CfiCacheError::ObjectParsing(ObjectError::Malformed);
-                                tracing::warn!("Cached error from parsing cficache: {}", details);
-                                ObjectFileStatus::from(&err)
-                            }
-                        };
-                        let symbol_file = match cfi_cache.status() {
-                            CacheStatus::Positive => load_symbol_file(cfi_cache.data()).ok(),
-                            _ => None,
-                        };
-                        CfiModule {
-                            features: cfi_cache.features(),
-                            cfi_status,
-                            symbol_file,
-                            cfi_candidates: cfi_cache.candidates().clone(), // TODO(flub): fix clone
-                        }
-                    }
-
-                    Err(err) => {
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::debug!(stderr, "Error while fetching cficache");
-
-                        CfiModule {
-                            cfi_status: ObjectFileStatus::from(err.as_ref()),
-                            ..Default::default()
-                        }
-                    }
-                };
-                Arc::new(cfi_module)
+                    .await
             })
             .await
     }
@@ -315,7 +228,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
         let cfi_module = self.load_cfi_module(module).await;
-        cfi_module.symbol_file.as_ref()?.walk_frame(module, walker)
+        cfi_module.cache.ok()??.walk_frame(module, walker)
     }
 
     async fn get_file_path(
@@ -431,14 +344,14 @@ async fn stackwalk(
 
             let mut obj_info = object_info_from_minidump_module(ty, module);
 
-            obj_info.unwind_status = match provider.cficaches.get(&key) {
-                None => Some(ObjectFileStatus::Unused),
+            obj_info.unwind_status = Some(match provider.cficaches.get(&key) {
+                None => ObjectFileStatus::Unused,
                 Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);
-                    obj_info.candidates = cfi_module.cfi_candidates.clone();
-                    Some(cfi_module.cfi_status)
+                    obj_info.candidates.merge(&cfi_module.candidates);
+                    object_file_status_from_cache_entry(&cfi_module.cache)
                 }
-            };
+            });
 
             metric!(
                 counter("symbolication.unwind_status") += 1,
