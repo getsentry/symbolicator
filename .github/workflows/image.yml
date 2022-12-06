@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
-      # IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
+      IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
+      NIGHTLY_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-nightly
       BUILDER_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-builder
     steps:
       - uses: actions/checkout@v3
@@ -19,7 +20,9 @@ jobs:
           submodules: recursive
       - run: docker run --rm --privileged tonistiigi/binfmt --install arm64
         if: matrix.arch == 'arm64'
-      - name: build
+
+      # Builder Image
+      - name: build builder img
         run: |
           set -euxo pipefail
           args=()
@@ -33,22 +36,34 @@ jobs:
               --tag "$BUILDER_IMG_CACHE" \
               --target symbolicator-build \
               .
-      - name: push
+      - name: push builder img
         run: |
           set -euxo pipefail
           docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
           docker push "$BUILDER_IMG_CACHE"
         if: github.event_name != 'pull_request'
 
-  multiarch:
-    if: github.event_name != 'pull_request'
-    needs: [build-image]
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
+      # Nightly Image
+      - name: build nightly img
+        run: |
+          set -euxo pipefail
+          args=()
+          if docker pull -q "$NIGHTLY_IMG_CACHE"; then
+            args+=(--cache-from "$NIGHTLY_IMG_CACHE")
+          fi
+          docker buildx build \
+              "${args[@]}" \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --platform linux/${{ matrix.arch }} \
+              --tag "$NIGHTLY_IMG_CACHE" \
+              --tag "$IMG_VERSIONED" \
+              --cache-from "${BUILDER_IMG_CACHE}" \
+              --cache-from "${NIGHTLY_IMG_CACHE}" \
+              .
+      - name: push nightly img
+        run: |
           set -euxo pipefail
           docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-          docker manifest create ghcr.io/getsentry/symbolicator:latest \
-            ghcr.io/getsentry/symbolicator:arm64-latest \
-            ghcr.io/getsentry/symbolicator:amd64-latest
-          docker manifest push ghcr.io/getsentry/symbolicator:latest
+          docker push "$NIGHTLY_IMG_CACHE"
+          docker push "$IMG_VERSIONED"
+        if: github.event_name != 'pull_request'
