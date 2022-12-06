@@ -2,7 +2,9 @@ name: image
 on:
   pull_request:
   push:
-    branches: [master]
+    branches:
+      - master
+      - release/**
 jobs:
   build-image:
     strategy:
