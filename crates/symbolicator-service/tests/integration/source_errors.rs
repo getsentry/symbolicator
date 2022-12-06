@@ -11,7 +11,7 @@ use crate::symbolication::{get_symbolication_request, setup_service};
 #[tokio::test]
 async fn test_download_errors() {
     let (symbolication, _cache_dir) = setup_service(|config| {
-        config.max_download_timeout = Duration::from_millis(100);
+        config.max_download_timeout = Duration::from_millis(200);
     })
     .await;
 
@@ -25,7 +25,6 @@ async fn test_download_errors() {
     //     module.candidate.download
     // )
     let get_statuses = |mut res: CompletedSymbolicationResponse| {
-        dbg!(&res);
         let frame = &res.stacktraces[0].frames[0];
         let mut module = res.modules.remove(0);
         let candidate = module.candidates.0.remove(0);
@@ -37,72 +36,81 @@ async fn test_download_errors() {
         )
     };
 
-    let request = get_symbolication_request(vec![server.reject_source]);
-    let response = symbolication.symbolicate(request).await.unwrap();
+    // NOTE: we run requests twice to make sure that round-trips through the cache give us the same results.
+    for _ in 0..2 {
+        // NOTE: we try this 3 times on error
+        let request = get_symbolication_request(vec![server.reject_source.clone()]);
+        let response = symbolication.symbolicate(request).await.unwrap();
 
-    assert_eq!(
-        get_statuses(response),
-        (
-            FrameStatus::Missing,
-            ObjectFileStatus::Missing, // XXX: should be `FetchingFailed`
-            ObjectUseInfo::None,
-            ObjectDownloadInfo::Error {
-                details: "failed to download: 500 Internal Server Error".into()
-            }
-        )
-    );
+        assert_eq!(
+            get_statuses(response),
+            (
+                FrameStatus::Missing,
+                ObjectFileStatus::Missing, // XXX: should be `FetchingFailed`
+                ObjectUseInfo::None,
+                ObjectDownloadInfo::Error {
+                    details: "failed to download: 500 Internal Server Error".into()
+                }
+            )
+        );
 
-    let request = get_symbolication_request(vec![server.pending_source]);
-    let response = symbolication.symbolicate(request).await.unwrap();
+        // NOTE: we should probably try this 3 times?
+        let request = get_symbolication_request(vec![server.pending_source.clone()]);
+        let response = symbolication.symbolicate(request).await.unwrap();
 
-    assert_eq!(
-        get_statuses(response),
-        (
-            FrameStatus::Missing,
-            ObjectFileStatus::Missing, // XXX: should be `Timeout`
-            ObjectUseInfo::None,
-            ObjectDownloadInfo::Error {
-                details: "download was cancelled".into()
-            }
-        )
-    );
+        assert_eq!(
+            get_statuses(response),
+            (
+                FrameStatus::Missing,
+                ObjectFileStatus::Missing, // XXX: should be `Timeout`
+                ObjectUseInfo::None,
+                ObjectDownloadInfo::Error {
+                    details: "download was cancelled".into()
+                }
+            )
+        );
 
-    let request = get_symbolication_request(vec![server.not_found_source]);
-    let response = symbolication.symbolicate(request).await.unwrap();
+        let request = get_symbolication_request(vec![server.not_found_source.clone()]);
+        let response = symbolication.symbolicate(request).await.unwrap();
 
-    assert_eq!(
-        get_statuses(response),
-        (
-            FrameStatus::Missing,
-            ObjectFileStatus::Missing,
-            ObjectUseInfo::None,
-            ObjectDownloadInfo::NotFound
-        )
-    );
+        assert_eq!(
+            get_statuses(response),
+            (
+                FrameStatus::Missing,
+                ObjectFileStatus::Missing,
+                ObjectUseInfo::None,
+                ObjectDownloadInfo::NotFound
+            )
+        );
 
-    let request = get_symbolication_request(vec![server.forbidden_source]);
-    let response = symbolication.symbolicate(request).await.unwrap();
+        let request = get_symbolication_request(vec![server.forbidden_source.clone()]);
+        let response = symbolication.symbolicate(request).await.unwrap();
 
-    assert_eq!(
-        get_statuses(response),
-        (
-            FrameStatus::Missing,
-            ObjectFileStatus::Missing, // XXX: should be `FetchingFailed`
-            ObjectUseInfo::None,
-            ObjectDownloadInfo::NoPerm { details: "".into() }
-        )
-    );
+        assert_eq!(
+            get_statuses(response),
+            (
+                FrameStatus::Missing,
+                ObjectFileStatus::Missing, // XXX: should be `FetchingFailed`
+                ObjectUseInfo::None,
+                ObjectDownloadInfo::NoPerm { details: "".into() }
+            )
+        );
 
-    let request = get_symbolication_request(vec![server.invalid_file_source]);
-    let response = symbolication.symbolicate(request).await.unwrap();
+        let request = get_symbolication_request(vec![server.invalid_file_source.clone()]);
+        let response = symbolication.symbolicate(request).await.unwrap();
 
-    assert_eq!(
-        get_statuses(response),
-        (
-            FrameStatus::Malformed,
-            ObjectFileStatus::Malformed,
-            ObjectUseInfo::Malformed,
-            ObjectDownloadInfo::Malformed
-        )
-    );
+        assert_eq!(
+            get_statuses(response),
+            (
+                FrameStatus::Malformed,
+                ObjectFileStatus::Malformed,
+                ObjectUseInfo::Malformed,
+                ObjectDownloadInfo::Malformed
+            )
+        );
+    }
+
+    // server errors are tried up to 3 times, all others once, for a total of
+    // 7 requests, as the second requests should be served from cache
+    assert_eq!(server.accesses(), 7);
 }

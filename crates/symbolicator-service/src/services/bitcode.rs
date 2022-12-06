@@ -21,7 +21,7 @@ use symbolicator_sources::{FileType, SourceConfig};
 
 use crate::cache::{Cache, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
@@ -104,6 +104,12 @@ impl FetchFileRequest {
             Ok(DownloadStatus::NotFound) => {
                 tracing::debug!("No auxiliary DIF file found for {}", cache_key);
                 return Ok(CacheStatus::Negative);
+            }
+            Ok(DownloadStatus::PermissionDenied) => {
+                // FIXME: this is really unreachable as the downloader converts these already
+                return Ok(CacheStatus::CacheSpecificError(
+                    DownloadError::Permissions.for_cache(),
+                ));
             }
             Err(e) => {
                 let stderr: &dyn std::error::Error = &e;

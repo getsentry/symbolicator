@@ -95,54 +95,50 @@ impl HttpDownloader {
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        match request.await {
-            Ok(Ok(response)) => {
-                if response.status().is_success() {
-                    tracing::trace!("Success hitting {}", download_url);
-
-                    let content_length = response
-                        .headers()
-                        .get(header::CONTENT_LENGTH)
-                        .and_then(|hv| hv.to_str().ok())
-                        .and_then(|s| s.parse::<u32>().ok());
-
-                    let timeout =
-                        content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
-
-                    let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-                    super::download_stream(&source, stream, destination, timeout).await
-                } else if matches!(
-                    response.status(),
-                    StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-                ) {
-                    tracing::debug!("Insufficient permissions to download from {}", download_url);
-                    Err(DownloadError::Permissions)
-                // If it's a client error, chances are either it's a 404 or it's permission-related.
-                } else if response.status().is_client_error() {
-                    tracing::debug!(
-                        "Unexpected client error status code from {}: {}",
-                        download_url,
-                        response.status()
-                    );
-                    Ok(DownloadStatus::NotFound)
-                } else {
-                    tracing::debug!(
-                        "Unexpected status code from {}: {}",
-                        download_url,
-                        response.status()
-                    );
-                    Err(DownloadError::Rejected(response.status()))
-                }
-            }
-            Ok(Err(e)) => {
+        let response = request
+            .await
+            .map_err(|_| DownloadError::Canceled)? // Timeout
+            .map_err(|e| {
                 tracing::debug!("Skipping response from {}: {}", download_url, e);
-                Err(DownloadError::Reqwest(e)) // must be wrong type
-            }
-            Err(_) => {
-                // Timeout
-                Err(DownloadError::Canceled)
-            }
+                DownloadError::Reqwest(e)
+            })?;
+
+        if response.status().is_success() {
+            tracing::trace!("Success hitting {}", download_url);
+
+            let content_length = response
+                .headers()
+                .get(header::CONTENT_LENGTH)
+                .and_then(|hv| hv.to_str().ok())
+                .and_then(|s| s.parse::<u32>().ok());
+
+            let timeout =
+                content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
+
+            let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
+
+            super::download_stream(&source, stream, destination, timeout).await
+        } else if matches!(
+            response.status(),
+            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
+        ) {
+            tracing::debug!("Insufficient permissions to download from {}", download_url);
+            Ok(DownloadStatus::PermissionDenied)
+        // If it's a client error, chances are either it's a 404 or it's permission-related.
+        } else if response.status().is_client_error() {
+            tracing::debug!(
+                "Unexpected client error status code from {}: {}",
+                download_url,
+                response.status()
+            );
+            Ok(DownloadStatus::NotFound)
+        } else {
+            tracing::debug!(
+                "Unexpected status code from {}: {}",
+                download_url,
+                response.status()
+            );
+            Err(DownloadError::Rejected(response.status()))
         }
     }
 
