@@ -23,7 +23,6 @@ jobs:
       - run: docker run --rm --privileged tonistiigi/binfmt --install arm64
         if: matrix.arch == 'arm64'
 
-      # Builder Image
       - name: build builder img
         run: |
           set -euxo pipefail
@@ -38,14 +37,7 @@ jobs:
               --tag "$BUILDER_IMG_CACHE" \
               --target symbolicator-build \
               .
-      - name: push builder img
-        run: |
-          set -euxo pipefail
-          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-          docker push "$BUILDER_IMG_CACHE"
-        if: github.event_name != 'pull_request'
 
-      # Nightly Image
       - name: build nightly img
         run: |
           set -euxo pipefail
@@ -62,11 +54,13 @@ jobs:
               --cache-from "${BUILDER_IMG_CACHE}" \
               --cache-from "${NIGHTLY_IMG_CACHE}" \
               .
-      - name: push nightly img
+
+      - name: push all images
         if: github.event_name != 'pull_request'
         run: |
           set -euxo pipefail
           docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
+          docker push "$BUILDER_IMG_CACHE"
           docker push "$NIGHTLY_IMG_CACHE"
           docker push "$IMG_VERSIONED"
 
