@@ -149,7 +149,7 @@ impl S3Downloader {
         &self,
         file_source: S3RemoteDif,
         destination: &Path,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<DownloadStatus<()>, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
@@ -452,7 +452,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(download_status, DownloadStatus::Completed);
+        assert!(matches!(download_status, DownloadStatus::Completed(_)));
         assert!(target_path.exists());
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
@@ -481,7 +481,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(matches!(download_status, DownloadStatus::NotFound));
         assert!(!target_path.exists());
     }
 

@@ -17,8 +17,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
-use tempfile::tempfile_in;
-use tempfile::NamedTempFile;
+use tempfile::{tempfile_in, NamedTempFile};
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -162,15 +161,7 @@ async fn fetch_file(
         object_id.to_scope(scope);
     });
 
-    let download_file = tempfile?;
-    let download_dir = download_file
-        .path()
-        .parent()
-        .ok_or(ObjectError::NoTempDir)?;
-
-    let status = downloader.download(file_id, download_file.path()).await;
-
-    match status {
+    let download_file = match downloader.download(file_id, tempfile?).await {
         Ok(DownloadStatus::NotFound) => {
             tracing::debug!("No debug file found for {}", cache_key);
             return Ok(CacheStatus::Negative);
@@ -198,12 +189,14 @@ async fn fetch_file(
             return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
         }
 
-        Ok(DownloadStatus::Completed) => {
-            // fall-through
-        }
-    }
-
+        Ok(DownloadStatus::Completed(download_file)) => download_file,
+    };
     tracing::trace!("Finished download of {}", cache_key);
+
+    let download_dir = download_file
+        .path()
+        .parent()
+        .ok_or(ObjectError::NoTempDir)?;
     let decompress_result = decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
     // Treat decompression errors as malformed files. It is more likely that

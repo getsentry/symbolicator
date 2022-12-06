@@ -65,6 +65,7 @@ struct FetchFileRequest {
     file_source: RemoteDif,
     debug_id: DebugId,
     download_svc: Arc<DownloadService>,
+    // FIXME: this is used only to put the tempfile in the right place
     cache: Arc<Cacher<FetchFileRequest>>,
 }
 
@@ -74,15 +75,13 @@ impl FetchFileRequest {
     /// Actual implementation of [`FetchFileRequest::compute`].
     // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
     async fn fetch_file(self, path: PathBuf) -> Result<CacheStatus, Error> {
-        let download_file = self.cache.tempfile()?;
         let cache_key = self.get_cache_key();
 
-        let result = self
+        let download_file = match self
             .download_svc
-            .download(self.file_source, download_file.path())
-            .await;
-
-        match result {
+            .download(self.file_source, self.cache.tempfile()?)
+            .await
+        {
             Ok(DownloadStatus::NotFound) => {
                 tracing::debug!("No il2cpp linemapping file found for {}", cache_key);
                 return Ok(CacheStatus::Negative);
@@ -98,21 +97,20 @@ impl FetchFileRequest {
                 tracing::debug!(stderr, "Error while downloading file");
                 return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
             }
-            Ok(DownloadStatus::Completed) => {
-                // fall through
-            }
-        }
+            Ok(DownloadStatus::Completed(download_file)) => download_file,
+        };
+
         let download_dir = download_file
             .path()
             .parent()
             .ok_or_else(|| Error::msg("Parent of download dir not found"))?;
-        let decompressed_path = tempfile_in(download_dir)?;
-        let mut decompressed = match decompress_object_file(&download_file, decompressed_path) {
-            Ok(file) => file,
-            Err(err) => {
-                return Ok(CacheStatus::Malformed(err.to_string()));
-            }
-        };
+        let mut decompressed =
+            match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
+                Ok(file) => file,
+                Err(err) => {
+                    return Ok(CacheStatus::Malformed(err.to_string()));
+                }
+            };
 
         // Seek back to the start and parse this DIF.
         decompressed.rewind()?;

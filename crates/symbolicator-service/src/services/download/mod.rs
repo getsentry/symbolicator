@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
+use tempfile::NamedTempFile;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
@@ -113,11 +114,11 @@ impl DownloadError {
 }
 
 /// Completion status of a successful download request.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum DownloadStatus {
+#[derive(Debug)]
+pub enum DownloadStatus<T> {
     /// The download completed successfully and the file at the path can be used.
-    Completed,
-    /// The requested file was not found, there is no useful data at the provided path.
+    Completed(T),
+    /// The requested file was not found.
     NotFound,
     /// Not enough permissions to download the file.
     PermissionDenied,
@@ -181,8 +182,10 @@ impl DownloadService {
     async fn dispatch_download(
         &self,
         source: &RemoteDif,
-        destination: &Path,
-    ) -> Result<DownloadStatus, DownloadError> {
+        temp_file: NamedTempFile,
+    ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
+        let destination = temp_file.path();
+
         let result = future_utils::retry(|| async {
             match source {
                 RemoteDif::Sentry(inner) => {
@@ -202,21 +205,18 @@ impl DownloadService {
         });
 
         match result.await {
-            Ok(status) => {
-                match status {
-                    DownloadStatus::Completed => {
-                        tracing::debug!("Fetched debug file from {}", source);
-                    }
-                    DownloadStatus::NotFound => {
-                        tracing::debug!("Debug file not found at {}", source);
-                    }
-                    DownloadStatus::PermissionDenied => {
-                        tracing::debug!("No permissions to fetch file from {}", source);
-                        // FIXME: downstream users still expect these to be errors
-                        return Err(DownloadError::Permissions);
-                    }
-                };
-                Ok(status)
+            Ok(DownloadStatus::Completed(_)) => {
+                tracing::debug!("Fetched debug file from {}", source);
+                Ok(DownloadStatus::Completed(temp_file))
+            }
+            Ok(DownloadStatus::NotFound) => {
+                tracing::debug!("Debug file not found at {}", source);
+                Ok(DownloadStatus::NotFound)
+            }
+            Ok(DownloadStatus::PermissionDenied) => {
+                tracing::debug!("No permissions to fetch file from {}", source);
+                // FIXME: downstream users still expect these to be errors
+                Err(DownloadError::Permissions)
             }
             Err(err) => {
                 tracing::debug!("Failed to fetch debug file from {}: {}", source, err);
@@ -235,11 +235,10 @@ impl DownloadService {
     pub async fn download(
         self: Arc<Self>,
         source: RemoteDif,
-        destination: &Path,
-    ) -> Result<DownloadStatus, DownloadError> {
+        destination: NamedTempFile,
+    ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
         let slf = self.clone();
-        let destination = destination.to_path_buf();
-        let job = async move { slf.dispatch_download(&source, &destination).await };
+        let job = async move { slf.dispatch_download(&source, destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
@@ -296,7 +295,7 @@ async fn download_stream(
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: &Path,
     timeout: Option<Duration>,
-) -> Result<DownloadStatus, DownloadError> {
+) -> Result<DownloadStatus<()>, DownloadError> {
     // All file I/O in this function is blocking!
     tracing::trace!("Downloading from {}", source);
     let future = async {
@@ -321,7 +320,7 @@ async fn download_stream(
         result?;
 
         file.flush().await.map_err(DownloadError::Write)?;
-        Ok(DownloadStatus::Completed)
+        Ok(DownloadStatus::Completed(()))
     };
 
     match timeout {
@@ -502,9 +501,6 @@ mod tests {
     async fn test_download() {
         test::setup();
 
-        let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path();
-
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
             SourceConfig::Http(source) => {
@@ -521,10 +517,16 @@ mod tests {
         let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
-        let download_status = service.download(file_source, dest).await.unwrap();
-        assert_eq!(download_status, DownloadStatus::Completed);
-        let content = std::fs::read_to_string(dest).unwrap();
-        assert_eq!(content, "hello world\n")
+        match service
+            .download(file_source, tempfile::NamedTempFile::new().unwrap())
+            .await
+        {
+            Ok(DownloadStatus::Completed(temp_file)) => {
+                let content = std::fs::read_to_string(temp_file.path()).unwrap();
+                assert_eq!(content, "hello world\n")
+            }
+            _ => panic!("download should be completed"),
+        }
     }
 
     #[tokio::test]

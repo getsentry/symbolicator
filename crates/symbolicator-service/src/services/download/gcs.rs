@@ -106,7 +106,7 @@ impl GcsDownloader {
         &self,
         file_source: GcsRemoteDif,
         destination: &Path,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<DownloadStatus<()>, DownloadError> {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
         tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
@@ -273,7 +273,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(download_status, DownloadStatus::Completed);
+        assert!(matches!(download_status, DownloadStatus::Completed(_)));
         assert!(target_path.exists());
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
@@ -304,7 +304,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(matches!(download_status, DownloadStatus::NotFound));
         assert!(!target_path.exists());
     }
 

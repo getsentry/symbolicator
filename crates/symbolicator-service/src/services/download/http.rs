@@ -76,7 +76,7 @@ impl HttpDownloader {
         &self,
         file_source: HttpRemoteDif,
         destination: &Path,
-    ) -> Result<DownloadStatus, DownloadError> {
+    ) -> Result<DownloadStatus<()>, DownloadError> {
         let download_url = match file_source.url() {
             Ok(x) => x,
             Err(_) => return Ok(DownloadStatus::NotFound),
@@ -191,7 +191,7 @@ mod tests {
         );
         let download_status = downloader.download_source(file_source, dest).await.unwrap();
 
-        assert_eq!(download_status, DownloadStatus::Completed);
+        assert!(matches!(download_status, DownloadStatus::Completed(_)));
 
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -219,6 +219,6 @@ mod tests {
         );
         let download_status = downloader.download_source(file_source, dest).await.unwrap();
 
-        assert_eq!(download_status, DownloadStatus::NotFound);
+        assert!(matches!(download_status, DownloadStatus::NotFound));
     }
 }
