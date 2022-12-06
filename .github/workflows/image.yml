@@ -63,9 +63,13 @@ jobs:
               --cache-from "${NIGHTLY_IMG_CACHE}" \
               .
       - name: push nightly img
+        if: github.event_name != 'pull_request'
         run: |
           set -euxo pipefail
           docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
           docker push "$NIGHTLY_IMG_CACHE"
           docker push "$IMG_VERSIONED"
-        if: github.event_name != 'pull_request'
+
+          # for now arm64 is too slow so just retag this as latest
+          docker tag "$IMG_VERSIONED" ghcr.io/getsentry/symbolicator:latest
+          docker push ghcr.io/getsentry/symbolicator:latest
