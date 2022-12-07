@@ -14,14 +14,14 @@ use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{
     cache_entry_from_cache_status, derive_from_object_handle, Cache, CacheEntry, CacheError,
-    CacheStatus, CandidateStatus, DerivedCache, ExpirationTime,
+    CacheStatus, DerivedCache, ExpirationTime,
 };
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
-use crate::types::Scope;
+use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 

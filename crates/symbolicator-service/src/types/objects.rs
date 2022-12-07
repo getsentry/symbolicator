@@ -178,50 +178,46 @@ impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AllObjectCandidates(pub Vec<ObjectCandidate>);
 
-impl AllObjectCandidates {
-    /// Sets the [`ObjectCandidate::debug`] field for the specified DIF object.
-    ///
-    /// You can only request symcaches from a DIF object that was already in the metadata
-    /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_debug(&mut self, source: &SourceId, uri: &RemoteDifUri, info: ObjectUseInfo) {
-        let found_pos = self.0.binary_search_by(|candidate| {
-            candidate
-                .source
-                .cmp(source)
-                .then(candidate.location.cmp(uri))
-        });
-        match found_pos {
-            Ok(index) => {
-                if let Some(mut candidate) = self.0.get_mut(index) {
-                    candidate.debug = info;
-                }
-            }
-            Err(_) => {
-                sentry::capture_message(
-                    "Missing ObjectCandidate in AllObjectCandidates::set_debug",
-                    sentry::Level::Error,
-                );
-            }
-        }
-    }
+/// The candidate cache status that we want to set
+#[derive(PartialEq)]
+pub enum CandidateStatus {
+    Debug,
+    Unwind,
+    None,
+}
 
-    /// Sets the [`ObjectCandidate::unwind`] field for the specified DIF object.
+impl AllObjectCandidates {
+    /// Sets the `debug` or `unwind` status field for the specified DIF object.
     ///
-    /// You can only request cficaches from a DIF object that was already in the metadata
+    /// You can only request derived caches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_unwind(&mut self, source: &SourceId, uri: &RemoteDifUri, info: ObjectUseInfo) {
+    pub fn set_status(
+        &mut self,
+        candidate_status: CandidateStatus,
+        source: &SourceId,
+        uri: &RemoteDifUri,
+        info: ObjectUseInfo,
+    ) {
+        if candidate_status == CandidateStatus::None {
+            return;
+        }
+
         let found_pos = self.0.binary_search_by_key(&(source, uri), |candidate| {
             (&candidate.source, &candidate.location)
         });
         match found_pos {
             Ok(index) => {
                 if let Some(mut candidate) = self.0.get_mut(index) {
-                    candidate.unwind = info;
+                    match candidate_status {
+                        CandidateStatus::Debug => candidate.debug = info,
+                        CandidateStatus::Unwind => candidate.unwind = info,
+                        _ => unreachable!(),
+                    };
                 }
             }
             Err(_) => {
                 sentry::capture_message(
-                    "Missing ObjectCandidate in AllObjectCandidates::set_unwind",
+                    "Missing ObjectCandidate in AllObjectCandidates::set_status",
                     sentry::Level::Error,
                 );
             }

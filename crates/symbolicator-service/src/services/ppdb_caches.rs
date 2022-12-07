@@ -14,10 +14,10 @@ use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
 use crate::cache::{
     cache_entry_from_cache_status, derive_from_object_handle, Cache, CacheEntry, CacheError,
-    CacheStatus, CandidateStatus, DerivedCache, ExpirationTime,
+    CacheStatus, DerivedCache, ExpirationTime,
 };
 use crate::services::objects::ObjectError;
-use crate::types::{AllObjectCandidates, ObjectFeatures, Scope};
+use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
@@ -115,23 +115,6 @@ pub struct FetchPortablePdbCache {
     pub identifier: ObjectId,
     pub sources: Arc<[SourceConfig]>,
     pub scope: Scope,
-}
-
-#[derive(Debug, Clone)]
-pub struct FetchPortablePdbCacheResponse {
-    pub cache: CacheEntry<OwnedPortablePdbCache>,
-    pub candidates: AllObjectCandidates,
-    pub features: ObjectFeatures,
-}
-
-impl Default for FetchPortablePdbCacheResponse {
-    fn default() -> Self {
-        Self {
-            cache: Err(CacheError::InternalError),
-            candidates: Default::default(),
-            features: Default::default(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

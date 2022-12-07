@@ -19,7 +19,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
 use crate::services::objects::{FoundObject, ObjectError, ObjectMetaHandle};
-use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo};
+use crate::types::{AllObjectCandidates, CandidateStatus, ObjectFeatures, ObjectUseInfo};
 
 /// Starting content of cache items whose writing failed.
 ///
@@ -305,12 +305,6 @@ pub struct DerivedCache<T> {
     pub features: ObjectFeatures,
 }
 
-pub enum CandidateStatus {
-    Debug,
-    Unwind,
-    None,
-}
-
 /// Derives a [`DerivedCache`] from the provided object handle and derive function.
 ///
 /// This function is mainly a wrapper that simplifies error handling and propagation of
@@ -355,26 +349,15 @@ where
 
     match derived_cache {
         Ok(cache) => {
-            // TODO: can we dedupe these two functions?
-            match candidate_status {
-                CandidateStatus::Debug => candidates.set_debug(
-                    handle.source_id(),
-                    &handle.uri(),
-                    ObjectUseInfo::from_derived_status(
-                        &cache_entry_as_cache_status(&cache),
-                        handle.status(),
-                    ),
+            candidates.set_status(
+                candidate_status,
+                handle.source_id(),
+                &handle.uri(),
+                ObjectUseInfo::from_derived_status(
+                    &cache_entry_as_cache_status(&cache),
+                    handle.status(),
                 ),
-                CandidateStatus::Unwind => candidates.set_unwind(
-                    handle.source_id(),
-                    &handle.uri(),
-                    ObjectUseInfo::from_derived_status(
-                        &cache_entry_as_cache_status(&cache),
-                        handle.status(),
-                    ),
-                ),
-                CandidateStatus::None => {}
-            }
+            );
 
             DerivedCache {
                 cache: Arc::try_unwrap(cache).unwrap_or_else(|arc| (*arc).clone()),

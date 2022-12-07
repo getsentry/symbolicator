@@ -14,13 +14,13 @@ use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{
     cache_entry_from_cache_status, derive_from_object_handle, Cache, CacheEntry, CacheError,
-    CacheStatus, CandidateStatus, DerivedCache, ExpirationTime,
+    CacheStatus, DerivedCache, ExpirationTime,
 };
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
-use crate::types::{AllObjectCandidates, ObjectFeatures, Scope};
+use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
@@ -138,38 +138,6 @@ impl CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
             objects,
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct CfiCacheFile {
-    features: ObjectFeatures,
-    status: CacheStatus,
-    data: ByteView<'static>,
-    candidates: AllObjectCandidates,
-}
-
-impl CfiCacheFile {
-    /// Returns the status of this cache file.
-    pub fn status(&self) -> &CacheStatus {
-        &self.status
-    }
-
-    /// Returns the features of the object file this symcache was constructed from.
-    pub fn features(&self) -> ObjectFeatures {
-        self.features
-    }
-
-    /// Returns the cfi contents as a [`ByteView`].
-    // FIXME(swatinem): symbolic `CfiCache::from_bytes` should actually take a `&[u8]` instead of
-    // an explicit `ByteView`.
-    pub fn data(&self) -> ByteView {
-        self.data.clone()
-    }
-
-    /// Returns all the DIF object candidates.
-    pub fn candidates(&self) -> &AllObjectCandidates {
-        &self.candidates
     }
 }
 

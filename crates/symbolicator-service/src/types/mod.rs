@@ -17,7 +17,9 @@ use crate::utils::hex::HexValue;
 
 mod objects;
 
-pub use objects::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, ObjectUseInfo};
+pub use objects::{
+    AllObjectCandidates, CandidateStatus, ObjectCandidate, ObjectDownloadInfo, ObjectUseInfo,
+};
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
