@@ -190,7 +190,7 @@ impl ObjectsActor {
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
-    pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
+    pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<ObjectHandle> {
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -280,7 +280,7 @@ impl ObjectsActor {
         file_sources: Vec<RemoteDif>,
         identifier: &ObjectId,
         scope: Scope,
-    ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
+    ) -> Vec<CacheEntry<ObjectMetaHandle>> {
         let queries = file_sources.into_iter().map(|file_source| {
             let object_id = identifier.clone();
             let scope = scope.clone();

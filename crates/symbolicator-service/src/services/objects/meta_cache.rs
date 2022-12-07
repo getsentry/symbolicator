@@ -161,7 +161,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
         let features = match status {
@@ -177,12 +177,12 @@ impl CacheItemRequest for FetchFileMetaRequest {
             _ => Default::default(),
         };
 
-        ObjectMetaHandle {
+        Ok(ObjectMetaHandle {
             scope: self.scope.clone(),
             object_id: self.object_id.clone(),
             file_source: self.file_source.clone(),
             features,
             status,
-        }
+        })
     }
 }

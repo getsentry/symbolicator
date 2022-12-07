@@ -20,7 +20,7 @@ pub struct DerivedCache<T> {
 /// This function is mainly a wrapper that simplifies error handling and propagation of
 /// [`AllObjectCandidates`] and [`ObjectFeatures`].
 /// The [`CandidateStatus`] is responsible for telling which status to set on the found candidate.
-pub async fn derive_from_object_handle<T, Derive, DeriveErr, Fut>(
+pub async fn derive_from_object_handle<T, Derive, Fut>(
     found_object: Result<FoundObject, ObjectError>,
     candidate_status: CandidateStatus,
     derive: Derive,
@@ -28,8 +28,7 @@ pub async fn derive_from_object_handle<T, Derive, DeriveErr, Fut>(
 where
     T: Clone,
     Derive: FnOnce(Arc<ObjectMetaHandle>) -> Fut,
-    Fut: std::future::Future<Output = Result<Arc<CacheEntry<T>>, Arc<DeriveErr>>>,
-    for<'a> &'a DeriveErr: Into<CacheError>,
+    Fut: std::future::Future<Output = CacheEntry<T>>,
 {
     let (meta, mut candidates) = match found_object {
         Ok(FoundObject { meta, candidates }) => (meta, candidates),
@@ -58,33 +57,19 @@ where
     // Fetch cache file from handle
     let derived_cache = derive(Arc::clone(&handle)).await;
 
-    match derived_cache {
-        Ok(cache) => {
-            candidates.set_status(
-                candidate_status,
-                handle.source_id(),
-                &handle.uri(),
-                ObjectUseInfo::from_derived_status(
-                    &cache_entry_as_cache_status(&cache),
-                    handle.status(),
-                ),
-            );
+    candidates.set_status(
+        candidate_status,
+        handle.source_id(),
+        &handle.uri(),
+        ObjectUseInfo::from_derived_status(
+            &cache_entry_as_cache_status(&derived_cache),
+            handle.status(),
+        ),
+    );
 
-            DerivedCache {
-                cache: Arc::try_unwrap(cache).unwrap_or_else(|arc| (*arc).clone()),
-                candidates,
-                features: handle.features(),
-            }
-        }
-
-        // TODO: Internal Err fetching from cache, this should really be merged with `Ok`, as this is
-        // essentially a `Result<Result>` right now.
-        // `Cacher::compute_memoized` should just convert all the internal caching-related errors to
-        // `CacheError` instead of taking a detour through a type parameter.
-        Err(e) => DerivedCache {
-            cache: Err(e.as_ref().into()),
-            candidates,
-            features: ObjectFeatures::default(),
-        },
+    DerivedCache {
+        cache: derived_cache,
+        candidates,
+        features: handle.features(),
     }
 }

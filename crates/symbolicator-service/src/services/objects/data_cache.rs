@@ -24,6 +24,7 @@ use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::ObjectId;
 
 use crate::cache::CacheEntry;
+use crate::cache::CacheError;
 use crate::cache::CacheStatus;
 use crate::cache::ExpirationTime;
 use crate::services::cacher::{CacheItemRequest, CacheKey};
@@ -197,7 +198,7 @@ async fn fetch_file(
     let download_dir = download_file
         .path()
         .parent()
-        .ok_or(ObjectError::NoTempDir)?;
+        .ok_or(CacheError::InternalError)?;
     let decompress_result = decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
     // Treat decompression errors as malformed files. It is more likely that
@@ -295,14 +296,15 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         let type_name = self.0.file_source.source_type_name().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(600), future);
+        let timeout = Duration::from_secs(600);
+        let future = tokio::time::timeout(timeout, future);
         let future = measure(
             "objects",
             m::timed_result,
             Some(("source_type", type_name)),
             future,
         );
-        Box::pin(async move { future.await.map_err(|_| ObjectError::Timeout)? })
+        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
     fn load(
@@ -310,7 +312,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
             scope: self.0.scope.clone(),
@@ -326,7 +328,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         // not observe it directly, hence they need to do their own.
         object_handle.configure_scope();
 
-        object_handle
+        Ok(object_handle)
     }
 }
 

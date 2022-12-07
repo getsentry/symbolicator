@@ -158,7 +158,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
         status: CacheStatus,
         data: ByteView<'static>,
         expiration: ExpirationTime,
-    ) -> Self::Item;
+    ) -> CacheEntry<Self::Item>;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -179,70 +179,65 @@ impl<T: CacheItemRequest> Cacher<T> {
         key: &CacheKey,
         version: u32,
     ) -> CacheEntry<Option<T::Item>> {
-        match self.config.cache_dir() {
-            Some(cache_dir) => {
-                let name = self.config.name();
-                let item_path = key.cache_path(cache_dir, version);
-                tracing::trace!("Trying {} cache at path {}", name, item_path.display());
-                let _scope = Hub::current().push_scope();
-                sentry::configure_scope(|scope| {
-                    scope.set_extra(
-                        &format!("cache.{}.cache_path", name),
-                        item_path.to_string_lossy().into(),
-                    );
-                });
-                let (status, byteview, expiration) = match self.config.open_cachefile(&item_path)? {
-                    Some(bv) => bv,
-                    None => return Ok(None),
-                };
-                if status == CacheStatus::Positive && !request.should_load(&byteview) {
-                    tracing::trace!("Discarding {} at path {}", name, item_path.display());
-                    metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
-                    return Ok(None);
-                }
-
-                // store things into the shared cache when:
-                // - we have a positive cache
-                // - that has the latest version (we don’t want to upload old versions)
-                // - we refreshed the local cache time, so we also refresh the shared cache time.
-                let needs_reupload = expiration.was_touched();
-                if status == CacheStatus::Positive
-                    && version == T::VERSIONS.current
-                    && needs_reupload
-                {
-                    let shared_cache_key = SharedCacheKey {
-                        name: self.config.name(),
-                        version: T::VERSIONS.current,
-                        local_key: key.clone(),
-                    };
-                    match fs::File::open(&item_path)
-                        .await
-                        .context("Local cache path not available for shared cache")
-                    {
-                        Ok(fd) => {
-                            self.shared_cache_service
-                                .store(shared_cache_key, fd, CacheStoreReason::Refresh)
-                                .await;
-                        }
-                        Err(err) => {
-                            sentry::capture_error(&*err);
-                        }
-                    }
-                }
-                // This is also reported for "negative cache hits": When we cached
-                // the 404 response from a server as empty file.
-                metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
-                metric!(
-                    time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
-                    "hit" => "true"
-                );
-
-                tracing::trace!("Loading {} at path {}", name, item_path.display());
-                let item = request.load(status, byteview, expiration);
-                Ok(Some(item))
-            }
-            None => Ok(None),
+        let Some(cache_dir) = self.config.cache_dir() else {
+            return Ok(None);
+        };
+        let name = self.config.name();
+        let item_path = key.cache_path(cache_dir, version);
+        tracing::trace!("Trying {} cache at path {}", name, item_path.display());
+        let _scope = Hub::current().push_scope();
+        sentry::configure_scope(|scope| {
+            scope.set_extra(
+                &format!("cache.{}.cache_path", name),
+                item_path.to_string_lossy().into(),
+            );
+        });
+        let (status, byteview, expiration) = match self.config.open_cachefile(&item_path)? {
+            Some(bv) => bv,
+            None => return Ok(None),
+        };
+        if status == CacheStatus::Positive && !request.should_load(&byteview) {
+            tracing::trace!("Discarding {} at path {}", name, item_path.display());
+            metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+            return Ok(None);
         }
+
+        // store things into the shared cache when:
+        // - we have a positive cache
+        // - that has the latest version (we don’t want to upload old versions)
+        // - we refreshed the local cache time, so we also refresh the shared cache time.
+        let needs_reupload = expiration.was_touched();
+        if status == CacheStatus::Positive && version == T::VERSIONS.current && needs_reupload {
+            let shared_cache_key = SharedCacheKey {
+                name: self.config.name(),
+                version: T::VERSIONS.current,
+                local_key: key.clone(),
+            };
+            match fs::File::open(&item_path)
+                .await
+                .context("Local cache path not available for shared cache")
+            {
+                Ok(fd) => {
+                    self.shared_cache_service
+                        .store(shared_cache_key, fd, CacheStoreReason::Refresh)
+                        .await;
+                }
+                Err(err) => {
+                    sentry::capture_error(&*err);
+                }
+            }
+        }
+        // This is also reported for "negative cache hits": When we cached
+        // the 404 response from a server as empty file.
+        metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+        metric!(
+            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+            "hit" => "true"
+        );
+
+        tracing::trace!("Loading {} at path {}", name, item_path.display());
+        let item = request.load(status, byteview, expiration);
+        item.map(Some)
     }
 
     /// Compute an item.
@@ -388,7 +383,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // we just created a fresh cache, so use the initial expiration times
         let expiration = ExpirationTime::for_fresh_status(&self.config, &status);
 
-        Ok(request.load(status, byte_view, expiration))
+        request.load(status, byte_view, expiration)
     }
 
     /// Creates a shareable channel that computes an item.
@@ -623,8 +618,8 @@ mod tests {
             _status: CacheStatus,
             data: ByteView<'static>,
             _expiration: ExpirationTime,
-        ) -> Self::Item {
-            std::str::from_utf8(data.as_slice()).unwrap().to_owned()
+        ) -> CacheEntry<Self::Item> {
+            Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
         }
     }
 

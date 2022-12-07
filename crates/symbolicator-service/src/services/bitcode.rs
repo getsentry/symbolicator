@@ -19,7 +19,7 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use symbolicator_sources::{FileType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
@@ -92,7 +92,7 @@ impl FetchFileRequest {
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
     // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
-    async fn fetch_file(self, path: PathBuf) -> Result<CacheStatus, Error> {
+    async fn fetch_file(self, path: PathBuf) -> CacheEntry<CacheStatus> {
         let cache_key = self.get_cache_key();
 
         let download_file = match self
@@ -121,7 +121,7 @@ impl FetchFileRequest {
         let download_dir = download_file
             .path()
             .parent()
-            .ok_or_else(|| Error::msg("Parent of download dir not found"))?;
+            .ok_or(CacheError::InternalError)?;
         let mut decompressed =
             match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
                 Ok(file) => file,
@@ -180,18 +180,15 @@ impl CacheItemRequest for FetchFileRequest {
 
         let source_name = self.file_source.source_type_name().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), fut);
+        let timeout = Duration::from_secs(1200);
+        let future = tokio::time::timeout(timeout, fut);
         let future = measure(
             "auxdifs",
             m::timed_result,
             Some(("source_type", source_name)),
             future,
         );
-        Box::pin(async move {
-            future
-                .await
-                .map_err(|_| Error::msg("Timeout fetching aux DIF"))?
-        })
+        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
     fn load(
@@ -199,12 +196,12 @@ impl CacheItemRequest for FetchFileRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
-        CacheHandle {
+    ) -> CacheEntry<Self::Item> {
+        Ok(CacheHandle {
             status,
             uuid: self.uuid,
             data,
-        }
+        })
     }
 }
 
@@ -318,7 +315,7 @@ impl BitcodeService {
         dif_kind: AuxDifKind,
         scope: Scope,
         source: SourceConfig,
-    ) -> Result<Option<Arc<CacheHandle>>, Error> {
+    ) -> CacheEntry<Option<Arc<CacheHandle>>> {
         let file_type = match dif_kind {
             AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
             AuxDifKind::UuidMap => &[FileType::UuidMap],
@@ -354,8 +351,7 @@ impl BitcodeService {
                 Ok(handle) if handle.status == CacheStatus::Positive => ret = Some(handle),
                 Ok(_) => (),
                 Err(err) => {
-                    let stderr: &dyn std::error::Error = (*err).as_ref();
-                    let mut event = sentry::event_from_error(stderr);
+                    let mut event = sentry::event_from_error(&err);
                     event.message = Some("Failure fetching auxiliary DIF file from source".into());
                     sentry::capture_event(event);
                 }
