@@ -18,7 +18,7 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
 use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
@@ -132,7 +132,6 @@ impl FetchFileRequest {
 
 impl CacheItemRequest for FetchFileRequest {
     type Item = CacheHandle;
-    type Error = Error;
 
     fn get_cache_key(&self) -> CacheKey {
         self.file_source.cache_key(self.scope.clone())
@@ -141,7 +140,7 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let fut = self
             .clone()
             .fetch_file(path.to_path_buf())

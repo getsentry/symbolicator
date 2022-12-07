@@ -214,8 +214,7 @@ async fn fetch_difs_and_compute_ppdb_cache(
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
-    type Item = CacheEntry<OwnedPortablePdbCache>;
-    type Error = PortablePdbCacheError;
+    type Item = OwnedPortablePdbCache;
 
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
 
@@ -223,7 +222,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = fetch_difs_and_compute_ppdb_cache(
             path.to_owned(),
             self.object_meta.clone(),

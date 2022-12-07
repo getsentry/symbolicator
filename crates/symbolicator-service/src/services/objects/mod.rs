@@ -11,6 +11,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
 
+use crate::cache::CacheEntry;
 use crate::cache::{Cache, CacheStatus};
 use crate::services::cacher::Cacher;
 use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
@@ -189,10 +190,7 @@ impl ObjectsActor {
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
-    pub async fn fetch(
-        &self,
-        file_handle: Arc<ObjectMetaHandle>,
-    ) -> Result<Arc<ObjectHandle>, ObjectError> {
+    pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -201,10 +199,7 @@ impl ObjectsActor {
             download_svc: self.download_svc.clone(),
         });
 
-        self.data_cache
-            .compute_memoized(request)
-            .await
-            .map_err(ObjectError::Caching)
+        self.data_cache.compute_memoized(request).await
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.

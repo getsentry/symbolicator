@@ -151,6 +151,14 @@ pub enum CacheError {
     InternalError,
 }
 
+impl From<std::io::Error> for CacheError {
+    fn from(err: std::io::Error) -> Self {
+        let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
+        tracing::error!(error = dynerr);
+        Self::InternalError
+    }
+}
+
 impl CacheError {
     const PERMISSION_DENIED_MARKER: &[u8] = b"permissiondenied";
     const TIMEOUT_MARKER: &[u8] = b"timeout";

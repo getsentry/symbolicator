@@ -238,8 +238,7 @@ async fn fetch_difs_and_compute_symcache(
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
-    type Item = CacheEntry<OwnedSymCache>;
-    type Error = SymCacheError;
+    type Item = OwnedSymCache;
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
@@ -247,7 +246,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),

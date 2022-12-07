@@ -184,8 +184,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = CacheEntry<Option<Arc<SymbolFile>>>;
-    type Error = CfiCacheError;
+    type Item = Option<Arc<SymbolFile>>;
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
@@ -193,7 +192,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = compute_cficache(
             self.objects_actor.clone(),
             self.meta_handle.clone(),
