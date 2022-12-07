@@ -24,6 +24,7 @@ use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
+use symbolicator_service::cache::CacheEntry;
 use tempfile::TempPath;
 use thiserror::Error;
 use uuid::Uuid;
@@ -224,7 +225,7 @@ impl RequestService {
     }
 
     /// Looks up the object according to the [`FindObject`] request.
-    pub async fn find_object(&self, request: FindObject) -> Result<FoundObject, ObjectError> {
+    pub async fn find_object(&self, request: FindObject) -> CacheEntry<FoundObject> {
         self.inner.objects.find(request).await
     }
 
@@ -232,7 +233,7 @@ impl RequestService {
     pub async fn fetch_object(
         &self,
         handle: Arc<ObjectMetaHandle>,
-    ) -> Result<Arc<ObjectHandle>, ObjectError> {
+    ) -> CacheEntry<Arc<ObjectHandle>> {
         self.inner.objects.fetch(handle).await
     }
 

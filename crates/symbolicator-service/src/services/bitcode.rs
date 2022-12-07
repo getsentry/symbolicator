@@ -163,7 +163,7 @@ impl FetchFileRequest {
 }
 
 impl CacheItemRequest for FetchFileRequest {
-    type Item = CacheHandle;
+    type Item = Arc<CacheHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
         self.file_source.cache_key(self.scope.clone())
@@ -197,11 +197,11 @@ impl CacheItemRequest for FetchFileRequest {
         data: ByteView<'static>,
         _expiration: ExpirationTime,
     ) -> CacheEntry<Self::Item> {
-        Ok(CacheHandle {
+        Ok(Arc::new(CacheHandle {
             status,
             uuid: self.uuid,
             data,
-        })
+        }))
     }
 }
 

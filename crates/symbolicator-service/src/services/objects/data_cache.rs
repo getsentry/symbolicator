@@ -277,7 +277,7 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
 }
 
 impl CacheItemRequest for FetchFileDataRequest {
-    type Item = ObjectHandle;
+    type Item = Arc<ObjectHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
         self.0.get_cache_key()
@@ -328,7 +328,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         // not observe it directly, hence they need to do their own.
         object_handle.configure_scope();
 
-        Ok(object_handle)
+        Ok(Arc::new(object_handle))
     }
 }
 

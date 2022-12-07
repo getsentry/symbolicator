@@ -160,17 +160,13 @@ pub enum CacheError {
 
 impl From<std::io::Error> for CacheError {
     fn from(err: std::io::Error) -> Self {
-        let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
-        tracing::error!(error = dynerr);
-        Self::InternalError
+        Self::from_std_error(err)
     }
 }
 
 impl From<serde_json::Error> for CacheError {
     fn from(err: serde_json::Error) -> Self {
-        let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
-        tracing::error!(error = dynerr);
-        Self::InternalError
+        Self::from_std_error(err)
     }
 }
 
@@ -272,6 +268,12 @@ impl CacheError {
             Self::Malformed(s) => CacheStatus::Malformed(s.clone()),
             Self::InternalError => CacheStatus::CacheSpecificError("internal error".into()),
         }
+    }
+
+    pub(crate) fn from_std_error<E: std::error::Error + 'static>(e: E) -> Self {
+        let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
+        tracing::error!(error = dynerr);
+        Self::InternalError
     }
 }
 

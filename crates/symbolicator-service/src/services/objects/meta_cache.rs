@@ -137,7 +137,7 @@ impl FetchFileMetaRequest {
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
-    type Item = ObjectMetaHandle;
+    type Item = Arc<ObjectMetaHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
         self.file_source.cache_key(self.scope.clone())
@@ -177,12 +177,12 @@ impl CacheItemRequest for FetchFileMetaRequest {
             _ => Default::default(),
         };
 
-        Ok(ObjectMetaHandle {
+        Ok(Arc::new(ObjectMetaHandle {
             scope: self.scope.clone(),
             object_id: self.object_id.clone(),
             file_source: self.file_source.clone(),
             features,
             status,
-        })
+        }))
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::cache::{cache_entry_as_cache_status, CacheEntry, CacheError};
-use crate::services::objects::{FoundObject, ObjectError, ObjectMetaHandle};
+use crate::services::objects::{FoundObject, ObjectMetaHandle};
 use crate::types::{AllObjectCandidates, CandidateStatus, ObjectFeatures, ObjectUseInfo};
 
 /// This is the result of fetching a derived cache file.
@@ -21,7 +21,7 @@ pub struct DerivedCache<T> {
 /// [`AllObjectCandidates`] and [`ObjectFeatures`].
 /// The [`CandidateStatus`] is responsible for telling which status to set on the found candidate.
 pub async fn derive_from_object_handle<T, Derive, Fut>(
-    found_object: Result<FoundObject, ObjectError>,
+    found_object: CacheEntry<FoundObject>,
     candidate_status: CandidateStatus,
     derive: Derive,
 ) -> DerivedCache<T>
