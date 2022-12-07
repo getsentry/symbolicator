@@ -179,7 +179,7 @@ impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
 pub struct AllObjectCandidates(pub Vec<ObjectCandidate>);
 
 /// The candidate cache status that we want to set
-#[derive(PartialEq)]
+#[derive(Eq, PartialEq)]
 pub enum CandidateStatus {
     Debug,
     Unwind,
