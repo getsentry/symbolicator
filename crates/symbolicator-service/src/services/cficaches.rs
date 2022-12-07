@@ -13,8 +13,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{
-    cache_entry_from_cache_status, derive_from_object_handle, Cache, CacheEntry, CacheError,
-    CacheStatus, DerivedCache, ExpirationTime,
+    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
 };
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -24,6 +23,7 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
+use super::derived::{derive_from_object_handle, DerivedCache};
 use super::shared_cache::SharedCacheService;
 
 /// The supported cficache versions.

@@ -9,7 +9,8 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
-use crate::cache::{CacheEntry, CacheError, DerivedCache};
+use crate::cache::{CacheEntry, CacheError};
+use crate::services::derived::DerivedCache;
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
     FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError,

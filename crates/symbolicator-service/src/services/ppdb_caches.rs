@@ -13,8 +13,7 @@ use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
 use crate::cache::{
-    cache_entry_from_cache_status, derive_from_object_handle, Cache, CacheEntry, CacheError,
-    CacheStatus, DerivedCache, ExpirationTime,
+    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
 };
 use crate::services::objects::ObjectError;
 use crate::types::{CandidateStatus, Scope};
@@ -22,6 +21,7 @@ use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
+use super::derived::{derive_from_object_handle, DerivedCache};
 use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
 use super::shared_cache::SharedCacheService;
 

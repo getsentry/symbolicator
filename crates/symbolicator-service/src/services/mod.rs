@@ -19,6 +19,7 @@ use crate::config::Config;
 pub mod bitcode;
 pub mod cacher;
 pub mod cficaches;
+pub mod derived;
 pub mod download;
 pub mod il2cpp;
 mod minidump;
