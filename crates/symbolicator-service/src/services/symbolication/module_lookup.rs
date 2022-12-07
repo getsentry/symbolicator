@@ -9,15 +9,12 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::{Object, ObjectDebugSession};
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::cache::{CacheEntry, CacheError, DerivedCache};
 use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
-    FetchPortablePdbCache, FetchPortablePdbCacheResponse, OwnedPortablePdbCache,
-    PortablePdbCacheActor, PortablePdbCacheError,
+    FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError,
 };
-use crate::services::symcaches::{
-    FetchSymCache, FetchSymCacheResponse, OwnedSymCache, SymCacheActor, SymCacheError,
-};
+use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor, SymCacheError};
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
     RawStacktrace, Scope,
@@ -210,7 +207,7 @@ impl ModuleLookup {
                                 scope,
                             };
 
-                            let FetchPortablePdbCacheResponse {
+                            let DerivedCache {
                                 cache,
                                 candidates,
                                 features,
@@ -233,7 +230,7 @@ impl ModuleLookup {
                                 scope,
                             };
 
-                            let FetchSymCacheResponse {
+                            let DerivedCache {
                                 cache,
                                 candidates,
                                 features,

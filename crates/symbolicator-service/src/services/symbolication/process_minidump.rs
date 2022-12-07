@@ -19,7 +19,7 @@ use tempfile::TempPath;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 
-use crate::services::cficaches::{CfiCacheActor, FetchCfiCache, FetchCfiCacheResponse};
+use crate::services::cficaches::{CfiCacheActor, FetchCfiCache, FetchedCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::symbolication::module_lookup::object_file_status_from_cache_entry;
 use crate::types::{
@@ -155,7 +155,7 @@ struct SymbolicatorSymbolProvider {
     /// An internal database of loaded CFI.
     ///
     /// The key consists of a module's debug identifier and base address.
-    cficaches: moka::future::Cache<LookupKey, FetchCfiCacheResponse>,
+    cficaches: moka::future::Cache<LookupKey, FetchedCfiCache>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -176,7 +176,7 @@ impl SymbolicatorSymbolProvider {
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchCfiCacheResponse {
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchedCfiCache {
         let key = LookupKey::new(module);
         self.cficaches
             .get_with_by_ref(&key, async {

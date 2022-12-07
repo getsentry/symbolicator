@@ -209,12 +209,9 @@ impl AllObjectCandidates {
     ///
     /// You can only request cficaches from a DIF object that was already in the metadata
     /// candidate list, therefore if the candidate is missing it is treated as an error.
-    pub fn set_unwind(&mut self, source: SourceId, uri: &RemoteDifUri, info: ObjectUseInfo) {
-        let found_pos = self.0.binary_search_by(|candidate| {
-            candidate
-                .source
-                .cmp(&source)
-                .then(candidate.location.cmp(uri))
+    pub fn set_unwind(&mut self, source: &SourceId, uri: &RemoteDifUri, info: ObjectUseInfo) {
+        let found_pos = self.0.binary_search_by_key(&(source, uri), |candidate| {
+            (&candidate.source, &candidate.location)
         });
         match found_pos {
             Ok(index) => {
