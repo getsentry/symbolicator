@@ -143,6 +143,7 @@ impl ObjectsActor {
     // TODO(flub): this function should inline already fetch the meta (what
     // `fetch_file_metas()` does now) for each file.  Currently we synchronise all the
     // futures at the end of the listing for no good reason.
+    // FIXME(swatinem): actually, there might be some value in having these as separate functions.
     async fn list_files(
         &self,
         sources: &[SourceConfig],
@@ -188,25 +189,22 @@ impl ObjectsActor {
         scope: Scope,
     ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
         let queries = file_sources.into_iter().map(|file_source| {
-            let object_id = identifier.clone();
-            let scope = scope.clone();
-            let data_cache = self.data_cache.clone();
-            let download_svc = self.download_svc.clone();
+            let scope = if file_source.is_public() {
+                Scope::Global
+            } else {
+                scope.clone()
+            };
+            let request = FetchFileMetaRequest {
+                scope,
+                file_source: file_source.clone(),
+                object_id: identifier.clone(),
+                data_cache: self.data_cache.clone(),
+                download_svc: self.download_svc.clone(),
+            };
+
             let meta_cache = self.meta_cache.clone();
 
             async move {
-                let scope = if file_source.is_public() {
-                    Scope::Global
-                } else {
-                    scope.clone()
-                };
-                let request = FetchFileMetaRequest {
-                    scope,
-                    file_source: file_source.clone(),
-                    object_id,
-                    data_cache,
-                    download_svc,
-                };
                 meta_cache
                     .compute_memoized(request)
                     .await

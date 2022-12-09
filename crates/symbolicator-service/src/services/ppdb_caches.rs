@@ -61,17 +61,8 @@ pub enum PortablePdbCacheError {
     #[error("failed to write ppdb cache")]
     Io(#[from] io::Error),
 
-    #[error("failed to parse ppdb cache")]
-    Parsing(#[source] symbolic::ppdb::CacheError),
-
     #[error("failed to write ppdb cache")]
     Writing(#[source] symbolic::ppdb::CacheError),
-
-    #[error("malformed ppdb cache file")]
-    Malformed,
-
-    #[error("ppdb cache building took too long")]
-    Timeout,
 }
 
 impl From<&PortablePdbCacheError> for CacheError {
@@ -81,16 +72,10 @@ impl From<&PortablePdbCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to write ppdb cache");
                 Self::InternalError
             }
-            PortablePdbCacheError::Parsing(e) => {
-                tracing::error!(error = %e, "failed to parse ppdb cache");
-                Self::InternalError
-            }
             PortablePdbCacheError::Writing(e) => {
                 tracing::error!(error = %e, "failed to write ppdb cache");
                 Self::InternalError
             }
-            PortablePdbCacheError::Malformed => Self::Malformed(String::new()),
-            PortablePdbCacheError::Timeout => Self::Timeout(Duration::default()),
         }
     }
 }

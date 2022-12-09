@@ -81,12 +81,6 @@ pub enum CfiCacheError {
 
     #[error("failed to parse cficache")]
     Parsing(#[from] symbolic::cfi::CfiError),
-
-    #[error("failed parsing symbolfile")]
-    SymbolFileParsing(#[from] minidump_processor::SymbolError),
-
-    #[error("cficache building took too long")]
-    Timeout,
 }
 
 impl From<&CfiCacheError> for CacheError {
@@ -100,11 +94,6 @@ impl From<&CfiCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to parse cfi cache");
                 Self::InternalError
             }
-            CfiCacheError::SymbolFileParsing(e) => {
-                tracing::error!(error = %e, "failed to parse symbolfile");
-                Self::InternalError
-            }
-            CfiCacheError::Timeout => Self::Timeout(Duration::default()),
         }
     }
 }

@@ -88,23 +88,14 @@ pub enum SymCacheError {
     #[error("failed to write symcache")]
     Io(#[from] io::Error),
 
-    #[error("failed to parse symcache")]
-    Parsing(#[source] symcache::Error),
-
     #[error("failed to write symcache")]
     Writing(#[source] symcache::Error),
-
-    #[error("malformed symcache file")]
-    Malformed,
 
     #[error("failed to handle auxiliary BCSymbolMap file")]
     BcSymbolMapError(#[source] Error),
 
     #[error("failed to handle auxiliary il2cpp line mapping file")]
     Il2cppError(#[source] Error),
-
-    #[error("symcache building took too long")]
-    Timeout,
 }
 
 impl From<&SymCacheError> for CacheError {
@@ -112,10 +103,6 @@ impl From<&SymCacheError> for CacheError {
         match error {
             SymCacheError::Io(e) => {
                 tracing::error!(error = %e, "failed to write symcache");
-                Self::InternalError
-            }
-            SymCacheError::Parsing(e) => {
-                tracing::error!(error = %e, "failed to parse symcache");
                 Self::InternalError
             }
             SymCacheError::Writing(e) => {
@@ -130,8 +117,6 @@ impl From<&SymCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to handle auxiliary il2cpp line mapping file");
                 Self::InternalError
             }
-            SymCacheError::Malformed => Self::Malformed(String::new()),
-            SymCacheError::Timeout => Self::Timeout(Duration::default()),
         }
     }
 }
