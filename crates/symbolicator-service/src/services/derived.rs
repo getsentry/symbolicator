@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::cache::{cache_entry_as_cache_status, CacheEntry, CacheError};
+use crate::cache::{cache_entry_as_cache_status, CacheEntry, CacheError, CacheStatus};
 use crate::services::objects::{FoundObject, ObjectMetaHandle};
 use crate::types::{AllObjectCandidates, CandidateStatus, ObjectFeatures, ObjectUseInfo};
 
@@ -63,7 +63,8 @@ where
         &handle.uri(),
         ObjectUseInfo::from_derived_status(
             &cache_entry_as_cache_status(&derived_cache),
-            handle.status(),
+            // FIXME(swatinem): figure out what to do here?
+            &CacheStatus::Positive,
         ),
     );
 

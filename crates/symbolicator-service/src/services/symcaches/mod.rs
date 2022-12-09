@@ -12,9 +12,7 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{
-    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
-};
+use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -27,7 +25,6 @@ use crate::utils::sentry::ConfigureScope;
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::download::DownloadError;
 use super::il2cpp::Il2cppService;
 use super::shared_cache::SharedCacheService;
 
@@ -208,21 +205,6 @@ async fn fetch_difs_and_compute_symcache(
 ) -> CacheEntry<CacheStatus> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    let status = object_handle.status();
-
-    // The original has a download error so the sym cache entry should be marked as a fetch error
-    if let Some(_download_error) = DownloadError::from_cache(status) {
-        // FIXME: this should be:
-        //return Err(SymCacheError::Fetching(download_error.into()));
-        // but instead we have to return an `Ok`, otherwise the `candidate` info will be lost
-        // somwhere along the path of the symcache request.
-        return Ok(CacheStatus::Negative);
-    }
-
-    if status != &CacheStatus::Positive {
-        return Ok(status.clone());
-    }
-
     let status = match write_symcache(&path, &object_handle, secondary_sources) {
         Ok(_) => CacheStatus::Positive,
         Err(err) => {
@@ -276,14 +258,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
-        let cache_entry = cache_entry_from_cache_status(status, data);
-        cache_entry.and_then(parse_symcache_owned)
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        parse_symcache_owned(data)
     }
 }
 
@@ -379,8 +355,7 @@ fn write_symcache(
 
     let symbolic_object = object_handle
         .parse()
-        .map_err(SymCacheError::ObjectParsing)?
-        .unwrap();
+        .map_err(SymCacheError::ObjectParsing)?;
 
     let markers = SymCacheMarkers::from_sources(&secondary_sources);
 

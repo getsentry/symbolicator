@@ -52,7 +52,6 @@ impl BcSymbolMapHandle {
 /// [`BcSymbolMapHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
-    status: CacheStatus,
     uuid: DebugId,
     data: ByteView<'static>,
 }
@@ -191,14 +190,8 @@ impl CacheItemRequest for FetchFileRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
         Ok(Arc::new(CacheHandle {
-            status,
             uuid: self.uuid,
             data,
         }))
@@ -348,8 +341,8 @@ impl BitcodeService {
         let mut ret = None;
         for result in all_results {
             match result {
-                Ok(handle) if handle.status == CacheStatus::Positive => ret = Some(handle),
-                Ok(_) => (),
+                Ok(handle) => ret = Some(handle),
+                Err(CacheError::NotFound) => (),
                 Err(err) => {
                     let mut event = sentry::event_from_error(&err);
                     event.message = Some("Failure fetching auxiliary DIF file from source".into());

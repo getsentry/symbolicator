@@ -51,7 +51,6 @@ impl Il2cppHandle {
 /// [`Il2cppHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
-    status: CacheStatus,
     debug_id: DebugId,
     data: ByteView<'static>,
 }
@@ -159,14 +158,8 @@ impl CacheItemRequest for FetchFileRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
         Ok(Arc::new(CacheHandle {
-            status,
             debug_id: self.debug_id,
             data,
         }))
@@ -286,8 +279,8 @@ impl Il2cppService {
         let mut ret = None;
         for result in all_results {
             match result {
-                Ok(handle) if handle.status == CacheStatus::Positive => ret = Some(handle),
-                Ok(_) => (),
+                Ok(handle) => ret = Some(handle),
+                Err(CacheError::NotFound) => (),
                 Err(err) => {
                     let mut event = sentry::event_from_error(&err);
                     event.message = Some("Failure fetching il2cpp file from source".into());

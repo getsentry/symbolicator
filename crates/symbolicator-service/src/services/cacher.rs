@@ -14,7 +14,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
-use crate::cache::{Cache, CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{cache_entry_from_cache_status, Cache, CacheEntry, CacheStatus, ExpirationTime};
 use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheService};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
@@ -153,12 +153,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     }
 
     /// Loads an existing element from the cache.
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item>;
+    fn load(&self, data: ByteView<'static>, expiration: ExpirationTime) -> CacheEntry<Self::Item>;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -236,8 +231,16 @@ impl<T: CacheItemRequest> Cacher<T> {
         );
 
         tracing::trace!("Loading {} at path {}", name, item_path.display());
-        let item = request.load(status, byteview, expiration);
-        item.map(Some)
+
+        let cache_entry = cache_entry_from_cache_status(status, byteview);
+        cache_entry
+            .and_then(|byteview| request.load(byteview, expiration))
+            .map(Some)
+        // TODO: log error:
+        // sentry::configure_scope(|scope| {
+        //     scope.set_extra("cache_key", self.get_cache_key().to_string().into());
+        // });
+        // sentry::capture_error(&*err);
     }
 
     /// Compute an item.
@@ -383,7 +386,14 @@ impl<T: CacheItemRequest> Cacher<T> {
         // we just created a fresh cache, so use the initial expiration times
         let expiration = ExpirationTime::for_fresh_status(&self.config, &status);
 
-        request.load(status, byte_view, expiration)
+        let cache_entry = cache_entry_from_cache_status(status, byte_view);
+        cache_entry.and_then(|byteview| request.load(byteview, expiration))
+
+        // TODO: log error:
+        // sentry::configure_scope(|scope| {
+        //     scope.set_extra("cache_key", self.get_cache_key().to_string().into());
+        // });
+        // sentry::capture_error(&*err);
     }
 
     /// Creates a shareable channel that computes an item.
@@ -612,7 +622,6 @@ mod tests {
 
         fn load(
             &self,
-            _status: CacheStatus,
             data: ByteView<'static>,
             _expiration: ExpirationTime,
         ) -> CacheEntry<Self::Item> {

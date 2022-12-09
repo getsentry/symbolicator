@@ -57,12 +57,8 @@ pub struct ObjectHandle {
     pub(super) cache_key: CacheKey,
 
     /// The mmapped object.
-    ///
-    /// This only contains the object **if** [`ObjectHandle::status`] is
-    /// [`CacheStatus::Positive`], otherwise it will contain an empty string or the special
-    /// malformed marker.
+    // FIXME(swatinem): This should already contain the parsed `Object`
     pub(super) data: ByteView<'static>,
-    pub(super) status: CacheStatus,
 }
 
 impl ObjectHandle {
@@ -71,26 +67,8 @@ impl ObjectHandle {
         self.data.len()
     }
 
-    pub fn has_object(&self) -> bool {
-        self.status == CacheStatus::Positive
-    }
-
-    pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        // Interestingly all usages of parse() check to make sure that self.status == Positive before
-        // actually invoking it.
-        match &self.status {
-            CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
-            CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(
-                DownloadError::from_cache(&self.status)
-                    .unwrap_or_else(|| DownloadError::CachedError(message.clone())),
-            )),
-        }
-    }
-
-    pub fn status(&self) -> &CacheStatus {
-        &self.status
+    pub fn parse(&self) -> Result<Object<'_>, ObjectError> {
+        Ok(Object::parse(&self.data)?)
     }
 
     pub fn cache_key(&self) -> &CacheKey {
@@ -307,19 +285,13 @@ impl CacheItemRequest for FetchFileDataRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
             scope: self.0.scope.clone(),
 
             cache_key: self.get_cache_key(),
 
-            status,
             data,
         };
 
@@ -339,9 +311,9 @@ mod tests {
 
     use symbolicator_sources::FileType;
 
-    use crate::cache::{Cache, CacheName, CacheStatus};
+    use crate::cache::{Cache, CacheError, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::services::download::{DownloadError, DownloadService};
+    use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::services::shared_cache::SharedCacheService;
@@ -407,20 +379,16 @@ mod tests {
             sources: Arc::new([server.reject_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
         assert_eq!(
-            result.meta.clone().unwrap().status,
-            CacheStatus::CacheSpecificError(String::from(
-                "failed to download: 500 Internal Server Error"
-            ))
+            result,
+            CacheError::DownloadError("failed to download: 500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 3); // up to 3 tries on failure
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
         assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(String::from(
-                "failed to download: 500 Internal Server Error"
-            ))
+            result,
+            CacheError::DownloadError("failed to download: 500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 0);
     }
@@ -451,11 +419,11 @@ mod tests {
             sources: Arc::new([server.not_found_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 0);
     }
 
@@ -485,18 +453,14 @@ mod tests {
             sources: Arc::new([server.pending_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(String::from("download was cancelled"))
-        );
+        // FIXME(swatinem): we are not yet threading `Duration` values through our Caching layer
+        let timeout = Duration::ZERO;
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        assert_eq!(result, CacheError::Timeout(timeout));
         // XXX: why are we not trying this 3 times?
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(String::from("download was cancelled"))
-        );
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        assert_eq!(result, CacheError::Timeout(timeout));
         assert_eq!(server.accesses(), 0);
     }
 
@@ -526,17 +490,11 @@ mod tests {
             sources: Arc::new([server.forbidden_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.clone().unwrap().status,
-            CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
-        );
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
-        );
+        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 0);
     }
 }

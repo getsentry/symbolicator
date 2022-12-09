@@ -12,9 +12,7 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{
-    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
-};
+use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
 use crate::services::objects::ObjectError;
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
@@ -190,15 +188,6 @@ async fn fetch_difs_and_compute_ppdb_cache(
 ) -> CacheEntry<CacheStatus> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    // The original has a download error so the sym cache entry should just be negative.
-    if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
-        return Ok(CacheStatus::Negative);
-    }
-
-    if object_handle.status() != &CacheStatus::Positive {
-        return Ok(object_handle.status().clone());
-    }
-
     let status = match write_ppdb_cache(&path, &object_handle) {
         Ok(_) => CacheStatus::Positive,
         Err(err) => {
@@ -243,14 +232,8 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         true
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
-        let cache_entry = cache_entry_from_cache_status(status, data);
-        cache_entry.and_then(parse_ppdb_cache_owned)
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        parse_ppdb_cache_owned(data)
     }
 }
 
@@ -264,10 +247,13 @@ fn write_ppdb_cache(
 ) -> Result<(), PortablePdbCacheError> {
     object_handle.configure_scope();
 
-    let ppdb_obj = match object_handle.parse() {
-        Ok(Some(Object::PortablePdb(ppdb_obj))) => ppdb_obj,
-        Ok(Some(_) | None) => panic!("object handle does not contain a valid portable pdb object"),
-        Err(e) => return Err(PortablePdbCacheError::PortablePdbParsing(e)),
+    let ppdb_obj = match object_handle
+        .parse()
+        .map_err(PortablePdbCacheError::PortablePdbParsing)?
+    {
+        Object::PortablePdb(ppdb_obj) => ppdb_obj,
+        // FIXME(swatinem): instead of panic, we should return an internal error?
+        _ => panic!("object handle does not contain a valid portable pdb object"),
     };
 
     tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key());

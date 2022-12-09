@@ -12,9 +12,7 @@ use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{
-    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
-};
+use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -160,14 +158,6 @@ async fn compute_cficache(
 ) -> CacheEntry<CacheStatus> {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    // The original has a download error so the cfi cache entry should just be negative.
-    if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
-        return Ok(CacheStatus::Negative);
-    }
-    if object.status() != &CacheStatus::Positive {
-        return Ok(object.status().clone());
-    }
-
     let status = if let Err(e) = write_cficache(&path, &object) {
         tracing::warn!("Could not write cficache: {}", e);
         sentry::capture_error(&e);
@@ -215,15 +205,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
-        let cache_entry = cache_entry_from_cache_status(status, data);
-
-        cache_entry.and_then(parse_cfi_cache)
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        parse_cfi_cache(data)
     }
 }
 
@@ -278,8 +261,7 @@ fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCa
 
     let object = object_handle
         .parse()
-        .map_err(CfiCacheError::ObjectParsing)?
-        .unwrap();
+        .map_err(CfiCacheError::ObjectParsing)?;
 
     let file = File::create(path)?;
     let writer = BufWriter::new(file);

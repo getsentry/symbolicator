@@ -12,9 +12,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
 
-use crate::cache::CacheEntry;
-use crate::cache::CacheError;
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheEntry, CacheError};
 use crate::services::cacher::Cacher;
 use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
@@ -228,7 +226,7 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    pub async fn find(&self, request: FindObject) -> Result<FoundObject, CacheError> {
+    pub async fn find(&self, request: FindObject) -> CacheEntry<FoundObject> {
         let FindObject {
             filetypes,
             scope,
@@ -386,17 +384,12 @@ fn object_quality(meta_lookup: &CacheEntry<Arc<ObjectMetaHandle>>, purpose: Obje
 
 /// Whether the object provides the required features for the given purpose.
 fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -> bool {
-    if meta_handle.status == CacheStatus::Positive {
-        // object_meta.features is meaningless when CacheStatus != Positive
-        match purpose {
-            ObjectPurpose::Unwind => meta_handle.features.has_unwind_info,
-            ObjectPurpose::Debug => {
-                meta_handle.features.has_debug_info || meta_handle.features.has_symbols
-            }
-            ObjectPurpose::Source => meta_handle.features.has_sources,
+    match purpose {
+        ObjectPurpose::Unwind => meta_handle.features.has_unwind_info,
+        ObjectPurpose::Debug => {
+            meta_handle.features.has_debug_info || meta_handle.features.has_symbols
         }
-    } else {
-        true
+        ObjectPurpose::Source => meta_handle.features.has_sources,
     }
 }
 
@@ -441,42 +434,38 @@ fn create_candidates(
 fn create_candidate_info(
     meta_lookup: &Result<Arc<ObjectMetaHandle>, CacheLookupError>,
 ) -> ObjectCandidate {
-    match meta_lookup {
-        Ok(meta_handle) => {
-            let download = match &meta_handle.status {
-                CacheStatus::Positive => ObjectDownloadInfo::Ok {
-                    features: meta_handle.features(),
-                },
-                CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
-                CacheStatus::CacheSpecificError(message) => {
-                    match DownloadError::from_cache(&meta_handle.status) {
-                        Some(DownloadError::Permissions) => ObjectDownloadInfo::NoPerm {
-                            details: String::default(),
-                        },
-                        Some(_) | None => ObjectDownloadInfo::Error {
-                            details: message.clone(),
-                        },
-                    }
-                }
-            };
-            ObjectCandidate {
-                source: meta_handle.file_source.source_id().clone(),
-                location: meta_handle.file_source.uri(),
-                download,
-                unwind: Default::default(),
-                debug: Default::default(),
-            }
-        }
+    let (source, location, download) = match meta_lookup {
+        Ok(meta_handle) => (
+            meta_handle.file_source.source_id().clone(),
+            meta_handle.file_source.uri(),
+            ObjectDownloadInfo::Ok {
+                features: meta_handle.features(),
+            },
+        ),
         Err(wrapped_error) => {
-            let details = wrapped_error.error.to_string();
-            ObjectCandidate {
-                source: wrapped_error.file_source.source_id().clone(),
-                location: wrapped_error.file_source.uri(),
-                download: ObjectDownloadInfo::Error { details },
-                unwind: Default::default(),
-                debug: Default::default(),
-            }
+            let download = match &wrapped_error.error {
+                CacheError::NotFound => ObjectDownloadInfo::NotFound,
+                CacheError::PermissionDenied(msg) => ObjectDownloadInfo::NoPerm {
+                    details: msg.clone(),
+                },
+                CacheError::Malformed(_) => ObjectDownloadInfo::Malformed,
+                err => ObjectDownloadInfo::Error {
+                    details: err.to_string(),
+                },
+            };
+            (
+                wrapped_error.file_source.source_id().clone(),
+                wrapped_error.file_source.uri(),
+                download,
+            )
         }
+    };
+
+    ObjectCandidate {
+        source,
+        location,
+        download,
+        unwind: Default::default(),
+        debug: Default::default(),
     }
 }
