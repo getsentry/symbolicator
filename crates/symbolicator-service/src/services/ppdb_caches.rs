@@ -247,16 +247,13 @@ fn write_ppdb_cache(
 ) -> Result<(), PortablePdbCacheError> {
     object_handle.configure_scope();
 
-    let ppdb_obj = match object_handle
-        .parse()
-        .map_err(PortablePdbCacheError::PortablePdbParsing)?
-    {
+    let ppdb_obj = match object_handle.object() {
         Object::PortablePdb(ppdb_obj) => ppdb_obj,
         // FIXME(swatinem): instead of panic, we should return an internal error?
         _ => panic!("object handle does not contain a valid portable pdb object"),
     };
 
-    tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key());
+    tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key);
 
     let mut converter = PortablePdbCacheConverter::new();
 

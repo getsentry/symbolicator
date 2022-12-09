@@ -353,9 +353,7 @@ fn write_symcache(
 ) -> Result<(), SymCacheError> {
     object_handle.configure_scope();
 
-    let symbolic_object = object_handle
-        .parse()
-        .map_err(SymCacheError::ObjectParsing)?;
+    let symbolic_object = object_handle.object();
 
     let markers = SymCacheMarkers::from_sources(&secondary_sources);
 
@@ -386,7 +384,7 @@ fn write_symcache(
         None => None,
     };
 
-    tracing::debug!("Converting symcache for {}", object_handle.cache_key());
+    tracing::debug!("Converting symcache for {}", object_handle.cache_key);
 
     let mut converter = SymCacheConverter::new();
 
@@ -398,7 +396,7 @@ fn write_symcache(
     }
 
     converter
-        .process_object(&symbolic_object)
+        .process_object(symbolic_object)
         .map_err(SymCacheError::Writing)?;
 
     let file = File::create(path)?;

@@ -14,7 +14,6 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
-use symbolic::debuginfo::Object;
 use symbolicator_sources::{ObjectId, SourceId};
 
 use crate::cache::{CacheEntry, CacheStatus, ExpirationTime};
@@ -100,19 +99,18 @@ impl FetchFileMetaRequest {
             .compute_memoized(FetchFileDataRequest(self))
             .await?;
 
-        if let Ok(object) = Object::parse(&object_handle.data) {
-            let mut new_cache = fs::File::create(path)?;
+        let object = object_handle.object();
+        let mut new_cache = fs::File::create(path)?;
 
-            let meta = ObjectFeatures {
-                has_debug_info: object.has_debug_info(),
-                has_unwind_info: object.has_unwind_info(),
-                has_symbols: object.has_symbols(),
-                has_sources: object.has_sources(),
-            };
+        let meta = ObjectFeatures {
+            has_debug_info: object.has_debug_info(),
+            has_unwind_info: object.has_unwind_info(),
+            has_symbols: object.has_symbols(),
+            has_sources: object.has_sources(),
+        };
 
-            tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-            serde_json::to_writer(&mut new_cache, &meta)?;
-        }
+        tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
+        serde_json::to_writer(&mut new_cache, &meta)?;
 
         Ok(CacheStatus::Positive)
     }

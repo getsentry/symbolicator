@@ -259,16 +259,14 @@ impl CfiCacheActor {
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     object_handle.configure_scope();
 
-    let object = object_handle
-        .parse()
-        .map_err(CfiCacheError::ObjectParsing)?;
+    let object = object_handle.object();
 
     let file = File::create(path)?;
     let writer = BufWriter::new(file);
 
-    tracing::debug!("Converting cficache for {}", object_handle.cache_key());
+    tracing::debug!("Converting cficache for {}", object_handle.cache_key);
 
-    CfiCache::from_object(&object)?.write_to(writer)?;
+    CfiCache::from_object(object)?.write_to(writer)?;
 
     Ok(())
 }

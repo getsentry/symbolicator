@@ -173,7 +173,9 @@ pub enum ObjectPurpose {
 #[derive(Debug, Clone, Default)]
 pub struct FoundObject {
     /// If a matching object was found its [`ObjectMetaHandle`] will be provided here,
-    /// otherwise this will be `None`.
+    /// otherwise this will be `None`
+    // FIXME(swatinem): Instead of returning a `CacheEntry<FoundObject>`, we should rather return
+    // a `DerivedCache<ObjectMetaHandle>` or something
     pub meta: Option<Arc<ObjectMetaHandle>>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.

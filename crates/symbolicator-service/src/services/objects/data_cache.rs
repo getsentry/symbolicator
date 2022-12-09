@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
+use symbolic::common::SelfCell;
 use tempfile::{tempfile_in, NamedTempFile};
 
 use symbolic::common::ByteView;
@@ -37,12 +38,30 @@ use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
-use super::ObjectError;
 
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
 #[derive(Clone, Debug)]
 pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
+
+#[derive(Debug)]
+pub struct OwnedObject(SelfCell<ByteView<'static>, Object<'static>>);
+
+impl OwnedObject {
+    fn parse(byteview: ByteView<'static>) -> CacheEntry<OwnedObject> {
+        let obj = SelfCell::try_new(byteview, |p| unsafe {
+            Object::parse(&*p).map_err(CacheError::from_std_error)
+        })?;
+        Ok(OwnedObject(obj))
+    }
+}
+
+impl Clone for OwnedObject {
+    fn clone(&self) -> Self {
+        let byteview = self.0.owner().clone();
+        Self::parse(byteview).unwrap()
+    }
+}
 
 /// Handle to local cache file of an object.
 ///
@@ -50,33 +69,26 @@ pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
 /// cache information.
 #[derive(Debug, Clone)]
 pub struct ObjectHandle {
-    pub(super) object_id: ObjectId,
-    // FIXME(swatinem): the scope is only ever used for sentry events
-    pub(super) scope: Scope,
+    pub object_id: ObjectId,
 
-    pub(super) cache_key: CacheKey,
+    object: OwnedObject,
 
-    /// The mmapped object.
-    // FIXME(swatinem): This should already contain the parsed `Object`
-    pub(super) data: ByteView<'static>,
+    // FIXME(swatinem): the scope is only ever used for sentry events/scope
+    scope: Scope,
+
+    // FIXME(swatinem): the cache_key is only ever used for debug logging
+    pub cache_key: CacheKey,
 }
 
 impl ObjectHandle {
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.data.len()
+    /// Get a reference to the parsed [`Object`].
+    pub fn object(&self) -> &Object<'_> {
+        self.object.0.get()
     }
 
-    pub fn parse(&self) -> Result<Object<'_>, ObjectError> {
-        Ok(Object::parse(&self.data)?)
-    }
-
-    pub fn cache_key(&self) -> &CacheKey {
-        &self.cache_key
-    }
-
-    pub fn data(&self) -> ByteView<'static> {
-        self.data.clone()
+    /// Get a reference to the underlying data.
+    pub fn data(&self) -> &ByteView<'static> {
+        self.object.0.owner()
     }
 }
 
@@ -84,9 +96,10 @@ impl ConfigureScope for ObjectHandle {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.to_scope(scope);
         scope.set_tag("object_file.scope", &self.scope);
+        let data = self.data();
         scope.set_extra(
             "object_file.first_16_bytes",
-            format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
+            format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
         );
     }
 }
@@ -286,13 +299,13 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 
     fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        let object = OwnedObject::parse(data)?;
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
+            object,
+
             scope: self.0.scope.clone(),
-
             cache_key: self.get_cache_key(),
-
-            data,
         };
 
         // FIXME(swatinem): This `configure_scope` call happens in a spawned/deduplicated
