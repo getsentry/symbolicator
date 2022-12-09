@@ -16,7 +16,7 @@ use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
-    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
@@ -88,9 +88,6 @@ pub enum SymCacheError {
     #[error("failed to write symcache")]
     Io(#[from] io::Error),
 
-    #[error("failed to download object")]
-    Fetching(#[source] ObjectError),
-
     #[error("failed to parse symcache")]
     Parsing(#[source] symcache::Error),
 
@@ -99,9 +96,6 @@ pub enum SymCacheError {
 
     #[error("malformed symcache file")]
     Malformed,
-
-    #[error("failed to parse object")]
-    ObjectParsing(#[source] ObjectError),
 
     #[error("failed to handle auxiliary BCSymbolMap file")]
     BcSymbolMapError(#[source] Error),
@@ -128,10 +122,6 @@ impl From<&SymCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to write symcache");
                 Self::InternalError
             }
-            SymCacheError::ObjectParsing(e) => {
-                tracing::error!(error = %e, "failed to parse object");
-                Self::InternalError
-            }
             SymCacheError::BcSymbolMapError(e) => {
                 tracing::error!(error = %e, "failed to handle auxiliary BCSymbolMap file");
                 Self::InternalError
@@ -140,7 +130,6 @@ impl From<&SymCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to handle auxiliary il2cpp line mapping file");
                 Self::InternalError
             }
-            SymCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
             SymCacheError::Malformed => Self::Malformed(String::new()),
             SymCacheError::Timeout => Self::Timeout(Duration::default()),
         }

@@ -13,7 +13,6 @@ use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
 use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
-use crate::services::objects::ObjectError;
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
@@ -62,14 +61,8 @@ pub enum PortablePdbCacheError {
     #[error("failed to write ppdb cache")]
     Io(#[from] io::Error),
 
-    #[error("failed to download object")]
-    Fetching(#[source] ObjectError),
-
     #[error("failed to parse ppdb cache")]
     Parsing(#[source] symbolic::ppdb::CacheError),
-
-    #[error("failed to parse portable pdb")]
-    PortablePdbParsing(#[source] ObjectError),
 
     #[error("failed to write ppdb cache")]
     Writing(#[source] symbolic::ppdb::CacheError),
@@ -92,15 +85,10 @@ impl From<&PortablePdbCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to parse ppdb cache");
                 Self::InternalError
             }
-            PortablePdbCacheError::PortablePdbParsing(e) => {
-                tracing::error!(error = %e, "failed to parse portable pdb");
-                Self::InternalError
-            }
             PortablePdbCacheError::Writing(e) => {
                 tracing::error!(error = %e, "failed to write ppdb cache");
                 Self::InternalError
             }
-            PortablePdbCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
             PortablePdbCacheError::Malformed => Self::Malformed(String::new()),
             PortablePdbCacheError::Timeout => Self::Timeout(Duration::default()),
         }

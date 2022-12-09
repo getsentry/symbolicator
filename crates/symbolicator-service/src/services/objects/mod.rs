@@ -1,20 +1,14 @@
 use std::collections::BTreeSet;
-use std::error::Error;
-use std::fmt;
-use std::io;
 use std::sync::Arc;
-use std::time::Duration;
 
-use backtrace::Backtrace;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
-use symbolic::debuginfo;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
 
 use crate::cache::{Cache, CacheEntry, CacheError};
 use crate::services::cacher::Cacher;
-use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
+use crate::services::download::{DownloadService, RemoteDif, RemoteDifUri};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
 use data_cache::FetchFileDataRequest;
@@ -28,112 +22,7 @@ use super::shared_cache::SharedCacheService;
 mod data_cache;
 mod meta_cache;
 
-/// Errors happening while fetching objects.
-pub enum ObjectError {
-    Io(io::Error, Backtrace),
-    Download(DownloadError),
-    Persisting(serde_json::Error),
-    NoTempDir,
-    Malformed,
-    Parsing(debuginfo::ObjectError),
-    Caching(Arc<ObjectError>),
-    Timeout,
-}
-
-impl fmt::Display for ObjectError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ObjectError: ")?;
-        match self {
-            ObjectError::Io(_, _) => write!(f, "failed to download (I/O error)")?,
-            ObjectError::Download(_) => write!(f, "failed to download")?,
-            ObjectError::Persisting(_) => write!(f, "failed persisting data")?,
-            ObjectError::NoTempDir => write!(f, "unable to get directory for tempfiles")?,
-            ObjectError::Malformed => write!(f, "malformed object file")?,
-            ObjectError::Parsing(_) => write!(f, "failed to parse object")?,
-            ObjectError::Caching(_) => write!(f, "failed to look into cache")?,
-            ObjectError::Timeout => write!(f, "object download took too long")?,
-        }
-        if f.alternate() {
-            if let Some(ref source) = self.source() {
-                write!(f, "\n  caused by: ")?;
-                fmt::Display::fmt(source, f)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Debug for ObjectError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)?;
-        if let ObjectError::Io(_, ref backtrace) = self {
-            write!(f, "\n  backtrace:\n{:?}", backtrace)?;
-        }
-        if f.alternate() {
-            if let Some(ref source) = self.source() {
-                write!(f, "\n  caused by: ")?;
-                fmt::Debug::fmt(source, f)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for ObjectError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            ObjectError::Io(ref source, _) => Some(source),
-            ObjectError::Download(ref source) => Some(source),
-            ObjectError::Persisting(ref source) => Some(source),
-            ObjectError::NoTempDir => None,
-            ObjectError::Malformed => None,
-            ObjectError::Parsing(ref source) => Some(source),
-            ObjectError::Caching(ref source) => Some(source.as_ref()),
-            ObjectError::Timeout => None,
-        }
-    }
-}
-
-impl From<io::Error> for ObjectError {
-    fn from(source: io::Error) -> Self {
-        Self::Io(source, Backtrace::new())
-    }
-}
-
-impl From<DownloadError> for ObjectError {
-    fn from(source: DownloadError) -> Self {
-        Self::Download(source)
-    }
-}
-
-impl From<serde_json::Error> for ObjectError {
-    fn from(source: serde_json::Error) -> Self {
-        Self::Persisting(source)
-    }
-}
-
-impl From<debuginfo::ObjectError> for ObjectError {
-    fn from(source: debuginfo::ObjectError) -> Self {
-        Self::Parsing(source)
-    }
-}
-
-impl From<ObjectError> for CacheError {
-    fn from(e: ObjectError) -> Self {
-        match e {
-            ObjectError::Io(_, _) => todo!(),
-            ObjectError::Download(download) => download.into(),
-            ObjectError::Persisting(serde_json) => serde_json.into(),
-            ObjectError::NoTempDir => Self::InternalError,
-            ObjectError::Malformed => Self::Malformed(String::new()),
-            ObjectError::Parsing(e) => Self::from_std_error(e),
-            ObjectError::Caching(_e) => todo!(),
-            ObjectError::Timeout => Self::Timeout(Duration::default()),
-        }
-    }
-}
-
-/// Wrapper around [`ObjectError`] to also pass the file information along.
+/// Wrapper around [`CacheError`] to also pass the file information along.
 ///
 /// Because of the requirement of [`CacheItemRequest`] to impl `From<io::Error>` it can not
 /// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this

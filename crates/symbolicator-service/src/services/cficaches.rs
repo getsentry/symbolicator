@@ -15,7 +15,7 @@ use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
-    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
@@ -79,14 +79,8 @@ pub enum CfiCacheError {
     #[error("failed to download")]
     Io(#[from] io::Error),
 
-    #[error("failed to download object")]
-    Fetching(#[source] ObjectError),
-
     #[error("failed to parse cficache")]
     Parsing(#[from] symbolic::cfi::CfiError),
-
-    #[error("failed to parse object")]
-    ObjectParsing(#[source] ObjectError),
 
     #[error("failed parsing symbolfile")]
     SymbolFileParsing(#[from] minidump_processor::SymbolError),
@@ -102,13 +96,8 @@ impl From<&CfiCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to write cfi cache");
                 Self::InternalError
             }
-            CfiCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
             CfiCacheError::Parsing(e) => {
                 tracing::error!(error = %e, "failed to parse cfi cache");
-                Self::InternalError
-            }
-            CfiCacheError::ObjectParsing(e) => {
-                tracing::error!(error = %e, "failed to parse object");
                 Self::InternalError
             }
             CfiCacheError::SymbolFileParsing(e) => {
