@@ -63,8 +63,6 @@ pub enum ObjectPurpose {
 pub struct FoundObject {
     /// If a matching object was found its [`ObjectMetaHandle`] will be provided here,
     /// otherwise this will be `None`
-    // FIXME(swatinem): Instead of returning a `CacheEntry<FoundObject>`, we should rather return
-    // a `DerivedCache<ObjectMetaHandle>` or something
     pub meta: Option<Arc<ObjectMetaHandle>>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
@@ -131,6 +129,8 @@ impl ObjectsActor {
         let candidates = create_candidates(&sources, &file_metas);
         let meta = select_meta(file_metas, purpose);
 
+        // FIXME(swatinem): Instead of returning a `CacheEntry<FoundObject>`, we should rather return
+        // a `DerivedCache<ObjectMetaHandle>` or something
         meta.transpose()
             .map(|meta| FoundObject { meta, candidates })
     }
@@ -297,10 +297,11 @@ fn create_candidates(
     let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len() + source_ids.len());
 
     for meta_lookup in lookups.iter() {
-        if let Ok(meta_handle) = meta_lookup {
-            let source_id = meta_handle.file_source.source_id();
-            source_ids.take(source_id);
-        }
+        let source_id = match meta_lookup {
+            Ok(handle) => handle.file_source.source_id(),
+            Err(err) => err.file_source.source_id(),
+        };
+        source_ids.take(source_id);
         candidates.push(create_candidate_info(meta_lookup));
     }
 
@@ -308,6 +309,8 @@ fn create_candidates(
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
+            /// FIXME(swatinem): looks like sourcebundle lookup that hits this error here
+            /// will overwrite the candidates from prior symcache lookups?
             location: RemoteDifUri::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),

@@ -27,6 +27,7 @@ async fn test_download_errors() {
     let get_statuses = |mut res: CompletedSymbolicationResponse| {
         let frame = &res.stacktraces[0].frames[0];
         let mut module = res.modules.remove(0);
+        dbg!(&module.candidates);
         let candidate = module.candidates.0.remove(0);
         (
             frame.status,
@@ -46,7 +47,7 @@ async fn test_download_errors() {
             get_statuses(response),
             (
                 FrameStatus::Missing,
-                ObjectFileStatus::Missing, // XXX: should be `FetchingFailed`
+                ObjectFileStatus::FetchingFailed,
                 ObjectUseInfo::None,
                 ObjectDownloadInfo::Error {
                     details: "failed to download: 500 Internal Server Error".into()
