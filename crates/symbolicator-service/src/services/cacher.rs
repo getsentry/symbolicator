@@ -172,7 +172,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// # Errors
     ///
-    /// If there is an I/O error reading the cache [`CacheItemRequest::Error`] is returned.
+    /// If there is an I/O error reading the cache, an `Err` is returned.
     async fn lookup_local_cache(
         &self,
         request: &T,
@@ -513,10 +513,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// # Errors
     ///
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
-    /// will return an error of type [`T::Error`](CacheItemRequest::Error).  When this
-    /// occurs the error result is returned, **however** in this case nothing is written
-    /// into the cache and the next call to the same cache item will attempt to re-compute
-    /// the cache.
+    /// will return an `Err`. This err may be persisted in the cache for a time.
     pub async fn compute_memoized(&self, request: T) -> CacheEntry<T::Item> {
         let name = self.config.name();
         let key = request.get_cache_key();
