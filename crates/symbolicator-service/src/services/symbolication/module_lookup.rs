@@ -317,10 +317,9 @@ impl ModuleLookup {
                 Some(
                     async move {
                         // FIXME(swatinem): we should correctly propagate errors here
-                        let FoundObject { meta, candidates } =
-                            objects.find(find_request).await.unwrap_or_default();
+                        let FoundObject { meta, candidates } = objects.find(find_request).await;
 
-                        let source_object = match meta {
+                        let source_object = match meta.unwrap_or_default() {
                             Some(meta) => objects.fetch(meta).await,
                             None => Err(CacheError::NotFound),
                         };

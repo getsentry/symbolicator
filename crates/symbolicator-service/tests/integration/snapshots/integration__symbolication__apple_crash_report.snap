@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 117
+assertion_line: 121
 expression: response.unwrap()
 ---
 timestamp: 1547055742
@@ -135,6 +135,10 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/2d/903291397d3d14bfca52c7fb8c5e00.debug"
         download:
           status: notfound
@@ -144,6 +148,10 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.src.zip"
         download:
           status: notfound
       - source: local

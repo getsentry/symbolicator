@@ -85,11 +85,19 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/67E9/247C/814E/392B/A027/DBDE6748FCBF.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/crash/67E9247C814E392BA027DBDE6748FCBF0/cras_"
         download:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/crash/67E9247C814E392BA027DBDE6748FCBF0/crash"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/crash/67E9247C814E392BA027DBDE6748FCBF0/crash.src.zip"
         download:
           status: notfound
       - source: local
@@ -331,6 +339,10 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/9B2A/C56D/107C/3541/A127/9094A751F2C9.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/9b/2ac56d107c3541a1279094a751f2c9.debug"
         download:
           status: notfound
@@ -340,6 +352,10 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/libdyld.dylib/9B2AC56D107C3541A1279094A751F2C90/libdyld.dylib"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/libdyld.dylib/9B2AC56D107C3541A1279094A751F2C90/libdyld.dylib.src.zip"
         download:
           status: notfound
       - source: local

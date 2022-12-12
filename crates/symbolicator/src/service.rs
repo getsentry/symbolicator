@@ -225,7 +225,7 @@ impl RequestService {
     }
 
     /// Looks up the object according to the [`FindObject`] request.
-    pub async fn find_object(&self, request: FindObject) -> CacheEntry<FoundObject> {
+    pub async fn find_object(&self, request: FindObject) -> FoundObject {
         self.inner.objects.find(request).await
     }
 

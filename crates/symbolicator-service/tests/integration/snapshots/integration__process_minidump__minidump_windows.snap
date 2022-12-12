@@ -199,6 +199,10 @@ modules:
         debug:
           status: ok
       - source: local
+        location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.sym"
         download:
           status: notfound
@@ -389,6 +393,10 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/wkernel32.pdb/D347455996F747D6BF43C176B2171E681/wkernel32.sym"
         download:
           status: notfound
@@ -486,6 +494,10 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.pdb"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/wntdll.pdb/971F98E5CE6041FFB2D7235BBEB345781/wntdll.src.zip"
         download:
           status: notfound
       - source: local

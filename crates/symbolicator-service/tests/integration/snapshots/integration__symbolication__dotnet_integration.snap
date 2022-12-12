@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 273
+assertion_line: 277
 expression: response.unwrap()
 ---
 stacktraces:
@@ -64,6 +64,10 @@ modules:
     image_addr: "0x0"
     candidates:
       - source: local
+        location: "http://localhost:<port>/download/integration.pdb/0C1033F78632492E91C6C314B72E1920e60b819d/integration.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/integration.pdb/0C1033F78632492E91C6C314B72E1920ffffffff/integration.pdb"
         download:
           status: ok
@@ -74,4 +78,8 @@ modules:
             has_sources: false
         debug:
           status: ok
+      - source: local
+        location: "http://localhost:<port>/download/integration.pdb/0C1033F78632492E91C6C314B72E1920ffffffff/integration.src.zip"
+        download:
+          status: notfound
 

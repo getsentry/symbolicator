@@ -59,11 +59,11 @@ pub enum ObjectPurpose {
 ///
 /// The found object is in the `meta` field with other DIFs considered in the `candidates`
 /// field.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FoundObject {
     /// If a matching object was found its [`ObjectMetaHandle`] will be provided here,
     /// otherwise this will be `None`
-    pub meta: Option<Arc<ObjectMetaHandle>>,
+    pub meta: CacheEntry<Option<Arc<ObjectMetaHandle>>>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
     pub candidates: AllObjectCandidates,
@@ -115,7 +115,7 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    pub async fn find(&self, request: FindObject) -> CacheEntry<FoundObject> {
+    pub async fn find(&self, request: FindObject) -> FoundObject {
         let FindObject {
             filetypes,
             scope,
@@ -129,10 +129,9 @@ impl ObjectsActor {
         let candidates = create_candidates(&sources, &file_metas);
         let meta = select_meta(file_metas, purpose);
 
-        // FIXME(swatinem): Instead of returning a `CacheEntry<FoundObject>`, we should rather return
-        // a `DerivedCache<ObjectMetaHandle>` or something
-        meta.transpose()
-            .map(|meta| FoundObject { meta, candidates })
+        let meta = meta.transpose();
+
+        FoundObject { meta, candidates }
     }
 
     /// Collect the list of files to download from all the sources.

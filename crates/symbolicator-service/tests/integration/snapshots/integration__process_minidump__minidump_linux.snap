@@ -136,6 +136,10 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/crash/C0BCC3F19827FE653058404B2831D9E60/crash.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/crash/C0BCC3F19827FE653058404B2831D9E60/crash.sym"
         download:
           status: notfound
@@ -145,6 +149,10 @@ modules:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c.debug"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/f1/c3bcc0279865fe3058404b2831d9e64135386c.src.zip"
         download:
           status: notfound
   - debug_status: unused
@@ -187,11 +195,19 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/b5/381a457906d279073822a5ceb24c4bfef94ddb.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.s_"
         download:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.so"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/libc-2.23.so/451A38B5067979D2073822A5CEB24C4B0/libc-2.23.so.src.zip"
         download:
           status: notfound
       - source: local
@@ -268,11 +284,19 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/download/5d/7b6259552275a3c17bd4c3fd05f5a6bf40caa5.src.zip"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/download/ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.s_"
         download:
           status: notfound
       - source: local
         location: "http://localhost:<port>/download/ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/download/ld-2.23.so/59627B5D2255A375C17BD4C3FD05F5A60/ld-2.23.so.src.zip"
         download:
           status: notfound
       - source: local

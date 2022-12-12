@@ -21,7 +21,10 @@ pub struct DerivedCache<T> {
 /// [`AllObjectCandidates`] and [`ObjectFeatures`].
 /// The [`CandidateStatus`] is responsible for telling which status to set on the found candidate.
 pub async fn derive_from_object_handle<T, Derive, Fut>(
-    found_object: CacheEntry<FoundObject>,
+    FoundObject {
+        meta,
+        mut candidates,
+    }: FoundObject,
     candidate_status: CandidateStatus,
     derive: Derive,
 ) -> DerivedCache<T>
@@ -30,16 +33,16 @@ where
     Derive: FnOnce(Arc<ObjectMetaHandle>) -> Fut,
     Fut: std::future::Future<Output = CacheEntry<T>>,
 {
-    let (meta, mut candidates) = match found_object {
-        Ok(FoundObject { meta, candidates }) => (meta, candidates),
+    let meta = match meta {
+        Ok(meta) => meta,
         Err(e) => {
             // NOTE: the only error that can happen here is if the Sentry downloader `list_files`
             // fails, which we can consider a download error
             let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
             tracing::error!(error = dynerr, "Error finding object candidates");
             return DerivedCache {
-                cache: Err(CacheError::DownloadError(e.to_string())),
-                candidates: Default::default(),
+                cache: Err(e),
+                candidates,
                 features: Default::default(),
             };
         }

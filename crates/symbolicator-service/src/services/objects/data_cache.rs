@@ -392,13 +392,21 @@ mod tests {
             sources: Arc::new([server.reject_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(
             result,
             CacheError::DownloadError("failed to download: 500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 3); // up to 3 tries on failure
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(
             result,
             CacheError::DownloadError("failed to download: 500 Internal Server Error".into())
@@ -432,10 +440,18 @@ mod tests {
             sources: Arc::new([server.not_found_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 0);
     }
@@ -468,11 +484,19 @@ mod tests {
         };
         // FIXME(swatinem): we are not yet threading `Duration` values through our Caching layer
         let timeout = Duration::ZERO;
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(result, CacheError::Timeout(timeout));
         // XXX: why are we not trying this 3 times?
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(result, CacheError::Timeout(timeout));
         assert_eq!(server.accesses(), 0);
     }
@@ -503,10 +527,18 @@ mod tests {
             sources: Arc::new([server.forbidden_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap_err();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap_err();
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 0);
     }
