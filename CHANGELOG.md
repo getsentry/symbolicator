@@ -5,7 +5,7 @@
 ### Internal
 
 - Simplified internal error and cache architecture. ([#929](https://github.com/getsentry/symbolicator/pull/929),
-  [#936](https://github.com/getsentry/symbolicator/pull/936))
+  [#936](https://github.com/getsentry/symbolicator/pull/936), [#937](https://github.com/getsentry/symbolicator/pull/937))
 
 ## 0.6.0
 
