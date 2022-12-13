@@ -13,18 +13,16 @@ use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
 use crate::cache::{
-    cache_entry_as_cache_status, cache_entry_from_cache_status, Cache, CacheEntry, CacheError,
-    CacheStatus, ExpirationTime,
+    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
 };
 use crate::services::objects::ObjectError;
-use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
+use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
-use super::objects::{
-    FindObject, FoundObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
-};
+use super::derived::{derive_from_object_handle, DerivedCache};
+use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
 use super::shared_cache::SharedCacheService;
 
 /// The supported ppdb_cache versions.
@@ -119,23 +117,6 @@ pub struct FetchPortablePdbCache {
     pub scope: Scope,
 }
 
-#[derive(Debug, Clone)]
-pub struct FetchPortablePdbCacheResponse {
-    pub cache: CacheEntry<OwnedPortablePdbCache>,
-    pub candidates: AllObjectCandidates,
-    pub features: ObjectFeatures,
-}
-
-impl Default for FetchPortablePdbCacheResponse {
-    fn default() -> Self {
-        Self {
-            cache: Err(CacheError::InternalError),
-            candidates: Default::default(),
-            features: Default::default(),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct PortablePdbCacheActor {
     ppdb_caches: Arc<Cacher<FetchPortablePdbCacheInternal>>,
@@ -154,8 +135,11 @@ impl PortablePdbCacheActor {
         }
     }
 
-    pub async fn fetch(&self, request: FetchPortablePdbCache) -> FetchPortablePdbCacheResponse {
-        let Ok(FoundObject { meta, mut candidates }) = self
+    pub async fn fetch(
+        &self,
+        request: FetchPortablePdbCache,
+    ) -> DerivedCache<OwnedPortablePdbCache> {
+        let found_object = self
             .objects
             .find(FindObject {
                 filetypes: &[FileType::PortablePdb],
@@ -164,51 +148,16 @@ impl PortablePdbCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .await else {
-                return FetchPortablePdbCacheResponse::default()
-        };
-
-        match meta {
-            Some(handle) => {
-                match self
-                    .ppdb_caches
-                    .compute_memoized(FetchPortablePdbCacheInternal {
-                        request,
-                        objects_actor: self.objects.clone(),
-                        object_meta: Arc::clone(&handle),
-                    })
-                    .await
-                {
-                    Ok(ppdb_cache_file) => {
-                        candidates.set_debug(
-                            handle.source_id(),
-                            &handle.uri(),
-                            ObjectUseInfo::from_derived_status(
-                                &cache_entry_as_cache_status(&ppdb_cache_file),
-                                handle.status(),
-                            ),
-                        );
-
-                        FetchPortablePdbCacheResponse {
-                            cache: Arc::try_unwrap(ppdb_cache_file)
-                                .unwrap_or_else(|arc| (*arc).clone()),
-                            candidates,
-                            features: handle.features(),
-                        }
-                    }
-                    Err(e) => FetchPortablePdbCacheResponse {
-                        cache: Err(e.as_ref().into()),
-                        candidates,
-                        features: ObjectFeatures::default(),
-                    },
-                }
-            }
-            None => FetchPortablePdbCacheResponse {
-                cache: Err(CacheError::NotFound),
-                candidates,
-                features: ObjectFeatures::default(),
-            },
-        }
+            .await;
+        derive_from_object_handle(found_object, CandidateStatus::Debug, |object_meta| {
+            self.ppdb_caches
+                .compute_memoized(FetchPortablePdbCacheInternal {
+                    request,
+                    objects_actor: self.objects.clone(),
+                    object_meta,
+                })
+        })
+        .await
     }
 }
 

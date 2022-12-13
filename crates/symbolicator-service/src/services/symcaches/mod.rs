@@ -13,21 +13,20 @@ use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{
-    cache_entry_as_cache_status, cache_entry_from_cache_status, Cache, CacheEntry, CacheError,
-    CacheStatus, ExpirationTime,
+    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
 };
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
-    FindObject, FoundObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
-    ObjectsActor,
+    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
-use crate::types::{AllObjectCandidates, ObjectFeatures, ObjectUseInfo, Scope};
+use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
+use super::derived::{derive_from_object_handle, DerivedCache};
 use super::download::DownloadError;
 use super::il2cpp::Il2cppService;
 use super::shared_cache::SharedCacheService;
@@ -300,26 +299,9 @@ pub struct FetchSymCache {
     pub scope: Scope,
 }
 
-#[derive(Debug, Clone)]
-pub struct FetchSymCacheResponse {
-    pub cache: CacheEntry<OwnedSymCache>,
-    pub candidates: AllObjectCandidates,
-    pub features: ObjectFeatures,
-}
-
-impl Default for FetchSymCacheResponse {
-    fn default() -> Self {
-        Self {
-            cache: Err(CacheError::InternalError),
-            candidates: Default::default(),
-            features: Default::default(),
-        }
-    }
-}
-
 impl SymCacheActor {
-    pub async fn fetch(&self, request: FetchSymCache) -> FetchSymCacheResponse {
-        let Ok(FoundObject { meta, mut candidates }) = self
+    pub async fn fetch(&self, request: FetchSymCache) -> DerivedCache<OwnedSymCache> {
+        let found_object = self
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
@@ -328,94 +310,61 @@ impl SymCacheActor {
                 scope: request.scope.clone(),
                 purpose: ObjectPurpose::Debug,
             })
-            .await else {
-                return FetchSymCacheResponse::default();
-        };
+            .await;
 
-        match meta {
-            Some(handle) => {
-                // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
-                // fetch request is not cached
-                let fetch_bcsymbolmap = async {
-                    match handle.object_id().debug_id {
-                        Some(debug_id) => {
-                            self.bitcode_svc
-                                .fetch_bcsymbolmap(
-                                    debug_id,
-                                    handle.scope().clone(),
-                                    request.sources.clone(),
-                                )
-                                .await
-                        }
-                        None => None,
+        derive_from_object_handle(found_object, CandidateStatus::Debug, |handle| async move {
+            // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
+            // fetch request is not cached
+            let fetch_bcsymbolmap = async {
+                match handle.object_id().debug_id {
+                    Some(debug_id) => {
+                        self.bitcode_svc
+                            .fetch_bcsymbolmap(
+                                debug_id,
+                                handle.scope().clone(),
+                                request.sources.clone(),
+                            )
+                            .await
                     }
-                };
-
-                let fetch_il2cpp = async {
-                    match handle.object_id().debug_id {
-                        Some(debug_id) => {
-                            tracing::trace!("Fetching line mapping");
-                            self.il2cpp_svc
-                                .fetch_line_mapping(
-                                    handle.object_id(),
-                                    debug_id,
-                                    handle.scope().clone(),
-                                    request.sources.clone(),
-                                )
-                                .await
-                        }
-                        None => None,
-                    }
-                };
-
-                let (bcsymbolmap_handle, il2cpp_handle) =
-                    futures::future::join(fetch_bcsymbolmap, fetch_il2cpp).await;
-
-                let secondary_sources = SecondarySymCacheSources {
-                    bcsymbolmap_handle,
-                    il2cpp_handle,
-                };
-
-                match self
-                    .symcaches
-                    .compute_memoized(FetchSymCacheInternal {
-                        request,
-                        objects_actor: self.objects.clone(),
-                        secondary_sources,
-                        object_meta: Arc::clone(&handle),
-                    })
-                    .await
-                {
-                    Ok(symcache_file) => {
-                        candidates.set_debug(
-                            handle.source_id(),
-                            &handle.uri(),
-                            ObjectUseInfo::from_derived_status(
-                                &cache_entry_as_cache_status(&symcache_file),
-                                handle.status(),
-                            ),
-                        );
-
-                        FetchSymCacheResponse {
-                            cache: Arc::try_unwrap(symcache_file)
-                                .unwrap_or_else(|arc| (*arc).clone()),
-                            candidates,
-                            features: handle.features(),
-                        }
-                    }
-                    Err(e) => FetchSymCacheResponse {
-                        cache: Err(e.as_ref().into()),
-                        candidates,
-                        features: ObjectFeatures::default(),
-                    },
+                    None => None,
                 }
-            }
-            None => FetchSymCacheResponse {
-                cache: Err(CacheError::NotFound),
-                candidates,
-                features: ObjectFeatures::default(),
-            },
-        }
+            };
+
+            let fetch_il2cpp = async {
+                match handle.object_id().debug_id {
+                    Some(debug_id) => {
+                        tracing::trace!("Fetching line mapping");
+                        self.il2cpp_svc
+                            .fetch_line_mapping(
+                                handle.object_id(),
+                                debug_id,
+                                handle.scope().clone(),
+                                request.sources.clone(),
+                            )
+                            .await
+                    }
+                    None => None,
+                }
+            };
+
+            let (bcsymbolmap_handle, il2cpp_handle) =
+                futures::future::join(fetch_bcsymbolmap, fetch_il2cpp).await;
+
+            let secondary_sources = SecondarySymCacheSources {
+                bcsymbolmap_handle,
+                il2cpp_handle,
+            };
+
+            self.symcaches
+                .compute_memoized(FetchSymCacheInternal {
+                    request,
+                    objects_actor: self.objects.clone(),
+                    secondary_sources,
+                    object_meta: Arc::clone(&handle),
+                })
+                .await
+        })
+        .await
     }
 }
 
