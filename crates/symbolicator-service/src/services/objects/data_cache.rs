@@ -23,6 +23,8 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::ObjectId;
 
+use crate::cache::CacheEntry;
+use crate::cache::CacheError;
 use crate::cache::CacheStatus;
 use crate::cache::ExpirationTime;
 use crate::services::cacher::{CacheItemRequest, CacheKey};
@@ -154,7 +156,7 @@ async fn fetch_file(
     file_id: RemoteDif,
     downloader: Arc<DownloadService>,
     tempfile: std::io::Result<NamedTempFile>,
-) -> Result<CacheStatus, ObjectError> {
+) -> CacheEntry<CacheStatus> {
     tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
@@ -196,7 +198,7 @@ async fn fetch_file(
     let download_dir = download_file
         .path()
         .parent()
-        .ok_or(ObjectError::NoTempDir)?;
+        .ok_or(CacheError::InternalError)?;
     let decompress_result = decompress_object_file(&download_file, tempfile_in(download_dir)?);
 
     // Treat decompression errors as malformed files. It is more likely that
@@ -275,14 +277,13 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
 }
 
 impl CacheItemRequest for FetchFileDataRequest {
-    type Item = ObjectHandle;
-    type Error = ObjectError;
+    type Item = Arc<ObjectHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
         self.0.get_cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = fetch_file(
             path.to_owned(),
             self.get_cache_key(),
@@ -290,26 +291,20 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_source.clone(),
             self.0.download_svc.clone(),
             self.0.data_cache.tempfile(),
-        );
-
-        let future = async move {
-            future.await.map_err(|e| {
-                sentry::capture_error(&e);
-                e
-            })
-        }
+        )
         .bind_hub(Hub::current());
 
         let type_name = self.0.file_source.source_type_name().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(600), future);
+        let timeout = Duration::from_secs(600);
+        let future = tokio::time::timeout(timeout, future);
         let future = measure(
             "objects",
             m::timed_result,
             Some(("source_type", type_name)),
             future,
         );
-        Box::pin(async move { future.await.map_err(|_| ObjectError::Timeout)? })
+        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
     fn load(
@@ -317,7 +312,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
             scope: self.0.scope.clone(),
@@ -333,7 +328,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         // not observe it directly, hence they need to do their own.
         object_handle.configure_scope();
 
-        object_handle
+        Ok(Arc::new(object_handle))
     }
 }
 

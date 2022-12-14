@@ -18,12 +18,12 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::Object;
 use symbolicator_sources::{ObjectId, SourceId};
 
-use crate::cache::{CacheStatus, ExpirationTime};
+use crate::cache::{CacheEntry, CacheStatus, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::types::{ObjectFeatures, Scope};
 
-use super::{FetchFileDataRequest, ObjectError};
+use super::FetchFileDataRequest;
 
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]
@@ -101,15 +101,14 @@ impl FetchFileMetaRequest {
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(self, path: PathBuf) -> Result<CacheStatus, ObjectError> {
+    async fn compute_file_meta(self, path: PathBuf) -> CacheEntry<CacheStatus> {
         let cache_key = self.get_cache_key();
         tracing::trace!("Fetching file meta for {}", cache_key);
 
         let data_cache = self.data_cache.clone();
         let object_handle = data_cache
             .compute_memoized(FetchFileDataRequest(self))
-            .await
-            .map_err(ObjectError::Caching)?;
+            .await?;
         if object_handle.status == CacheStatus::Positive {
             if let Ok(object) = Object::parse(&object_handle.data) {
                 let mut new_cache = fs::File::create(path)?;
@@ -138,14 +137,13 @@ impl FetchFileMetaRequest {
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
-    type Item = ObjectMetaHandle;
-    type Error = ObjectError;
+    type Item = Arc<ObjectMetaHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
         self.file_source.cache_key(self.scope.clone())
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = self.clone().compute_file_meta(path.to_owned());
         Box::pin(future)
     }
@@ -163,7 +161,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
         let features = match status {
@@ -179,12 +177,12 @@ impl CacheItemRequest for FetchFileMetaRequest {
             _ => Default::default(),
         };
 
-        ObjectMetaHandle {
+        Ok(Arc::new(ObjectMetaHandle {
             scope: self.scope.clone(),
             object_id: self.object_id.clone(),
             file_source: self.file_source.clone(),
             features,
             status,
-        }
+        }))
     }
 }

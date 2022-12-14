@@ -157,11 +157,8 @@ async fn compute_cficache(
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     path: PathBuf,
-) -> Result<CacheStatus, CfiCacheError> {
-    let object = objects_actor
-        .fetch(meta_handle)
-        .await
-        .map_err(CfiCacheError::Fetching)?;
+) -> CacheEntry<CacheStatus> {
+    let object = objects_actor.fetch(meta_handle).await?;
 
     // The original has a download error so the cfi cache entry should just be negative.
     if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
@@ -184,8 +181,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = CacheEntry<Option<Arc<SymbolFile>>>;
-    type Error = CfiCacheError;
+    type Item = Option<Arc<SymbolFile>>;
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
@@ -193,7 +189,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = compute_cficache(
             self.objects_actor.clone(),
             self.meta_handle.clone(),
@@ -202,14 +198,15 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), future);
+        let timeout = Duration::from_secs(1200);
+        let future = tokio::time::timeout(timeout, future);
         let future = measure(
             "cficaches",
             m::timed_result,
             Some(("num_sources", num_sources)),
             future,
         );
-        Box::pin(async move { future.await.map_err(|_| CfiCacheError::Timeout)? })
+        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
@@ -223,7 +220,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         let cache_entry = cache_entry_from_cache_status(status, data);
 
         cache_entry.and_then(parse_cfi_cache)

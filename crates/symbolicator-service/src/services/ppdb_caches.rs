@@ -187,11 +187,8 @@ async fn fetch_difs_and_compute_ppdb_cache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
-) -> Result<CacheStatus, PortablePdbCacheError> {
-    let object_handle = objects_actor
-        .fetch(object_meta.clone())
-        .await
-        .map_err(PortablePdbCacheError::Fetching)?;
+) -> CacheEntry<CacheStatus> {
+    let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
     // The original has a download error so the sym cache entry should just be negative.
     if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
@@ -214,8 +211,7 @@ async fn fetch_difs_and_compute_ppdb_cache(
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
-    type Item = CacheEntry<OwnedPortablePdbCache>;
-    type Error = PortablePdbCacheError;
+    type Item = OwnedPortablePdbCache;
 
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
 
@@ -223,7 +219,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = fetch_difs_and_compute_ppdb_cache(
             path.to_owned(),
             self.object_meta.clone(),
@@ -232,14 +228,15 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), future);
+        let timeout = Duration::from_secs(1200);
+        let future = tokio::time::timeout(timeout, future);
         let future = measure(
             "ppdb_caches",
             m::timed_result,
             Some(("num_sources", num_sources)),
             future,
         );
-        Box::pin(async move { future.await.map_err(|_| PortablePdbCacheError::Timeout)? })
+        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
     fn should_load(&self, _data: &[u8]) -> bool {
@@ -251,7 +248,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         let cache_entry = cache_entry_from_cache_status(status, data);
         cache_entry.and_then(parse_ppdb_cache_owned)
     }

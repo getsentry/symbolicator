@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 
 use backtrace::Backtrace;
 use futures::future;
@@ -11,6 +12,8 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
 
+use crate::cache::CacheEntry;
+use crate::cache::CacheError;
 use crate::cache::{Cache, CacheStatus};
 use crate::services::cacher::Cacher;
 use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
@@ -117,6 +120,21 @@ impl From<debuginfo::ObjectError> for ObjectError {
     }
 }
 
+impl From<ObjectError> for CacheError {
+    fn from(e: ObjectError) -> Self {
+        match e {
+            ObjectError::Io(_, _) => todo!(),
+            ObjectError::Download(download) => download.into(),
+            ObjectError::Persisting(serde_json) => serde_json.into(),
+            ObjectError::NoTempDir => Self::InternalError,
+            ObjectError::Malformed => Self::Malformed(String::new()),
+            ObjectError::Parsing(e) => Self::from_std_error(e),
+            ObjectError::Caching(_e) => todo!(),
+            ObjectError::Timeout => Self::Timeout(Duration::default()),
+        }
+    }
+}
+
 /// Wrapper around [`ObjectError`] to also pass the file information along.
 ///
 /// Because of the requirement of [`CacheItemRequest`] to impl `From<io::Error>` it can not
@@ -130,7 +148,7 @@ struct CacheLookupError {
     /// The object file which was attempted to be fetched.
     file_source: RemoteDif,
     /// The wrapped [`ObjectError`] which occurred while fetching the object file.
-    error: Arc<ObjectError>,
+    error: CacheError,
 }
 
 /// Fetch a Object from external sources or internal cache.
@@ -189,10 +207,7 @@ impl ObjectsActor {
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
-    pub async fn fetch(
-        &self,
-        file_handle: Arc<ObjectMetaHandle>,
-    ) -> Result<Arc<ObjectHandle>, ObjectError> {
+    pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -201,10 +216,7 @@ impl ObjectsActor {
             download_svc: self.download_svc.clone(),
         });
 
-        self.data_cache
-            .compute_memoized(request)
-            .await
-            .map_err(ObjectError::Caching)
+        self.data_cache.compute_memoized(request).await
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.
@@ -216,7 +228,7 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    pub async fn find(&self, request: FindObject) -> Result<FoundObject, ObjectError> {
+    pub async fn find(&self, request: FindObject) -> Result<FoundObject, CacheError> {
         let FindObject {
             filetypes,
             scope,
@@ -328,14 +340,13 @@ impl ObjectsActor {
 fn select_meta(
     all_lookups: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>,
     purpose: ObjectPurpose,
-) -> Option<Result<Arc<ObjectMetaHandle>, ObjectError>> {
+) -> Option<CacheEntry<Arc<ObjectMetaHandle>>> {
     let mut selected_meta = None;
     let mut selected_quality = u8::MAX;
 
     for meta_lookup in all_lookups {
         // Build up the list of candidates, unwrap our error which carried some info just for that.
-        let meta_lookup =
-            meta_lookup.map_err(|wrapped_err| ObjectError::Caching(wrapped_err.error));
+        let meta_lookup = meta_lookup.map_err(|wrapped_err| wrapped_err.error);
 
         // Skip objects which and not suitable for what we're asked to provide.  Keep errors
         // though, if we don't find any object we need to return an error.
@@ -360,10 +371,7 @@ fn select_meta(
 /// Returns a sortable quality measure of this object for the given purpose.
 ///
 /// Lower quality number is better.
-fn object_quality(
-    meta_lookup: &Result<Arc<ObjectMetaHandle>, ObjectError>,
-    purpose: ObjectPurpose,
-) -> u8 {
+fn object_quality(meta_lookup: &CacheEntry<Arc<ObjectMetaHandle>>, purpose: ObjectPurpose) -> u8 {
     match meta_lookup {
         Ok(object_meta) => match purpose {
             ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,

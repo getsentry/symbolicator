@@ -21,7 +21,7 @@ pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, SourceConfig, SourceFilters,
 };
 
-use crate::cache::CacheStatus;
+use crate::cache::{CacheError, CacheStatus};
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
 
 mod filesystem;
@@ -76,6 +76,42 @@ impl From<sentry::SentryError> for DownloadError {
             DownloadError::Permissions
         } else {
             DownloadError::Sentry(err)
+        }
+    }
+}
+
+impl From<DownloadError> for CacheError {
+    fn from(error: DownloadError) -> Self {
+        match error {
+            DownloadError::Io(e) => {
+                tracing::error!(error = %e, "failed to perform an IO operation");
+                Self::InternalError
+            }
+            DownloadError::Reqwest(e) => Self::DownloadError(e.to_string()),
+            DownloadError::BadDestination(e) => {
+                tracing::error!(error = %e, "bad file destination");
+                Self::InternalError
+            }
+            DownloadError::Write(e) => {
+                tracing::error!(error = %e, "failed writing the downloaded file");
+                Self::InternalError
+            }
+            DownloadError::Canceled => Self::Timeout(Duration::default()),
+            DownloadError::Gcs(e) => {
+                Self::DownloadError(format!("failed to fetch data from GCS: {e}"))
+            }
+            DownloadError::Sentry(e) => {
+                Self::DownloadError(format!("failed to fetch data from Sentry: {e}"))
+            }
+            DownloadError::S3(e) => {
+                Self::DownloadError(format!("failed to fetch data from S3: {e}"))
+            }
+            DownloadError::S3WithCode(status, code) => {
+                Self::DownloadError(format!("S3 error code: {code} (http status: {status}"))
+            }
+            DownloadError::Permissions => Self::PermissionDenied(String::new()),
+            DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
+            DownloadError::CachedError(_) => todo!(),
         }
     }
 }

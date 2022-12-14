@@ -14,6 +14,7 @@ use humantime_serde::re::humantime::{format_duration, parse_duration};
 use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
+use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -124,31 +125,49 @@ impl CacheStatus {
 ///
 /// This error enum is intended for persisting in caches, except for the
 /// [`InternalError`](Self::InternalError) variant.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CacheError {
     /// The object was not found at the remote source.
+    #[error("not found")]
     NotFound,
     /// The object could not be fetched from the remote source due to missing
     /// permissions.
     ///
     /// The attached string contains the remote source's response.
+    #[error("permission denied: {0}")]
     PermissionDenied(String),
     /// The object could not be fetched from the remote source due to a timeout.
+    #[error("timeout after {0:?}")]
     Timeout(Duration),
     /// The object could not be fetched from the remote source due to another problem,
     /// like connection loss, DNS resolution, or a 5xx server response.
     ///
     /// The attached string contains the remote source's response.
+    #[error("download error: {0}")]
     DownloadError(String),
     /// The object was fetched successfully, but is invalid in some way.
     ///
     /// For example, this could result from an unsupported object file or an error
     /// during symcache conversion
+    #[error("malformed: {0}")]
     Malformed(String),
     /// An unexpected error in symbolicator itself.
     ///
     /// This variant is not intended to be persisted to or read from caches.
+    #[error("internal error")]
     InternalError,
+}
+
+impl From<std::io::Error> for CacheError {
+    fn from(err: std::io::Error) -> Self {
+        Self::from_std_error(err)
+    }
+}
+
+impl From<serde_json::Error> for CacheError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::from_std_error(err)
+    }
 }
 
 impl CacheError {
@@ -249,6 +268,12 @@ impl CacheError {
             Self::Malformed(s) => CacheStatus::Malformed(s.clone()),
             Self::InternalError => CacheStatus::CacheSpecificError("internal error".into()),
         }
+    }
+
+    pub(crate) fn from_std_error<E: std::error::Error + 'static>(e: E) -> Self {
+        let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
+        tracing::error!(error = dynerr);
+        Self::InternalError
     }
 }
 

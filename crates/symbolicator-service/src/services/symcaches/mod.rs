@@ -205,11 +205,8 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-) -> Result<CacheStatus, SymCacheError> {
-    let object_handle = objects_actor
-        .fetch(object_meta.clone())
-        .await
-        .map_err(SymCacheError::Fetching)?;
+) -> CacheEntry<CacheStatus> {
+    let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
     let status = object_handle.status();
 
@@ -238,8 +235,7 @@ async fn fetch_difs_and_compute_symcache(
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
-    type Item = CacheEntry<OwnedSymCache>;
-    type Error = SymCacheError;
+    type Item = OwnedSymCache;
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
@@ -247,7 +243,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, Result<CacheStatus, Self::Error>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),
@@ -257,14 +253,15 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
         let num_sources = self.request.sources.len().to_string().into();
 
-        let future = tokio::time::timeout(Duration::from_secs(1200), future);
+        let timeout = Duration::from_secs(1200);
+        let future = tokio::time::timeout(timeout, future);
         let future = measure(
             "symcaches",
             m::timed_result,
             Some(("num_sources", num_sources)),
             future,
         );
-        Box::pin(async move { future.await.map_err(|_| SymCacheError::Timeout)? })
+        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
@@ -284,7 +281,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         status: CacheStatus,
         data: ByteView<'static>,
         _expiration: ExpirationTime,
-    ) -> Self::Item {
+    ) -> CacheEntry<Self::Item> {
         let cache_entry = cache_entry_from_cache_status(status, data);
         cache_entry.and_then(parse_symcache_owned)
     }
