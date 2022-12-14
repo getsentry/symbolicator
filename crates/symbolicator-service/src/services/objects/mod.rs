@@ -34,7 +34,7 @@ mod meta_cache;
 pub struct CacheLookupError {
     /// The object file which was attempted to be fetched.
     pub file_source: RemoteDif,
-    /// The wrapped [`ObjectError`] which occurred while fetching the object file.
+    /// The wrapped [`CacheError`] which occurred while fetching the object file.
     pub error: CacheError,
 }
 
