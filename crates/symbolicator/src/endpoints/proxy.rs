@@ -36,7 +36,7 @@ async fn load_object(service: RequestService, path: String) -> CacheEntry<Arc<Ob
     let object_meta = match found_object.meta {
         Ok(Some(meta)) => meta,
         Ok(None) => return Err(CacheError::NotFound),
-        Err(e) => return Err(e),
+        Err(e) => return Err(e.error),
     };
 
     service.fetch_object(object_meta).await

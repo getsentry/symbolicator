@@ -12,7 +12,7 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
@@ -176,18 +176,16 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    let status = match write_symcache(&path, &object_handle, secondary_sources) {
-        Ok(_) => CacheStatus::Positive,
-        Err(err) => {
-            tracing::warn!("Failed to write symcache: {}", err);
-            sentry::capture_error(&err);
-            CacheStatus::Malformed(err.to_string())
-        }
-    };
-    Ok(status)
+    if let Err(err) = write_symcache(&path, &object_handle, secondary_sources) {
+        tracing::warn!("Failed to write symcache: {}", err);
+        sentry::capture_error(&err);
+
+        return Err((&err).into());
+    }
+    Ok(())
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -199,7 +197,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),

@@ -142,7 +142,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>>;
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>>;
 
     /// Determines whether this item should be loaded.
     ///
@@ -294,11 +294,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let status = match status {
             Some(status) => status,
-            None => {
-                let status = request.compute(temp_file.path()).await?;
-                status.write(&mut temp_fd).await?;
-                status
-            }
+            None => match request.compute(temp_file.path()).await {
+                Ok(_) => CacheStatus::Positive,
+                Err(err) => {
+                    let status = err.as_cache_status();
+                    status.write(&mut temp_fd).await?;
+                    status
+                }
+            },
         };
 
         // Now we have written the data to the tempfile we can mmap it, persisting it later
@@ -608,7 +611,7 @@ mod tests {
             }
         }
 
-        fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+        fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
             self.computations.fetch_add(1, Ordering::SeqCst);
 
             let path = path.to_owned();
@@ -616,7 +619,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(100)).await;
 
                 std::fs::write(path, "some new cached contents")?;
-                Ok(CacheStatus::Positive)
+                Ok(())
             })
         }
 

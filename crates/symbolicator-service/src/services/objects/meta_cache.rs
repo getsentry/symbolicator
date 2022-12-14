@@ -16,7 +16,7 @@ use futures::future::BoxFuture;
 use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, SourceId};
 
-use crate::cache::{CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{CacheEntry, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::types::{ObjectFeatures, Scope};
@@ -90,7 +90,7 @@ impl FetchFileMetaRequest {
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(self, path: PathBuf) -> CacheEntry<CacheStatus> {
+    async fn compute_file_meta(self, path: PathBuf) -> CacheEntry<()> {
         let cache_key = self.get_cache_key();
         tracing::trace!("Fetching file meta for {}", cache_key);
 
@@ -112,7 +112,7 @@ impl FetchFileMetaRequest {
         tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
         serde_json::to_writer(&mut new_cache, &meta)?;
 
-        Ok(CacheStatus::Positive)
+        Ok(())
     }
 }
 
@@ -123,7 +123,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         self.file_source.cache_key(self.scope.clone())
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = self.clone().compute_file_meta(path.to_owned());
         Box::pin(future)
     }

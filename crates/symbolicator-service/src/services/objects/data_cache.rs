@@ -24,14 +24,9 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::ObjectId;
 
-use crate::cache::CacheEntry;
-use crate::cache::CacheError;
-use crate::cache::CacheStatus;
-use crate::cache::ExpirationTime;
+use crate::cache::{CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey};
-use crate::services::download::DownloadService;
-use crate::services::download::RemoteDif;
-use crate::services::download::{DownloadError, DownloadStatus};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
@@ -147,7 +142,7 @@ async fn fetch_file(
     file_id: RemoteDif,
     downloader: Arc<DownloadService>,
     tempfile: std::io::Result<NamedTempFile>,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
@@ -157,13 +152,11 @@ async fn fetch_file(
     let download_file = match downloader.download(file_id, tempfile?).await {
         Ok(DownloadStatus::NotFound) => {
             tracing::debug!("No debug file found for {}", cache_key);
-            return Ok(CacheStatus::Negative);
+            return Err(CacheError::NotFound);
         }
         Ok(DownloadStatus::PermissionDenied) => {
             // FIXME: this is really unreachable as the downloader converts these already
-            return Ok(CacheStatus::CacheSpecificError(
-                DownloadError::Permissions.for_cache(),
-            ));
+            return Err(CacheError::PermissionDenied("".into()));
         }
 
         Err(e) => {
@@ -179,7 +172,7 @@ async fn fetch_file(
                 _ => tracing::error!(stderr, "Error while downloading file"),
             }
 
-            return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+            return Err(CacheError::from(e));
         }
 
         Ok(DownloadStatus::Completed(download_file)) => download_file,
@@ -196,7 +189,7 @@ async fn fetch_file(
     // the error comes from a corrupt file than a local file system error.
     let mut decompressed = match decompress_result {
         Ok(decompressed) => decompressed,
-        Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
+        Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
 
     // Seek back to the start and parse this object so we can deal with it.
@@ -207,7 +200,7 @@ async fn fetch_file(
     let view = ByteView::map_file(decompressed)?;
     let archive = match Archive::parse(&view) {
         Ok(archive) => archive,
-        Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
+        Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
     let mut persist_file = fs::File::create(&path)?;
     if archive.is_multi() {
@@ -220,9 +213,9 @@ async fn fetch_file(
             Some(object) => object,
             None => {
                 if let Some(Err(err)) = archive.objects().find(|r| r.is_err()) {
-                    return Ok(CacheStatus::Malformed(err.to_string()));
+                    return Err(CacheError::Malformed(err.to_string()));
                 } else {
-                    return Ok(CacheStatus::Negative);
+                    return Err(CacheError::NotFound);
                 }
             }
         };
@@ -232,13 +225,13 @@ async fn fetch_file(
         // Attempt to parse the object to capture errors. The result can be
         // discarded as the object's data is the entire ByteView.
         if let Err(err) = archive.object_by_index(0) {
-            return Ok(CacheStatus::Malformed(err.to_string()));
+            return Err(CacheError::Malformed(err.to_string()));
         }
 
         io::copy(&mut view.as_ref(), &mut persist_file)?;
     }
 
-    Ok(CacheStatus::Positive)
+    Ok(())
 }
 
 /// Validates that the object matches expected identifiers.
@@ -274,7 +267,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = fetch_file(
             path.to_owned(),
             self.get_cache_key(),
@@ -396,20 +389,22 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(
             result,
-            CacheError::DownloadError("failed to download: 500 Internal Server Error".into())
+            CacheError::DownloadError("500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 3); // up to 3 tries on failure
         let result = objects_actor
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(
             result,
-            CacheError::DownloadError("failed to download: 500 Internal Server Error".into())
+            CacheError::DownloadError("500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 0);
     }
@@ -444,14 +439,16 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 0);
     }
@@ -488,7 +485,8 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(result, CacheError::Timeout(timeout));
         // XXX: why are we not trying this 3 times?
         assert_eq!(server.accesses(), 1);
@@ -496,7 +494,8 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(result, CacheError::Timeout(timeout));
         assert_eq!(server.accesses(), 0);
     }
@@ -531,14 +530,16 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err();
+            .unwrap_err()
+            .error;
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 0);
     }

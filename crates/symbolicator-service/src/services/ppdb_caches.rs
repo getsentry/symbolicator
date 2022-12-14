@@ -12,7 +12,7 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
@@ -158,18 +158,16 @@ async fn fetch_difs_and_compute_ppdb_cache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    let status = match write_ppdb_cache(&path, &object_handle) {
-        Ok(_) => CacheStatus::Positive,
-        Err(err) => {
-            tracing::warn!("Failed to write ppdb_cache: {}", err);
-            sentry::capture_error(&err);
-            CacheStatus::Malformed(err.to_string())
-        }
-    };
-    Ok(status)
+    if let Err(err) = write_ppdb_cache(&path, &object_handle) {
+        tracing::warn!("Failed to write ppdb_cache: {}", err);
+        sentry::capture_error(&err);
+
+        return Err((&err).into());
+    }
+    Ok(())
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
@@ -181,7 +179,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = fetch_difs_and_compute_ppdb_cache(
             path.to_owned(),
             self.object_meta.clone(),

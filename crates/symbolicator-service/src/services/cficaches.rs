@@ -12,7 +12,7 @@ use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -133,19 +133,17 @@ async fn compute_cficache(
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     path: PathBuf,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    let status = if let Err(e) = write_cficache(&path, &object) {
+    if let Err(e) = write_cficache(&path, &object) {
         tracing::warn!("Could not write cficache: {}", e);
         sentry::capture_error(&e);
 
-        CacheStatus::Malformed(e.to_string())
-    } else {
-        CacheStatus::Positive
-    };
+        return Err((&e).into());
+    }
 
-    Ok(status)
+    Ok(())
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -157,7 +155,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = compute_cficache(
             self.objects_actor.clone(),
             self.meta_handle.clone(),

@@ -19,9 +19,9 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use symbolicator_sources::{FileType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
@@ -91,7 +91,7 @@ impl FetchFileRequest {
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
     // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
-    async fn fetch_file(self, path: PathBuf) -> CacheEntry<CacheStatus> {
+    async fn fetch_file(self, path: PathBuf) -> CacheEntry<()> {
         let cache_key = self.get_cache_key();
 
         let download_file = match self
@@ -101,18 +101,16 @@ impl FetchFileRequest {
         {
             Ok(DownloadStatus::NotFound) => {
                 tracing::debug!("No auxiliary DIF file found for {}", cache_key);
-                return Ok(CacheStatus::Negative);
+                return Err(CacheError::NotFound);
             }
             Ok(DownloadStatus::PermissionDenied) => {
                 // FIXME: this is really unreachable as the downloader converts these already
-                return Ok(CacheStatus::CacheSpecificError(
-                    DownloadError::Permissions.for_cache(),
-                ));
+                return Err(CacheError::PermissionDenied("".into()));
             }
             Err(e) => {
                 let stderr: &dyn std::error::Error = &e;
                 tracing::debug!(stderr, "Error while downloading file");
-                return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+                return Err(CacheError::from(e));
             }
             Ok(DownloadStatus::Completed(download_file)) => download_file,
         };
@@ -125,7 +123,7 @@ impl FetchFileRequest {
             match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
                 Ok(file) => file,
                 Err(err) => {
-                    return Ok(CacheStatus::Malformed(err.to_string()));
+                    return Err(CacheError::Malformed(err.to_string()));
                 }
             };
 
@@ -139,7 +137,7 @@ impl FetchFileRequest {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                     tracing::debug!("Failed to parse bcsymbolmap: {}", err);
-                    return Ok(CacheStatus::Malformed(err.to_string()));
+                    return Err(CacheError::Malformed(err.to_string()));
                 }
             }
             AuxDifKind::UuidMap => {
@@ -147,7 +145,7 @@ impl FetchFileRequest {
                     let kind = self.kind.to_string();
                     metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
                     tracing::debug!("Failed to parse plist: {}", err);
-                    return Ok(CacheStatus::Malformed(err.to_string()));
+                    return Err(CacheError::Malformed(err.to_string()));
                 }
             }
         }
@@ -157,7 +155,7 @@ impl FetchFileRequest {
         let mut cursor = Cursor::new(&view);
         io::copy(&mut cursor, &mut destination)?;
 
-        Ok(CacheStatus::Positive)
+        Ok(())
     }
 }
 
@@ -170,8 +168,8 @@ impl CacheItemRequest for FetchFileRequest {
 
     /// Downloads a file, writing it to `path`.
     ///
-    /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    /// Only when [`Ok`] is returned is the data written to `path` used.
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let fut = self
             .clone()
             .fetch_file(path.to_path_buf())

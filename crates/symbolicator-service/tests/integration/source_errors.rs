@@ -26,9 +26,8 @@ async fn test_download_errors() {
     // )
     let get_statuses = |mut res: CompletedSymbolicationResponse| {
         let frame = &res.stacktraces[0].frames[0];
-        let mut module = res.modules.remove(0);
-        dbg!(&module.candidates);
-        let candidate = module.candidates.0.remove(0);
+        let mut module = res.modules.pop().unwrap();
+        let candidate = module.candidates.0.pop().unwrap();
         (
             frame.status,
             module.debug_status,
@@ -48,9 +47,9 @@ async fn test_download_errors() {
             (
                 FrameStatus::Missing,
                 ObjectFileStatus::FetchingFailed,
-                ObjectUseInfo::None,
+                ObjectUseInfo::None, // FIXME: should this be an error?
                 ObjectDownloadInfo::Error {
-                    details: "failed to download: 500 Internal Server Error".into()
+                    details: "download failed: 500 Internal Server Error".into()
                 }
             )
         );
@@ -63,10 +62,10 @@ async fn test_download_errors() {
             get_statuses(response),
             (
                 FrameStatus::Missing,
-                ObjectFileStatus::Missing, // XXX: should be `Timeout`
-                ObjectUseInfo::None,
+                ObjectFileStatus::Timeout,
+                ObjectUseInfo::None, // FIXME: should this be an error?
                 ObjectDownloadInfo::Error {
-                    details: "download was cancelled".into()
+                    details: "download timed out".into()
                 }
             )
         );
@@ -79,7 +78,7 @@ async fn test_download_errors() {
             (
                 FrameStatus::Missing,
                 ObjectFileStatus::Missing,
-                ObjectUseInfo::None,
+                ObjectUseInfo::None, // FIXME: should this be an error?
                 ObjectDownloadInfo::NotFound
             )
         );
@@ -91,8 +90,8 @@ async fn test_download_errors() {
             get_statuses(response),
             (
                 FrameStatus::Missing,
-                ObjectFileStatus::Missing, // XXX: should be `FetchingFailed`
-                ObjectUseInfo::None,
+                ObjectFileStatus::FetchingFailed,
+                ObjectUseInfo::None, // FIXME: should this be an error?
                 ObjectDownloadInfo::NoPerm { details: "".into() }
             )
         );

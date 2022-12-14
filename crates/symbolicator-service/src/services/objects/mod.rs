@@ -30,12 +30,12 @@ mod meta_cache;
 ///
 /// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
 /// [`SourceLocation`]: crate::services::download::SourceLocation
-#[derive(Debug)]
-struct CacheLookupError {
+#[derive(Clone, Debug)]
+pub struct CacheLookupError {
     /// The object file which was attempted to be fetched.
-    file_source: RemoteDif,
+    pub file_source: RemoteDif,
     /// The wrapped [`ObjectError`] which occurred while fetching the object file.
-    error: CacheError,
+    pub error: CacheError,
 }
 
 /// Fetch a Object from external sources or internal cache.
@@ -63,7 +63,8 @@ pub enum ObjectPurpose {
 pub struct FoundObject {
     /// If a matching object was found its [`ObjectMetaHandle`] will be provided here,
     /// otherwise this will be `None`
-    pub meta: CacheEntry<Option<Arc<ObjectMetaHandle>>>,
+    // FIXME(swatinem): Both the handle and the error now carry the `RemoteDif`
+    pub meta: Result<Option<Arc<ObjectMetaHandle>>, CacheLookupError>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
     pub candidates: AllObjectCandidates,
@@ -226,14 +227,11 @@ impl ObjectsActor {
 fn select_meta(
     all_lookups: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>,
     purpose: ObjectPurpose,
-) -> Option<CacheEntry<Arc<ObjectMetaHandle>>> {
+) -> Option<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
     let mut selected_meta = None;
     let mut selected_quality = u8::MAX;
 
     for meta_lookup in all_lookups {
-        // Build up the list of candidates, unwrap our error which carried some info just for that.
-        let meta_lookup = meta_lookup.map_err(|wrapped_err| wrapped_err.error);
-
         // Skip objects which and not suitable for what we're asked to provide.  Keep errors
         // though, if we don't find any object we need to return an error.
         if let Ok(ref meta_handle) = meta_lookup {
@@ -257,7 +255,10 @@ fn select_meta(
 /// Returns a sortable quality measure of this object for the given purpose.
 ///
 /// Lower quality number is better.
-fn object_quality(meta_lookup: &CacheEntry<Arc<ObjectMetaHandle>>, purpose: ObjectPurpose) -> u8 {
+fn object_quality(
+    meta_lookup: &Result<Arc<ObjectMetaHandle>, CacheLookupError>,
+    purpose: ObjectPurpose,
+) -> u8 {
     match meta_lookup {
         Ok(object_meta) => match purpose {
             ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
@@ -308,8 +309,6 @@ fn create_candidates(
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            /// FIXME(swatinem): looks like sourcebundle lookup that hits this error here
-            /// will overwrite the candidates from prior symcache lookups?
             location: RemoteDifUri::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
