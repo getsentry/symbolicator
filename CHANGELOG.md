@@ -4,6 +4,7 @@
 
 ### Internal
 
+- Use a default crash DB if we have a Cache configured. ([#941](https://github.com/getsentry/symbolicator/pull/941))
 - Simplified internal error and cache architecture. ([#929](https://github.com/getsentry/symbolicator/pull/929),
   [#936](https://github.com/getsentry/symbolicator/pull/936), [#937](https://github.com/getsentry/symbolicator/pull/937))
 
