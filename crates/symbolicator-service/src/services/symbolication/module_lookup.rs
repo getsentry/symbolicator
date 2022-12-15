@@ -316,8 +316,6 @@ impl ModuleLookup {
                     async move {
                         let FindResult { meta, candidates } = objects.find(find_request).await;
 
-                        dbg!(&meta, &candidates);
-
                         let source_object = match meta {
                             Some(meta) => match meta.handle {
                                 Ok(handle) => objects.fetch(handle).await,
