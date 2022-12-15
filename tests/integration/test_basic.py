@@ -53,6 +53,7 @@ PATHS = {
     "dwarf": "_.dwarf/mach-uuid-sym-ff9f9f7841db88f0cdeda9e1e9bff3b5/_.dwarf",
     "pd_": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_",
     "pdb": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb",
+    "src": "wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.src.zip",
 }
 
 
@@ -82,8 +83,16 @@ def _make_successful_result(filtered=False):
             "candidates": [],
         }
     )
+
     # only include other debug file types if the request to symbolicator doesn't explicitly filter them out
-    if not filtered:
+    # if we filter out the source bundles, symbolicator will create a "not files listed" candidate for them
+    if filtered:
+        module["candidates"].append({
+            "location": "No object files listed on this source",
+            "source": "microsoft",
+            "download": {"status": "notfound"},
+        })
+    else:
         module["candidates"].append(
             {
                 "location": DEFAULT_SERVER_PATH + PATHS["dwarf"],
@@ -114,6 +123,14 @@ def _make_successful_result(filtered=False):
             },
         ]
     )
+    if not filtered:
+        module["candidates"].append(
+            {
+                "location": DEFAULT_SERVER_PATH + PATHS["src"],
+                "source": "microsoft",
+                "download": {"status": "notfound"},
+            }
+        )
 
     return {
         "stacktraces": [stacktrace],
@@ -127,19 +144,19 @@ SUCCESS_WINDOWS = _make_successful_result()
 
 
 def _make_error_result(
-    status, download_error, source=(None, True), base_url=DEFAULT_SERVER_PATH
+    frame_status, debug_status, download_error, source=(None, True), base_url=DEFAULT_SERVER_PATH
 ):
     """
     Builds a standard error result. `download_error` should be an ObjectDownloadInfo. source is
     a tuple composed of the expected source name, and whether it is expected to have any candidates.
     """
     stacktrace = copy.deepcopy(STACKTRACE_RESULT)
-    stacktrace["frames"][0].update({"status": status})
+    stacktrace["frames"][0].update({"status": frame_status})
 
     module = copy.deepcopy(MODULE_RESULT)
     module.update(
         {
-            "debug_status": status,
+            "debug_status": debug_status,
             "features": {
                 "has_debug_info": False,
                 "has_sources": False,
@@ -165,6 +182,7 @@ def _make_error_result(
             {"location": base_url + PATHS["dwarf"], **base_candidate},
             {"location": base_url + PATHS["pd_"], **base_candidate},
             {"location": base_url + PATHS["pdb"], **base_candidate},
+            {"location": base_url + PATHS["src"], **base_candidate},
         ]
 
     return {
@@ -378,6 +396,7 @@ def test_unknown_source_config(symbolicator, hitcounter):
                 "type": "http",
                 "id": "unknown",
                 "layout": {"type": "symstore"},
+                #"filters": {"filetypes": ["pdb", "pe"]},
                 "url": f"{hitcounter.url}/respond_statuscode/400",
                 "name": "not a known field",
                 "not-a-field": "more unknown fields",
@@ -715,8 +734,9 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
     else:
         assert not hitcounter.hits
         restricted_download_failure = _make_error_result(
-            status="missing",
-            download_error={"status": "error", "details": "failed to stream file"},
+            frame_status="missing",
+            debug_status="fetching_failed",
+            download_error={"status": "error", "details": "destination is restricted"},
             source=("microsoft", False),
             base_url=f"{url}/msdl/",
         )
