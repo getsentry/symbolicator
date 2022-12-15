@@ -279,7 +279,8 @@ def test_no_sources(symbolicator, cache_dir_param):
     response.raise_for_status()
 
     expected = _make_error_result(
-        status="missing",
+        frame_status="missing",
+        debug_status="missing",
         download_error={"status": "notfound"},
         source=None,
         base_url=f"{service.url}/msdl/",
@@ -371,7 +372,8 @@ def test_sources_filetypes(symbolicator, hitcounter):
         **WINDOWS_DATA,
     )
     expected = _make_error_result(
-        status="missing",
+        frame_status="missing",
+        debug_status="missing",
         download_error={"status": "notfound"},
         source=("microsoft", True),
         base_url=f"{hitcounter.url}/msdl/",
@@ -415,7 +417,8 @@ def test_unknown_source_config(symbolicator, hitcounter):
     response.raise_for_status()
 
     expected = _make_error_result(
-        status="missing",
+        frame_status="missing",
+        debug_status="missing",
         download_error={"status": "notfound"},
         source=("unknown", False),
         base_url=f"{hitcounter.url}/respond_statuscode/400/",
@@ -522,7 +525,8 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
         download_error = {"status": "notfound"}
 
     expected = _make_error_result(
-        status="missing",
+        frame_status="missing",
+        debug_status="missing",
         download_error=download_error,
         source=source,
         base_url=f"{hitcounter.url}/respond_statuscode/{statuscode}/",
@@ -581,7 +585,8 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
         else f"{hitcounter.url}/respond_statuscode/403/"
     )
     expected = _make_error_result(
-        status="missing",
+        frame_status="missing",
+        debug_status="missing",
         download_error={"status": "noperm", "details": ""},
         source=("broken", False),
         base_url=base_url,
@@ -614,7 +619,8 @@ def test_malformed_objects(symbolicator, hitcounter):
     response = response.json()
 
     expected = _make_error_result(
-        status="malformed",
+        frame_status="malformed",
+        debug_status="malformed",
         download_error={"status": "malformed"},
         source=("broken", False),
         base_url=f"{hitcounter.url}/garbage_data/",
@@ -653,7 +659,8 @@ def test_path_patterns(symbolicator, hitcounter, patterns, expected_output):
     )
     if expected_output == "no sources":
         expected_output = _make_error_result(
-            status="missing",
+            frame_status="missing",
+            debug_status="missing",
             download_error={"status": "notfound"},
             source=("microsoft", True),
             base_url=f"{hitcounter.url}/msdl/",
