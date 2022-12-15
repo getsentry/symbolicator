@@ -45,64 +45,37 @@ impl SymbolicationActor {
 
 impl From<&CfiCacheError> for ObjectFileStatus {
     fn from(e: &CfiCacheError) -> ObjectFileStatus {
-        match e {
-            CfiCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
-            // nb: Timeouts during download are also caught by Fetching
-            CfiCacheError::Timeout => ObjectFileStatus::Timeout,
-            CfiCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
-
-            _ => {
-                // Just in case we didn't handle an error properly,
-                // capture it here. If an error was captured with
-                // `capture_error` further down in the callstack, it
-                // should be explicitly handled here as a
-                // SymCacheError variant.
-                sentry::capture_error(e);
-                ObjectFileStatus::Other
-            }
-        }
+        // Just in case we didn't handle an error properly,
+        // capture it here. If an error was captured with
+        // `capture_error` further down in the callstack, it
+        // should be explicitly handled here as a
+        // SymCacheError variant.
+        sentry::capture_error(e);
+        ObjectFileStatus::Other
     }
 }
 
 impl From<&SymCacheError> for ObjectFileStatus {
     fn from(e: &SymCacheError) -> ObjectFileStatus {
-        match e {
-            SymCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
-            // nb: Timeouts during download are also caught by Fetching
-            SymCacheError::Timeout => ObjectFileStatus::Timeout,
-            SymCacheError::Malformed => ObjectFileStatus::Malformed,
-            SymCacheError::ObjectParsing(_) => ObjectFileStatus::Malformed,
-            _ => {
-                // Just in case we didn't handle an error properly,
-                // capture it here. If an error was captured with
-                // `capture_error` further down in the callstack, it
-                // should be explicitly handled here as a
-                // SymCacheError variant.
-                sentry::capture_error(e);
-                ObjectFileStatus::Other
-            }
-        }
+        // Just in case we didn't handle an error properly,
+        // capture it here. If an error was captured with
+        // `capture_error` further down in the callstack, it
+        // should be explicitly handled here as a
+        // SymCacheError variant.
+        sentry::capture_error(e);
+        ObjectFileStatus::Other
     }
 }
 
 impl From<&PortablePdbCacheError> for ObjectFileStatus {
     fn from(e: &PortablePdbCacheError) -> ObjectFileStatus {
-        match e {
-            PortablePdbCacheError::Fetching(_) => ObjectFileStatus::FetchingFailed,
-            // nb: Timeouts during download are also caught by Fetching
-            PortablePdbCacheError::Timeout => ObjectFileStatus::Timeout,
-            PortablePdbCacheError::Malformed => ObjectFileStatus::Malformed,
-            PortablePdbCacheError::PortablePdbParsing(_) => ObjectFileStatus::Malformed,
-            _ => {
-                // Just in case we didn't handle an error properly,
-                // capture it here. If an error was captured with
-                // `capture_error` further down in the callstack, it
-                // should be explicitly handled here as a
-                // PortablePdbCacheError variant.
-                sentry::capture_error(e);
-                ObjectFileStatus::Other
-            }
-        }
+        // Just in case we didn't handle an error properly,
+        // capture it here. If an error was captured with
+        // `capture_error` further down in the callstack, it
+        // should be explicitly handled here as a
+        // PortablePdbCacheError variant.
+        sentry::capture_error(e);
+        ObjectFileStatus::Other
     }
 }
 

@@ -17,32 +17,46 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
+use symbolic::common::SelfCell;
 use tempfile::{tempfile_in, NamedTempFile};
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::ObjectId;
 
-use crate::cache::CacheEntry;
-use crate::cache::CacheError;
-use crate::cache::CacheStatus;
-use crate::cache::ExpirationTime;
+use crate::cache::{CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey};
-use crate::services::download::DownloadService;
-use crate::services::download::RemoteDif;
-use crate::services::download::{DownloadError, DownloadStatus};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
-use super::ObjectError;
 
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
 #[derive(Clone, Debug)]
 pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
+
+#[derive(Debug)]
+pub struct OwnedObject(SelfCell<ByteView<'static>, Object<'static>>);
+
+impl OwnedObject {
+    fn parse(byteview: ByteView<'static>) -> CacheEntry<OwnedObject> {
+        let obj = SelfCell::try_new(byteview, |p| unsafe {
+            Object::parse(&*p).map_err(CacheError::from_std_error)
+        })?;
+        Ok(OwnedObject(obj))
+    }
+}
+
+impl Clone for OwnedObject {
+    fn clone(&self) -> Self {
+        let byteview = self.0.owner().clone();
+        Self::parse(byteview).unwrap()
+    }
+}
 
 /// Handle to local cache file of an object.
 ///
@@ -50,55 +64,26 @@ pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
 /// cache information.
 #[derive(Debug, Clone)]
 pub struct ObjectHandle {
-    pub(super) object_id: ObjectId,
-    // FIXME(swatinem): the scope is only ever used for sentry events
-    pub(super) scope: Scope,
+    pub object_id: ObjectId,
 
-    pub(super) cache_key: CacheKey,
+    object: OwnedObject,
 
-    /// The mmapped object.
-    ///
-    /// This only contains the object **if** [`ObjectHandle::status`] is
-    /// [`CacheStatus::Positive`], otherwise it will contain an empty string or the special
-    /// malformed marker.
-    pub(super) data: ByteView<'static>,
-    pub(super) status: CacheStatus,
+    // FIXME(swatinem): the scope is only ever used for sentry events/scope
+    scope: Scope,
+
+    // FIXME(swatinem): the cache_key is only ever used for debug logging
+    pub cache_key: CacheKey,
 }
 
 impl ObjectHandle {
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.data.len()
+    /// Get a reference to the parsed [`Object`].
+    pub fn object(&self) -> &Object<'_> {
+        self.object.0.get()
     }
 
-    pub fn has_object(&self) -> bool {
-        self.status == CacheStatus::Positive
-    }
-
-    pub fn parse(&self) -> Result<Option<Object<'_>>, ObjectError> {
-        // Interestingly all usages of parse() check to make sure that self.status == Positive before
-        // actually invoking it.
-        match &self.status {
-            CacheStatus::Positive => Ok(Some(Object::parse(&self.data)?)),
-            CacheStatus::Negative => Ok(None),
-            CacheStatus::Malformed(_) => Err(ObjectError::Malformed),
-            CacheStatus::CacheSpecificError(message) => Err(ObjectError::Download(
-                DownloadError::from_cache(&self.status)
-                    .unwrap_or_else(|| DownloadError::CachedError(message.clone())),
-            )),
-        }
-    }
-
-    pub fn status(&self) -> &CacheStatus {
-        &self.status
-    }
-
-    pub fn cache_key(&self) -> &CacheKey {
-        &self.cache_key
-    }
-
-    pub fn data(&self) -> ByteView<'static> {
-        self.data.clone()
+    /// Get a reference to the underlying data.
+    pub fn data(&self) -> &ByteView<'static> {
+        self.object.0.owner()
     }
 }
 
@@ -106,9 +91,10 @@ impl ConfigureScope for ObjectHandle {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         self.object_id.to_scope(scope);
         scope.set_tag("object_file.scope", &self.scope);
+        let data = self.data();
         scope.set_extra(
             "object_file.first_16_bytes",
-            format!("{:x?}", &self.data[..cmp::min(self.data.len(), 16)]).into(),
+            format!("{:x?}", &data[..cmp::min(data.len(), 16)]).into(),
         );
     }
 }
@@ -132,19 +118,6 @@ impl fmt::Display for ObjectHandle {
 /// debug ID of our request is extracted first.  Finally the object is parsed with
 /// symbolic to ensure it is not malformed.
 ///
-/// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
-/// parsing the final object file failed, or there is an error downloading the file an `Ok` with
-/// [`CacheStatus::Malformed`] is returned.
-///
-/// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
-/// returned.
-///
-/// If there was an error downloading the object file, an `Ok` with
-/// [`CacheStatus::CacheSpecificError`] is returned.
-///
-/// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
-/// be returned.
-///
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
 /// code.
@@ -156,7 +129,7 @@ async fn fetch_file(
     file_id: RemoteDif,
     downloader: Arc<DownloadService>,
     tempfile: std::io::Result<NamedTempFile>,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
@@ -166,13 +139,11 @@ async fn fetch_file(
     let download_file = match downloader.download(file_id, tempfile?).await {
         Ok(DownloadStatus::NotFound) => {
             tracing::debug!("No debug file found for {}", cache_key);
-            return Ok(CacheStatus::Negative);
+            return Err(CacheError::NotFound);
         }
         Ok(DownloadStatus::PermissionDenied) => {
             // FIXME: this is really unreachable as the downloader converts these already
-            return Ok(CacheStatus::CacheSpecificError(
-                DownloadError::Permissions.for_cache(),
-            ));
+            return Err(CacheError::PermissionDenied("".into()));
         }
 
         Err(e) => {
@@ -188,7 +159,7 @@ async fn fetch_file(
                 _ => tracing::error!(stderr, "Error while downloading file"),
             }
 
-            return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+            return Err(CacheError::from(e));
         }
 
         Ok(DownloadStatus::Completed(download_file)) => download_file,
@@ -205,7 +176,7 @@ async fn fetch_file(
     // the error comes from a corrupt file than a local file system error.
     let mut decompressed = match decompress_result {
         Ok(decompressed) => decompressed,
-        Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
+        Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
 
     // Seek back to the start and parse this object so we can deal with it.
@@ -216,7 +187,7 @@ async fn fetch_file(
     let view = ByteView::map_file(decompressed)?;
     let archive = match Archive::parse(&view) {
         Ok(archive) => archive,
-        Err(e) => return Ok(CacheStatus::Malformed(e.to_string())),
+        Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
     let mut persist_file = fs::File::create(&path)?;
     if archive.is_multi() {
@@ -229,9 +200,9 @@ async fn fetch_file(
             Some(object) => object,
             None => {
                 if let Some(Err(err)) = archive.objects().find(|r| r.is_err()) {
-                    return Ok(CacheStatus::Malformed(err.to_string()));
+                    return Err(CacheError::Malformed(err.to_string()));
                 } else {
-                    return Ok(CacheStatus::Negative);
+                    return Err(CacheError::NotFound);
                 }
             }
         };
@@ -241,13 +212,13 @@ async fn fetch_file(
         // Attempt to parse the object to capture errors. The result can be
         // discarded as the object's data is the entire ByteView.
         if let Err(err) = archive.object_by_index(0) {
-            return Ok(CacheStatus::Malformed(err.to_string()));
+            return Err(CacheError::Malformed(err.to_string()));
         }
 
         io::copy(&mut view.as_ref(), &mut persist_file)?;
     }
 
-    Ok(CacheStatus::Positive)
+    Ok(())
 }
 
 /// Validates that the object matches expected identifiers.
@@ -283,7 +254,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = fetch_file(
             path.to_owned(),
             self.get_cache_key(),
@@ -307,20 +278,14 @@ impl CacheItemRequest for FetchFileDataRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        let object = OwnedObject::parse(data)?;
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),
+            object,
+
             scope: self.0.scope.clone(),
-
             cache_key: self.get_cache_key(),
-
-            status,
-            data,
         };
 
         // FIXME(swatinem): This `configure_scope` call happens in a spawned/deduplicated
@@ -339,9 +304,9 @@ mod tests {
 
     use symbolicator_sources::FileType;
 
-    use crate::cache::{Cache, CacheName, CacheStatus};
+    use crate::cache::{Cache, CacheError, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::services::download::{DownloadError, DownloadService};
+    use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::services::shared_cache::SharedCacheService;
@@ -407,20 +372,28 @@ mod tests {
             sources: Arc::new([server.reject_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(
-            result.meta.clone().unwrap().status,
-            CacheStatus::CacheSpecificError(String::from(
-                "failed to download: 500 Internal Server Error"
-            ))
+            result,
+            CacheError::DownloadError("500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 3); // up to 3 tries on failure
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(String::from(
-                "failed to download: 500 Internal Server Error"
-            ))
+            result,
+            CacheError::DownloadError("500 Internal Server Error".into())
         );
         assert_eq!(server.accesses(), 0);
     }
@@ -451,11 +424,23 @@ mod tests {
             sources: Arc::new([server.not_found_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
+        assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(result.meta.unwrap().status, CacheStatus::Negative);
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
+        assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 0);
     }
 
@@ -485,18 +470,26 @@ mod tests {
             sources: Arc::new([server.pending_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(String::from("download was cancelled"))
-        );
+        // FIXME(swatinem): we are not yet threading `Duration` values through our Caching layer
+        let timeout = Duration::ZERO;
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
+        assert_eq!(result, CacheError::Timeout(timeout));
         // XXX: why are we not trying this 3 times?
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(String::from("download was cancelled"))
-        );
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
+        assert_eq!(result, CacheError::Timeout(timeout));
         assert_eq!(server.accesses(), 0);
     }
 
@@ -526,17 +519,23 @@ mod tests {
             sources: Arc::new([server.forbidden_source.clone()]),
             ..find_object
         };
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.clone().unwrap().status,
-            CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
-        );
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
+        assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 1);
-        let result = objects_actor.find(find_object.clone()).await.unwrap();
-        assert_eq!(
-            result.meta.unwrap().status,
-            CacheStatus::CacheSpecificError(DownloadError::Permissions.to_string())
-        );
+        let result = objects_actor
+            .find(find_object.clone())
+            .await
+            .meta
+            .unwrap()
+            .handle
+            .unwrap_err();
+        assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 0);
     }
 }

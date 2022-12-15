@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 162
+assertion_line: 166
 expression: response.unwrap()
 ---
 stacktraces:
@@ -45,4 +45,8 @@ modules:
             has_sources: false
         debug:
           status: ok
+      - source: local
+        location: "http://localhost:<port>/download/bd/a18fd85d4a4eb893022d6bfad846b1.src.zip"
+        download:
+          status: notfound
 

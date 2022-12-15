@@ -12,10 +12,7 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{
-    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
-};
-use crate::services::objects::ObjectError;
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
@@ -64,23 +61,8 @@ pub enum PortablePdbCacheError {
     #[error("failed to write ppdb cache")]
     Io(#[from] io::Error),
 
-    #[error("failed to download object")]
-    Fetching(#[source] ObjectError),
-
-    #[error("failed to parse ppdb cache")]
-    Parsing(#[source] symbolic::ppdb::CacheError),
-
-    #[error("failed to parse portable pdb")]
-    PortablePdbParsing(#[source] ObjectError),
-
     #[error("failed to write ppdb cache")]
     Writing(#[source] symbolic::ppdb::CacheError),
-
-    #[error("malformed ppdb cache file")]
-    Malformed,
-
-    #[error("ppdb cache building took too long")]
-    Timeout,
 }
 
 impl From<&PortablePdbCacheError> for CacheError {
@@ -90,21 +72,10 @@ impl From<&PortablePdbCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to write ppdb cache");
                 Self::InternalError
             }
-            PortablePdbCacheError::Parsing(e) => {
-                tracing::error!(error = %e, "failed to parse ppdb cache");
-                Self::InternalError
-            }
-            PortablePdbCacheError::PortablePdbParsing(e) => {
-                tracing::error!(error = %e, "failed to parse portable pdb");
-                Self::InternalError
-            }
             PortablePdbCacheError::Writing(e) => {
                 tracing::error!(error = %e, "failed to write ppdb cache");
                 Self::InternalError
             }
-            PortablePdbCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
-            PortablePdbCacheError::Malformed => Self::Malformed(String::new()),
-            PortablePdbCacheError::Timeout => Self::Timeout(Duration::default()),
         }
     }
 }
@@ -187,27 +158,16 @@ async fn fetch_difs_and_compute_ppdb_cache(
     path: PathBuf,
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    // The original has a download error so the sym cache entry should just be negative.
-    if matches!(object_handle.status(), &CacheStatus::CacheSpecificError(_)) {
-        return Ok(CacheStatus::Negative);
-    }
+    if let Err(err) = write_ppdb_cache(&path, &object_handle) {
+        tracing::warn!("Failed to write ppdb_cache: {}", err);
+        sentry::capture_error(&err);
 
-    if object_handle.status() != &CacheStatus::Positive {
-        return Ok(object_handle.status().clone());
+        return Err((&err).into());
     }
-
-    let status = match write_ppdb_cache(&path, &object_handle) {
-        Ok(_) => CacheStatus::Positive,
-        Err(err) => {
-            tracing::warn!("Failed to write ppdb_cache: {}", err);
-            sentry::capture_error(&err);
-            CacheStatus::Malformed(err.to_string())
-        }
-    };
-    Ok(status)
+    Ok(())
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
@@ -219,7 +179,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = fetch_difs_and_compute_ppdb_cache(
             path.to_owned(),
             self.object_meta.clone(),
@@ -243,14 +203,8 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         true
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
-        let cache_entry = cache_entry_from_cache_status(status, data);
-        cache_entry.and_then(parse_ppdb_cache_owned)
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        parse_ppdb_cache_owned(data)
     }
 }
 
@@ -264,13 +218,13 @@ fn write_ppdb_cache(
 ) -> Result<(), PortablePdbCacheError> {
     object_handle.configure_scope();
 
-    let ppdb_obj = match object_handle.parse() {
-        Ok(Some(Object::PortablePdb(ppdb_obj))) => ppdb_obj,
-        Ok(Some(_) | None) => panic!("object handle does not contain a valid portable pdb object"),
-        Err(e) => return Err(PortablePdbCacheError::PortablePdbParsing(e)),
+    let ppdb_obj = match object_handle.object() {
+        Object::PortablePdb(ppdb_obj) => ppdb_obj,
+        // FIXME(swatinem): instead of panic, we should return an internal error?
+        _ => panic!("object handle does not contain a valid portable pdb object"),
     };
 
-    tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key());
+    tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key);
 
     let mut converter = PortablePdbCacheConverter::new();
 

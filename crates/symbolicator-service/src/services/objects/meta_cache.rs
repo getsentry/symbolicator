@@ -11,14 +11,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Context;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
-use symbolic::debuginfo::Object;
 use symbolicator_sources::{ObjectId, SourceId};
 
-use crate::cache::{CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{CacheEntry, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
 use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::types::{ObjectFeatures, Scope};
@@ -52,7 +50,6 @@ pub struct ObjectMetaHandle {
     pub(super) object_id: ObjectId,
     pub(super) file_source: RemoteDif,
     pub(super) features: ObjectFeatures,
-    pub(super) status: CacheStatus,
 }
 
 impl ObjectMetaHandle {
@@ -70,10 +67,6 @@ impl ObjectMetaHandle {
 
     pub fn uri(&self) -> RemoteDifUri {
         self.file_source.uri()
-    }
-
-    pub fn status(&self) -> &CacheStatus {
-        &self.status
     }
 
     pub fn scope(&self) -> &Scope {
@@ -94,14 +87,10 @@ impl FetchFileMetaRequest {
     /// expires before the metadata cache, so if the metadata needs to be re-computed then
     /// the data cache has probably also expired.
     ///
-    /// This returns [`CacheStatus::CacheSpecificError`] if the download failed.  If the
-    /// data cache is [`CacheStatus::Negative`] or [`CacheStatus::Malformed`] then the same
-    /// status is returned.
-    ///
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(self, path: PathBuf) -> CacheEntry<CacheStatus> {
+    async fn compute_file_meta(self, path: PathBuf) -> CacheEntry<()> {
         let cache_key = self.get_cache_key();
         tracing::trace!("Fetching file meta for {}", cache_key);
 
@@ -109,30 +98,21 @@ impl FetchFileMetaRequest {
         let object_handle = data_cache
             .compute_memoized(FetchFileDataRequest(self))
             .await?;
-        if object_handle.status == CacheStatus::Positive {
-            if let Ok(object) = Object::parse(&object_handle.data) {
-                let mut new_cache = fs::File::create(path)?;
 
-                let meta = ObjectFeatures {
-                    has_debug_info: object.has_debug_info(),
-                    has_unwind_info: object.has_unwind_info(),
-                    has_symbols: object.has_symbols(),
-                    has_sources: object.has_sources(),
-                };
+        let object = object_handle.object();
+        let mut new_cache = fs::File::create(path)?;
 
-                tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-                serde_json::to_writer(&mut new_cache, &meta)?;
-            }
-        }
+        let meta = ObjectFeatures {
+            has_debug_info: object.has_debug_info(),
+            has_unwind_info: object.has_unwind_info(),
+            has_symbols: object.has_symbols(),
+            has_sources: object.has_sources(),
+        };
 
-        // Unlike compute for other caches, this does not convert `CacheSpecificError`s
-        // into `Negative` entries. This is because `create_candidate_info` populates
-        // info about the original cache entry using the meta cache's data. If this
-        // were to be converted to `Negative` when the original cache is a
-        // `CacheSpecificError` then the user would never see what caused a download
-        // failure, as what's visible to them is sourced from the output of
-        //  `create_candidate_info`.
-        Ok(object_handle.status.clone())
+        tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
+        serde_json::to_writer(&mut new_cache, &meta)?;
+
+        Ok(())
     }
 }
 
@@ -143,7 +123,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
         self.file_source.cache_key(self.scope.clone())
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = self.clone().compute_file_meta(path.to_owned());
         Box::pin(future)
     }
@@ -153,36 +133,15 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 
     /// Returns the [`ObjectMetaHandle`] at the given cache key.
-    ///
-    /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
-    /// returned will contain the default [`ObjectMetaHandle::features`].
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
-        let features = match status {
-            CacheStatus::Positive => serde_json::from_slice(&data)
-                .context("Failed to load positive ObjectFileMeta cache")
-                .unwrap_or_else(|err| {
-                    sentry::configure_scope(|scope| {
-                        scope.set_extra("cache_key", self.get_cache_key().to_string().into());
-                    });
-                    sentry::capture_error(&*err);
-                    Default::default()
-                }),
-            _ => Default::default(),
-        };
-
+        let features = serde_json::from_slice(&data)?;
         Ok(Arc::new(ObjectMetaHandle {
             scope: self.scope.clone(),
             object_id: self.object_id.clone(),
             file_source: self.file_source.clone(),
             features,
-            status,
         }))
     }
 }

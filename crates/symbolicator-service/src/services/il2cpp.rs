@@ -18,9 +18,9 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
 use crate::types::Scope;
 use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
@@ -51,7 +51,6 @@ impl Il2cppHandle {
 /// [`Il2cppHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
-    status: CacheStatus,
     debug_id: DebugId,
     data: ByteView<'static>,
 }
@@ -74,7 +73,7 @@ impl FetchFileRequest {
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
     // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
-    async fn fetch_file(self, path: PathBuf) -> CacheEntry<CacheStatus> {
+    async fn fetch_file(self, path: PathBuf) -> CacheEntry<()> {
         let cache_key = self.get_cache_key();
 
         let download_file = match self
@@ -84,18 +83,16 @@ impl FetchFileRequest {
         {
             Ok(DownloadStatus::NotFound) => {
                 tracing::debug!("No il2cpp linemapping file found for {}", cache_key);
-                return Ok(CacheStatus::Negative);
+                return Err(CacheError::NotFound);
             }
             Ok(DownloadStatus::PermissionDenied) => {
                 // FIXME: this is really unreachable as the downloader converts these already
-                return Ok(CacheStatus::CacheSpecificError(
-                    DownloadError::Permissions.for_cache(),
-                ));
+                return Err(CacheError::PermissionDenied("".into()));
             }
             Err(e) => {
                 let stderr: &dyn std::error::Error = &e;
                 tracing::debug!(stderr, "Error while downloading file");
-                return Ok(CacheStatus::CacheSpecificError(e.for_cache()));
+                return Err(CacheError::from(e));
             }
             Ok(DownloadStatus::Completed(download_file)) => download_file,
         };
@@ -108,7 +105,7 @@ impl FetchFileRequest {
             match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
                 Ok(file) => file,
                 Err(err) => {
-                    return Ok(CacheStatus::Malformed(err.to_string()));
+                    return Err(CacheError::Malformed(err.to_string()));
                 }
             };
 
@@ -119,14 +116,14 @@ impl FetchFileRequest {
         if LineMapping::parse(&view).is_none() {
             metric!(counter("services.il2cpp.loaderrror") += 1);
             tracing::debug!("Failed to parse il2cpp");
-            return Ok(CacheStatus::Malformed("Failed to parse il2cpp".to_string()));
+            return Err(CacheError::Malformed("Failed to parse il2cpp".to_string()));
         }
         // The file is valid, lets save it.
         let mut destination = File::create(path)?;
         let mut cursor = Cursor::new(&view);
         io::copy(&mut cursor, &mut destination)?;
 
-        Ok(CacheStatus::Positive)
+        Ok(())
     }
 }
 
@@ -139,8 +136,8 @@ impl CacheItemRequest for FetchFileRequest {
 
     /// Downloads a file, writing it to `path`.
     ///
-    /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    /// Only when [`Ok`] is returned is the data written to `path` used.
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let fut = self
             .clone()
             .fetch_file(path.to_path_buf())
@@ -159,14 +156,8 @@ impl CacheItemRequest for FetchFileRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
         Ok(Arc::new(CacheHandle {
-            status,
             debug_id: self.debug_id,
             data,
         }))
@@ -286,8 +277,8 @@ impl Il2cppService {
         let mut ret = None;
         for result in all_results {
             match result {
-                Ok(handle) if handle.status == CacheStatus::Positive => ret = Some(handle),
-                Ok(_) => (),
+                Ok(handle) => ret = Some(handle),
+                Err(CacheError::NotFound) => (),
                 Err(err) => {
                     let mut event = sentry::event_from_error(&err);
                     event.message = Some("Failure fetching il2cpp file from source".into());

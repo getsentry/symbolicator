@@ -243,12 +243,10 @@ impl AllObjectCandidates {
     /// `other` if they are not [`ObjectUseInfo::None`].
     pub fn merge(&mut self, other: &AllObjectCandidates) {
         for other_info in &other.0 {
-            let found_pos = self.0.binary_search_by(|candidate| {
-                candidate
-                    .source
-                    .cmp(&other_info.source)
-                    .then(candidate.location.cmp(&other_info.location))
-            });
+            let key = (&other_info.source, &other_info.location);
+            let found_pos = self
+                .0
+                .binary_search_by_key(&key, |candidate| (&candidate.source, &candidate.location));
             match found_pos {
                 Ok(index) => {
                     if let Some(mut info) = self.0.get_mut(index) {

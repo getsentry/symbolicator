@@ -12,12 +12,10 @@ use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{
-    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
-};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
-    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
@@ -81,20 +79,8 @@ pub enum CfiCacheError {
     #[error("failed to download")]
     Io(#[from] io::Error),
 
-    #[error("failed to download object")]
-    Fetching(#[source] ObjectError),
-
     #[error("failed to parse cficache")]
     Parsing(#[from] symbolic::cfi::CfiError),
-
-    #[error("failed to parse object")]
-    ObjectParsing(#[source] ObjectError),
-
-    #[error("failed parsing symbolfile")]
-    SymbolFileParsing(#[from] minidump_processor::SymbolError),
-
-    #[error("cficache building took too long")]
-    Timeout,
 }
 
 impl From<&CfiCacheError> for CacheError {
@@ -104,20 +90,10 @@ impl From<&CfiCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to write cfi cache");
                 Self::InternalError
             }
-            CfiCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
             CfiCacheError::Parsing(e) => {
                 tracing::error!(error = %e, "failed to parse cfi cache");
                 Self::InternalError
             }
-            CfiCacheError::ObjectParsing(e) => {
-                tracing::error!(error = %e, "failed to parse object");
-                Self::InternalError
-            }
-            CfiCacheError::SymbolFileParsing(e) => {
-                tracing::error!(error = %e, "failed to parse symbolfile");
-                Self::InternalError
-            }
-            CfiCacheError::Timeout => Self::Timeout(Duration::default()),
         }
     }
 }
@@ -157,27 +133,17 @@ async fn compute_cficache(
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     path: PathBuf,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    // The original has a download error so the cfi cache entry should just be negative.
-    if matches!(object.status(), &CacheStatus::CacheSpecificError(_)) {
-        return Ok(CacheStatus::Negative);
-    }
-    if object.status() != &CacheStatus::Positive {
-        return Ok(object.status().clone());
-    }
-
-    let status = if let Err(e) = write_cficache(&path, &object) {
+    if let Err(e) = write_cficache(&path, &object) {
         tracing::warn!("Could not write cficache: {}", e);
         sentry::capture_error(&e);
 
-        CacheStatus::Malformed(e.to_string())
-    } else {
-        CacheStatus::Positive
-    };
+        return Err((&e).into());
+    }
 
-    Ok(status)
+    Ok(())
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -189,7 +155,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = compute_cficache(
             self.objects_actor.clone(),
             self.meta_handle.clone(),
@@ -215,15 +181,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
-        let cache_entry = cache_entry_from_cache_status(status, data);
-
-        cache_entry.and_then(parse_cfi_cache)
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        parse_cfi_cache(data)
     }
 }
 
@@ -276,17 +235,14 @@ impl CfiCacheActor {
 fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
     object_handle.configure_scope();
 
-    let object = object_handle
-        .parse()
-        .map_err(CfiCacheError::ObjectParsing)?
-        .unwrap();
+    let object = object_handle.object();
 
     let file = File::create(path)?;
     let writer = BufWriter::new(file);
 
-    tracing::debug!("Converting cficache for {}", object_handle.cache_key());
+    tracing::debug!("Converting cficache for {}", object_handle.cache_key);
 
-    CfiCache::from_object(&object)?.write_to(writer)?;
+    CfiCache::from_object(object)?.write_to(writer)?;
 
     Ok(())
 }

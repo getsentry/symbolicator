@@ -137,13 +137,13 @@ pub enum CacheError {
     #[error("permission denied: {0}")]
     PermissionDenied(String),
     /// The object could not be fetched from the remote source due to a timeout.
-    #[error("timeout after {0:?}")]
+    #[error("download timed out")]
     Timeout(Duration),
     /// The object could not be fetched from the remote source due to another problem,
     /// like connection loss, DNS resolution, or a 5xx server response.
     ///
     /// The attached string contains the remote source's response.
-    #[error("download error: {0}")]
+    #[error("download failed: {0}")]
     DownloadError(String),
     /// The object was fetched successfully, but is invalid in some way.
     ///

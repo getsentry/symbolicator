@@ -5,13 +5,12 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 use thiserror::Error;
 
-use symbolic::common::{ByteView, SelfCell};
-use symbolic::debuginfo::{Object, ObjectDebugSession};
+use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
 use crate::cache::{CacheEntry, CacheError};
 use crate::services::derived::DerivedCache;
-use crate::services::objects::{FindObject, FoundObject, ObjectPurpose, ObjectsActor};
+use crate::services::objects::{FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
     FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError,
 };
@@ -90,13 +89,11 @@ impl<'a> CacheLookupResult<'a> {
     }
 }
 
-pub struct SourceObject(SelfCell<ByteView<'static>, Object<'static>>);
-
 struct ModuleEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
     cache: CacheEntry<CacheFileEntry>,
-    source_object: Option<SourceObject>,
+    source_object: CacheEntry<Arc<ObjectHandle>>,
 }
 
 pub struct ModuleLookup {
@@ -118,7 +115,7 @@ impl ModuleLookup {
                 module_index,
                 object_info,
                 cache: Err(CacheError::NotFound),
-                source_object: None,
+                source_object: Err(CacheError::NotFound),
             })
             .collect();
 
@@ -302,7 +299,7 @@ impl ModuleLookup {
                 let is_used = referenced_objects.contains(&entry.module_index);
                 if !is_used {
                     entry.object_info.debug_status = ObjectFileStatus::Unused;
-                    entry.source_object = None;
+                    entry.source_object = Err(CacheError::NotFound);
                     return None;
                 }
 
@@ -317,18 +314,14 @@ impl ModuleLookup {
 
                 Some(
                     async move {
-                        let FoundObject { meta, candidates } =
-                            objects.find(find_request).await.unwrap_or_default();
+                        let FindResult { meta, candidates } = objects.find(find_request).await;
 
                         let source_object = match meta {
-                            None => None,
-                            Some(object_file_meta) => {
-                                objects.fetch(object_file_meta).await.ok().and_then(|x| {
-                                    SelfCell::try_new(x.data(), |b| Object::parse(unsafe { &*b }))
-                                        .map(SourceObject)
-                                        .ok()
-                                })
-                            }
+                            Some(meta) => match meta.handle {
+                                Ok(handle) => objects.fetch(handle).await,
+                                Err(err) => Err(err),
+                            },
+                            None => Err(CacheError::NotFound),
                         };
 
                         (idx, source_object, candidates)
@@ -340,10 +333,10 @@ impl ModuleLookup {
         for (idx, source_object, candidates) in future::join_all(futures).await {
             if let Some(entry) = self.modules.get_mut(idx) {
                 entry.source_object = source_object;
+                entry.object_info.candidates.merge(&candidates);
 
-                if entry.source_object.is_some() {
+                if entry.source_object.is_ok() {
                     entry.object_info.features.has_sources = true;
-                    entry.object_info.candidates.merge(&candidates);
                 }
             }
         }
@@ -365,22 +358,24 @@ impl ModuleLookup {
         })
     }
 
-    /// Creates a [`ObjectDebugSession`] for each module that has a [`SourceObject`].
+    /// Creates a [`ObjectDebugSession`] for each module that has a
+    /// [`source_object`](ModuleEntry::source_object).
     ///
     /// This returns a separate HashMap purely to avoid self-referential borrowing issues.
-    /// The [`ObjectDebugSession`] borrows from the [`SourceObject`] and thus they can't live within
+    /// The [`ObjectDebugSession`] borrows from the `source_object` and thus they can't live within
     /// the same mutable [`ModuleLookup`].
     pub fn prepare_debug_sessions(&self) -> HashMap<usize, Option<ObjectDebugSession<'_>>> {
         self.modules
             .iter()
             .map(|entry| {
-                (
-                    entry.module_index,
-                    entry
-                        .source_object
-                        .as_ref()
-                        .and_then(|o| o.0.get().debug_session().ok()),
-                )
+                // FIXME(swatinem): we should log these errors here
+                let debug_session = entry
+                    .source_object
+                    .as_ref()
+                    .ok()
+                    .and_then(|o| o.object().debug_session().ok());
+
+                (entry.module_index, debug_session)
             })
             .collect()
     }

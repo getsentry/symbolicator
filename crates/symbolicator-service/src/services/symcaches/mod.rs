@@ -12,13 +12,11 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{self, SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{
-    cache_entry_from_cache_status, Cache, CacheEntry, CacheError, CacheStatus, ExpirationTime,
-};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
 use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
-    FindObject, ObjectError, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+    FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
@@ -27,7 +25,6 @@ use crate::utils::sentry::ConfigureScope;
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::download::DownloadError;
 use super::il2cpp::Il2cppService;
 use super::shared_cache::SharedCacheService;
 
@@ -91,29 +88,14 @@ pub enum SymCacheError {
     #[error("failed to write symcache")]
     Io(#[from] io::Error),
 
-    #[error("failed to download object")]
-    Fetching(#[source] ObjectError),
-
-    #[error("failed to parse symcache")]
-    Parsing(#[source] symcache::Error),
-
     #[error("failed to write symcache")]
     Writing(#[source] symcache::Error),
-
-    #[error("malformed symcache file")]
-    Malformed,
-
-    #[error("failed to parse object")]
-    ObjectParsing(#[source] ObjectError),
 
     #[error("failed to handle auxiliary BCSymbolMap file")]
     BcSymbolMapError(#[source] Error),
 
     #[error("failed to handle auxiliary il2cpp line mapping file")]
     Il2cppError(#[source] Error),
-
-    #[error("symcache building took too long")]
-    Timeout,
 }
 
 impl From<&SymCacheError> for CacheError {
@@ -123,16 +105,8 @@ impl From<&SymCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to write symcache");
                 Self::InternalError
             }
-            SymCacheError::Parsing(e) => {
-                tracing::error!(error = %e, "failed to parse symcache");
-                Self::InternalError
-            }
             SymCacheError::Writing(e) => {
                 tracing::error!(error = %e, "failed to write symcache");
-                Self::InternalError
-            }
-            SymCacheError::ObjectParsing(e) => {
-                tracing::error!(error = %e, "failed to parse object");
                 Self::InternalError
             }
             SymCacheError::BcSymbolMapError(e) => {
@@ -143,9 +117,6 @@ impl From<&SymCacheError> for CacheError {
                 tracing::error!(error = %e, "failed to handle auxiliary il2cpp line mapping file");
                 Self::InternalError
             }
-            SymCacheError::Fetching(ref e) => Self::DownloadError(e.to_string()),
-            SymCacheError::Malformed => Self::Malformed(String::new()),
-            SymCacheError::Timeout => Self::Timeout(Duration::default()),
         }
     }
 }
@@ -205,33 +176,16 @@ async fn fetch_difs_and_compute_symcache(
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<CacheStatus> {
+) -> CacheEntry<()> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    let status = object_handle.status();
+    if let Err(err) = write_symcache(&path, &object_handle, secondary_sources) {
+        tracing::warn!("Failed to write symcache: {}", err);
+        sentry::capture_error(&err);
 
-    // The original has a download error so the sym cache entry should be marked as a fetch error
-    if let Some(_download_error) = DownloadError::from_cache(status) {
-        // FIXME: this should be:
-        //return Err(SymCacheError::Fetching(download_error.into()));
-        // but instead we have to return an `Ok`, otherwise the `candidate` info will be lost
-        // somwhere along the path of the symcache request.
-        return Ok(CacheStatus::Negative);
+        return Err((&err).into());
     }
-
-    if status != &CacheStatus::Positive {
-        return Ok(status.clone());
-    }
-
-    let status = match write_symcache(&path, &object_handle, secondary_sources) {
-        Ok(_) => CacheStatus::Positive,
-        Err(err) => {
-            tracing::warn!("Failed to write symcache: {}", err);
-            sentry::capture_error(&err);
-            CacheStatus::Malformed(err.to_string())
-        }
-    };
-    Ok(status)
+    Ok(())
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -243,7 +197,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<CacheStatus>> {
+    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let future = fetch_difs_and_compute_symcache(
             path.to_owned(),
             self.object_meta.clone(),
@@ -276,14 +230,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(
-        &self,
-        status: CacheStatus,
-        data: ByteView<'static>,
-        _expiration: ExpirationTime,
-    ) -> CacheEntry<Self::Item> {
-        let cache_entry = cache_entry_from_cache_status(status, data);
-        cache_entry.and_then(parse_symcache_owned)
+    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+        parse_symcache_owned(data)
     }
 }
 
@@ -377,10 +325,7 @@ fn write_symcache(
 ) -> Result<(), SymCacheError> {
     object_handle.configure_scope();
 
-    let symbolic_object = object_handle
-        .parse()
-        .map_err(SymCacheError::ObjectParsing)?
-        .unwrap();
+    let symbolic_object = object_handle.object();
 
     let markers = SymCacheMarkers::from_sources(&secondary_sources);
 
@@ -411,7 +356,7 @@ fn write_symcache(
         None => None,
     };
 
-    tracing::debug!("Converting symcache for {}", object_handle.cache_key());
+    tracing::debug!("Converting symcache for {}", object_handle.cache_key);
 
     let mut converter = SymCacheConverter::new();
 
@@ -423,7 +368,7 @@ fn write_symcache(
     }
 
     converter
-        .process_object(&symbolic_object)
+        .process_object(symbolic_object)
         .map_err(SymCacheError::Writing)?;
 
     let file = File::create(path)?;

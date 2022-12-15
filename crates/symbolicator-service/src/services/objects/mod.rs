@@ -1,22 +1,14 @@
 use std::collections::BTreeSet;
-use std::error::Error;
-use std::fmt;
-use std::io;
 use std::sync::Arc;
-use std::time::Duration;
 
-use backtrace::Backtrace;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
-use symbolic::debuginfo;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
 
-use crate::cache::CacheEntry;
-use crate::cache::CacheError;
-use crate::cache::{Cache, CacheStatus};
+use crate::cache::{Cache, CacheEntry, CacheError};
 use crate::services::cacher::Cacher;
-use crate::services::download::{DownloadError, DownloadService, RemoteDif, RemoteDifUri};
+use crate::services::download::{DownloadService, RemoteDif, RemoteDifUri};
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
 use data_cache::FetchFileDataRequest;
@@ -30,112 +22,7 @@ use super::shared_cache::SharedCacheService;
 mod data_cache;
 mod meta_cache;
 
-/// Errors happening while fetching objects.
-pub enum ObjectError {
-    Io(io::Error, Backtrace),
-    Download(DownloadError),
-    Persisting(serde_json::Error),
-    NoTempDir,
-    Malformed,
-    Parsing(debuginfo::ObjectError),
-    Caching(Arc<ObjectError>),
-    Timeout,
-}
-
-impl fmt::Display for ObjectError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ObjectError: ")?;
-        match self {
-            ObjectError::Io(_, _) => write!(f, "failed to download (I/O error)")?,
-            ObjectError::Download(_) => write!(f, "failed to download")?,
-            ObjectError::Persisting(_) => write!(f, "failed persisting data")?,
-            ObjectError::NoTempDir => write!(f, "unable to get directory for tempfiles")?,
-            ObjectError::Malformed => write!(f, "malformed object file")?,
-            ObjectError::Parsing(_) => write!(f, "failed to parse object")?,
-            ObjectError::Caching(_) => write!(f, "failed to look into cache")?,
-            ObjectError::Timeout => write!(f, "object download took too long")?,
-        }
-        if f.alternate() {
-            if let Some(ref source) = self.source() {
-                write!(f, "\n  caused by: ")?;
-                fmt::Display::fmt(source, f)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Debug for ObjectError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)?;
-        if let ObjectError::Io(_, ref backtrace) = self {
-            write!(f, "\n  backtrace:\n{:?}", backtrace)?;
-        }
-        if f.alternate() {
-            if let Some(ref source) = self.source() {
-                write!(f, "\n  caused by: ")?;
-                fmt::Debug::fmt(source, f)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for ObjectError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            ObjectError::Io(ref source, _) => Some(source),
-            ObjectError::Download(ref source) => Some(source),
-            ObjectError::Persisting(ref source) => Some(source),
-            ObjectError::NoTempDir => None,
-            ObjectError::Malformed => None,
-            ObjectError::Parsing(ref source) => Some(source),
-            ObjectError::Caching(ref source) => Some(source.as_ref()),
-            ObjectError::Timeout => None,
-        }
-    }
-}
-
-impl From<io::Error> for ObjectError {
-    fn from(source: io::Error) -> Self {
-        Self::Io(source, Backtrace::new())
-    }
-}
-
-impl From<DownloadError> for ObjectError {
-    fn from(source: DownloadError) -> Self {
-        Self::Download(source)
-    }
-}
-
-impl From<serde_json::Error> for ObjectError {
-    fn from(source: serde_json::Error) -> Self {
-        Self::Persisting(source)
-    }
-}
-
-impl From<debuginfo::ObjectError> for ObjectError {
-    fn from(source: debuginfo::ObjectError) -> Self {
-        Self::Parsing(source)
-    }
-}
-
-impl From<ObjectError> for CacheError {
-    fn from(e: ObjectError) -> Self {
-        match e {
-            ObjectError::Io(_, _) => todo!(),
-            ObjectError::Download(download) => download.into(),
-            ObjectError::Persisting(serde_json) => serde_json.into(),
-            ObjectError::NoTempDir => Self::InternalError,
-            ObjectError::Malformed => Self::Malformed(String::new()),
-            ObjectError::Parsing(e) => Self::from_std_error(e),
-            ObjectError::Caching(_e) => todo!(),
-            ObjectError::Timeout => Self::Timeout(Duration::default()),
-        }
-    }
-}
-
-/// Wrapper around [`ObjectError`] to also pass the file information along.
+/// Wrapper around [`CacheError`] to also pass the file information along.
 ///
 /// Because of the requirement of [`CacheItemRequest`] to impl `From<io::Error>` it can not
 /// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this
@@ -143,12 +30,12 @@ impl From<ObjectError> for CacheError {
 ///
 /// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
 /// [`SourceLocation`]: crate::services::download::SourceLocation
-#[derive(Debug)]
-struct CacheLookupError {
+#[derive(Clone, Debug)]
+pub struct CacheLookupError {
     /// The object file which was attempted to be fetched.
-    file_source: RemoteDif,
-    /// The wrapped [`ObjectError`] which occurred while fetching the object file.
-    error: CacheError,
+    pub file_source: RemoteDif,
+    /// The wrapped [`CacheError`] which occurred while fetching the object file.
+    pub error: CacheError,
 }
 
 /// Fetch a Object from external sources or internal cache.
@@ -168,15 +55,21 @@ pub enum ObjectPurpose {
     Source,
 }
 
+#[derive(Debug, Clone)]
+pub struct FoundMeta {
+    pub file_source: RemoteDif,
+    pub handle: CacheEntry<Arc<ObjectMetaHandle>>,
+}
+
 /// The response for [`ObjectsActor::find`].
 ///
-/// The found object is in the `meta` field with other DIFs considered in the `candidates`
-/// field.
-#[derive(Debug, Clone, Default)]
-pub struct FoundObject {
-    /// If a matching object was found its [`ObjectMetaHandle`] will be provided here,
-    /// otherwise this will be `None`.
-    pub meta: Option<Arc<ObjectMetaHandle>>,
+/// The found object is in the `selected_meta` field with other DIFs considered
+/// in the `candidates` field.
+#[derive(Debug, Clone)]
+pub struct FindResult {
+    /// If a matching object (or an error as fallback) was found,
+    /// its [`ObjectMetaHandle`] will be provided here, otherwise this will be `None`
+    pub meta: Option<FoundMeta>,
     /// This is a list of some meta information on all objects which have been considered
     /// for this object.  It could be populated even if no matching object is found.
     pub candidates: AllObjectCandidates,
@@ -228,7 +121,7 @@ impl ObjectsActor {
     /// Asking for the objects metadata from the data cache also triggers a download of each
     /// object, which will then be cached in the data cache.  The metadata itself is cached
     /// in the metadata cache which usually lives longer.
-    pub async fn find(&self, request: FindObject) -> Result<FoundObject, CacheError> {
+    pub async fn find(&self, request: FindObject) -> FindResult {
         let FindObject {
             filetypes,
             scope,
@@ -237,13 +130,13 @@ impl ObjectsActor {
             purpose,
         } = request;
         let file_ids = self.list_files(&sources, filetypes, &identifier).await;
+
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
         let candidates = create_candidates(&sources, &file_metas);
         let meta = select_meta(file_metas, purpose);
 
-        meta.transpose()
-            .map(|meta| FoundObject { meta, candidates })
+        FindResult { meta, candidates }
     }
 
     /// Collect the list of files to download from all the sources.
@@ -251,9 +144,6 @@ impl ObjectsActor {
     /// This concurrently contacts all the sources and asks them for the files we should try
     /// to download from them matching the required filetypes and object IDs.  Not all
     /// sources guarantee that the returned files actually exist.
-    // TODO(flub): this function should inline already fetch the meta (what
-    // `fetch_file_metas()` does now) for each file.  Currently we synchronise all the
-    // futures at the end of the listing for no good reason.
     async fn list_files(
         &self,
         sources: &[SourceConfig],
@@ -297,31 +187,29 @@ impl ObjectsActor {
         file_sources: Vec<RemoteDif>,
         identifier: &ObjectId,
         scope: Scope,
-    ) -> Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>> {
+    ) -> Vec<FoundMeta> {
         let queries = file_sources.into_iter().map(|file_source| {
-            let object_id = identifier.clone();
-            let scope = scope.clone();
-            let data_cache = self.data_cache.clone();
-            let download_svc = self.download_svc.clone();
+            let scope = if file_source.is_public() {
+                Scope::Global
+            } else {
+                scope.clone()
+            };
+            let request = FetchFileMetaRequest {
+                scope,
+                file_source: file_source.clone(),
+                object_id: identifier.clone(),
+                data_cache: self.data_cache.clone(),
+                download_svc: self.download_svc.clone(),
+            };
+
             let meta_cache = self.meta_cache.clone();
 
             async move {
-                let scope = if file_source.is_public() {
-                    Scope::Global
-                } else {
-                    scope.clone()
-                };
-                let request = FetchFileMetaRequest {
-                    scope,
-                    file_source: file_source.clone(),
-                    object_id,
-                    data_cache,
-                    download_svc,
-                };
-                meta_cache
-                    .compute_memoized(request)
-                    .await
-                    .map_err(|error| CacheLookupError { file_source, error })
+                let handle = meta_cache.compute_memoized(request).await;
+                FoundMeta {
+                    file_source,
+                    handle,
+                }
             }
             .bind_hub(Hub::new_from_top(Hub::current()))
         });
@@ -337,20 +225,14 @@ impl ObjectsActor {
 /// result, if there were no suitable files and only lookup errors one of the lookup errors
 /// is propagated.  If there were no suitlable files and no errors `None` is also returned
 /// in the result.
-fn select_meta(
-    all_lookups: Vec<Result<Arc<ObjectMetaHandle>, CacheLookupError>>,
-    purpose: ObjectPurpose,
-) -> Option<CacheEntry<Arc<ObjectMetaHandle>>> {
+fn select_meta(all_lookups: Vec<FoundMeta>, purpose: ObjectPurpose) -> Option<FoundMeta> {
     let mut selected_meta = None;
     let mut selected_quality = u8::MAX;
 
     for meta_lookup in all_lookups {
-        // Build up the list of candidates, unwrap our error which carried some info just for that.
-        let meta_lookup = meta_lookup.map_err(|wrapped_err| wrapped_err.error);
-
         // Skip objects which and not suitable for what we're asked to provide.  Keep errors
         // though, if we don't find any object we need to return an error.
-        if let Ok(ref meta_handle) = meta_lookup {
+        if let Ok(ref meta_handle) = meta_lookup.handle {
             if !object_has_features(meta_handle, purpose) {
                 continue;
             }
@@ -371,8 +253,8 @@ fn select_meta(
 /// Returns a sortable quality measure of this object for the given purpose.
 ///
 /// Lower quality number is better.
-fn object_quality(meta_lookup: &CacheEntry<Arc<ObjectMetaHandle>>, purpose: ObjectPurpose) -> u8 {
-    match meta_lookup {
+fn object_quality(meta_lookup: &FoundMeta, purpose: ObjectPurpose) -> u8 {
+    match &meta_lookup.handle {
         Ok(object_meta) => match purpose {
             ObjectPurpose::Unwind if object_meta.features.has_unwind_info => 0,
             ObjectPurpose::Debug if object_meta.features.has_debug_info => 0,
@@ -386,17 +268,12 @@ fn object_quality(meta_lookup: &CacheEntry<Arc<ObjectMetaHandle>>, purpose: Obje
 
 /// Whether the object provides the required features for the given purpose.
 fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -> bool {
-    if meta_handle.status == CacheStatus::Positive {
-        // object_meta.features is meaningless when CacheStatus != Positive
-        match purpose {
-            ObjectPurpose::Unwind => meta_handle.features.has_unwind_info,
-            ObjectPurpose::Debug => {
-                meta_handle.features.has_debug_info || meta_handle.features.has_symbols
-            }
-            ObjectPurpose::Source => meta_handle.features.has_sources,
+    match purpose {
+        ObjectPurpose::Unwind => meta_handle.features.has_unwind_info,
+        ObjectPurpose::Debug => {
+            meta_handle.features.has_debug_info || meta_handle.features.has_symbols
         }
-    } else {
-        true
+        ObjectPurpose::Source => meta_handle.features.has_sources,
     }
 }
 
@@ -406,19 +283,14 @@ fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -
 /// results they will get a [`ObjectDownloadInfo::NotFound`] entry with a location of `*`.
 /// In practice this will only affect the `sentry` source for now as all other sources
 /// always return [`DownloadService::list_files`] results.
-fn create_candidates(
-    sources: &[SourceConfig],
-    lookups: &[Result<Arc<ObjectMetaHandle>, CacheLookupError>],
-) -> AllObjectCandidates {
+fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObjectCandidates {
     let mut source_ids: BTreeSet<SourceId> =
         sources.iter().map(|source| source.id()).cloned().collect();
     let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len() + source_ids.len());
 
     for meta_lookup in lookups.iter() {
-        if let Ok(meta_handle) = meta_lookup {
-            let source_id = meta_handle.file_source.source_id();
-            source_ids.take(source_id);
-        }
+        let source_id = meta_lookup.file_source.source_id();
+        source_ids.take(source_id);
         candidates.push(create_candidate_info(meta_lookup));
     }
 
@@ -438,45 +310,30 @@ fn create_candidates(
 }
 
 /// Build the [`ObjectCandidate`] info for the provided meta lookup result.
-fn create_candidate_info(
-    meta_lookup: &Result<Arc<ObjectMetaHandle>, CacheLookupError>,
-) -> ObjectCandidate {
-    match meta_lookup {
-        Ok(meta_handle) => {
-            let download = match &meta_handle.status {
-                CacheStatus::Positive => ObjectDownloadInfo::Ok {
-                    features: meta_handle.features(),
-                },
-                CacheStatus::Negative => ObjectDownloadInfo::NotFound,
-                CacheStatus::Malformed(_) => ObjectDownloadInfo::Malformed,
-                CacheStatus::CacheSpecificError(message) => {
-                    match DownloadError::from_cache(&meta_handle.status) {
-                        Some(DownloadError::Permissions) => ObjectDownloadInfo::NoPerm {
-                            details: String::default(),
-                        },
-                        Some(_) | None => ObjectDownloadInfo::Error {
-                            details: message.clone(),
-                        },
-                    }
-                }
-            };
-            ObjectCandidate {
-                source: meta_handle.file_source.source_id().clone(),
-                location: meta_handle.file_source.uri(),
-                download,
-                unwind: Default::default(),
-                debug: Default::default(),
-            }
-        }
-        Err(wrapped_error) => {
-            let details = wrapped_error.error.to_string();
-            ObjectCandidate {
-                source: wrapped_error.file_source.source_id().clone(),
-                location: wrapped_error.file_source.uri(),
-                download: ObjectDownloadInfo::Error { details },
-                unwind: Default::default(),
-                debug: Default::default(),
-            }
-        }
+fn create_candidate_info(meta_lookup: &FoundMeta) -> ObjectCandidate {
+    let source = meta_lookup.file_source.source_id().clone();
+    let location = meta_lookup.file_source.uri();
+    let download = match &meta_lookup.handle {
+        Ok(handle) => ObjectDownloadInfo::Ok {
+            features: handle.features(),
+        },
+        Err(error) => match error {
+            CacheError::NotFound => ObjectDownloadInfo::NotFound,
+            CacheError::PermissionDenied(msg) => ObjectDownloadInfo::NoPerm {
+                details: msg.clone(),
+            },
+            CacheError::Malformed(_) => ObjectDownloadInfo::Malformed,
+            err => ObjectDownloadInfo::Error {
+                details: err.to_string(),
+            },
+        },
+    };
+
+    ObjectCandidate {
+        source,
+        location,
+        download,
+        unwind: Default::default(),
+        debug: Default::default(),
     }
 }
