@@ -514,19 +514,22 @@ def test_unreachable_bucket(symbolicator, hitcounter, statuscode, bucket_type):
     if bucket_type == "sentry":
         source = ("broken", True)
         download_error = {"status": "notfound"}
+        debug_status = "missing"
     elif statuscode == 500:
         source = ("broken", False)
         download_error = {
             "status": "error",
-            "details": "failed to download: 500 Internal Server Error",
+            "details": "download failed: 500 Internal Server Error",
         }
+        debug_status = "fetching_failed"
     else:
         source = ("broken", False)
         download_error = {"status": "notfound"}
+        debug_status = "missing"
 
     expected = _make_error_result(
         frame_status="missing",
-        debug_status="missing",
+        debug_status=debug_status,
         download_error=download_error,
         source=source,
         base_url=f"{hitcounter.url}/respond_statuscode/{statuscode}/",
