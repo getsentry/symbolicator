@@ -87,11 +87,13 @@ def _make_successful_result(filtered=False):
     # only include other debug file types if the request to symbolicator doesn't explicitly filter them out
     # if we filter out the source bundles, symbolicator will create a "not files listed" candidate for them
     if filtered:
-        module["candidates"].append({
-            "location": "No object files listed on this source",
-            "source": "microsoft",
-            "download": {"status": "notfound"},
-        })
+        module["candidates"].append(
+            {
+                "location": "No object files listed on this source",
+                "source": "microsoft",
+                "download": {"status": "notfound"},
+            }
+        )
     else:
         module["candidates"].append(
             {
@@ -144,7 +146,11 @@ SUCCESS_WINDOWS = _make_successful_result()
 
 
 def _make_error_result(
-    frame_status, debug_status, download_error, source=(None, True), base_url=DEFAULT_SERVER_PATH
+    frame_status,
+    debug_status,
+    download_error,
+    source=(None, True),
+    base_url=DEFAULT_SERVER_PATH,
 ):
     """
     Builds a standard error result. `download_error` should be an ObjectDownloadInfo. source is
@@ -398,7 +404,7 @@ def test_unknown_source_config(symbolicator, hitcounter):
                 "type": "http",
                 "id": "unknown",
                 "layout": {"type": "symstore"},
-                #"filters": {"filetypes": ["pdb", "pe"]},
+                # "filters": {"filetypes": ["pdb", "pe"]},
                 "url": f"{hitcounter.url}/respond_statuscode/400",
                 "name": "not a known field",
                 "not-a-field": "more unknown fields",
@@ -746,7 +752,10 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
         restricted_download_failure = _make_error_result(
             frame_status="missing",
             debug_status="fetching_failed",
-            download_error={"status": "error", "details": "download failed: destination is restricted"},
+            download_error={
+                "status": "error",
+                "details": "download failed: destination is restricted",
+            },
             source=("microsoft", False),
             base_url=f"{url}/msdl/",
         )
