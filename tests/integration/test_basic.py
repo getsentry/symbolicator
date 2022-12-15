@@ -589,7 +589,7 @@ def test_no_permission(symbolicator, hitcounter, bucket_type):
     )
     expected = _make_error_result(
         frame_status="missing",
-        debug_status="missing",
+        debug_status="fetching_failed",
         download_error={"status": "noperm", "details": ""},
         source=("broken", False),
         base_url=base_url,
