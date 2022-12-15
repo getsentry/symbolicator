@@ -358,10 +358,11 @@ impl ModuleLookup {
         })
     }
 
-    /// Creates a [`ObjectDebugSession`] for each module that has a [`SourceObject`].
+    /// Creates a [`ObjectDebugSession`] for each module that has a
+    /// [`source_object`](ModuleEntry::source_object).
     ///
     /// This returns a separate HashMap purely to avoid self-referential borrowing issues.
-    /// The [`ObjectDebugSession`] borrows from the [`SourceObject`] and thus they can't live within
+    /// The [`ObjectDebugSession`] borrows from the `source_object` and thus they can't live within
     /// the same mutable [`ModuleLookup`].
     pub fn prepare_debug_sessions(&self) -> HashMap<usize, Option<ObjectDebugSession<'_>>> {
         self.modules

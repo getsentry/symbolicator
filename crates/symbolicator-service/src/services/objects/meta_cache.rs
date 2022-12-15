@@ -133,9 +133,6 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 
     /// Returns the [`ObjectMetaHandle`] at the given cache key.
-    ///
-    /// If the `status` is [`CacheStatus::Malformed`] or [`CacheStatus::Negative`] the metadata
-    /// returned will contain the default [`ObjectMetaHandle::features`].
     fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.

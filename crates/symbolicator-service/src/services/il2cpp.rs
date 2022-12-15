@@ -136,7 +136,7 @@ impl CacheItemRequest for FetchFileRequest {
 
     /// Downloads a file, writing it to `path`.
     ///
-    /// Only when [`CacheStatus::Positive`] is returned is the data written to `path` used.
+    /// Only when [`Ok`] is returned is the data written to `path` used.
     fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
         let fut = self
             .clone()

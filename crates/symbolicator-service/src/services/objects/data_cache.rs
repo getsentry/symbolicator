@@ -118,19 +118,6 @@ impl fmt::Display for ObjectHandle {
 /// debug ID of our request is extracted first.  Finally the object is parsed with
 /// symbolic to ensure it is not malformed.
 ///
-/// If there is an error decompression then an `Err` of [`ObjectError`] is returned.  If the
-/// parsing the final object file failed, or there is an error downloading the file an `Ok` with
-/// [`CacheStatus::Malformed`] is returned.
-///
-/// If the object file did not exist on the source a [`CacheStatus::Negative`] will be
-/// returned.
-///
-/// If there was an error downloading the object file, an `Ok` with
-/// [`CacheStatus::CacheSpecificError`] is returned.
-///
-/// If the object file did not exist on the source an `Ok` with [`CacheStatus::Negative`] will
-/// be returned.
-///
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
 /// code.
