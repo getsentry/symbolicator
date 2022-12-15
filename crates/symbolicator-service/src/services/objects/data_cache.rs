@@ -389,8 +389,9 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(
             result,
             CacheError::DownloadError("500 Internal Server Error".into())
@@ -400,8 +401,9 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(
             result,
             CacheError::DownloadError("500 Internal Server Error".into())
@@ -439,16 +441,18 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(server.accesses(), 0);
     }
@@ -485,8 +489,9 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(result, CacheError::Timeout(timeout));
         // XXX: why are we not trying this 3 times?
         assert_eq!(server.accesses(), 1);
@@ -494,8 +499,9 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(result, CacheError::Timeout(timeout));
         assert_eq!(server.accesses(), 0);
     }
@@ -530,16 +536,18 @@ mod tests {
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
             .meta
-            .unwrap_err()
-            .error;
+            .unwrap()
+            .handle
+            .unwrap_err();
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(server.accesses(), 0);
     }

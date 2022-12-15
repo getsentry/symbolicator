@@ -10,9 +10,7 @@ use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
 use crate::cache::{CacheEntry, CacheError};
 use crate::services::derived::DerivedCache;
-use crate::services::objects::{
-    FindObject, FoundObject, ObjectHandle, ObjectPurpose, ObjectsActor,
-};
+use crate::services::objects::{FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
     FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError,
 };
@@ -316,11 +314,15 @@ impl ModuleLookup {
 
                 Some(
                     async move {
-                        // FIXME(swatinem): we should correctly propagate errors here
-                        let FoundObject { meta, candidates } = objects.find(find_request).await;
+                        let FindResult { meta, candidates } = objects.find(find_request).await;
 
-                        let source_object = match meta.unwrap_or_default() {
-                            Some(meta) => objects.fetch(meta).await,
+                        dbg!(&meta, &candidates);
+
+                        let source_object = match meta {
+                            Some(meta) => match meta.handle {
+                                Ok(handle) => objects.fetch(handle).await,
+                                Err(err) => Err(err),
+                            },
                             None => Err(CacheError::NotFound),
                         };
 

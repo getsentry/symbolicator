@@ -33,13 +33,11 @@ async fn load_object(service: RequestService, path: String) -> CacheEntry<Arc<Ob
         })
         .await;
 
-    let object_meta = match found_object.meta {
-        Ok(Some(meta)) => meta,
-        Ok(None) => return Err(CacheError::NotFound),
-        Err(e) => return Err(e.error),
+    let Some(meta) = found_object.meta else {
+        return Err(CacheError::NotFound);
     };
 
-    service.fetch_object(object_meta).await
+    service.fetch_object(meta.handle?).await
 }
 
 pub async fn proxy_symstore_request(

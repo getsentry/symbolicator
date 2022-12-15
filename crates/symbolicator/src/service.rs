@@ -39,7 +39,7 @@ use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
 
 pub use symbolicator_service::services::objects::{
-    FindObject, FoundObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
+    FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
 pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
 pub use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope, Signal};
@@ -225,7 +225,7 @@ impl RequestService {
     }
 
     /// Looks up the object according to the [`FindObject`] request.
-    pub async fn find_object(&self, request: FindObject) -> FoundObject {
+    pub async fn find_object(&self, request: FindObject) -> FindResult {
         self.inner.objects.find(request).await
     }
 
