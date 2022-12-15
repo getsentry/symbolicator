@@ -746,7 +746,7 @@ def test_reserved_ip_addresses(symbolicator, hitcounter, allow_reserved_ip, host
         restricted_download_failure = _make_error_result(
             frame_status="missing",
             debug_status="fetching_failed",
-            download_error={"status": "error", "details": "destination is restricted"},
+            download_error={"status": "error", "details": "download failed: destination is restricted"},
             source=("microsoft", False),
             base_url=f"{url}/msdl/",
         )

@@ -4,6 +4,7 @@
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::convert::TryInto;
+use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -83,18 +84,24 @@ impl From<sentry::SentryError> for DownloadError {
 impl From<DownloadError> for CacheError {
     fn from(error: DownloadError) -> Self {
         match error {
-            DownloadError::Io(e) => {
-                tracing::error!(error = %e, "failed to perform an IO operation");
-                Self::InternalError
-            }
-            DownloadError::Reqwest(e) => Self::DownloadError(e.to_string()),
-            DownloadError::BadDestination(e) => {
-                tracing::error!(error = %e, "bad file destination");
-                Self::InternalError
-            }
-            DownloadError::Write(e) => {
-                tracing::error!(error = %e, "failed writing the downloaded file");
-                Self::InternalError
+            DownloadError::Reqwest(e) => {
+                let mut innermost: &dyn Error = &e;
+                while let Some(src) = innermost.source() {
+                    innermost = src;
+                }
+
+                let mut error_string = innermost.to_string();
+
+                // Special-case a few error strings
+                if error_string.contains("certificate verify failed") {
+                    error_string = "certificate verify failed".to_string();
+                }
+
+                if error_string.contains("SSL routines") {
+                    error_string = "SSL error".to_string();
+                }
+
+                Self::DownloadError(error_string)
             }
             DownloadError::Canceled => Self::Timeout(Duration::default()),
             DownloadError::Gcs(e) => {
@@ -107,11 +114,11 @@ impl From<DownloadError> for CacheError {
                 Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
             DownloadError::S3WithCode(status, code) => {
-                Self::DownloadError(format!("S3 error code: {code} (http status: {status}"))
+                Self::DownloadError(format!("S3 error code: {code} (http status: {status})"))
             }
             DownloadError::Permissions => Self::PermissionDenied(String::new()),
             DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
-            DownloadError::CachedError(_) => todo!(),
+            _ => Self::from_std_error(error),
         }
     }
 }
