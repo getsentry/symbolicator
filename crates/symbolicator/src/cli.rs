@@ -67,14 +67,14 @@ pub fn execute() -> Result<()> {
     #[cfg(feature = "symbolicator-crash")]
     {
         let dsn = config.sentry_dsn.as_ref().map(|d| d.to_string());
-        let db = config._crash_db.cloned().or_else(|| {
+        let db = config._crash_db.clone().or_else(|| {
             config
                 .cache_dir
                 .as_ref()
                 .map(|cache_dir| cache_dir.join(".sentry-native"))
         });
         if let (Some(dsn), Some(db)) = (dsn, db) {
-            symbolicator_crash::CrashHandler::new(dsn.as_ref(), db)
+            symbolicator_crash::CrashHandler::new(dsn.as_ref(), &db)
                 .release(sentry::release_name!().as_deref())
                 .install();
         }
