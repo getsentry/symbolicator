@@ -9,7 +9,7 @@
 use std::cmp;
 use std::fmt;
 use std::fs;
-use std::io::{self, Seek};
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::SelfCell;
-use tempfile::{tempfile_in, NamedTempFile};
+use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
@@ -26,9 +26,9 @@ use symbolicator_sources::ObjectId;
 
 use crate::cache::{CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey};
-use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadService, RemoteDif};
+use crate::services::fetch_file;
 use crate::types::Scope;
-use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
@@ -122,13 +122,13 @@ impl fmt::Display for ObjectHandle {
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
 /// code.
 #[tracing::instrument(skip_all)]
-async fn fetch_file(
+async fn fetch_object_file(
     path: PathBuf,
     cache_key: CacheKey,
     object_id: ObjectId,
     file_id: RemoteDif,
     downloader: Arc<DownloadService>,
-    tempfile: std::io::Result<NamedTempFile>,
+    temp_file: std::io::Result<NamedTempFile>,
 ) -> CacheEntry<()> {
     tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
@@ -136,55 +136,12 @@ async fn fetch_file(
         object_id.to_scope(scope);
     });
 
-    let download_file = match downloader.download(file_id, tempfile?).await {
-        Ok(DownloadStatus::NotFound) => {
-            tracing::debug!("No debug file found for {}", cache_key);
-            return Err(CacheError::NotFound);
-        }
-        Ok(DownloadStatus::PermissionDenied) => {
-            // FIXME: this is really unreachable as the downloader converts these already
-            return Err(CacheError::PermissionDenied("".into()));
-        }
+    let temp_file = fetch_file(downloader, file_id, temp_file?).await?;
 
-        Err(e) => {
-            // We want to error-log "interesting" download errors so we can look them up
-            // in our internal sentry. We downgrade to debug-log for unactionable
-            // permissions errors. Since this function does a fresh download, it will never
-            // hit `CachedError`, but listing it for completeness is not a bad idea either.
-            let stderr: &dyn std::error::Error = &e;
-            match e {
-                DownloadError::Permissions | DownloadError::CachedError(_) => {
-                    tracing::debug!(stderr, "Error while downloading file")
-                }
-                _ => tracing::error!(stderr, "Error while downloading file"),
-            }
-
-            return Err(CacheError::from(e));
-        }
-
-        Ok(DownloadStatus::Completed(download_file)) => download_file,
-    };
-    tracing::trace!("Finished download of {}", cache_key);
-
-    let download_dir = download_file
-        .path()
-        .parent()
-        .ok_or(CacheError::InternalError)?;
-    let decompress_result = decompress_object_file(&download_file, tempfile_in(download_dir)?);
-
-    // Treat decompression errors as malformed files. It is more likely that
-    // the error comes from a corrupt file than a local file system error.
-    let mut decompressed = match decompress_result {
-        Ok(decompressed) => decompressed,
-        Err(e) => return Err(CacheError::Malformed(e.to_string())),
-    };
-
-    // Seek back to the start and parse this object so we can deal with it.
     // Since objects in Sentry (and potentially also other sources) might be
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
     // extract the wanted file.
-    decompressed.rewind()?;
-    let view = ByteView::map_file(decompressed)?;
+    let view = ByteView::map_file(temp_file.into_file())?;
     let archive = match Archive::parse(&view) {
         Ok(archive) => archive,
         Err(e) => return Err(CacheError::Malformed(e.to_string())),
@@ -255,7 +212,7 @@ impl CacheItemRequest for FetchFileDataRequest {
     }
 
     fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
-        let future = fetch_file(
+        let future = fetch_object_file(
             path.to_owned(),
             self.get_cache_key(),
             self.0.object_id.clone(),

@@ -5,7 +5,7 @@
 
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, Cursor, Seek};
+use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +13,6 @@ use std::time::Duration;
 use anyhow::{Context, Error};
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
-use tempfile::tempfile_in;
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
@@ -21,11 +20,11 @@ use symbolicator_sources::{FileType, SourceConfig};
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadService, RemoteDif};
 use crate::types::Scope;
-use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 
+use super::fetch_file;
 use super::shared_cache::SharedCacheService;
 
 /// Handle to a valid BCSymbolMap.
@@ -92,44 +91,10 @@ impl FetchFileRequest {
     /// Actual implementation of [`FetchFileRequest::compute`].
     // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
     async fn fetch_file(self, path: PathBuf) -> CacheEntry<()> {
-        let cache_key = self.get_cache_key();
+        let temp_file =
+            fetch_file(self.download_svc, self.file_source, self.cache.tempfile()?).await?;
 
-        let download_file = match self
-            .download_svc
-            .download(self.file_source, self.cache.tempfile()?)
-            .await
-        {
-            Ok(DownloadStatus::NotFound) => {
-                tracing::debug!("No auxiliary DIF file found for {}", cache_key);
-                return Err(CacheError::NotFound);
-            }
-            Ok(DownloadStatus::PermissionDenied) => {
-                // FIXME: this is really unreachable as the downloader converts these already
-                return Err(CacheError::PermissionDenied("".into()));
-            }
-            Err(e) => {
-                let stderr: &dyn std::error::Error = &e;
-                tracing::debug!(stderr, "Error while downloading file");
-                return Err(CacheError::from(e));
-            }
-            Ok(DownloadStatus::Completed(download_file)) => download_file,
-        };
-
-        let download_dir = download_file
-            .path()
-            .parent()
-            .ok_or(CacheError::InternalError)?;
-        let mut decompressed =
-            match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
-                Ok(file) => file,
-                Err(err) => {
-                    return Err(CacheError::Malformed(err.to_string()));
-                }
-            };
-
-        // Seek back to the start and parse this DIF.
-        decompressed.rewind()?;
-        let view = ByteView::map_file(decompressed)?;
+        let view = ByteView::map_file(temp_file.into_file())?;
 
         match self.kind {
             AuxDifKind::BcSymbolMap => {

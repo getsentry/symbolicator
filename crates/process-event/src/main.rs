@@ -55,7 +55,7 @@ fn main() -> Result<(), anyhow::Error> {
     file.rewind()?;
 
     let req = if &magic == b"MDMP" || &magic == b"PMDM" {
-        let req = client.post(&format!("{}/minidump", symbolicator));
+        let req = client.post(format!("{}/minidump", symbolicator));
 
         let mut options = Map::new();
         options.insert("dif_candidates".into(), Value::Bool(dif_candidates));
@@ -66,7 +66,7 @@ fn main() -> Result<(), anyhow::Error> {
 
         req.multipart(form).send()
     } else {
-        let req = client.post(&format!("{}/symbolicate", symbolicator));
+        let req = client.post(format!("{}/symbolicate", symbolicator));
 
         let event = serde_json::from_reader(file)?;
         let mut json = event::massage_event_json(event);
